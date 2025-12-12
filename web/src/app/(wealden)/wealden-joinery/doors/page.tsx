@@ -18,81 +18,123 @@ const detailImages = getImagesByHint("detail", 6);
 const doorTypes = [
   {
     title: "Entrance Doors",
-    summary: "You can feel it's a real wood door. Every Lignum entrance door is available in a stunning range of decorative glass options with traditional or designer handles.",
+    summary: "A front door is the first impression—and the last line of defence. Every entrance door combines engineered timber strength with PAS 24 security certification, multi-point locking, and decorative glazing that filters light while maintaining privacy.",
     details: [
-      "PAS 24 certified for security",
-      "Solid engineered timber construction",
-      "Fully sealed and weather-tested",
-      "Multi-point locks as standard",
-      "Bespoke styles and detailing available",
-      "Matching sidelights, toplights and frames",
-      "Choose from traditional, contemporary or modern designs",
-      "Available in stunning range of decorative glass options",
+      "PAS 24:2016 certified—tested to resist forced entry for minimum 3 minutes (lock picking, glass attack, jemmy resistance)",
+      "Secured by Design approved (Police-preferred specification)",
+      "3-point or 5-point multi-point locking with shootbolts, hooks, and deadlocks",
+      "Internal glazing beads (cannot be removed from outside)",
+      "44mm solid engineered timber core or optional FD30 fire-rated core for flats/conversions",
+      "Laminated safety glass (6.4mm or 8.8mm) for toughened impact protection",
+      "Complies with Building Regulations Document Q (security) and Document M (accessibility)",
+      "Traditional 4/6-panel, contemporary flush, or modern composite styles with bespoke panel configurations",
+      "Decorative glass options: leaded, stained, sandblasted, reeded, or obscure patterns",
+      "Matching sidelights, toplights, and decorative fanlights",
+      "Hardware: lever handles, knobs, or D-pulls in satin brass, bronze, chrome, or matt black",
+      "Dual-colour options: natural stain or white internally, bold external colour (Farrow & Ball, Little Greene, RAL)",
+      "30-year timber warranty, 10-year paint/workmanship guarantee, 15-year glazing warranty",
     ],
   },
   {
     title: "French Doors",
-    summary: "Timeless functionality designed for modern life. Ideal for bringing natural light into your living space while maintaining architectural integrity.",
+    summary: "Traditional elegance for smaller openings. Best for heritage properties, traditional homes, or openings 1.5–2.5m wide. Inward or outward opening with secure multi-point locking.",
     details: [
-      "Inward or outward opening",
-      "Secure multi-point locking",
-      "High-performance double glazing",
-      "Flush or rebated thresholds",
-      "Fully finished timber inside and out",
-      "Optional glazing bars for traditional or contemporary style",
-      "Pair with fixed sidelights or toplights to extend the view",
+      "Best for: Traditional properties, smaller openings (1.5–2.5m wide), heritage compliance",
+      "Inward or outward opening (conservation areas often require outward for authenticity)",
+      "Secure 3-point multi-point locking with hook bolts",
+      "Flush or rebated threshold options (Document M compliant low thresholds available)",
+      "Traditional astragal glazing bars or contemporary plain glazing",
+      "Pair with fixed sidelights to extend opening without operational panels",
+      "Thermal performance: U-value 1.0–1.2 W/m²K (double glazed), 0.7 W/m²K (vacuum glazed)",
+      "Typical cost: £3,500–£6,000 installed (2.4m wide pair)",
       "Suitable for both traditional and contemporary homes",
+      "When to specify: Heritage properties, traditional character required, smaller openings, best value option",
     ],
   },
   {
     title: "Bifold Doors",
-    summary: "Flexible living with smooth operation. Designed for modern living, opening up your home to the outdoors with excellent thermal performance.",
+    summary: "Maximum flexibility for large openings. Best for extensions, garden rooms, or openings 2.5–6m wide. Panels fold back to create wide clear opening with minimal frame obstruction.",
     details: [
-      "Wide clear openings with minimal frame",
-      "Secure multi-point locking and PAS 24 hardware",
-      "Smooth operation with robust durability",
-      "Double or vacuum glazing options",
-      "Thermally efficient and weather-sealed",
-      "Ideal for extensions and garden rooms",
-      "Bespoke configurations with optional traffic door",
-      "Choose track finish, threshold type and ironmongery",
+      "Best for: Extensions, garden rooms, large openings (2.5–6m wide), maximizing clear opening",
+      "3–7 panels folding left, right, or split configuration",
+      "Smooth roller operation with robust stainless steel track",
+      "Flush threshold or aluminium step-down track options",
+      "Optional traffic door (single door for daily access without folding full set)",
+      "Secure multi-point locking and PAS 24 hardware available",
+      "Double or vacuum glazing options for thermal performance",
+      "Thermal performance: U-value 1.0–1.2 W/m²K (double glazed), 0.7 W/m²K (vacuum glazed)",
+      "Typical cost: £8,000–£15,000 installed (4m wide, 5-panel set)",
+      "Ideal for extensions and garden rooms connecting indoor/outdoor living",
+      "When to specify: Large openings, contemporary aesthetic, maximum flexibility, higher budget available",
+    ],
+  },
+  {
+    title: "Sliding Doors (Lift-Slide)",
+    summary: "Contemporary clean lines for narrow clearances. Best for modern builds or where external clearance is limited. Large glass panels slide inline (parallel to wall) requiring no external space.",
+    details: [
+      "Best for: Contemporary builds, narrow external clearance, minimal maintenance",
+      "Large glass panels (up to 2.5m x 2.5m per panel) with slim 68mm sightlines",
+      "Lift-and-slide mechanism—smooth operation with secure locking when closed",
+      "Inline sliding (parallel to wall) requires no external clearance",
+      "Flush threshold options for step-free access (Document M compliant)",
+      "Thermal performance: U-value 0.9–1.1 W/m²K (double glazed)",
+      "PAS 24 security with multi-point locking when closed",
+      "Typical cost: £6,500–£12,000 installed (3.5m wide, 2-panel)",
+      "Clean contemporary aesthetic with minimal frame",
+      "When to specify: Modern architecture, narrow external space, clean lines required, mid-cost option",
     ],
   },
 ];
 
 const securityPerformance = [
   { 
+    title: "Security Testing & Certification", 
+    copy: "PAS 24:2016 certified—tested to resist forced entry for minimum 3 minutes including lock picking, glass attack, and jemmy resistance. Secured by Design approved for Police-preferred specification. Multi-point locking (3-point or 5-point) with shootbolts, hooks, and deadlocks. Internal glazing beads cannot be removed from outside. Laminated safety glass (6.4mm or 8.8mm) for impact resistance. Concealed hinges or hinge bolts prevent removal. Complies with Building Regulations Document Q (security) and Document M (accessibility). All hardware tested to 10,000+ operation cycles." 
+  },
+  { 
+    title: "Construction & Longevity", 
+    copy: "Solid engineered hardwood core—stable, warp-resistant, dimensionally accurate even in wide door formats. Factory-applied microporous paint finish cured in controlled conditions (10-year guarantee against flaking/peeling/cracking). Fully weather-sealed with compression gaskets and storm-proof threshold options. 30-year warranty against rot and fungal decay (Accoya® 50-year option available). Optional FD30 or FD60 fire-rated cores for flats, conversions, or Building Regulations compliance. Designed to last 60+ years with routine maintenance—repairable, refinishable, renewable." 
+  },
+  { 
     title: "Handles & Ironmongery", 
-    copy: "Handles that match the craftsmanship. Easy-to-operate ergonomic designs in satin brass, antique bronze, polished chrome or black finishes. The finishing touch that combines understated elegance with durable functionality. Handles, letterplates, knockers, and hinges are the jewellery of your front door." 
+    copy: "Traditional lever handles, knobs, or contemporary D-pulls in satin brass, antique bronze, polished chrome, or matt black. Ergonomic designs tested for smooth, reliable operation. Coordinated letterplates, knockers, numerals, and escutcheons. Concealed hinges or decorative strap hinges for cottage/barn conversions. All hardware supplied by trusted UK manufacturers (Securistyle, Maco, Hoppe) with 10-year mechanical guarantee. Key-operated or thumbturn locks for fire escape compliance. The finishing touch—handles, letterplates, and knockers are the jewellery of your front door." 
   },
   { 
-    title: "Colours & Finishes", 
-    copy: "Customized to your décor with rich, durable finishes. Breathable microporous coatings protect timber and enhance grain. Choose from natural wood tones, soft neutrals or bold architectural shades. Dual-colour options allow clean white or natural stain interior with contrasting external colour. 10-year paint finish guarantee." 
+    title: "Colours & Finishing Systems", 
+    copy: "Factory-applied three-coat microporous system: primer, undercoat, UV-resistant topcoat. Breathable coatings protect timber while allowing moisture to escape. Natural wood stains (oak, walnut, mahogany tones), soft neutrals (white, cream, stone), or bold architectural shades (anthracite grey, slate blue, heritage green). Farrow & Ball, Little Greene, and RAL colour ranges available. Dual-colour options allow clean white or natural stain internally with contrasting external colour. Factory finishing ensures consistent coverage and durability—significantly outlasts site-applied paint. 10-year guarantee against flaking, peeling, or cracking." 
   },
   { 
-    title: "Decorative Glazing", 
-    copy: "Glazing isn't just functional—it becomes a defining feature. From classic leaded or stained glass to sleek sandblasted or reeded styles, filter light, enhance privacy, or introduce decorative motifs. Available in stunning range of options including acoustic glass for noise reduction." 
-  },
-  { 
-    title: "Security & Performance", 
-    copy: "PAS 24 certified with secure multi-point locking systems. Fully sealed and weather-tested construction. Toughened or laminated safety glass. Engineered timber with 30-year rot and fungal decay warranty. High-performance glazing for thermal efficiency and comfort." 
+    title: "Decorative Glazing Options", 
+    copy: "Glazing becomes a defining feature. Classic leaded or stained glass for traditional character, sandblasted or reeded patterns for contemporary privacy, obscure textures for light diffusion without compromising security. Acoustic laminated glass reduces noise by up to 42dB for urban locations or busy roads. Toughened safety glass for impact resistance. Low-iron glass for clarity without green tint. Triple or vacuum glazing for maximum thermal performance (U-value 0.7–0.9 W/m²K). All glazing manufactured to BS EN 1279 standards with 15-year sealed unit warranty. Complies with Building Regulations Part L (thermal performance)." 
   },
 ];
 
 const doorsFaqs = [
   {
-    q: "What are typical lead times for doors?",
-    a: "Entrance doors typically take 8–10 weeks from survey to installation. French, sliding, and bi-fold doors may take 10–12 weeks due to larger glass panels and running gear. We'll confirm timelines during survey.",
+    q: "Which is better for my project: French doors, bifold doors, or sliding doors?",
+    a: "French doors: Best for traditional properties, smaller openings (1.5–2.5m wide), heritage compliance. Cost: £3,500–£6,000. Bifold doors: Best for extensions, garden rooms, large openings (2.5–6m wide), maximum clear opening. Cost: £8,000–£15,000. Sliding doors: Best for contemporary builds, narrow external clearance, clean lines. Cost: £6,500–£12,000. All three achieve PAS 24 security and similar thermal performance (U-value 0.7–1.2 W/m²K)—choice depends on opening width, architecture style, and budget. We'll advise during survey based on your property and requirements.",
   },
   {
-    q: "Can you match existing door styles or colours?",
-    a: "Yes. We survey existing doors, photograph details, and replicate panel mouldings, glazing patterns, and paint colours using our CNC machinery with hand finishing.",
+    q: "What are typical lead times for doors?",
+    a: "Entrance doors: 8–10 weeks from survey to installation. French doors: 10–12 weeks. Bifold/sliding doors: 10–14 weeks due to larger glass panels, running gear, and more complex weathersealing. Fire-rated doors (FD30/FD60) add 1–2 weeks for certification testing. Lead times may extend during peak season (March–June). We'll confirm exact schedule at quotation stage and send progress photos during manufacture.",
+  },
+  {
+    q: "Can you match existing door styles, panel mouldings, or colours?",
+    a: "Yes. We survey existing doors, photograph details, and measure panel mouldings with laser accuracy. CNC machinery replicates profiles exactly, followed by hand finishing for period-correct detailing. We can match any paint colour (Farrow & Ball, Little Greene, RAL, or custom colour matching). We provide physical samples of panel mouldings and paint finishes for approval before manufacture.",
+  },
+  {
+    q: "Do your entrance doors meet PAS 24 security standards?",
+    a: "Yes. All entrance doors are PAS 24:2016 certified—tested to resist forced entry for minimum 3 minutes including lock picking, glass attack, and jemmy resistance. Multi-point locking (3-point or 5-point) with shootbolts, hooks, and deadlocks. Internal glazing beads cannot be removed from outside. Laminated safety glass for impact resistance. Secured by Design approved for Police-preferred specification. Complies with Building Regulations Document Q (security for new builds and extensions).",
   },
   {
     q: "Do you handle building control for fire-rated doors?",
-    a: "Yes. We specify FD30 or FD60 fire-rated cores and provide certification for building control sign-off. We coordinate with your contractor or local authority as needed.",
+    a: "Yes. We specify FD30 (30-minute fire resistance) or FD60 (60-minute) cores with appropriate intumescent seals and self-closing mechanisms. Provide full certification documentation for building control sign-off including fire test certificates and installation instructions. Coordinate with your contractor, architect, or local authority as needed. FD30 typically required for flats, conversions, or new builds; FD60 for commercial or high-rise residential.",
   },
-];
+  {
+    q: "What guarantees do you offer on doors?",
+    a: "30-year timber warranty against rot and fungal decay (Accoya® 50-year option), 10-year workmanship guarantee covering joinery defects and hardware failure, 10-year factory paint finish against flaking/peeling/cracking, 15-year sealed glazing unit warranty against seal failure. All guarantees transferable to new property owners. Fire-rated doors include certification valid for building lifetime. Comprehensive terms provided with every quotation.",
+  },
+]
 
 export default function DoorsPage() {
   return (

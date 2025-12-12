@@ -161,12 +161,43 @@ export function ContactContent({ heroImage }: ContactContentProps) {
     { label: "Detailed quote with options", sublabel: "Transparent pricing" },
   ];
 
-  // Timeline steps
+  // Timeline steps - comprehensive process
   const timelineSteps = [
-    { number: 1, title: "Confirm receipt within 24 hours", description: "We acknowledge every enquiry promptly" },
-    { number: 2, title: "Arrange free site survey", description: "At your convenience, no obligation" },
-    { number: 3, title: "Provide detailed quote with options", description: "Transparent pricing with alternatives" },
-    { number: 4, title: "Finalise spec + book installation", description: "Answer questions and schedule work" },
+    { 
+      number: 1, 
+      title: "Enquiry Response (Within 24 Hours)", 
+      description: "We acknowledge your enquiry and arrange initial phone call to discuss project scope, property type, timescales, and provisional appointment for site survey." 
+    },
+    { 
+      number: 2, 
+      title: "Free Site Survey (1–2 Hours On-Site)", 
+      description: "Our surveyor visits to measure openings with laser accuracy, photograph existing details, assess structural constraints, and advise on conservation/planning requirements. You receive measured drawings and technical recommendations." 
+    },
+    { 
+      number: 3, 
+      title: "Detailed Quotation (5–7 Days After Survey)", 
+      description: "Comprehensive quotation with itemized pricing, alternative options (vacuum glazing, dual-colour finishes), thermal performance data (U-values), lead time (typically 10–14 weeks), payment terms, and full guarantee terms. Quotations valid for 90 days." 
+    },
+    { 
+      number: 4, 
+      title: "Design Refinement & Order", 
+      description: "Adjust glazing bar patterns, paint colours, hardware finishes after reviewing samples. We provide physical samples, CAD elevation drawings, and alternative quotations if needed. Order confirmation includes manufacture schedule and installation appointment." 
+    },
+    { 
+      number: 5, 
+      title: "Manufacture (8–12 Weeks)", 
+      description: "Precision CNC machining, hand finishing, factory paint application (3-coat system), glazing with sealed units, and quality inspection. We send progress photos at key milestones." 
+    },
+    { 
+      number: 6, 
+      title: "Installation (1–5 Days)", 
+      description: "Dust sheet protection, careful removal of existing windows/doors, installation with correct fixing and sealing, adjustment for smooth operation, waste removal, glass cleaning, and demonstration. Building Control inspection arranged if required." 
+    },
+    { 
+      number: 7, 
+      title: "Aftercare (Lifetime Relationship)", 
+      description: "6-week check-in call, 12-month inspection, maintenance guide provided, lifetime technical support. Guarantees remain valid for life of property—transferable to new owners." 
+    },
   ];
 
   return (

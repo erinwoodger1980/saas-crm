@@ -22,20 +22,20 @@ const lifestyleImage = getImagesByHint("lifestyle", 1)[0];
 
 const reasons = [
   {
-    title: "UK-manufactured with certified quality",
-    copy: "Every window and door is manufactured by approved joinery specialists using high-performance timber, industry-leading tooling and certified finishing processes.",
+    title: "UK-Manufactured to Certified Standards",
+    copy: "Every window and door is manufactured at our Crowborough facility using precision CNC machinery, hand finishing, and factory-applied microporous coatings. Approved suppliers to architects, main contractors, and conservation specialists. Certifications: BSI ISO 9001 quality management, PAS 24:2016 security, Secured by Design approved, BS 6375 weather performance tested, FSC® Chain of Custody certified. Building Regulations compliant (Document Q security, Document L thermal, Document M accessibility).",
   },
   {
-    title: "FSC® certified timber",
-    copy: "Sustainably sourced timber with a natural carbon store and the lowest embodied carbon of any window or door frame. Crafted to last for generations.",
+    title: "Forest to Frame: Sustainable Timber Sourcing",
+    copy: "Sourced from FSC®-certified forests with responsible forestry practices. Timber is a natural carbon store—every cubic meter locks away ~1 tonne of CO₂. Engineered cores use 100% of the log with no waste. Lowest embodied carbon of any window material: timber (60 kgCO₂/m²) vs uPVC (120 kgCO₂/m²) vs aluminium (180 kgCO₂/m²). Designed to last 60+ years with routine maintenance—repairable, refinishable, renewable. European Oak for durability and grain, Accoya® with 50-year above-ground rot guarantee, or engineered hardwood for stability.",
   },
   {
-    title: "Secure, Part Q and PAS 24 compliant",
-    copy: "Engineered for real homes with secure multi-point locking, robust construction, and full compliance with building regulations and Secured by Design systems.",
+    title: "Security That Meets Police Standards",
+    copy: "PAS 24:2016 testing simulates real burglary attempts—forced entry, lock picking, glass attack. Multi-point locking with shootbolts, hooks, and deadlocks tested for minimum 3-minute resistance. Internal glazing beads cannot be removed from outside. Laminated safety glass for impact resistance. Secured by Design (Police-preferred specification)—all hardware meets SBD requirements, frame construction resists jemmy attacks, concealed hinges or hinge bolts fitted. Complies with Document Q for new builds and extensions.",
   },
   {
-    title: "Industry leading guarantees",
-    copy: "30-year rot and fungal decay warranty, 10-year workmanship, paint finish and hardware guarantees, 15-year glazing warranty.",
+    title: "Industry-Leading Guarantees (Transferable)",
+    copy: "30-year timber warranty against rot and fungal decay (Accoya® 50-year option available). 10-year workmanship guarantee covering joinery defects, hardware failure, and factory paint finish (flaking, peeling, cracking—not vague wording). 15-year sealed glazing unit warranty against seal failure and internal condensation. 10-year hardware mechanical operation (handles, hinges, locks). All guarantees transferable to new property owners—adds value if you sell. Comprehensive terms provided with quotation, no small print surprises.",
   },
 ];
 

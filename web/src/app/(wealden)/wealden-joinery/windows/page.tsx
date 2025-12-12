@@ -23,25 +23,31 @@ const heritageWindows = [
   {
     title: "Box Sash Windows",
     category: "Heritage",
-    useCase: "For Georgian, Victorian or Edwardian properties requiring full counterweight operation",
-    summary: "Traditional pulley and cord sash windows engineered to conservation standards.",
+    useCase: "For Georgian, Victorian or Edwardian properties requiring authentic vertical sliding operation with concealed counterweights",
+    summary: "Full traditional sash operation with hidden counterweights in box frames. Essential for listed buildings requiring authentic 18th/19th century mechanism.",
     keyPoints: [
-      "Counterweighted operation with pulleys and cords",
-      "Slimline vacuum glazing for heritage compliance",
-      "Traditional horns and decorative glazing bars",
-      "Conservation-approved profiles and detailing"
+      "Hidden counterweights with traditional pulleys and cords visible on opening",
+      "75mm slim frames with vacuum glazing (6.15mm thick) for heritage compliance",
+      "Traditional horns, staff beads, and decorative glazing bars to conservation officer standards",
+      "Draught-sealed meeting rails with concealed weather seals",
+      "Hand-finished mouldings and period-correct detailing",
+      "Suitable for Grade I, II*, and II listed buildings—approved by most planning authorities",
+      "When to specify: Original sash windows in poor condition, full property restoration, conservation area compliance required"
     ],
   },
   {
     title: "Spring Balance Sash Windows",
     category: "Heritage",
-    useCase: "Where full box construction isn't possible — extensions, upper floors, tight reveals",
-    summary: "Classic sash appearance with spring mechanisms instead of weights.",
+    useCase: "Authentic sash appearance with concealed spring mechanisms—ideal where box frames can't fit (extensions, upper floors, tight reveals, or flat conversions)",
+    summary: "Classic sash appearance with concealed spiral spring balances instead of counterweights. Identical external appearance to box sash with easier operation and narrower frames.",
     keyPoints: [
-      "Slimmer frame depth (no weight box required)",
-      "Smooth spring balance operation",
-      "Heritage detailing and slim profiles",
-      "Suitable for conservation areas"
+      "Slimmer 65mm frame depth (no weight box required—saves 10mm vs box sash)",
+      "Smooth spiral spring balance operation—easier than traditional cords, no re-cording needed",
+      "Identical external appearance to box sash (horns, glazing bars, profiles match exactly)",
+      "Vacuum or slimline double glazing options for heritage compliance",
+      "Draught-sealed and weather-tested to BS 6375 standards",
+      "Suitable for conservation areas (approved by most planning authorities—not always for Grade I listed)",
+      "When to specify: Modern extensions matching period property, upper floor installations, where full box construction isn't feasible"
     ],
   },
 ];
@@ -51,25 +57,32 @@ const contemporaryWindows = [
   {
     title: "Flush Casement Windows",
     category: "Contemporary",
-    useCase: "For heritage properties requiring subtle detailing or modern extensions",
-    summary: "Sashes sit flush with the frame for a refined, understated appearance.",
+    useCase: "For heritage properties requiring discreet replacement or modern extensions with refined detailing",
+    summary: "Sashes sit flush with the frame when closed—no projecting mouldings or visible rebate. Contemporary aesthetic for Georgian, Regency, or modern architecture.",
     keyPoints: [
-      "Flush finish — no projecting sashes",
-      "Double or triple vacuum glazing",
-      "Discreet friction hinges or traditional butts",
-      "PAS 24 security certified"
+      "Flush finish—sash and frame align perfectly with no visible step (refined, minimal appearance)",
+      "58mm slim sightlines with double or vacuum glazing (U-value 0.49–0.9 W/m²K)",
+      "Discreet friction stay hinges or traditional butt hinges",
+      "PAS 24 security: multi-point locking with shootbolts and concealed keeps",
+      "Suitable for conservation areas (approved flush profile maintains period character)",
+      "10-year factory paint finish guarantee",
+      "When to specify: Listed buildings requiring discreet replacement, Georgian or Regency properties (where flush was original style), modern extensions requiring refined detailing"
     ],
   },
   {
-    title: "Casement Windows",
+    title: "Storm-Proof Casement Windows",
     category: "Contemporary",
-    useCase: "Versatile system for cottages, Arts & Crafts, or contemporary builds",
-    summary: "Side or top-hung casements with slim sightlines and secure locking.",
+    useCase: "Traditional rebated casements for cottages, Arts & Crafts homes, Victorian villas, or contemporary builds",
+    summary: "Rebated profile with sash sitting proud of frame—visible moulding step creates traditional cottage or Victorian character.",
     keyPoints: [
-      "Storm-proof or flush profiles available",
-      "Custom glazing bar configurations",
-      "Multi-point espagnolette locking",
-      "10-year factory paint guarantee"
+      "Rebated profile—sash sits proud of frame with visible moulding step (more traditional appearance)",
+      "68mm frame depth accommodating double or vacuum glazing",
+      "Side-hung, top-hung, or fixed configurations",
+      "Multi-point espagnolette locking with concealed keeps (PAS 24 certified)",
+      "Custom glazing bar patterns—period or contemporary layouts",
+      "Decorative ovolo or chamfered mouldings to match existing property details",
+      "10-year factory paint finish and hardware guarantee",
+      "When to specify: Victorian cottages, Arts & Crafts homes, barn conversions, new builds requiring traditional character, anywhere flush profiles aren't required"
     ],
   },
 ];
@@ -91,27 +104,52 @@ const systemProducts = [
 ];
 
 const performanceOptions = [
-  { title: "Timber", copy: "Sustainably sourced FSC® certified timber, engineered for strength and stability. Oak, Accoya® with 50-year anti-rot guarantee, or engineered hardwood cores." },
   { 
-    title: "Glazing & Vacuum Glass", 
-    copy: "Industry-leading vacuum glazing with U-values as low as 0.49 W/m²K—more than twice as efficient as standard double glazing. Reduces noise by up to 36dB with slim 6.15mm profiles. Also available: slimline heritage double glazing, laminated acoustic glass, and decorative obscure styles. 15-year glazing warranty." 
+    title: "Timber Selection", 
+    copy: "Sustainably sourced FSC® certified timber from responsibly managed forests. European Oak for durability and beautiful grain, Accoya® acetylated softwood with 50-year above-ground rot guarantee, or engineered hardwood cores for stability in large doors and bi-folds. Timber stores approximately 1 tonne of CO₂ per cubic meter—lowest embodied carbon of any window material (60 kgCO₂/m² vs uPVC 120 kgCO₂/m² vs aluminium 180 kgCO₂/m²). Designed to last 60+ years with routine maintenance—repairable, refinishable, and renewable." 
   },
-  { title: "Paint & Stain", copy: "Long-life microporous coatings in natural wood tones, soft neutrals or bold architectural shades. UV-resistant and low maintenance. Dual-colour options available. 10-year paint finish guarantee." },
-  { title: "Hardware", copy: "Handles that match the craftsmanship. Easy-to-operate ergonomic designs in satin, bronze, or matte black finishes. Coordinated with your chosen colours and finishes. 10-year hardware guarantee." },
+  { 
+    title: "Glazing & Vacuum Glass Performance", 
+    copy: "Industry-leading vacuum glazing achieves U-values as low as 0.49 W/m²K—more than twice as efficient as standard 1.2 W/m²K double glazing, matching triple glazing performance in a slim 6.15mm profile (vs 44mm triple glazing thickness). Reduces external noise by up to 36dB for quiet, comfortable living—essential for urban locations, flight paths, or busy roads. Critical for conservation areas requiring slim sightlines with modern thermal performance. Standard heritage double glazing achieves 0.9 W/m²K, acoustic laminated glass up to 42dB reduction. All glazing units manufactured to BS EN 1279 standards with 15-year sealed unit warranty. Complies with Building Regulations Part L (thermal performance). Vacuum glazing adds approximately £200–£400 per m² premium over standard double glazing—justified by heritage compliance and superior performance." 
+  },
+  { 
+    title: "Security & Certification", 
+    copy: "PAS 24:2016 security certified—tested to resist forced entry for minimum 3 minutes including lock picking, glass attack, and jemmy resistance. Multi-point espagnolette locking with mushroom cam keeps, shootbolts, and internal glazing beads (cannot be removed from outside). Secured by Design approved for Police-preferred specification. Laminated safety glass options for impact resistance. Complies with Building Regulations Document Q (security for new builds and extensions) and Document M (accessibility with easy-grip handles). All hardware tested to 10,000+ operation cycles with 10-year mechanical guarantee." 
+  },
+  { 
+    title: "Paint & Finishing Systems", 
+    copy: "Factory-applied microporous paint systems in three-coat process: primer, undercoat, and UV-resistant topcoat. Breathable coatings protect timber while allowing moisture to escape—prevents blistering and delamination. Available in natural wood stains (oak, walnut, mahogany tones), soft neutrals (white, cream, stone), or bold architectural shades (anthracite grey, slate blue, heritage green). Farrow & Ball, Little Greene, and RAL colour ranges available. Dual-colour options allow clean white or natural stain internally with contrasting external colour. Factory finishing ensures consistent coverage and durability. 10-year guarantee against flaking, peeling, or cracking—significantly outlasting site-applied paint." 
+  },
+  { 
+    title: "Hardware & Ironmongery", 
+    copy: "Handles that match the craftsmanship. Ergonomic designs tested for 10,000+ operations with smooth, reliable action. Finishes include satin brass, antique bronze, polished chrome, matt black, or brushed stainless steel—coordinated with your chosen paint colours. Concealed friction stay hinges for casements, traditional butt hinges for heritage projects, or stainless steel pivots for heavy sash windows. All hardware supplied by trusted UK manufacturers (Securistyle, Maco, Roto) with 10-year mechanical guarantee. Espagnolette locks with key operation or thumbturn for fire escape compliance." 
+  },
 ];
 
 const windowFaqs = [
   {
-    q: "How do I know if sash or casement suits my home?",
-    a: "Sash windows suit Georgian, Victorian, or Edwardian properties where vertical sliding is traditional. Casement windows work well in cottages, Arts & Crafts, or contemporary builds. We'll advise during survey.",
+    q: "What's the difference between box sash and spring balance sash windows?",
+    a: "Box sash uses hidden weights and pulleys (authentic 18th/19th century mechanism with 75mm frame depth). Spring balance uses concealed spiral springs (identical appearance, easier operation, narrower 65mm frames). Both achieve conservation approval\u2014box sash is essential for listed buildings requiring authentic mechanisms; spring balance works for most conservation areas and modern extensions matching period properties.",
   },
   {
-    q: "Can you match existing bar patterns or mouldings?",
-    a: "Yes. We survey existing windows, measure bar spacings, and replicate profile details using our CNC machinery with hand finishing.",
+    q: "What's the difference between flush and storm-proof casement windows?",
+    a: "Flush casements sit level with the frame when closed (refined, minimal\u2014no visible step). Storm-proof casements have a visible moulding step where the sash sits proud of the frame (traditional cottage/Victorian look). Both achieve conservation approval and PAS 24 security\u2014choice depends on property style. Flush suits Georgian/Regency/modern; storm-proof suits Victorian cottages/Arts & Crafts.",
   },
   {
-    q: "What about conservation area approvals?",
-    a: "We prepare sympathetic designs with heritage glazing bar layouts, period ironmongery, and paint colours that align with local planning requirements. We can support your application with drawings and specifications.",
+    q: "Is vacuum glazing worth the extra cost for heritage properties?",
+    a: "Yes, for listed buildings or conservation areas requiring slim sightlines. Vacuum glazing achieves 0.49 W/m\u00b2K (better than triple glazing) in a 6.15mm profile\u201475% thinner than standard 24mm double glazing. Approved by conservation officers, reduces energy bills by 60\u201370% vs single glazing, and cuts noise by up to 36dB. Premium of \u00a3200\u2013\u00a3400/m\u00b2 justified by heritage compliance and performance. Most conservation projects require it for planning approval.",
+  },
+  {
+    q: "Can you match existing glazing bar patterns or mouldings?",
+    a: "Yes. We survey existing windows, photograph details, and measure bar spacings with laser accuracy. CNC machinery replicates profiles exactly, followed by hand finishing for period-correct detailing. We can provide 1:20 scale drawings and physical samples for conservation officer approval before manufacture.",
+  },
+  {
+    q: "What guarantees do you offer and are they transferable?",
+    a: "30-year timber warranty against rot and fungal decay (Accoya\u00ae 50-year option), 10-year workmanship guarantee covering joinery defects and hardware failure, 10-year factory paint finish against flaking/peeling/cracking, 15-year sealed glazing unit warranty against seal failure. All guarantees are transferable to new property owners\u2014adds value if you sell. Comprehensive terms provided with every quotation.",
+  },
+  {
+    q: "Do your windows meet Building Regulations and security standards?",
+    a: "Yes. All windows comply with Document Q (security), Document L (thermal performance U-values), and Document M (accessibility handles). PAS 24:2016 certified\u2014tested to resist forced entry for minimum 3 minutes. Secured by Design approved for Police-preferred specification. BS 6375 weather-tested for air permeability, watertightness, and wind resistance. We provide U-value certificates and compliance documentation for Building Control submission.",
   },
 ];
 
