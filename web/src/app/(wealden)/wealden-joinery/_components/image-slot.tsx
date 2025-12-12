@@ -146,9 +146,8 @@ export function ImageSlot({
         console.log(`[ImageSlot ${slotId}] Upload response data:`, data);
         
         if (data.ok && data.imageUrl) {
-          // Add timestamp to force reload and avoid cache
-          const imageUrlWithCache = `${data.imageUrl}?t=${Date.now()}`;
-          setImageUrl(imageUrlWithCache);
+          // Data URLs don't need cache busting
+          setImageUrl(data.imageUrl);
           setProcessingState("success");
           
           // Clear success state after 2 seconds
