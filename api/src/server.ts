@@ -130,6 +130,7 @@ import rfisRouter from "./routes/rfis";
 import coachingRouter from "./routes/coaching";
 import fireDoorQRRouter from "./routes/fire-door-qr";
 import lookupRouter from "./routes/lookup";
+import wealdenRouter from "./routes/wealden";
 
 type BillingModule = typeof import("./routes/billing");
 type PublicSignupModule = typeof import("./routes/public-signup");
@@ -282,6 +283,8 @@ app.use("/public/estimator-ai", estimatorAiRouter);
 /** Public landing tenant APIs for SEO pages */
 app.use("/api/landing-tenants", landingTenantsPublicRouter);
 app.use("/api/aggregate-reviews", aggregateReviewsRouter);
+/** Wealden Joinery image uploads */
+app.use("/api/wealden", wealdenRouter);
 // Admin editor APIs
 app.use("/api/admin/landing-tenants", adminLandingTenantsRouter);
 app.use("/api/admin/landing-tenants", adminImageUploadRouter);
