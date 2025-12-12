@@ -71,7 +71,7 @@ function friendlyFeature(feature: string) {
   const match: Record<string, string> = {
     dashboard: "Dashboard",
     leads: "Leads",
-    opportunities: "Opportunities",
+    opportunities: "Quotes",
     workshop: "Workshop",
     reports: "Reports",
     "feedback-admin": "Feedback",

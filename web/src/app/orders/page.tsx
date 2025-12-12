@@ -17,7 +17,7 @@ const LeadModalLazy = dynamic<LeadModalProps>(
     import("../leads/LeadModal")
       .then((m) => ({ default: m.default }))
       .catch((err) => {
-        console.error("LeadModal (opportunities) dynamic import failed:", err);
+        console.error("LeadModal (orders) dynamic import failed:", err);
         const Fallback: React.FC<LeadModalProps> = (props) => {
           if (!props.open) return null;
           return (
@@ -28,7 +28,7 @@ const LeadModalLazy = dynamic<LeadModalProps>(
               onClick={() => props.onOpenChange(false)}
             >
               <div className="max-w-lg w-full rounded-xl bg-white shadow p-6 border border-slate-200" onClick={(e) => e.stopPropagation()}>
-                <div className="text-sm font-semibold mb-2">Follow-up modal failed to load</div>
+                <div className="text-sm font-semibold mb-2">Order modal failed to load</div>
                 <div className="text-sm text-slate-600 mb-4">Please retry or refresh the page.</div>
                 <div className="flex justify-end">
                   <button className="rounded-md border px-3 py-2 text-sm" onClick={() => props.onOpenChange(false)} type="button">
@@ -53,53 +53,43 @@ import DropdownOptionsEditor from "@/components/DropdownOptionsEditor";
 import { Table, LayoutGrid } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
-type QuoteStatus = "READY_TO_QUOTE" | "ESTIMATE" | "QUOTE_SENT" | "LOST";
-type Lead = {
+type OrderStatus = "WON" | "COMPLETED";
+type Order = {
   id: string;
   contactName: string;
   email?: string | null;
-  status: QuoteStatus | string;
+  status: OrderStatus | string;
   nextAction?: string | null;
   nextActionAt?: string | null;
   custom?: Record<string, any>;
   opportunityId?: string | null;
+  processPercentages?: Record<string, number>;
 };
 
-type Grouped = Record<string, Lead[]>;
+type Grouped = Record<string, Order[]>;
 
-type Opp = {
-  id: string;
-  title: string;
-  lead?: { contactName?: string; email?: string | null; custom?: any } | null;
+const STATUS_LABELS: Record<OrderStatus, string> = {
+  WON: "Won",
+  COMPLETED: "Completed",
 };
 
-const STATUS_LABELS: Record<QuoteStatus, string> = {
-  READY_TO_QUOTE: "Ready to quote",
-  ESTIMATE: "Estimate",
-  QUOTE_SENT: "Quote sent",
-  LOST: "Lost",
-};
-
-export default function OpportunitiesPage() {
-  const [tab, setTab] = useState<QuoteStatus>("QUOTE_SENT");
+export default function OrdersPage() {
+  const [tab, setTab] = useState<OrderStatus>("WON");
   const [grouped, setGrouped] = useState<Grouped>({} as Grouped);
-  const [rows, setRows] = useState<Lead[]>([]);
-  const [repliedIds, setRepliedIds] = useState<Set<string>>(new Set());
+  const [rows, setRows] = useState<Order[]>([]);
   const { shortName } = useTenantBrand();
   const { toast } = useToast();
 
   const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState<Lead | null>(null);
+  const [selected, setSelected] = useState<Order | null>(null);
 
   const [error, setError] = useState<string | null>(null);
-  const [loadingPlan, setLoadingPlan] = useState(false);
-  const [oppRows, setOppRows] = useState<Opp[]>([]);
   const [workshopProcesses, setWorkshopProcesses] = useState<Array<{ code: string; name: string }>>([]);
 
   // view toggle state
   const [viewMode, setViewMode] = useState<'cards' | 'grid'>(() => {
     if (typeof window !== 'undefined') {
-      return (localStorage.getItem('opportunities-view-mode') as 'cards' | 'grid') || 'cards';
+      return (localStorage.getItem('orders-view-mode') as 'cards' | 'grid') || 'cards';
     }
     return 'cards';
   });
@@ -111,7 +101,7 @@ export default function OpportunitiesPage() {
   // dropdown customization state
   const [customColors, setCustomColors] = useState<Record<string, { bg: string; text: string }>>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('opportunities-custom-colors');
+      const saved = localStorage.getItem('orders-custom-colors');
       if (saved) {
         try {
           return JSON.parse(saved);
@@ -125,7 +115,7 @@ export default function OpportunitiesPage() {
 
   const [dropdownOptions, setDropdownOptions] = useState<Record<string, string[]>>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('opportunities-dropdown-options');
+      const saved = localStorage.getItem('orders-dropdown-options');
       if (saved) {
         try {
           return JSON.parse(saved);
@@ -144,7 +134,7 @@ export default function OpportunitiesPage() {
     const baseFields = [
       { field: 'contactName', label: 'Contact Name', type: 'text' },
       { field: 'email', label: 'Email', type: 'email' },
-      { field: 'status', label: 'Status', type: 'dropdown', dropdownOptions: ['READY_TO_QUOTE', 'ESTIMATE', 'QUOTE_SENT', 'LOST'] },
+      { field: 'status', label: 'Status', type: 'dropdown', dropdownOptions: ['WON', 'COMPLETED'] },
       { field: 'nextAction', label: 'Next Action', type: 'text' },
       { field: 'nextActionAt', label: 'Next Action Date', type: 'date' },
     ];
@@ -173,25 +163,7 @@ export default function OpportunitiesPage() {
     setGrouped(normalized);
     setRows(normalized[tab] || []);
 
-    // 2) Replied-since
-    try {
-      const r = await apiFetch<{ replied: { leadId: string; at: string }[] }>(
-        "/opportunities/replied-since?days=30"
-      );
-      setRepliedIds(new Set((r.replied || []).map((x) => x.leadId)));
-    } catch {
-      setRepliedIds(new Set());
-    }
-
-    // 3) Optional extra opp cards
-    try {
-      const res = await apiFetch<{ opportunities?: Opp[] }>("/reports/opportunities");
-      setOppRows(res.opportunities || []);
-    } catch {
-      setOppRows([]);
-    }
-
-    // 4) Load workshop processes
+    // 2) Load workshop processes
     try {
       const processes = await apiFetch<Array<{ code: string; name: string }>>("/workshop-processes");
       setWorkshopProcesses(processes || []);
@@ -208,40 +180,16 @@ export default function OpportunitiesPage() {
   // Counts for all tabs
   const counts = useMemo(
     () => ({
-      READY_TO_QUOTE: (grouped.READY_TO_QUOTE || []).length,
-      ESTIMATE: (grouped.ESTIMATE || []).length,
-      QUOTE_SENT: (grouped.QUOTE_SENT || []).length,
-      LOST: (grouped.LOST || []).length,
+      WON: (grouped.WON || []).length,
+      COMPLETED: (grouped.COMPLETED || []).length,
     }),
     [grouped]
   );
 
-  // Split attention for QUOTE_SENT
-  const repliedNow = useMemo(
-    () => (tab === "QUOTE_SENT" ? rows.filter((l) => repliedIds.has(l.id)) : []),
-    [rows, tab, repliedIds]
-  );
-  const notReplied = useMemo(
-    () => (tab === "QUOTE_SENT" ? rows.filter((l) => !repliedIds.has(l.id)) : rows),
-    [rows, tab, repliedIds]
-  );
-
-  async function planFollowUp(id: string) {
-    setLoadingPlan(true);
-    try {
-      await apiFetch(`/opportunities/${id}/next-followup`, {
-        method: "POST",
-        json: {}, // keep body explicit
-      });
-    } finally {
-      setLoadingPlan(false);
-    }
-  }
-
   // Load column config for current tab
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(`opportunities-column-config-${tab}`);
+      const saved = localStorage.getItem(`orders-column-config-${tab}`);
       if (saved) {
         try {
           setColumnConfig(JSON.parse(saved));
@@ -249,7 +197,7 @@ export default function OpportunitiesPage() {
           setColumnConfig([
             { field: 'contactName', label: 'Contact Name', visible: true, frozen: true, width: 200 },
             { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
-            { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown', dropdownOptions: ['READY_TO_QUOTE', 'ESTIMATE', 'QUOTE_SENT', 'LOST'] },
+            { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown', dropdownOptions: ['WON', 'COMPLETED'] },
             { field: 'nextAction', label: 'Next Action', visible: true, frozen: false, width: 200 },
           ]);
         }
@@ -257,7 +205,7 @@ export default function OpportunitiesPage() {
         setColumnConfig([
           { field: 'contactName', label: 'Contact Name', visible: true, frozen: true, width: 200 },
           { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
-          { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown', dropdownOptions: ['READY_TO_QUOTE', 'ESTIMATE', 'QUOTE_SENT', 'LOST'] },
+          { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown', dropdownOptions: ['WON', 'COMPLETED'] },
           { field: 'nextAction', label: 'Next Action', visible: true, frozen: false, width: 200 },
         ]);
       }
@@ -268,7 +216,7 @@ export default function OpportunitiesPage() {
   function handleViewModeToggle(newMode: 'cards' | 'grid') {
     setViewMode(newMode);
     if (typeof window !== 'undefined') {
-      localStorage.setItem('opportunities-view-mode', newMode);
+      localStorage.setItem('orders-view-mode', newMode);
     }
   }
 
@@ -276,14 +224,14 @@ export default function OpportunitiesPage() {
   function handleSaveColumnConfig(newConfig: any[]) {
     setColumnConfig(newConfig);
     if (typeof window !== 'undefined') {
-      localStorage.setItem(`opportunities-column-config-${tab}`, JSON.stringify(newConfig));
+      localStorage.setItem(`orders-column-config-${tab}`, JSON.stringify(newConfig));
     }
   }
 
   // Handle cell change in grid
-  async function handleCellChange(leadId: string, field: string, value: any) {
+  async function handleCellChange(orderId: string, field: string, value: any) {
     try {
-      await apiFetch(`/leads/${leadId}`, {
+      await apiFetch(`/leads/${orderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [field]: value }),
@@ -291,13 +239,13 @@ export default function OpportunitiesPage() {
       // Refresh data
       await load();
       toast({
-        title: "Opportunity updated",
+        title: "Order updated",
         description: "Changes saved successfully",
       });
     } catch (e: any) {
       toast({
         title: "Update failed",
-        description: e?.message || "Failed to update opportunity",
+        description: e?.message || "Failed to update order",
         variant: "destructive",
       });
     }
@@ -308,11 +256,11 @@ export default function OpportunitiesPage() {
     // Save dropdown options
     const newOptions = { ...dropdownOptions, [field]: options };
     setDropdownOptions(newOptions);
-    localStorage.setItem('opportunities-dropdown-options', JSON.stringify(newOptions));
+    localStorage.setItem('orders-dropdown-options', JSON.stringify(newOptions));
 
     // Save custom colors
     setCustomColors(colors);
-    localStorage.setItem('opportunities-custom-colors', JSON.stringify(colors));
+    localStorage.setItem('orders-custom-colors', JSON.stringify(colors));
 
     toast({
       title: "Options updated",
@@ -320,21 +268,21 @@ export default function OpportunitiesPage() {
     });
   }
 
-  function openLead(lead: Lead) {
-    setSelected(lead);
+  function openOrder(order: Order) {
+    setSelected(order);
     setOpen(true);
   }
 
-  // Available fields for column configuration
-  const TabButton = ({ s }: { s: LeadStatus }) => {
+  // Tab button component
+  const TabButton = ({ s }: { s: OrderStatus }) => {
     const active = tab === s;
     return (
       <button
         onClick={() => setTab(s)}
         className={`group inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
           active
-            ? "border-transparent bg-gradient-to-r from-amber-400 via-rose-400 to-pink-400 text-white shadow-[0_12px_28px_-14px_rgba(244,114,182,0.55)]"
-            : "border-amber-100/70 bg-white/70 text-slate-700 hover:border-amber-200 hover:bg-white"
+            ? "border-transparent bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 text-white shadow-[0_12px_28px_-14px_rgba(20,184,166,0.55)]"
+            : "border-emerald-100/70 bg-white/70 text-slate-700 hover:border-emerald-200 hover:bg-white"
         }`}
       >
         {STATUS_LABELS[s]}
@@ -342,7 +290,7 @@ export default function OpportunitiesPage() {
           className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs font-semibold ${
             active
               ? "bg-white/30 text-white"
-              : "bg-amber-50 text-amber-700 group-hover:bg-amber-100"
+              : "bg-emerald-50 text-emerald-700 group-hover:bg-emerald-100"
           }`}
         >
           {counts[s]}
@@ -353,14 +301,14 @@ export default function OpportunitiesPage() {
 
   return (
     <>
-      <DeskSurface variant="amber" innerClassName="space-y-6">
+      <DeskSurface variant="emerald" innerClassName="space-y-6">
         <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div
-            className="inline-flex items-center gap-2 rounded-full border border-amber-200/70 bg-white/70 px-3 py-1 text-xs font-medium uppercase tracking-[0.25em] text-slate-500 shadow-sm"
-            title="Estimates and quotes in progress"
+            className="inline-flex items-center gap-2 rounded-full border border-emerald-200/70 bg-white/70 px-3 py-1 text-xs font-medium uppercase tracking-[0.25em] text-slate-500 shadow-sm"
+            title="Won and completed orders"
           >
-            <span aria-hidden="true">📝</span>
-            Quote desk
+            <span aria-hidden="true">✅</span>
+            Order desk
             {shortName && <span className="hidden sm:inline text-slate-400">· {shortName}</span>}
           </div>
           <div className="flex gap-2">
@@ -369,7 +317,7 @@ export default function OpportunitiesPage() {
                 onClick={() => handleViewModeToggle('cards')}
                 className={`px-3 py-1.5 rounded text-sm font-medium transition ${
                   viewMode === 'cards'
-                    ? 'bg-amber-100 text-amber-900'
+                    ? 'bg-emerald-100 text-emerald-900'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
                 title="Card view"
@@ -380,7 +328,7 @@ export default function OpportunitiesPage() {
                 onClick={() => handleViewModeToggle('grid')}
                 className={`px-3 py-1.5 rounded text-sm font-medium transition ${
                   viewMode === 'grid'
-                    ? 'bg-amber-100 text-amber-900'
+                    ? 'bg-emerald-100 text-emerald-900'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
                 title="Grid view"
@@ -401,10 +349,8 @@ export default function OpportunitiesPage() {
         </header>
 
         <div className="flex flex-wrap gap-2">
-          <TabButton s="READY_TO_QUOTE" />
-          <TabButton s="ESTIMATE" />
-          <TabButton s="QUOTE_SENT" />
-          <TabButton s="LOST" />
+          <TabButton s="WON" />
+          <TabButton s="COMPLETED" />
         </div>
 
         {error && (
@@ -413,56 +359,29 @@ export default function OpportunitiesPage() {
           </div>
         )}
 
-        {tab === "QUOTE_SENT" && repliedNow.length > 0 && (
-          <section className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 shadow-[0_10px_30px_-20px_rgba(217,119,6,0.35)]">
-            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-amber-800">
-              Needs attention (replied)
-            </div>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              {repliedNow.map((l) => (
-                  <CardRow
-                  key={l.id}
-                  lead={l}
-                    accent="amber"
-                    _statusLabel="Replied · Quote sent"
-                  onOpen={() => {
-                    setSelected(l);
-                    setOpen(true);
-                  }}
-                  actionArea={
-                    <span className="rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-[11px] text-amber-900">
-                      {STATUS_LABELS.QUOTE_SENT}
-                    </span>
-                  }
-                />
-              ))}
-            </div>
-          </section>
-        )}
-
         <section className="space-y-2">
-          {(tab === "QUOTE_SENT" ? notReplied : rows).length === 0 ? (
-            <div className="rounded-xl border border-dashed border-amber-200 bg-white/70 py-10 text-center text-sm text-slate-500">
-              No quotes in "{STATUS_LABELS[tab]}".
+          {rows.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-emerald-200 bg-white/70 py-10 text-center text-sm text-slate-500">
+              No orders in "{STATUS_LABELS[tab]}".
             </div>
           ) : viewMode === 'grid' ? (
             <CustomizableGrid
-              data={tab === "QUOTE_SENT" ? notReplied : rows}
+              data={rows}
               columns={columnConfig}
-              onRowClick={openLead}
+              onRowClick={openOrder}
               onCellChange={handleCellChange}
               customColors={customColors}
               customDropdownOptions={dropdownOptions}
               onEditColumnOptions={(field) => setEditingField(field)}
             />
           ) : (
-            (tab === "QUOTE_SENT" ? notReplied : rows).map((l) => (
+            rows.map((order) => (
               <CardRow
-                key={l.id}
-                lead={l}
+                key={order.id}
+                order={order}
                 _statusLabel={STATUS_LABELS[tab]}
                 onOpen={() => {
-                  setSelected(l);
+                  setSelected(order);
                   setOpen(true);
                 }}
                 actionArea={
@@ -474,41 +393,11 @@ export default function OpportunitiesPage() {
             ))
           )}
         </section>
-
-        {oppRows.length > 0 && (
-          <section className="space-y-3">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-              Opportunities (report)
-            </div>
-            <div className="grid grid-cols-1 gap-3">
-              {oppRows.map((o) => (
-                <div
-                  key={o.id}
-                  className="flex items-start justify-between rounded-2xl border border-amber-100/70 bg-white/90 p-4 shadow-[0_12px_30px_-18px_rgba(2,6,23,0.35)]"
-                >
-                  <div className="min-w-0">
-                    <div className="font-medium">{o.title}</div>
-                    <div className="text-xs text-slate-500">
-                      {o.lead?.contactName} {o.lead?.email ? `· ${o.lead.email}` : ""}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => planFollowUp(o.id)}
-                    className="rounded-full border border-amber-200/70 bg-white px-3 py-2 text-sm font-medium text-amber-900 transition hover:bg-amber-50"
-                    disabled={loadingPlan}
-                  >
-                    {loadingPlan ? "Planning…" : "Plan follow-up"}
-                  </button>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
       </DeskSurface>
 
       {selected && (
-        <ErrorBoundary fallback={<div className="p-6 text-sm text-red-600">Follow-up modal failed to load.</div>}>
-          <Suspense fallback={<div className="p-6 text-sm">Loading follow-up...</div>}>
+        <ErrorBoundary fallback={<div className="p-6 text-sm text-red-600">Order modal failed to load.</div>}>
+          <Suspense fallback={<div className="p-6 text-sm">Loading order...</div>}>
             <LeadModalLazy
               open={open}
               onOpenChange={(v: boolean) => {
@@ -516,15 +405,15 @@ export default function OpportunitiesPage() {
                 if (!v) setSelected(null);
               }}
               leadPreview={{
-                id: selected.opportunityId || selected.id, // Use opportunity ID if available, fallback to lead ID
+                id: selected.opportunityId || selected.id,
                 contactName: selected.contactName,
                 email: selected.email,
-                status: (selected.status as any) || "QUOTE_SENT",
+                status: (selected.status as any) || "WON",
                 custom: selected.custom
               }}
               onUpdated={load}
-              initialStage="follow-up"
-              showFollowUp={true}
+              initialStage="overview"
+              showFollowUp={false}
             />
           </Suspense>
         </ErrorBoundary>
@@ -555,22 +444,17 @@ export default function OpportunitiesPage() {
 
 /* ---------- Presentational row card ---------- */
 function CardRow({
-  lead,
+  order,
   _statusLabel,
   onOpen,
   actionArea,
-  accent,
 }: {
-  lead: Lead;
+  order: Order;
   _statusLabel: string;
   onOpen: () => void;
   actionArea?: React.ReactNode;
-  accent?: "amber";
 }) {
-  const badge =
-    accent === "amber"
-      ? "bg-amber-100 text-amber-900"
-      : "bg-slate-100 text-slate-700";
+  const badge = "bg-emerald-100 text-emerald-900";
 
   return (
     <div
@@ -579,14 +463,23 @@ function CardRow({
     >
       <div className="flex items-start gap-3">
         <span className={`inline-flex size-8 items-center justify-center rounded-full ${badge} text-[11px] font-semibold`}>
-          {avatarText(lead.contactName)}
+          {avatarText(order.contactName)}
         </span>
         <div className="flex-1 min-w-0">
-          <div className="truncate text-sm font-medium">{lead.contactName || "Lead"}</div>
+          <div className="truncate text-sm font-medium">{order.contactName || "Order"}</div>
           <div className="text-[11px] text-slate-500">
-            {lead.custom?.source ? `Source: ${lead.custom.source}` : "Source: —"}
-            {lead.nextAction ? ` · Next: ${lead.nextAction}` : ""}
+            {order.custom?.source ? `Source: ${order.custom.source}` : "Source: —"}
+            {order.nextAction ? ` · Next: ${order.nextAction}` : ""}
           </div>
+          {order.processPercentages && Object.keys(order.processPercentages).length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {Object.entries(order.processPercentages).map(([code, percent]) => (
+                <span key={code} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">
+                  {code}: {percent}%
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         <div className="shrink-0 flex items-center gap-2">
           {actionArea}
@@ -610,6 +503,6 @@ class ErrorBoundary extends React.Component<{ fallback: React.ReactNode; childre
     this.state = { hasError: false };
   }
   static getDerivedStateFromError() { return { hasError: true }; }
-  componentDidCatch(err: any, info: any) { console.error('Opportunity modal error boundary caught:', err, info); }
+  componentDidCatch(err: any, info: any) { console.error('Order modal error boundary caught:', err, info); }
   render() { if (this.state.hasError) return this.props.fallback; return this.props.children; }
 }

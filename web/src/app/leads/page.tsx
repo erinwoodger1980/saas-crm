@@ -835,7 +835,7 @@ function LeadsPageContent() {
           <div className="max-w-2xl space-y-2">
             <div
               className="inline-flex items-center gap-2 rounded-full border border-sky-200/70 bg-white/60 px-3 py-1 text-xs font-medium uppercase tracking-[0.25em] text-slate-500 shadow-sm"
-              title="Capture and triage enquiries with a little Joinery pixie dust. Opportunities carry the quote journey through to win."
+              title="Capture and triage enquiries. Quotes page carries the estimate and quote journey through to win."
             >
               <span aria-hidden="true">✨</span>
               Lead desk

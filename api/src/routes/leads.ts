@@ -68,6 +68,7 @@ type DbStatus =
   | "DISQUALIFIED"
   | "REJECTED"
   | "READY_TO_QUOTE"
+  | "ESTIMATE"
   | "QUOTE_SENT"
   | "WON"
   | "LOST";
@@ -80,6 +81,8 @@ function uiToDb(s: UiStatus): DbStatus {
       return "INFO_REQUESTED";
     case "READY_TO_QUOTE":
       return "READY_TO_QUOTE";
+    case "ESTIMATE":
+      return "ESTIMATE";
     case "QUOTE_SENT":
       return "QUOTE_SENT";
     case "WON":
@@ -90,6 +93,8 @@ function uiToDb(s: UiStatus): DbStatus {
       return "DISQUALIFIED";
     case "LOST":
       return "LOST";
+    case "COMPLETED":
+      return "WON"; // COMPLETED is a UI-only status for completed orders
   }
   return "NEW";
 }
@@ -106,6 +111,8 @@ function dbToUi(db: string): UiStatus {
       return "READY_TO_QUOTE";
     case "READY_TO_QUOTE":
       return "READY_TO_QUOTE";
+    case "ESTIMATE":
+      return "ESTIMATE";
     case "QUOTE_SENT":
       return "QUOTE_SENT";
     case "REJECTED":
@@ -604,11 +611,13 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
             'info_requested': 'INFO_REQUESTED',
             'qualified': 'READY_TO_QUOTE',
             'ready_to_quote': 'READY_TO_QUOTE',
+            'estimate': 'ESTIMATE',
             'quote_sent': 'QUOTE_SENT',
             'won': 'WON',
             'lost': 'LOST',
             'rejected': 'REJECTED',
-            'disqualified': 'DISQUALIFIED'
+            'disqualified': 'DISQUALIFIED',
+            'completed': 'COMPLETED'
           };
           const statusLower = leadData.status.toLowerCase().trim();
           uiStatus = statusMap[statusLower] || defaultUiStatus;
@@ -817,9 +826,11 @@ const UI_BUCKETS: UiStatus[] = [
   "DISQUALIFIED",
   "REJECTED",
   "READY_TO_QUOTE",
+  "ESTIMATE",
   "QUOTE_SENT",
   "WON",
   "LOST",
+  "COMPLETED",
 ];
 
 router.get("/grouped", async (req, res) => {

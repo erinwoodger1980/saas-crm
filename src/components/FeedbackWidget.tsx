@@ -26,7 +26,7 @@ const AREA_MAP: Record<string, AreaMeta> = {
   "/": { feature: "marketing-home", label: "Marketing home" },
   "/dashboard": { feature: "dashboard", label: "Dashboard" },
   "/leads": { feature: "leads", label: "Leads" },
-  "/opportunities": { feature: "opportunities", label: "Opportunities" },
+  "/opportunities": { feature: "opportunities", label: "Quotes" },
   "/workshop": { feature: "workshop", label: "Workshop" },
   "/reports": { feature: "reports", label: "Reports" },
   "/feedback": { feature: "feedback-admin", label: "Feedback admin" },

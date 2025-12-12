@@ -227,7 +227,7 @@ export default function ClientsPage() {
                       <span className="font-semibold text-slate-700">
                         {client._count.opportunities}
                       </span>{" "}
-                      opportunities
+                      quotes/orders
                     </div>
                     <div>
                       <span className="font-semibold text-slate-700">

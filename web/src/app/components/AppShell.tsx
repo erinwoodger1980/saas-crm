@@ -18,6 +18,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Users,
+  ClipboardCheck,
 } from "lucide-react";
 
 import { useTenantBrand } from "@/lib/use-tenant-brand";
@@ -31,8 +32,8 @@ const BASE_NAV: Array<{ href: string; label: string; description: string; icon: 
   { href: "/clients", label: "Clients", description: "Client companies", icon: Users },
   { href: "/leads", label: "Leads", description: "Inbox & replies", icon: Mail },
   { href: "/tasks/center", label: "Tasks", description: "Unified activity hub", icon: CheckSquare },
-  { href: "/opportunities", label: "Opportunities", description: "Quotes to win", icon: Target },
-  // Quotes moved under AI Training; keep out of main nav
+  { href: "/opportunities", label: "Quotes", description: "Estimates & quotes", icon: Target },
+  { href: "/orders", label: "Orders", description: "Won & completed", icon: ClipboardCheck },
   { href: "/workshop", label: "Workshop", description: "Production board", icon: Wrench },
   { href: "/supplier-requests", label: "Outsourcing", description: "Supplier quotes", icon: Package },
 ] as Array<{ href: string; label: string; description: string; icon: any }>;

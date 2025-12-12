@@ -523,6 +523,7 @@ function getUiStatus(lead: LeadRow): string | null {
     INFO_REQUESTED: "info_requested",
     REJECTED: "rejected",
     READY_TO_QUOTE: "ready_to_quote",
+    ESTIMATE: "estimate",
     QUOTE_SENT: "quote_sent",
     WON: "won",
     LOST: "lost",

@@ -521,10 +521,10 @@ export default function ClientDetailPage() {
           )}
         </SectionCard>
 
-        {/* Opportunities */}
-        <SectionCard title={`Opportunities (${opportunities.length})`}>
+        {/* Quotes & Orders */}
+        <SectionCard title={`Quotes & Orders (${opportunities.length})`}>
           {opportunities.length === 0 ? (
-            <p className="text-sm text-slate-500">No opportunities found for this client</p>
+            <p className="text-sm text-slate-500">No quotes or orders found for this client</p>
           ) : (
             <div className="space-y-2">
               {opportunities.map((opp) => (
@@ -535,7 +535,7 @@ export default function ClientDetailPage() {
                 >
                   <div>
                     <p className="font-medium text-slate-900">
-                      {opp.lead.contactName || `Opportunity #${opp.id.slice(0, 8)}`}
+                      {opp.lead.contactName || `Quote #${opp.id.slice(0, 8)}`}
                     </p>
                     <p className="text-sm text-slate-500">
                       {new Date(opp.createdAt).toLocaleDateString()}
