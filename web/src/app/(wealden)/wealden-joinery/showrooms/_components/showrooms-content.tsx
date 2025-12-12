@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ImagePlaceholder } from "../../_components/image-placeholder";
+import { ImageSlot } from "../../_components/image-slot";
 
 interface ShowroomsContentProps {
   heroImage: {
@@ -310,24 +310,12 @@ export function ShowroomsContent({ heroImage, showroomImages }: ShowroomsContent
           </div>
 
           {/* Hero Image */}
-          <div className="image-slot">
-            <div className="relative aspect-[21/9] overflow-hidden rounded-2xl bg-slate-100">
-              {heroImage ? (
-                <>
-                  <Image src={heroImage.publicPath} alt={heroImage.caption} fill className="object-cover" />
-                  <div className="image-upload-control absolute top-4 right-4 z-10">
-                    <ImagePlaceholder label="Showroom Hero" aspectRatio="aspect-[21/9]" imageUrl={heroImage.publicPath} />
-                  </div>
-                </>
-              ) : (
-                <div className="flex h-full items-center justify-center">
-                  <div className="image-upload-control">
-                    <ImagePlaceholder label="Showroom Hero" aspectRatio="aspect-[21/9]" />
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+          <ImageSlot
+            slotId="showrooms-hero"
+            label="Showroom Hero"
+            aspectRatio="aspect-[21/9]"
+            size="xl"
+          />
         </section>
 
         {/* Find a Showroom */}
@@ -501,29 +489,13 @@ export function ShowroomsContent({ heroImage, showroomImages }: ShowroomsContent
                   <div className="grid gap-0 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1.5fr)]">
                     {/* Image */}
                     <div className="relative aspect-[4/3] overflow-hidden bg-slate-100 md:aspect-auto">
-                      {showroomImage ? (
-                        <>
-                          <Image
-                            src={showroomImage.publicPath}
-                            alt={`${showroom.name} showroom`}
-                            fill
-                            className="object-cover"
-                          />
-                          <div className="image-upload-control absolute top-4 right-4 z-10">
-                            <ImagePlaceholder
-                              label={`${showroom.name} Showroom`}
-                              aspectRatio="aspect-[4/3]"
-                              imageUrl={showroomImage.publicPath}
-                            />
-                          </div>
-                        </>
-                      ) : (
-                        <div className="flex h-full items-center justify-center">
-                          <div className="image-upload-control">
-                            <ImagePlaceholder label={`${showroom.name} Showroom`} aspectRatio="aspect-[4/3]" />
-                          </div>
-                        </div>
-                      )}
+                      <ImageSlot
+                        slotId={`showrooms-${showroom.id}`}
+                        label={`${showroom.name} Showroom`}
+                        aspectRatio="aspect-[4/3]"
+                        size="md"
+                        overlayPosition="top-right"
+                      />
                       {/* HQ Badge */}
                       {showroom.isHQ && (
                         <div className="absolute top-4 left-4 rounded-full bg-emerald-700 px-4 py-1.5 text-xs font-semibold text-white shadow-lg">
@@ -751,15 +723,12 @@ export function ShowroomsContent({ heroImage, showroomImages }: ShowroomsContent
           </div>
 
           {/* Supporting image */}
-          <div className="image-slot">
-            <div className="relative aspect-[21/9] overflow-hidden rounded-2xl bg-slate-100">
-              <div className="flex h-full items-center justify-center">
-                <div className="image-upload-control">
-                  <ImagePlaceholder label="Manufacturing / Workshop" aspectRatio="aspect-[21/9]" />
-                </div>
-              </div>
-            </div>
-          </div>
+          <ImageSlot
+            slotId="showrooms-manufacturing"
+            label="Manufacturing / Workshop"
+            aspectRatio="aspect-[21/9]"
+            size="xl"
+          />
         </section>
 
         {/* Nationwide Support */}

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ImagePlaceholder } from "../../_components/image-placeholder";
+import { ImageSlot } from "../../_components/image-slot";
 
 interface ChoicesContentProps {
   detailImages: Array<{
@@ -277,44 +277,24 @@ export function ChoicesContent({ detailImages }: ChoicesContentProps) {
                 </div>
 
                 {/* Upload placeholder for finish photo */}
-                <div className="relative aspect-[4/3] overflow-hidden rounded-lg bg-slate-100">
-                  {detailImages[idx] ? (
-                    <>
-                      <Image
-                        src={detailImages[idx].publicPath}
-                        alt={`${category.name} finish example`}
-                        fill
-                        className="object-cover"
-                      />
-                      <div className="image-upload-control absolute top-4 right-4 z-10">
-                        <ImagePlaceholder
-                          label={`${category.name} Finish`}
-                          aspectRatio="aspect-[4/3]"
-                          imageUrl={detailImages[idx].publicPath}
-                        />
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex h-full items-center justify-center">
-                      <div className="image-upload-control">
-                        <ImagePlaceholder label={`${category.name} Finish`} aspectRatio="aspect-[4/3]" />
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <ImageSlot
+                  slotId={`choices-colour-${idx}`}
+                  label={`${category.name} Finish`}
+                  aspectRatio="aspect-[4/3]"
+                  size="md"
+                />
               </article>
             ))}
           </div>
 
           {/* Large lifestyle finish image */}
-          <div className="image-slot mt-12">
-            <div className="relative aspect-[21/9] overflow-hidden rounded-2xl bg-slate-100">
-              <div className="flex h-full items-center justify-center">
-                <div className="image-upload-control">
-                  <ImagePlaceholder label="Colour & Finish Lifestyle" aspectRatio="aspect-[21/9]" />
-                </div>
-              </div>
-            </div>
+          <div className="mt-12">
+            <ImageSlot
+              slotId="choices-lifestyle"
+              label="Colour & Finish Lifestyle"
+              aspectRatio="aspect-[21/9]"
+              size="xl"
+            />
           </div>
         </section>
 
@@ -343,7 +323,7 @@ export function ChoicesContent({ detailImages }: ChoicesContentProps) {
           {/* Glazing Cards */}
           <div className="mt-12 grid gap-8 md:grid-cols-2">
             {glazingOptions.map((option, idx) => (
-              <article key={option.name} className="image-slot space-y-6 rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+              <article key={option.name} className="space-y-6 rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
                 <div className="space-y-3">
                   <h3 className="text-xl font-semibold text-slate-900">{option.name}</h3>
                   <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">Best for</p>
@@ -355,13 +335,12 @@ export function ChoicesContent({ detailImages }: ChoicesContentProps) {
                 </div>
 
                 {/* Detail image placeholder */}
-                <div className="relative aspect-square overflow-hidden rounded-lg bg-slate-100">
-                  <div className="flex h-full items-center justify-center">
-                    <div className="image-upload-control">
-                      <ImagePlaceholder label={`${option.name} Detail`} aspectRatio="aspect-square" />
-                    </div>
-                  </div>
-                </div>
+                <ImageSlot
+                  slotId={`choices-glazing-detail-${idx}`}
+                  label={`${option.name} Detail`}
+                  aspectRatio="aspect-square"
+                  size="sm"
+                />
               </article>
             ))}
           </div>
@@ -389,24 +368,18 @@ export function ChoicesContent({ detailImages }: ChoicesContentProps) {
 
           {/* Hero Hardware Images */}
           <div className="mt-12 grid gap-6 md:grid-cols-2">
-            <div className="image-slot">
-              <div className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-slate-100">
-                <div className="flex h-full items-center justify-center">
-                  <div className="image-upload-control">
-                    <ImagePlaceholder label="Handle Close-Up" aspectRatio="aspect-[4/3]" />
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="image-slot">
-              <div className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-slate-100">
-                <div className="flex h-full items-center justify-center">
-                  <div className="image-upload-control">
-                    <ImagePlaceholder label="Hinge & Lock Detail" aspectRatio="aspect-[4/3]" />
-                  </div>
-                </div>
-              </div>
-            </div>
+            <ImageSlot
+              slotId="choices-handle-closeup"
+              label="Handle Close-Up"
+              aspectRatio="aspect-[4/3]"
+              size="md"
+            />
+            <ImageSlot
+              slotId="choices-hinge-lock"
+              label="Hinge & Lock Detail"
+              aspectRatio="aspect-[4/3]"
+              size="md"
+            />
           </div>
 
           {/* Hardware Categories Grid */}
@@ -435,15 +408,14 @@ export function ChoicesContent({ detailImages }: ChoicesContentProps) {
             <div className="rounded-xl border border-slate-200 bg-white p-8">
               <h3 className="mb-6 text-xl font-semibold text-slate-900">Ironmongery Finish Samples</h3>
               <div className="grid gap-6 md:grid-cols-3">
-                {["Polished Chrome", "Aged Brass", "Black Iron"].map((finish) => (
-                  <div key={finish} className="image-slot space-y-3">
-                    <div className="relative aspect-square overflow-hidden rounded-lg bg-slate-100">
-                      <div className="flex h-full items-center justify-center">
-                        <div className="image-upload-control">
-                          <ImagePlaceholder label={`${finish} Sample`} aspectRatio="aspect-square" />
-                        </div>
-                      </div>
-                    </div>
+                {["Polished Chrome", "Aged Brass", "Black Iron"].map((finish, idx) => (
+                  <div key={finish} className="space-y-3">
+                    <ImageSlot
+                      slotId={`choices-ironmongery-${idx}`}
+                      label={`${finish} Sample`}
+                      aspectRatio="aspect-square"
+                      size="sm"
+                    />
                     <p className="text-center text-sm font-medium text-slate-700">{finish}</p>
                   </div>
                 ))}
@@ -465,16 +437,15 @@ export function ChoicesContent({ detailImages }: ChoicesContentProps) {
 
           {/* Bars & Mouldings Visual Grid */}
           <div className="mt-12 grid gap-6 md:grid-cols-4">
-            {barsAndMouldings.map((item) => (
-              <article key={item.name} className="image-slot space-y-4 rounded-xl border border-slate-200 bg-white p-6">
+            {barsAndMouldings.map((item, idx) => (
+              <article key={item.name} className="space-y-4 rounded-xl border border-slate-200 bg-white p-6">
                 {/* Diagram/Photo placeholder */}
-                <div className="relative aspect-square overflow-hidden rounded-lg bg-slate-100">
-                  <div className="flex h-full items-center justify-center">
-                    <div className="image-upload-control">
-                      <ImagePlaceholder label={`${item.name} Diagram`} aspectRatio="aspect-square" />
-                    </div>
-                  </div>
-                </div>
+                <ImageSlot
+                  slotId={`choices-bar-${idx}`}
+                  label={`${item.name} Diagram`}
+                  aspectRatio="aspect-square"
+                  size="sm"
+                />
                 <div className="space-y-1">
                   <h3 className="text-sm font-semibold text-slate-900">{item.name}</h3>
                   <p className="text-xs text-slate-600">{item.description}</p>

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { ImagePlaceholder } from "../../_components/image-placeholder";
+import { ImageSlot } from "../../_components/image-slot";
 
 interface ContactContentProps {
   heroImage: { src: string; alt: string } | null;
@@ -220,21 +220,14 @@ export function ContactContent({ heroImage }: ContactContentProps) {
             </div>
 
             {/* Optional Hero Image */}
-            {heroImage && (
-              <div className="image-slot relative mx-auto max-w-2xl overflow-hidden rounded-xl">
-                <div className="relative aspect-[21/9] overflow-hidden bg-slate-100">
-                  <Image
-                    src={heroImage.src}
-                    alt={heroImage.alt}
-                    fill
-                    className="object-cover"
-                  />
-                  <div className="image-upload-control absolute right-4 top-4">
-                    <ImagePlaceholder label="Hero Image" aspectRatio="aspect-[21/9]" />
-                  </div>
-                </div>
-              </div>
-            )}
+            <div className="relative mx-auto max-w-2xl">
+              <ImageSlot
+                slotId="contact-hero"
+                label="Contact Hero Image"
+                aspectRatio="aspect-[21/9]"
+                size="lg"
+              />
+            </div>
 
             {/* Trust Strip */}
             <div className="grid gap-6 border-t border-slate-200 pt-8 text-center md:grid-cols-3">

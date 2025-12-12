@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
-import { ImagePlaceholder } from "../../_components/image-placeholder";
+import { ImageSlot } from "../../_components/image-slot";
 
 interface Project {
   location: string;
@@ -270,36 +269,15 @@ export function ProjectsContent({ projectImages, lifestyleImages }: ProjectsCont
             return (
               <article
                 key={project.location}
-                className="image-slot grid gap-12 lg:grid-cols-[1.2fr_1fr] lg:items-start"
+                className="grid gap-12 lg:grid-cols-[1.2fr_1fr] lg:items-start"
               >
                 {/* Image */}
-                <div className="relative aspect-[4/3] overflow-hidden rounded-lg bg-slate-100">
-                  {projectImage ? (
-                    <>
-                      <Image
-                        src={projectImage.publicPath}
-                        alt={projectImage.caption}
-                        width={projectImage.width}
-                        height={projectImage.height}
-                        className="object-cover"
-                      />
-                      <div className="image-upload-control absolute top-4 right-4 z-10">
-                        <ImagePlaceholder
-                          label={`${project.location} Hero`}
-                          aspectRatio="aspect-[4/3]"
-                          imageUrl={projectImage.publicPath}
-                        />
-                      </div>
-                    </>
-                  ) : (
-                    <div className="image-upload-control">
-                      <ImagePlaceholder
-                        label={`${project.location} Hero`}
-                        aspectRatio="aspect-[4/3]"
-                      />
-                    </div>
-                  )}
-                </div>
+                <ImageSlot
+                  slotId={`projects-card-${project.imageIndex}`}
+                  label={`${project.location} Hero`}
+                  aspectRatio="aspect-[4/3]"
+                  size="lg"
+                />
 
                 {/* Content */}
                 <div className="space-y-6">
@@ -351,24 +329,14 @@ export function ProjectsContent({ projectImages, lifestyleImages }: ProjectsCont
           </div>
           <div className="grid gap-8 md:grid-cols-3">
             {lifestyleImages.slice(0, 9).map((img, idx) => (
-              <div key={img.id} className="image-slot space-y-3">
-                <div className="relative aspect-[3/4] overflow-hidden rounded-lg bg-white">
-                  <Image
-                    src={img.publicPath}
-                    alt={img.caption}
-                    width={img.width}
-                    height={img.height}
-                    className="object-cover"
-                  />
-                  <div className="image-upload-control absolute top-4 right-4 z-10">
-                    <ImagePlaceholder
-                      label={`Gallery ${idx + 1}`}
-                      aspectRatio="aspect-[3/4]"
-                      imageUrl={img.publicPath}
-                    />
-                  </div>
-                </div>
-                <p className="text-sm text-slate-500">{img.caption || "Recent installation"}</p>
+              <div key={idx} className="space-y-3">
+                <ImageSlot
+                  slotId={`projects-gallery-${idx}`}
+                  label={`Gallery ${idx + 1}`}
+                  aspectRatio="aspect-[3/4]"
+                  size="md"
+                />
+                <p className="text-sm text-slate-500">Recent installation</p>
               </div>
             ))}
           </div>

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ImagePlaceholder } from "../../_components/image-placeholder";
+import { ImageSlot } from "../../_components/image-slot";
 
 interface AboutContentProps {
   heroImage: {
@@ -161,24 +161,12 @@ export function AboutContent({ heroImage, storyImages, valuesImage, showroomImag
         </div>
 
         {/* Hero Image */}
-        <div className="image-slot">
-          <div className="relative aspect-[21/9] overflow-hidden rounded-2xl bg-slate-100">
-            {heroImage ? (
-              <>
-                <Image src={heroImage.publicPath} alt={heroImage.caption} fill className="object-cover" />
-                <div className="image-upload-control absolute top-4 right-4 z-10">
-                  <ImagePlaceholder label="About Hero" aspectRatio="aspect-[21/9]" imageUrl={heroImage.publicPath} />
-                </div>
-              </>
-            ) : (
-              <div className="flex h-full items-center justify-center">
-                <div className="image-upload-control">
-                  <ImagePlaceholder label="About Hero (Craftsman / Workshop)" aspectRatio="aspect-[21/9]" />
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        <ImageSlot
+          slotId="about-hero"
+          label="About Hero (Craftsman / Workshop)"
+          aspectRatio="aspect-[21/9]"
+          size="xl"
+        />
 
         {/* Trust Strip */}
         <div className="mx-auto grid max-w-4xl gap-6 text-center md:grid-cols-5">
@@ -218,28 +206,12 @@ export function AboutContent({ heroImage, storyImages, valuesImage, showroomImag
             </div>
 
             {/* Story Image 1 */}
-            <div className="image-slot">
-              <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-slate-100">
-                {storyImages[0] ? (
-                  <>
-                    <Image src={storyImages[0].publicPath} alt="Crowborough facility" fill className="object-cover" />
-                    <div className="image-upload-control absolute top-4 right-4 z-10">
-                      <ImagePlaceholder
-                        label="Crowborough Facility"
-                        aspectRatio="aspect-[4/3]"
-                        imageUrl={storyImages[0].publicPath}
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex h-full items-center justify-center">
-                    <div className="image-upload-control">
-                      <ImagePlaceholder label="Crowborough Facility Exterior" aspectRatio="aspect-[4/3]" />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+            <ImageSlot
+              slotId="about-crowborough-facility"
+              label="Crowborough Facility Exterior"
+              aspectRatio="aspect-[4/3]"
+              size="md"
+            />
           </div>
 
           <div className="space-y-6">
@@ -254,24 +226,12 @@ export function AboutContent({ heroImage, storyImages, valuesImage, showroomImag
             </div>
 
             {/* Story Image 2 */}
-            <div className="image-slot">
-              <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-slate-100">
-                {storyImages[1] ? (
-                  <>
-                    <Image src={storyImages[1].publicPath} alt="Craft detail" fill className="object-cover" />
-                    <div className="image-upload-control absolute top-4 right-4 z-10">
-                      <ImagePlaceholder label="Craft Detail" aspectRatio="aspect-[4/3]" imageUrl={storyImages[1].publicPath} />
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex h-full items-center justify-center">
-                    <div className="image-upload-control">
-                      <ImagePlaceholder label="Craft Detail (Hands/Tools/Joints)" aspectRatio="aspect-[4/3]" />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+            <ImageSlot
+              slotId="about-craft-detail"
+              label="Craft Detail (Hands/Tools/Joints)"
+              aspectRatio="aspect-[4/3]"
+              size="md"
+            />
           </div>
         </div>
 
@@ -304,28 +264,12 @@ export function AboutContent({ heroImage, storyImages, valuesImage, showroomImag
         </div>
 
         {/* Story Image 3 - Finished Install */}
-        <div className="image-slot">
-          <div className="relative aspect-[21/9] overflow-hidden rounded-2xl bg-slate-100">
-            {storyImages[2] ? (
-              <>
-                <Image src={storyImages[2].publicPath} alt="Finished installation" fill className="object-cover" />
-                <div className="image-upload-control absolute top-4 right-4 z-10">
-                  <ImagePlaceholder
-                    label="Finished Install"
-                    aspectRatio="aspect-[21/9]"
-                    imageUrl={storyImages[2].publicPath}
-                  />
-                </div>
-              </>
-            ) : (
-              <div className="flex h-full items-center justify-center">
-                <div className="image-upload-control">
-                  <ImagePlaceholder label="Finished Install (Period or Modern)" aspectRatio="aspect-[21/9]" />
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        <ImageSlot
+          slotId="about-finished-install"
+          label="Finished Install (Period or Modern)"
+          aspectRatio="aspect-[21/9]"
+          size="xl"
+        />
       </section>
 
       {/* Our Values */}
@@ -385,16 +329,12 @@ export function AboutContent({ heroImage, storyImages, valuesImage, showroomImag
         </div>
 
         {/* Values Supporting Image */}
-        {valuesImage && (
-          <div className="image-slot">
-            <div className="relative aspect-[21/9] overflow-hidden rounded-2xl bg-slate-100">
-              <Image src={valuesImage.publicPath} alt="Our values in action" fill className="object-cover" />
-              <div className="image-upload-control absolute top-4 right-4 z-10">
-                <ImagePlaceholder label="Values Image" aspectRatio="aspect-[21/9]" imageUrl={valuesImage.publicPath} />
-              </div>
-            </div>
-          </div>
-        )}
+        <ImageSlot
+          slotId="about-values"
+          label="Values Image"
+          aspectRatio="aspect-[21/9]"
+          size="xl"
+        />
       </section>
 
       {/* Showroom Network */}
@@ -443,28 +383,12 @@ export function AboutContent({ heroImage, storyImages, valuesImage, showroomImag
         </div>
 
         {/* Showroom Image */}
-        <div className="image-slot">
-          <div className="relative aspect-[21/9] overflow-hidden rounded-2xl bg-slate-100">
-            {showroomImage ? (
-              <>
-                <Image src={showroomImage.publicPath} alt="Showroom interior" fill className="object-cover" />
-                <div className="image-upload-control absolute top-4 right-4 z-10">
-                  <ImagePlaceholder
-                    label="Showroom Interior"
-                    aspectRatio="aspect-[21/9]"
-                    imageUrl={showroomImage.publicPath}
-                  />
-                </div>
-              </>
-            ) : (
-              <div className="flex h-full items-center justify-center">
-                <div className="image-upload-control">
-                  <ImagePlaceholder label="Showroom Interior (Sample Wall/Meeting)" aspectRatio="aspect-[21/9]" />
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        <ImageSlot
+          slotId="about-showroom"
+          label="Showroom Interior (Sample Wall/Meeting)"
+          aspectRatio="aspect-[21/9]"
+          size="xl"
+        />
       </section>
 
       {/* Accreditations */}
@@ -479,14 +403,15 @@ export function AboutContent({ heroImage, storyImages, valuesImage, showroomImag
 
         <div className="grid gap-6 md:grid-cols-3">
           {accreditations.map((accreditation, idx) => (
-            <article key={idx} className="image-slot space-y-4 rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+            <article key={idx} className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm">
               {/* Badge/Logo Placeholder */}
-              <div className="relative mx-auto aspect-square w-24 overflow-hidden rounded-lg bg-slate-100">
-                <div className="flex h-full items-center justify-center">
-                  <div className="image-upload-control">
-                    <ImagePlaceholder label={`${accreditation.title} Logo`} aspectRatio="aspect-square" />
-                  </div>
-                </div>
+              <div className="mx-auto w-24">
+                <ImageSlot
+                  slotId={`about-accreditation-${idx}`}
+                  label={`${accreditation.title} Logo`}
+                  aspectRatio="aspect-square"
+                  size="sm"
+                />
               </div>
               <div className="space-y-1">
                 <h3 className="text-sm font-semibold text-slate-900">{accreditation.title}</h3>
