@@ -125,14 +125,21 @@ export function ImageSlot({
           body: formData,
         });
 
+        console.log(`[ImageSlot ${slotId}] Upload response status:`, response.status);
+
         if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`[ImageSlot ${slotId}] Upload failed:`, errorText);
           throw new Error(`Upload failed: ${response.statusText}`);
         }
 
         const data = await response.json();
+        console.log(`[ImageSlot ${slotId}] Upload response data:`, data);
         
         if (data.ok && data.imageUrl) {
-          setImageUrl(data.imageUrl);
+          // Add timestamp to force reload and avoid cache
+          const imageUrlWithCache = `${data.imageUrl}?t=${Date.now()}`;
+          setImageUrl(imageUrlWithCache);
           setProcessingState("success");
           
           // Clear success state after 2 seconds
@@ -141,8 +148,18 @@ export function ImageSlot({
           throw new Error("Upload response missing imageUrl");
         }
       } catch (err) {
-        console.error("Failed to upload image:", err);
-        alert("Failed to upload image to server. Please try again.");
+        console.error(`[ImageSlot ${slotId}] Failed to upload image:`, err);
+        
+        // Fallback: show the optimized image as base64
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64String = reader.result as string;
+          setImageUrl(base64String);
+          console.warn(`[ImageSlot ${slotId}] Using base64 fallback due to upload failure`);
+        };
+        reader.readAsDataURL(optimized.file);
+        
+        alert("Failed to upload to server. Image shown locally only - use migration tool to upload.");
         setProcessingState("error");
         setTimeout(() => setProcessingState("idle"), 2000);
       }
