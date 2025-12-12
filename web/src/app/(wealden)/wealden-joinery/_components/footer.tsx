@@ -9,15 +9,15 @@ export function WealdenFooter() {
         <div className="space-y-4">
           <Link href="/wealden-joinery">
             <Image 
-              src="/wealden-logo.svg" 
-              alt="Wealden Joinery" 
+              src="/lignum-windows-logo.svg" 
+              alt="Lignum Windows by Wealden Joinery" 
               width={200} 
               height={60}
-              className="h-12 w-auto"
+              className="h-14 w-auto"
             />
           </Link>
           <p className="text-sm leading-relaxed text-slate-600">
-            Premium timber windows and doors crafted in our Crowborough headquarters. Serving clients nationwide through our network of showrooms.
+            Lignum Windows - Premium timber windows and doors crafted in our Crowborough headquarters. Serving clients nationwide through our network of showrooms.
           </p>
           <div className="space-y-2 text-sm text-slate-700">
             <div className="flex items-center gap-2">

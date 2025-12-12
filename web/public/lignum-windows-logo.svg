@@ -1,0 +1,22 @@
+<svg width="400" height="280" viewBox="0 0 400 280" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 3D Window Frame -->
+  <g opacity="0.95">
+    <!-- Left side of frame -->
+    <path d="M140 80 L220 120 L220 200 L140 160 Z" fill="#9D8B7C" stroke="#E8E4E0" stroke-width="3"/>
+    <!-- Top of frame -->
+    <path d="M140 80 L220 120 L310 120 L230 80 Z" fill="#C9B5A3" stroke="#E8E4E0" stroke-width="3"/>
+    <!-- Right side of frame -->
+    <path d="M220 120 L310 120 L310 200 L220 200 Z" fill="#B5A393" stroke="#E8E4E0" stroke-width="3"/>
+    <!-- Small box on right -->
+    <path d="M310 120 L370 140 L370 180 L310 160 Z" fill="#9D8B7C" stroke="#E8E4E0" stroke-width="3"/>
+    <path d="M310 120 L370 140 L370 180 L310 200 Z" fill="#B5A393" stroke="#E8E4E0" stroke-width="3"/>
+    <!-- S Letter in box -->
+    <text x="340" y="165" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="#E8E4E0" text-anchor="middle">S</text>
+  </g>
+  
+  <!-- LIGNUM Text -->
+  <text x="200" y="245" font-family="Arial, sans-serif" font-size="48" font-weight="300" fill="#9D8B7C" text-anchor="middle" letter-spacing="8">LIGNUM</text>
+  
+  <!-- WINDOWS Text -->
+  <text x="200" y="270" font-family="Arial, sans-serif" font-size="26" font-weight="300" fill="#9D8B7C" text-anchor="middle" letter-spacing="12">WINDOWS</text>
+</svg>
