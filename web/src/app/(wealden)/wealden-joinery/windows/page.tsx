@@ -5,9 +5,9 @@ import { SectionHeading } from "../_components/section-heading";
 import { getHeroImage, getImagesByHint } from "../_lib/wealdenAiImages";
 
 export const metadata: Metadata = {
-  title: "Timber Windows | Lignum by Wealden Joinery",
+  title: "Timber Windows — Heritage, Contemporary & System | Lignum by Wealden Joinery",
   description:
-    "Precision-engineered timber windows for heritage and contemporary architecture. Box sash, casement, and wood-aluminium systems.",
+    "Precision-engineered timber windows for period properties and contemporary architecture. Heritage sash, flush casement, and wood-aluminium systems manufactured to conservation standards.",
 };
 
 // Curated image selection - quality over quantity
@@ -15,65 +15,74 @@ const heroImg = getHeroImage();
 const detailImages = getImagesByHint("detail", 3); // Reduced to 3 key detail shots
 const contextImage = getImagesByHint("lifestyle", 1)[0]; // Single contextual lifestyle shot
 
-const windowTypes = [
+// Heritage Windows - For period properties requiring authentic detailing
+const heritageWindows = [
   {
     title: "Box Sash Windows",
-    summary: "Engineered to replicate traditional sash designs while meeting today's security, energy efficiency and practical living standards.",
-    details: [
-      "Pulley and cord operation with counterweights",
-      "Slimline double or acoustic glazing",
-      "Conservation-approved profiles",
-      "Low air leakage and strong thermal performance",
-      "Optional traditional horns and decorative bars",
-      "Ideal for Georgian, Victorian or Edwardian properties",
+    category: "Heritage",
+    useCase: "For Georgian, Victorian or Edwardian properties requiring full counterweight operation",
+    summary: "Traditional pulley and cord sash windows engineered to conservation standards.",
+    keyPoints: [
+      "Counterweighted operation with pulleys and cords",
+      "Slimline vacuum glazing for heritage compliance",
+      "Traditional horns and decorative glazing bars",
+      "Conservation-approved profiles and detailing"
     ],
   },
   {
     title: "Spring Balance Sash Windows",
-    summary: "Designed for homes that can't accommodate full box sashes, offering a slimmer frame while keeping the classic sash look.",
-    details: [
-      "Classic vertical sliding appearance",
-      "Spring balance system for smooth opening",
-      "Slimmer frame depth for tight reveals",
-      "Double-glazed with heritage detailing",
-      "Lower maintenance with full timber finish",
-      "Ideal for extensions or upper floors",
+    category: "Heritage",
+    useCase: "Where full box construction isn't possible — extensions, upper floors, tight reveals",
+    summary: "Classic sash appearance with spring mechanisms instead of weights.",
+    keyPoints: [
+      "Slimmer frame depth (no weight box required)",
+      "Smooth spring balance operation",
+      "Heritage detailing and slim profiles",
+      "Suitable for conservation areas"
     ],
   },
+];
+
+// Contemporary Windows - Clean lines for modern or transitional architecture
+const contemporaryWindows = [
   {
     title: "Flush Casement Windows",
-    summary: "Effortless elegance with flush timber sashes that sit level with the frame, creating a clean, understated look.",
-    details: [
-      "Flush finish for a refined look",
-      "Energy-efficient double or triple glazing",
-      "Discreet friction hinges or traditional butt hinges",
-      "PAS 24 security compliance",
-      "Made to measure, finished to order",
-      "Ideal for heritage homes and modern extensions",
+    category: "Contemporary",
+    useCase: "For heritage properties requiring subtle detailing or modern extensions",
+    summary: "Sashes sit flush with the frame for a refined, understated appearance.",
+    keyPoints: [
+      "Flush finish — no projecting sashes",
+      "Double or triple vacuum glazing",
+      "Discreet friction hinges or traditional butts",
+      "PAS 24 security certified"
     ],
   },
   {
     title: "Casement Windows",
-    summary: "Timeless timber design with slim sightlines, fully sealed joints and high-spec glazing, made to order for a tailored fit.",
-    details: [
-      "Side or top-hung options",
-      "High security locks as standard",
-      "Custom glazing bars and mouldings",
-      "Factory-finished timber with 10-year paint guarantee",
-      "Suitable for conservation and contemporary homes",
-      "Single or multi-light layouts available",
+    category: "Contemporary",
+    useCase: "Versatile system for cottages, Arts & Crafts, or contemporary builds",
+    summary: "Side or top-hung casements with slim sightlines and secure locking.",
+    keyPoints: [
+      "Storm-proof or flush profiles available",
+      "Custom glazing bar configurations",
+      "Multi-point espagnolette locking",
+      "10-year factory paint guarantee"
     ],
   },
+];
+
+// System Products - High-performance composite construction
+const systemProducts = [
   {
     title: "Wood-Aluminium Windows",
-    summary: "The beauty of timber with added protection. Engineered timber frame with durable aluminium outer shell for all-weather performance.",
-    details: [
-      "Timber-aluminium composite construction",
-      "Maintenance-free powder-coated external finish",
-      "Engineered timber interior",
-      "Full system performance with enhanced durability",
-      "Perfect for exposed locations or low-maintenance living",
-      "Ideal for contemporary or high-spec applications",
+    category: "System",
+    useCase: "Exposed coastal locations, contemporary architecture, minimal maintenance requirements",
+    summary: "Engineered timber interior with maintenance-free aluminium cladding.",
+    keyPoints: [
+      "Aluminium external shell (powder-coated, RAL colours)",
+      "Timber warmth and aesthetics internally",
+      "Superior weather performance",
+      "50+ year expected lifespan"
     ],
   },
 ];
@@ -109,7 +118,7 @@ export default function WindowsPage() {
       {/* Hero - Full width, calm, architectural */}
       <section className="relative overflow-hidden">
         {heroImg && (
-          <div className="relative h-[70vh] min-h-[500px] w-full">
+          <div className="relative h-[75vh] min-h-[600px] w-full">
             <Image
               src={heroImg.publicPath}
               alt={heroImg.caption}
@@ -118,18 +127,18 @@ export default function WindowsPage() {
               className="object-cover"
               priority
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-slate-900/20 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-900/70 via-slate-900/30 to-transparent" />
             <div className="absolute inset-0 flex items-end">
-              <div className="w-full px-6 pb-16 md:px-16 md:pb-24">
+              <div className="w-full px-6 pb-20 md:px-16 md:pb-32">
                 <div className="mx-auto max-w-4xl space-y-6 text-white">
-                  <p className="text-sm font-medium uppercase tracking-[0.2em] text-white/80">
-                    Timber Windows
+                  <p className="text-xs font-medium uppercase tracking-[0.25em] text-white/70">
+                    Lignum by Wealden Joinery
                   </p>
-                  <h1 className="text-5xl font-light leading-[1.1] tracking-tight md:text-7xl">
-                    Precision-Engineered<br />Timber Windows
+                  <h1 className="text-5xl font-light leading-[1.05] tracking-tight md:text-7xl lg:text-8xl">
+                    Timber windows<br />engineered to endure
                   </h1>
-                  <p className="max-w-2xl text-lg font-light leading-relaxed text-white/90">
-                    For heritage and contemporary architecture. Box sash, casement, and wood-aluminium systems crafted to last generations.
+                  <p className="max-w-2xl text-lg font-light leading-relaxed text-white/85 md:text-xl">
+                    From Georgian townhouses to contemporary builds. Heritage sash, flush casement, and wood-aluminium systems manufactured to conservation standards.
                   </p>
                 </div>
               </div>
@@ -141,51 +150,119 @@ export default function WindowsPage() {
       {/* Introduction - Clear, confident, understated */}
       <section className="mx-auto max-w-4xl px-6 md:px-8">
         <div className="space-y-8 text-center">
-          <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500">
-            Lignum by Wealden Joinery
+          <p className="text-xs font-medium uppercase tracking-[0.25em] text-slate-500">
+            Why Lignum
           </p>
           <h2 className="text-4xl font-light leading-tight text-slate-900 md:text-5xl">
-            Engineered for longevity.<br />Detailed for authenticity.
+            Precision. Heritage. Longevity.
           </h2>
           <p className="mx-auto max-w-2xl text-lg leading-relaxed text-slate-600">
-            Every window is manufactured to exacting standards using sustainably sourced timber, precision CNC machinery, and hand finishing. From listed Georgian townhouses to contemporary new builds, we engineer windows that respect architectural intent while meeting modern performance requirements.
+            Every window begins with sustainably sourced timber, precision CNC engineering, and hand finishing. We manufacture for listed buildings, conservation areas, and architect-led new builds—combining authentic detailing with modern thermal performance and security.
           </p>
+          <div className="mx-auto grid max-w-3xl gap-8 pt-8 md:grid-cols-3">
+            <div className="space-y-2">
+              <p className="text-3xl font-light text-slate-900">30yr</p>
+              <p className="text-sm uppercase tracking-wider text-slate-500">Rot & fungal guarantee</p>
+            </div>
+            <div className="space-y-2">
+              <p className="text-3xl font-light text-slate-900">10yr</p>
+              <p className="text-sm uppercase tracking-wider text-slate-500">Paint & workmanship</p>
+            </div>
+            <div className="space-y-2">
+              <p className="text-3xl font-light text-slate-900">FSC</p>
+              <p className="text-sm uppercase tracking-wider text-slate-500">Certified timber</p>
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* Window Systems - Clean, organized, premium feel */}
+      {/* Heritage Windows */}
       <section className="mx-auto max-w-7xl px-6 md:px-8">
-        <div className="mb-16 text-center">
-          <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500">Window Systems</p>
-          <h2 className="mt-4 text-3xl font-light text-slate-900 md:text-4xl">Five engineered systems</h2>
+        <div className="mb-20 space-y-4 text-center">
+          <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500">Heritage Windows</p>
+          <h2 className="text-4xl font-light text-slate-900 md:text-5xl">For period properties</h2>
+          <p className="mx-auto max-w-2xl text-lg leading-relaxed text-slate-600">
+            Where authenticity and conservation approval matter. Traditional sash operation with modern thermal performance.
+          </p>
         </div>
-        <div className="space-y-24">
-          {windowTypes.map((type, idx) => (
-            <article
-              key={type.title}
-              className={`grid gap-12 lg:grid-cols-2 lg:items-center ${idx % 2 === 1 ? 'lg:flex-row-reverse' : ''}`}
-            >
-              <div className={`space-y-6 ${idx % 2 === 1 ? 'lg:order-2' : ''}`}>
-                <h3 className="text-3xl font-light text-slate-900">{type.title}</h3>
-                <p className="text-lg leading-relaxed text-slate-600">{type.summary}</p>
-                <div className="border-l-2 border-slate-200 pl-6 space-y-3">
-                  {type.details.slice(0, 4).map((detail) => (
-                    <p key={detail} className="text-sm leading-relaxed text-slate-600">
-                      {detail}
-                    </p>
-                  ))}
-                </div>
+        <div className="space-y-32">
+          {heritageWindows.map((window, idx) => (
+            <article key={window.title} className="space-y-8">
+              <div className="mx-auto max-w-3xl space-y-6 text-center">
+                <h3 className="text-3xl font-light text-slate-900 md:text-4xl">{window.title}</h3>
+                <p className="text-xl font-light italic leading-relaxed text-slate-500">
+                  {window.useCase}
+                </p>
+                <p className="text-lg leading-relaxed text-slate-600">{window.summary}</p>
               </div>
-              <div className={`${idx % 2 === 1 ? 'lg:order-1' : ''}`}>
-                <div className="relative aspect-[4/3] overflow-hidden rounded-lg bg-slate-100">
-                  {/* Placeholder for high-quality product image */}
-                  <div className="flex h-full items-center justify-center text-slate-400">
-                    <div className="text-center space-y-2">
-                      <p className="text-sm font-medium uppercase tracking-wider">High-Quality Image</p>
-                      <p className="text-xs">{type.title}</p>
-                    </div>
+              <div className="grid gap-4 md:grid-cols-4">
+                {window.keyPoints.map((point, i) => (
+                  <div key={i} className="border-l-2 border-slate-200 pl-4">
+                    <p className="text-sm leading-relaxed text-slate-600">{point}</p>
                   </div>
-                </div>
+                ))}
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      {/* Contemporary Windows */}
+      <section className="mx-auto max-w-7xl px-6 md:px-8">
+        <div className="mb-20 space-y-4 text-center">
+          <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500">Contemporary Windows</p>
+          <h2 className="text-4xl font-light text-slate-900 md:text-5xl">Clean lines, refined details</h2>
+          <p className="mx-auto max-w-2xl text-lg leading-relaxed text-slate-600">
+            For modern extensions, new builds, or heritage properties requiring subtle detailing.
+          </p>
+        </div>
+        <div className="space-y-32">
+          {contemporaryWindows.map((window, idx) => (
+            <article key={window.title} className="space-y-8">
+              <div className="mx-auto max-w-3xl space-y-6 text-center">
+                <h3 className="text-3xl font-light text-slate-900 md:text-4xl">{window.title}</h3>
+                <p className="text-xl font-light italic leading-relaxed text-slate-500">
+                  {window.useCase}
+                </p>
+                <p className="text-lg leading-relaxed text-slate-600">{window.summary}</p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-4">
+                {window.keyPoints.map((point, i) => (
+                  <div key={i} className="border-l-2 border-slate-200 pl-4">
+                    <p className="text-sm leading-relaxed text-slate-600">{point}</p>
+                  </div>
+                ))}
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      {/* System Products */}
+      <section className="mx-auto max-w-7xl px-6 md:px-8">
+        <div className="mb-20 space-y-4 text-center">
+          <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500">System Products</p>
+          <h2 className="text-4xl font-light text-slate-900 md:text-5xl">Engineered composites</h2>
+          <p className="mx-auto max-w-2xl text-lg leading-relaxed text-slate-600">
+            Timber warmth inside, aluminium protection outside. For exposed locations or minimal maintenance.
+          </p>
+        </div>
+        <div className="space-y-32">
+          {systemProducts.map((window, idx) => (
+            <article key={window.title} className="space-y-8">
+              <div className="mx-auto max-w-3xl space-y-6 text-center">
+                <h3 className="text-3xl font-light text-slate-900 md:text-4xl">{window.title}</h3>
+                <p className="text-xl font-light italic leading-relaxed text-slate-500">
+                  {window.useCase}
+                </p>
+                <p className="text-lg leading-relaxed text-slate-600">{window.summary}</p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-4">
+                {window.keyPoints.map((point, i) => (
+                  <div key={i} className="border-l-2 border-slate-200 pl-4">
+                    <p className="text-sm leading-relaxed text-slate-600">{point}</p>
+                  </div>
+                ))}
               </div>
             </article>
           ))}
@@ -266,23 +343,30 @@ export default function WindowsPage() {
         </div>
       </section>
 
-      {/* CTA - Understated, confident */}
-      <section className="bg-slate-900 py-24">
-        <div className="mx-auto max-w-3xl px-6 text-center md:px-8">
-          <h2 className="text-4xl font-light text-white md:text-5xl">Discuss your project</h2>
-          <p className="mt-6 text-lg leading-relaxed text-slate-300">
-            Book a consultation to discuss requirements, heritage constraints, and specifications.
-          </p>
-          <div className="mt-10 flex flex-wrap justify-center gap-4">
+      {/* CTA - Confident, considered */}
+      <section className="bg-slate-900 py-32">
+        <div className="mx-auto max-w-3xl space-y-12 px-6 text-center md:px-8">
+          <div className="space-y-6">
+            <p className="text-xs font-medium uppercase tracking-[0.25em] text-white/60">
+              Start Your Project
+            </p>
+            <h2 className="text-4xl font-light leading-tight text-white md:text-5xl">
+              Which window system<br />suits your project?
+            </h2>
+            <p className="mx-auto max-w-xl text-lg font-light leading-relaxed text-white/75">
+              Book a consultation to discuss heritage constraints, thermal requirements, and detailed specifications. We'll guide you through timber choices, glazing options, and finishes.
+            </p>
+          </div>
+          <div className="flex flex-wrap justify-center gap-4">
             <Link
               href="/wealden-joinery/contact"
-              className="border border-white px-8 py-4 text-sm font-medium uppercase tracking-wider text-white transition hover:bg-white hover:text-slate-900"
+              className="border-2 border-white px-10 py-4 text-sm font-medium uppercase tracking-[0.15em] text-white transition hover:bg-white hover:text-slate-900"
             >
               Book Consultation
             </Link>
             <Link
               href="/wealden-joinery/estimate"
-              className="border border-white/30 px-8 py-4 text-sm font-medium uppercase tracking-wider text-white/80 transition hover:border-white hover:text-white"
+              className="border border-white/20 px-10 py-4 text-sm font-medium uppercase tracking-[0.15em] text-white/70 transition hover:border-white/40 hover:text-white"
             >
               Request Estimate
             </Link>
