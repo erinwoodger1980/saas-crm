@@ -9,6 +9,8 @@ export async function POST(request: NextRequest) {
     const file = formData.get("file") as File;
     const slotId = formData.get("slotId") as string;
 
+    console.log("[Upload API] Received request:", { fileName: file?.name, slotId });
+
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
@@ -23,7 +25,10 @@ export async function POST(request: NextRequest) {
 
     // Create upload directory if it doesn't exist
     const uploadDir = join(process.cwd(), "public", "wealden-uploads");
+    console.log("[Upload API] Upload directory:", uploadDir);
+    
     if (!existsSync(uploadDir)) {
+      console.log("[Upload API] Creating directory...");
       await mkdir(uploadDir, { recursive: true });
     }
 
@@ -33,8 +38,12 @@ export async function POST(request: NextRequest) {
     const filename = `${sanitizedSlotId}.${extension}`;
     const filepath = join(uploadDir, filename);
 
+    console.log("[Upload API] Writing file:", filepath);
+    
     // Save file (overwrites existing)
     await writeFile(filepath, buffer);
+
+    console.log("[Upload API] File written successfully");
 
     // Return the public path
     const publicPath = `/wealden-uploads/${filename}`;
@@ -46,9 +55,9 @@ export async function POST(request: NextRequest) {
       filename,
     });
   } catch (error) {
-    console.error("Upload error:", error);
+    console.error("[Upload API] Upload error:", error);
     return NextResponse.json(
-      { error: "Failed to upload file" },
+      { error: "Failed to upload file", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }
