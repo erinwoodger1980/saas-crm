@@ -22,15 +22,15 @@ export function WealdenFooter() {
           <div className="space-y-2 text-sm text-slate-700">
             <div className="flex items-center gap-2">
               <span className="text-slate-400">🏭</span>
-              <span>Manufacturing HQ: Crowborough, East Sussex</span>
+              <span>Manufacturing HQ: Rotherfield, East Sussex</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-slate-400">📞</span>
-              <a className="text-emerald-700 hover:underline" href="tel:+441892123456">01892 123 456</a>
+              <a className="text-emerald-700 hover:underline" href="tel:+441892852544">01892 852544</a>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-slate-400">✉️</span>
-              <a className="text-emerald-700 hover:underline" href="mailto:hello@wealdenjoinery.co.uk">hello@wealdenjoinery.co.uk</a>
+              <a className="text-emerald-700 hover:underline" href="mailto:martin@wealdenjoinery.com">martin@wealdenjoinery.com</a>
             </div>
           </div>
         </div>

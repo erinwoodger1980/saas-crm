@@ -27,7 +27,7 @@ const localBusinessSchema = {
   description: 'Sussex-based specialists in timber windows, doors, and alu-clad systems with heritage expertise.',
   url: 'https://joineryai.app/wealden-joinery',
   telephone: '+44 0 0000 0000', // TODO: replace with real contact number
-  email: 'hello@wealdenjoinery.co.uk',
+  email: 'martin@wealdenjoinery.com',
   address: {
     '@type': 'PostalAddress',
     streetAddress: 'TBD',

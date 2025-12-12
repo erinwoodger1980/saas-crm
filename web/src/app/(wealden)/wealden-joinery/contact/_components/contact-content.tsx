@@ -253,20 +253,20 @@ export function ContactContent({ heroImage }: ContactContentProps) {
               <div>
                 <p className="font-semibold text-slate-900">Phone</p>
                 <a
-                  href="tel:+441892123456"
+                  href="tel:+441892852544"
                   className="text-emerald-700 hover:text-emerald-800 hover:underline"
                 >
-                  01892 123 456
+                  01892 852544
                 </a>
                 <p className="mt-1 text-xs text-slate-600">Mon–Fri 8am–5pm, Sat 9am–1pm</p>
               </div>
               <div>
                 <p className="font-semibold text-slate-900">Email</p>
                 <a
-                  href="mailto:hello@wealdenjoinery.co.uk"
+                  href="mailto:martin@wealdenjoinery.com"
                   className="text-emerald-700 hover:text-emerald-800 hover:underline"
                 >
-                  hello@wealdenjoinery.co.uk
+                  martin@wealdenjoinery.com
                 </a>
                 <p className="mt-1 text-xs text-slate-600">We respond within 24 hours</p>
               </div>
@@ -275,9 +275,9 @@ export function ContactContent({ heroImage }: ContactContentProps) {
                 <address className="not-italic text-slate-700">
                   Wealden Joinery
                   <br />
-                  Manufacturing HQ & Showroom
+                  Unit 1 Lews Farm, Sherrifs Lane
                   <br />
-                  Crowborough, East Sussex TN6 3DU
+                  Rotherfield, East Sussex TN6 3JE
                 </address>
               </div>
             </div>

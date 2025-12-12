@@ -49,15 +49,15 @@ export function ShowroomsContent({ heroImage, showroomImages }: ShowroomsContent
 
   const showrooms: Showroom[] = [
     {
-      id: "crowborough",
-      name: "Crowborough",
+      id: "rotherfield",
+      name: "Rotherfield",
       shortName: "Headquarters",
       positioning: "Manufacturing headquarters and flagship showroom",
-      address: "Wealden Business Park, Crowborough, East Sussex",
-      postcode: "TN6 3DU",
+      address: "Unit 1 Lews Farm, Sherrifs Lane, Rotherfield, East Sussex",
+      postcode: "TN6 3JE",
       region: "Sussex",
-      phone: "01892 123 456",
-      email: "crowborough@wealdenjoinery.co.uk",
+      phone: "01892 852544",
+      email: "martin@wealdenjoinery.com",
       hours: "Mon-Fri: 8am-5pm, Sat: 9am-2pm",
       description: "Visit our manufacturing facility, meet the craftsmen, and explore our complete range",
       features: ["Full product range", "Manufacturing tours", "Technical consultations", "Heritage specialists"],
