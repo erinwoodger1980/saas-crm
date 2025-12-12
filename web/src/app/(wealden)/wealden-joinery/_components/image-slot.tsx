@@ -45,25 +45,34 @@ export function ImageSlot({
     setIsClient(true);
     
     // Fetch existing image from server
-    fetch(`/api/wealden/upload-image?slotId=${encodeURIComponent(slotId)}`)
-      .then((res) => res.json())
+    const fetchUrl = `/api/wealden/upload-image?slotId=${encodeURIComponent(slotId)}`;
+    console.log(`[ImageSlot ${slotId}] Fetching from: ${fetchUrl}`);
+    
+    fetch(fetchUrl)
+      .then((res) => {
+        console.log(`[ImageSlot ${slotId}] Fetch status:`, res.status, res.statusText);
+        return res.json();
+      })
       .then((data) => {
         console.log(`[ImageSlot ${slotId}] Server response:`, data);
         if (data.image?.imageUrl) {
+          console.log(`[ImageSlot ${slotId}] ✅ Image found on server`);
           setImageUrl(data.image.imageUrl);
         } else if (defaultImage) {
+          console.log(`[ImageSlot ${slotId}] Using default image`);
           setImageUrl(defaultImage);
         } else {
+          console.log(`[ImageSlot ${slotId}] No image found on server or default`);
           // Check localStorage as fallback during migration
           const localImage = localStorage.getItem(`wealden-image-${slotId}`);
           if (localImage) {
-            console.log(`[ImageSlot ${slotId}] Found in localStorage, use migration tool to upload to server`);
+            console.log(`[ImageSlot ${slotId}] ⚠️ Found in localStorage - use migration tool to upload to server`);
             setImageUrl(localImage);
           }
         }
       })
       .catch((err) => {
-        console.error(`[ImageSlot ${slotId}] Failed to fetch from server:`, err);
+        console.error(`[ImageSlot ${slotId}] ❌ Failed to fetch from server:`, err);
         // Fallback to localStorage during migration
         const localImage = localStorage.getItem(`wealden-image-${slotId}`);
         if (localImage) {
