@@ -23,9 +23,8 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Use the same upload directory pattern as the rest of the app
-    // Store in web/public/wealden/ for public access
-    const uploadDir = join(process.cwd(), "../web/public/wealden");
+    // Store in public/wealden/ (we're already in the web directory)
+    const uploadDir = join(process.cwd(), "public/wealden");
     console.log("[Upload API] Upload directory:", uploadDir);
     
     if (!existsSync(uploadDir)) {
@@ -74,7 +73,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if image exists for this slotId
-    const uploadDir = join(process.cwd(), "../web/public/wealden");
+    const uploadDir = join(process.cwd(), "public/wealden");
     if (!existsSync(uploadDir)) {
       return NextResponse.json({ image: null });
     }
