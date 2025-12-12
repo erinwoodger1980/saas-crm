@@ -7,9 +7,10 @@ import { Upload } from "lucide-react";
 interface ImageUploadButtonProps {
   label: string;
   onUpload?: (file: File) => void;
+  variant?: "default" | "overlay";
 }
 
-export function ImageUploadButton({ label, onUpload }: ImageUploadButtonProps) {
+export function ImageUploadButton({ label, onUpload, variant = "default" }: ImageUploadButtonProps) {
   const [uploading, setUploading] = useState(false);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -60,18 +61,22 @@ export function ImageUploadButton({ label, onUpload }: ImageUploadButtonProps) {
         id={`upload-${label.replace(/\s+/g, "-")}`}
         disabled={uploading}
       />
-      <label htmlFor={`upload-${label.replace(/\s+/g, "-")}`}>
+      <label htmlFor={`upload-${label.replace(/\s+/g, "-")}`} className="image-upload-control">
         <Button
           type="button"
-          variant="outline"
+          variant={variant === "overlay" ? "secondary" : "outline"}
           size="sm"
-          className="cursor-pointer border-2 border-dashed border-slate-300 hover:border-slate-400 bg-white/80"
+          className={`cursor-pointer ${
+            variant === "overlay"
+              ? "bg-white/90 hover:bg-white shadow-lg backdrop-blur-sm border-0"
+              : "border border-slate-300 hover:border-slate-400 bg-white/80"
+          }`}
           disabled={uploading}
           asChild
         >
           <span>
             <Upload className="mr-2 h-4 w-4" />
-            {uploading ? "Uploading..." : `Upload ${label}`}
+            {uploading ? "Uploading..." : "Upload"}
           </span>
         </Button>
       </label>
