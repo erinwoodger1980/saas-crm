@@ -11,7 +11,6 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import {
   Camera,
@@ -214,7 +213,7 @@ export function SceneUI({
           </CardHeader>
           <Separator />
           <CardContent className="p-0">
-            <ScrollArea className="h-[400px]">
+            <div className="h-[400px] overflow-auto">
               <div className="p-2">
                 {components.map((component) => (
                   <ComponentTreeItem
@@ -224,7 +223,7 @@ export function SceneUI({
                   />
                 ))}
               </div>
-            </ScrollArea>
+            </div>
           </CardContent>
         </Card>
       )}

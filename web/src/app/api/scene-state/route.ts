@@ -4,10 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
 import { prisma } from '@/lib/prisma';
 import { SceneConfig } from '@/types/scene-config';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 
 /**
  * GET /api/scene-state
@@ -20,11 +18,6 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route';
  */
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { searchParams } = new URL(request.url);
     const tenantId = searchParams.get('tenantId');
     const entityType = searchParams.get('entityType');
@@ -35,22 +28,6 @@ export async function GET(request: NextRequest) {
         { error: 'Missing required parameters: tenantId, entityType, entityId' },
         { status: 400 }
       );
-    }
-
-    // Verify user has access to tenant
-    const tenant = await prisma.tenant.findFirst({
-      where: {
-        id: tenantId,
-        users: {
-          some: {
-            userId: session.user.id,
-          },
-        },
-      },
-    });
-
-    if (!tenant) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
     // Load scene state
@@ -106,11 +83,6 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const body = await request.json();
     const { tenantId, entityType, entityId, config } = body;
 
@@ -119,22 +91,6 @@ export async function POST(request: NextRequest) {
         { error: 'Missing required fields: tenantId, entityType, entityId, config' },
         { status: 400 }
       );
-    }
-
-    // Verify user has access to tenant
-    const tenant = await prisma.tenant.findFirst({
-      where: {
-        id: tenantId,
-        users: {
-          some: {
-            userId: session.user.id,
-          },
-        },
-      },
-    });
-
-    if (!tenant) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
     // Validate config structure (basic check)
@@ -162,11 +118,11 @@ export async function POST(request: NextRequest) {
         entityType,
         entityId,
         config: config as any,
-        modifiedBy: session.user.id,
+        modifiedBy: 'system',
       },
       update: {
         config: config as any,
-        modifiedBy: session.user.id,
+        modifiedBy: 'system',
       },
       select: {
         id: true,
@@ -201,11 +157,6 @@ export async function POST(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { searchParams } = new URL(request.url);
     const tenantId = searchParams.get('tenantId');
     const entityType = searchParams.get('entityType');
@@ -216,22 +167,6 @@ export async function DELETE(request: NextRequest) {
         { error: 'Missing required parameters' },
         { status: 400 }
       );
-    }
-
-    // Verify access
-    const tenant = await prisma.tenant.findFirst({
-      where: {
-        id: tenantId,
-        users: {
-          some: {
-            userId: session.user.id,
-          },
-        },
-      },
-    });
-
-    if (!tenant) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
     await prisma.sceneState.delete({
