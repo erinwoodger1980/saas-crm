@@ -187,10 +187,10 @@ function DoorHardware({
 function Lighting() {
   return (
     <>
-      {/* Main directional light (soft daylight from window) */}
+      {/* Main key light - natural diffused daylight like reference photo */}
       <directionalLight
-        position={[8, 10, 6]}
-        intensity={2.5}
+        position={[6, 9, 8]}
+        intensity={1.6}
         castShadow
         shadow-mapSize-width={4096}
         shadow-mapSize-height={4096}
@@ -199,21 +199,30 @@ function Lighting() {
         shadow-camera-right={15}
         shadow-camera-top={15}
         shadow-camera-bottom={-15}
-        shadow-bias={-0.00001}
+        shadow-bias={-0.00005}
+        shadow-radius={2}
+        color="#fffdf5"
       />
       
-      {/* Fill light (soft ambient) */}
-      <ambientLight intensity={0.6} />
-      
-      {/* Subtle rim light from behind */}
+      {/* Soft fill light from left */}
       <directionalLight
-        position={[-5, 5, -8]}
-        intensity={0.8}
-        color="#fffef0"
+        position={[-5, 4, 6]}
+        intensity={0.5}
+        color="#fff9ed"
       />
       
-      {/* Environment map for realistic reflections */}
-      <Environment preset="studio" />
+      {/* Ambient light - soft natural indoor light */}
+      <ambientLight intensity={0.45} color="#faf8f0" />
+      
+      {/* Subtle rim/back light for depth */}
+      <directionalLight
+        position={[-3, 5, -7]}
+        intensity={0.3}
+        color="#fffef8"
+      />
+      
+      {/* Environment map - neutral natural lighting */}
+      <Environment preset="apartment" background={false} />
     </>
   );
 }
@@ -260,14 +269,15 @@ export function Door3DRenderer({
   showInContext = false,
 }: Door3DRendererProps) {
   return (
-    <div style={{ width, height, background: '#f5f5f5', borderRadius: '8px', overflow: 'hidden' }}>
+    <div style={{ width, height, background: '#e6e6e6', borderRadius: '8px', overflow: 'hidden' }}>
       <Canvas
-        shadows
+        shadows="soft"
         dpr={[1, 2]}
         gl={{
           antialias: true,
           toneMapping: THREE.ACESFilmicToneMapping,
-          toneMappingExposure: 1.2,
+          toneMappingExposure: 1.0,
+          shadowMap: { enabled: true, type: THREE.PCFSoftShadowMap },
         }}
       >
         {/* Camera */}

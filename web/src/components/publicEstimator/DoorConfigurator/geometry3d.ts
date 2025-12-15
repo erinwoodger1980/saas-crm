@@ -51,19 +51,36 @@ function createRail(width: number, height: number): THREE.BoxGeometry {
 }
 
 /**
- * Create raised panel geometry with beveled edges
+ * Create raised panel geometry with realistic beveled edges
  */
-function createPanel(width: number, height: number, bevel: number = 12): THREE.Shape {
+function createPanel(width: number, height: number, bevel: number = 12): THREE.ExtrudeGeometry {
   const shape = new THREE.Shape();
   
-  // Outer rectangle
-  shape.moveTo(-width / 2, -height / 2);
-  shape.lineTo(width / 2, -height / 2);
-  shape.lineTo(width / 2, height / 2);
-  shape.lineTo(-width / 2, height / 2);
-  shape.lineTo(-width / 2, -height / 2);
+  // Inner panel area (after bevel)
+  const innerWidth = width - bevel * 2;
+  const innerHeight = height - bevel * 2;
   
-  return shape;
+  shape.moveTo(-innerWidth / 2, -innerHeight / 2);
+  shape.lineTo(innerWidth / 2, -innerHeight / 2);
+  shape.lineTo(innerWidth / 2, innerHeight / 2);
+  shape.lineTo(-innerWidth / 2, innerHeight / 2);
+  shape.lineTo(-innerWidth / 2, -innerHeight / 2);
+  
+  const extrudeSettings = {
+    steps: 1,
+    depth: DEPTHS.panel,
+    bevelEnabled: true,
+    bevelThickness: 4,
+    bevelSize: bevel,
+    bevelOffset: 0,
+    bevelSegments: 8, // Smooth rounded bevel like in reference photo
+  };
+  
+  const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+  geometry.center();
+  geometry.computeVertexNormals();
+  
+  return geometry;
 }
 
 /**
