@@ -10,7 +10,7 @@ import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Environment, ContactShadows, PerspectiveCamera } from '@react-three/drei';
 import * as THREE from 'three';
 import { DoorConfiguration } from './types';
-import { generateDoorGeometry, createHardwareGeometry } from './geometry3d';
+import { buildDoorModel } from './geometry3d-v2';
 import {
   createWoodMaterial,
   createPaintedMaterial,
@@ -28,18 +28,17 @@ interface Door3DRendererProps {
 }
 
 /**
- * Main Door 3D component
+ * Main Door 3D component - Component-based rendering
  */
 function Door3D({ config }: { config: DoorConfiguration }) {
   const groupRef = useRef<THREE.Group>(null);
   
-  // Generate geometry based on configuration
-  const geometry = useMemo(() => generateDoorGeometry(config), [config]);
+  // Build door model from components
+  const doorModel = useMemo(() => buildDoorModel(config), [config]);
   
-  // Create materials
-  const material = useMemo(() => {
+  // Create materials based on configuration
+  const woodMaterial = useMemo(() => {
     const params = getMaterialParamsFromColor(config.color);
-    
     if (config.color.finish === 'natural' || config.color.finish === 'stained') {
       return createWoodMaterial(params as any);
     } else {
@@ -48,135 +47,30 @@ function Door3D({ config }: { config: DoorConfiguration }) {
   }, [config.color]);
   
   const glassMaterial = useMemo(() => createGlassMaterial(0.3), []);
-  const brassMaterial = useMemo(() => createBrassMaterial(), []);
   
-  // Scale factor: convert mm to Three.js units (1 unit = 100mm for better visibility)
+  // Scale factor: convert mm to Three.js units (1 unit = 100mm)
   const scale = 0.01;
+  
+  // Helper to get material for component
+  const getMaterialForComponent = (comp: any) => {
+    if (comp.material === 'glass') return glassMaterial;
+    return woodMaterial;
+  };
   
   return (
     <group ref={groupRef} scale={[scale, scale, scale]}>
-      {/* Stiles */}
-      {geometry.stiles.map((geo, i) => (
+      {doorModel.components.map((component, i) => (
         <mesh
-          key={`stile-${i}`}
-          geometry={geo}
-          material={material}
-          position={geometry.positions.stiles[i]}
-          castShadow
-          receiveShadow
+          key={`${component.name}-${i}`}
+          geometry={component.geometry}
+          material={getMaterialForComponent(component)}
+          position={component.position}
+          rotation={component.rotation}
+          scale={component.scale}
+          castShadow={component.castShadow}
+          receiveShadow={component.receiveShadow}
         />
       ))}
-      
-      {/* Rails */}
-      {geometry.rails.map((geo, i) => (
-        <mesh
-          key={`rail-${i}`}
-          geometry={geo}
-          material={material}
-          position={geometry.positions.rails[i]}
-          castShadow
-          receiveShadow
-        />
-      ))}
-      
-      {/* Panels */}
-      {geometry.panels.map((geo, i) => (
-        <mesh
-          key={`panel-${i}`}
-          geometry={geo}
-          material={material}
-          position={geometry.positions.panels[i]}
-          castShadow
-          receiveShadow
-        />
-      ))}
-      
-      {/* Glass */}
-      {geometry.glass.map((geo, i) => (
-        <mesh
-          key={`glass-${i}`}
-          geometry={geo}
-          material={glassMaterial}
-          position={geometry.positions.glass[i]}
-        />
-      ))}
-      
-      {/* Glazing Beads */}
-      {geometry.glazingBeads.map((geo, i) => (
-        <mesh
-          key={`bead-${i}`}
-          geometry={geo}
-          material={material}
-          position={geometry.positions.glazingBeads[i]}
-          castShadow
-        />
-      ))}
-      
-      {/* Hardware */}
-      {config.hardware && (
-        <DoorHardware
-          config={config}
-          material={brassMaterial}
-          doorWidth={config.dimensions.width * scale}
-          doorHeight={config.dimensions.height * scale}
-        />
-      )}
-    </group>
-  );
-}
-
-/**
- * Door hardware component (handle, knocker, letterplate)
- */
-function DoorHardware({
-  config,
-  material,
-  doorWidth,
-  doorHeight,
-}: {
-  config: DoorConfiguration;
-  material: THREE.Material;
-  doorWidth: number;
-  doorHeight: number;
-}) {
-  const hardware = useMemo(() => createHardwareGeometry(), []);
-  
-  return (
-    <group>
-      {/* Handle */}
-      <group position={[doorWidth / 2 - 0.8, 0, 0.3]}>
-        <mesh geometry={hardware.handle.backplate} material={material} castShadow />
-        <mesh
-          geometry={hardware.handle.lever}
-          material={material}
-          position={[0.25, 0, 0]}
-          rotation={[0, 0, Math.PI / 2]}
-          castShadow
-        />
-      </group>
-      
-      {/* Letter Plate */}
-      {config.hardware.letterPlate && (
-        <mesh
-          geometry={hardware.letterPlate}
-          material={material}
-          position={[0, -doorHeight * 0.1, 0.25]}
-          castShadow
-        />
-      )}
-      
-      {/* Knocker */}
-      {config.hardware.knocker && (
-        <group position={[0, doorHeight * 0.15, 0.3]}>
-          <mesh geometry={hardware.knocker.backplate} material={material} castShadow />
-          <mesh
-            geometry={hardware.knocker.ring}
-            material={material}
-            position={[0, -0.15, 0.05]}
-            castShadow
-          />
-        </group>
-      )}
     </group>
   );
 }
