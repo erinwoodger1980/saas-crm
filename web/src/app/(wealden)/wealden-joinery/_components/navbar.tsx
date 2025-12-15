@@ -21,9 +21,9 @@ export function WealdenNavbar() {
           <Image 
             src="/lignum-windows-logo.jpg" 
             alt="Lignum Windows by Wealden Joinery" 
-            width={300} 
-            height={100}
-            className="h-16 w-auto"
+            width={400} 
+            height={120}
+            className="h-20 w-auto"
             priority
           />
         </Link>
