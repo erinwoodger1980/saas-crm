@@ -86,6 +86,13 @@ export interface DoorConfiguration {
     letterPlate: boolean;
     knocker: boolean;
   };
+  
+  // Preset glazing dimensions (from DXF elevation options)
+  glazingDimensions?: {
+    cutOutSize: number;  // mm - opening height in door
+    beadSize: number;    // mm - bead sight line (outer edge to outer edge)
+    glassSize: number;   // mm - actual glass dimension
+  };
 }
 
 export interface DoorPricingMatrix {

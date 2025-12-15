@@ -83,6 +83,11 @@ export function DoorConfigurator({ onComplete, onPriceChange }: DoorConfigurator
       ...prev,
       dimensions: preset.dimensions,
       style,
+      glazingDimensions: {
+        cutOutSize: preset.cutOutSize,
+        beadSize: preset.beadSize,
+        glassSize: preset.glassSize,
+      },
     }));
   };
 

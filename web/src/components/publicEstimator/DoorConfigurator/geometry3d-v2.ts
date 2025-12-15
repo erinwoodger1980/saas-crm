@@ -28,21 +28,28 @@ export interface DoorModel {
 }
 
 /**
- * Dimension constants (mm)
+ * Dimension constants (mm) - UK External Door Standard Profiles
  */
 const DIMENSIONS = {
-  stileWidth: 65,
-  stileDepth: 45,
-  railHeight: 70,
-  railDepth: 45,
+  // Frame components (proper UK external door sizing)
+  stileWidth: 120,      // Vertical frame width
+  stileDepth: 57,       // Frame thickness (depth into door)
+  railHeight: 120,      // Top/bottom rail height
+  railDepth: 57,        // Rail thickness
+  midRailHeight: 140,   // Middle rail (typically taller)
+  muntinWidth: 95,      // Vertical center mullion width
+  
+  // Panel details
   panelThickness: 22,
-  panelBevelDepth: 12,  // Increased for more visible relief
-  panelRaiseDepth: 28,  // Increased for deeper, more realistic raised panels
-  panelBevelRadius: 4,  // New: smoother bevel curves
+  panelBevelDepth: 12,
+  panelRaiseDepth: 28,
+  panelBevelRadius: 4,
+  
+  // Glass and glazing
   glassThickness: 4,
-  glazingBeadWidth: 16,
-  glazingBeadDepth: 12,
-  glazingBeadInset: 3,  // New: inset depth for recessed beads
+  glazingBeadWidth: 22,    // Bead profile width (covers glass edge)
+  glazingBeadDepth: 16,    // Bead thickness
+  glazingBeadInset: 8,     // Depth from front face
 };
 
 /**
@@ -205,20 +212,34 @@ function addBevelToGeometry(
 
 /**
  * Create a glass panel with glazing beads
+ * @param width - Opening width (cutout width in frame)
+ * @param height - Opening height (cutout height in frame)
+ * @param glassWidth - Actual glass width (optional, defaults to calculated from beads)
+ * @param glassHeight - Actual glass height (optional, defaults to calculated from beads)
  */
-function createGlassPanel(width: number, height: number): DoorComponent[] {
+function createGlassPanel(
+  width: number, 
+  height: number,
+  glassWidth?: number,
+  glassHeight?: number
+): DoorComponent[] {
   const components: DoorComponent[] = [];
+
+  // Calculate glass dimensions
+  // If explicit glass dimensions provided, use them; otherwise calculate from opening
+  const actualGlassWidth = glassWidth || (width - DIMENSIONS.glazingBeadWidth * 2);
+  const actualGlassHeight = glassHeight || (height - DIMENSIONS.glazingBeadWidth * 2);
 
   // Main glass
   const glassGeometry = new THREE.BoxGeometry(
-    width - DIMENSIONS.glazingBeadWidth * 2,
-    height - DIMENSIONS.glazingBeadWidth * 2,
+    actualGlassWidth,
+    actualGlassHeight,
     DIMENSIONS.glassThickness
   );
 
   components.push({
     geometry: glassGeometry,
-    position: new THREE.Vector3(0, 0, -DIMENSIONS.panelRaiseDepth),
+    position: new THREE.Vector3(0, 0, -DIMENSIONS.glazingBeadInset),
     rotation: new THREE.Euler(0, 0, 0),
     scale: new THREE.Vector3(1, 1, 1),
     material: 'glass',
@@ -230,18 +251,19 @@ function createGlassPanel(width: number, height: number): DoorComponent[] {
   // Glazing beads (4 pieces around glass)
   const beadThickness = DIMENSIONS.glazingBeadDepth;
   const beadWidth = DIMENSIONS.glazingBeadWidth;
-  const glassInnerWidth = width - beadWidth * 2;
-  const glassInnerHeight = height - beadWidth * 2;
 
-  // Top bead
+  // Bead positions are based on glass dimensions plus bead width
+  const beadSpan = actualGlassHeight + beadWidth;  // Total height covered by beads
+  
+  // Top bead (horizontal)
   const topBeadGeometry = new THREE.BoxGeometry(
-    width,
+    width,  // Full opening width
     beadWidth,
     beadThickness
   );
   components.push({
     geometry: topBeadGeometry,
-    position: new THREE.Vector3(0, glassInnerHeight / 2, -DIMENSIONS.panelRaiseDepth + 3),
+    position: new THREE.Vector3(0, beadSpan / 2, -DIMENSIONS.glazingBeadInset + beadThickness / 2),
     rotation: new THREE.Euler(0, 0, 0),
     scale: new THREE.Vector3(1, 1, 1),
     material: 'wood',
@@ -250,10 +272,10 @@ function createGlassPanel(width: number, height: number): DoorComponent[] {
     receiveShadow: true,
   });
 
-  // Bottom bead
+  // Bottom bead (horizontal)
   components.push({
     geometry: topBeadGeometry.clone(),
-    position: new THREE.Vector3(0, -glassInnerHeight / 2, -DIMENSIONS.panelRaiseDepth + 3),
+    position: new THREE.Vector3(0, -beadSpan / 2, -DIMENSIONS.glazingBeadInset + beadThickness / 2),
     rotation: new THREE.Euler(0, 0, 0),
     scale: new THREE.Vector3(1, 1, 1),
     material: 'wood',
@@ -262,15 +284,15 @@ function createGlassPanel(width: number, height: number): DoorComponent[] {
     receiveShadow: true,
   });
 
-  // Left bead
+  // Left bead (vertical)
   const sideBeadGeometry = new THREE.BoxGeometry(
     beadWidth,
-    glassInnerHeight,
+    actualGlassHeight,  // Glass height only (horizontals cover the corners)
     beadThickness
   );
   components.push({
     geometry: sideBeadGeometry,
-    position: new THREE.Vector3(-glassInnerWidth / 2, 0, -DIMENSIONS.panelRaiseDepth + 3),
+    position: new THREE.Vector3(-width / 2 + beadWidth / 2, 0, -DIMENSIONS.glazingBeadInset + beadThickness / 2),
     rotation: new THREE.Euler(0, 0, 0),
     scale: new THREE.Vector3(1, 1, 1),
     material: 'wood',
@@ -279,10 +301,10 @@ function createGlassPanel(width: number, height: number): DoorComponent[] {
     receiveShadow: true,
   });
 
-  // Right bead
+  // Right bead (vertical)
   components.push({
     geometry: sideBeadGeometry.clone(),
-    position: new THREE.Vector3(glassInnerWidth / 2, 0, -DIMENSIONS.panelRaiseDepth + 3),
+    position: new THREE.Vector3(width / 2 - beadWidth / 2, 0, -DIMENSIONS.glazingBeadInset + beadThickness / 2),
     rotation: new THREE.Euler(0, 0, 0),
     scale: new THREE.Vector3(1, 1, 1),
     material: 'wood',
@@ -405,10 +427,24 @@ function addFourPanels(
   frameWidth: number,
   frameHeight: number
 ): void {
-  // Middle horizontal rail
-  const middleRailGeom = createRail(frameWidth).geometry;
+  // Middle horizontal rail (use taller mid-rail height)
+  const midRailGeometry = new THREE.BoxGeometry(
+    frameWidth,
+    DIMENSIONS.midRailHeight,
+    DIMENSIONS.railDepth
+  );
+  
+  // Apply UV mapping for wood texture
+  const uvAttribute = midRailGeometry.getAttribute('uv');
+  const uvArray = uvAttribute.array as Float32Array;
+  for (let i = 0; i < uvArray.length; i += 2) {
+    uvArray[i] *= frameWidth / 2000;
+    uvArray[i + 1] *= DIMENSIONS.midRailHeight / 500;
+  }
+  uvAttribute.needsUpdate = true;
+
   components.push({
-    geometry: middleRailGeom,
+    geometry: midRailGeometry,
     position: new THREE.Vector3(0, 0, 0),
     rotation: new THREE.Euler(0, 0, 0),
     scale: new THREE.Vector3(1, 1, 1),
@@ -419,9 +455,23 @@ function addFourPanels(
   });
 
   // Middle vertical muntin
-  const muntinGeom = createStile(frameHeight).geometry;
+  const muntinGeometry = new THREE.BoxGeometry(
+    DIMENSIONS.muntinWidth,
+    frameHeight,
+    DIMENSIONS.stileDepth
+  );
+  
+  // Apply UV mapping
+  const muntinUv = muntinGeometry.getAttribute('uv');
+  const muntinUvArray = muntinUv.array as Float32Array;
+  for (let i = 0; i < muntinUvArray.length; i += 2) {
+    muntinUvArray[i] *= DIMENSIONS.muntinWidth / 2000;
+    muntinUvArray[i + 1] *= frameHeight / 500;
+  }
+  muntinUv.needsUpdate = true;
+  
   components.push({
-    geometry: muntinGeom,
+    geometry: muntinGeometry,
     position: new THREE.Vector3(0, 0, 0),
     rotation: new THREE.Euler(0, 0, 0),
     scale: new THREE.Vector3(1, 1, 1),
@@ -431,44 +481,60 @@ function addFourPanels(
     receiveShadow: true,
   });
 
-  // Four panels
-  const panelWidth = (frameWidth - DIMENSIONS.stileWidth) / 2 - 40;
-  const panelHeight = (frameHeight - DIMENSIONS.railHeight) / 2 - 40;
+  // Calculate panel/glass opening dimensions
+  // Subtract muntins/rails to get available space for each quadrant
+  const openingWidth = (frameWidth - DIMENSIONS.muntinWidth) / 2;
+  const openingHeight = (frameHeight - DIMENSIONS.midRailHeight) / 2;
+  
+  // Panel/glass dimensions (slightly smaller than opening to fit with clearance)
+  const panelWidth = openingWidth - 30;
+  const panelHeight = openingHeight - 30;
 
+  const hasGlass = config.selectedGlass && config.selectedGlass.id !== 'none';
+  
+  // Define positions for 4 quadrants
   const panelPositions = [
-    // Top left
-    new THREE.Vector3(
-      -frameWidth / 4 - DIMENSIONS.stileWidth / 4,
-      frameHeight / 4,
-      0
-    ),
-    // Top right
-    new THREE.Vector3(
-      frameWidth / 4 + DIMENSIONS.stileWidth / 4,
-      frameHeight / 4,
-      0
-    ),
-    // Bottom left
-    new THREE.Vector3(
-      -frameWidth / 4 - DIMENSIONS.stileWidth / 4,
-      -frameHeight / 4,
-      0
-    ),
-    // Bottom right
-    new THREE.Vector3(
-      frameWidth / 4 + DIMENSIONS.stileWidth / 4,
-      -frameHeight / 4,
-      0
-    ),
+    { pos: new THREE.Vector3(-openingWidth / 2, openingHeight / 2, 0), name: 'top-left' },
+    { pos: new THREE.Vector3(openingWidth / 2, openingHeight / 2, 0), name: 'top-right' },
+    { pos: new THREE.Vector3(-openingWidth / 2, -openingHeight / 2, 0), name: 'bottom-left' },
+    { pos: new THREE.Vector3(openingWidth / 2, -openingHeight / 2, 0), name: 'bottom-right' },
   ];
 
-  panelPositions.forEach((pos, i) => {
-    const panelComp = createRaisedPanel(panelWidth, panelHeight);
-    components.push({
-      ...panelComp,
-      position: pos,
-      name: `panel-${i}`,
-    });
+  panelPositions.forEach(({ pos, name }, i) => {
+    const isTopPanel = i < 2;
+    const shouldHaveGlass = hasGlass && (
+      (isTopPanel && config.panelConfig.glassInTop) ||
+      (!isTopPanel && config.panelConfig.glassInBottom)
+    );
+
+    if (shouldHaveGlass) {
+      // Add glass panel with beads
+      const glassComponents = createGlassPanel(
+        panelWidth,
+        panelHeight,
+        config.glazingDimensions?.glassSize ? config.glazingDimensions.glassSize / 2 : undefined,
+        config.glazingDimensions?.glassSize ? config.glazingDimensions.glassSize / 2 : undefined
+      );
+      glassComponents.forEach((comp, idx) => {
+        components.push({
+          ...comp,
+          position: new THREE.Vector3(
+            pos.x + comp.position.x,
+            pos.y + comp.position.y,
+            comp.position.z
+          ),
+          name: `${name}-glass-${idx}`,
+        });
+      });
+    } else {
+      // Add raised panel
+      const panelComp = createRaisedPanel(panelWidth, panelHeight);
+      components.push({
+        ...panelComp,
+        position: pos,
+        name: `panel-${name}`,
+      });
+    }
   });
 }
 
@@ -481,10 +547,23 @@ function addSixPanels(
   frameWidth: number,
   frameHeight: number
 ): void {
-  // Two middle horizontal rails
-  const rail1Geom = createRail(frameWidth).geometry;
+  // Two middle horizontal rails (standard rail height for Georgian)
+  const midRailGeometry = new THREE.BoxGeometry(
+    frameWidth,
+    DIMENSIONS.railHeight,
+    DIMENSIONS.railDepth
+  );
+  
+  const uvAttribute = midRailGeometry.getAttribute('uv');
+  const uvArray = uvAttribute.array as Float32Array;
+  for (let i = 0; i < uvArray.length; i += 2) {
+    uvArray[i] *= frameWidth / 2000;
+    uvArray[i + 1] *= DIMENSIONS.railHeight / 500;
+  }
+  uvAttribute.needsUpdate = true;
+
   components.push({
-    geometry: rail1Geom,
+    geometry: midRailGeometry,
     position: new THREE.Vector3(0, frameHeight / 3, 0),
     rotation: new THREE.Euler(0, 0, 0),
     scale: new THREE.Vector3(1, 1, 1),
@@ -495,7 +574,7 @@ function addSixPanels(
   });
 
   components.push({
-    geometry: rail1Geom.clone(),
+    geometry: midRailGeometry.clone(),
     position: new THREE.Vector3(0, -frameHeight / 3, 0),
     rotation: new THREE.Euler(0, 0, 0),
     scale: new THREE.Vector3(1, 1, 1),
@@ -506,9 +585,22 @@ function addSixPanels(
   });
 
   // Middle vertical muntin
-  const muntinGeom = createStile(frameHeight).geometry;
+  const muntinGeometry = new THREE.BoxGeometry(
+    DIMENSIONS.muntinWidth,
+    frameHeight,
+    DIMENSIONS.stileDepth
+  );
+  
+  const muntinUv = muntinGeometry.getAttribute('uv');
+  const muntinUvArray = muntinUv.array as Float32Array;
+  for (let i = 0; i < muntinUvArray.length; i += 2) {
+    muntinUvArray[i] *= DIMENSIONS.muntinWidth / 2000;
+    muntinUvArray[i + 1] *= frameHeight / 500;
+  }
+  muntinUv.needsUpdate = true;
+
   components.push({
-    geometry: muntinGeom,
+    geometry: muntinGeometry,
     position: new THREE.Vector3(0, 0, 0),
     rotation: new THREE.Euler(0, 0, 0),
     scale: new THREE.Vector3(1, 1, 1),
@@ -519,24 +611,46 @@ function addSixPanels(
   });
 
   // Six panels (3 rows × 2 columns)
-  const panelWidth = (frameWidth - DIMENSIONS.stileWidth) / 2 - 40;
-  const panelHeight = (frameHeight - DIMENSIONS.railHeight * 2) / 3 - 30;
+  const openingWidth = (frameWidth - DIMENSIONS.muntinWidth) / 2;
+  const openingHeight = frameHeight / 3 - DIMENSIONS.railHeight;
+  
+  const panelWidth = openingWidth - 30;
+  const panelHeight = openingHeight - 20;
+
+  const hasGlass = config.selectedGlass && config.selectedGlass.id !== 'none';
 
   let panelIndex = 0;
   for (let row = 0; row < 3; row++) {
     for (let col = 0; col < 2; col++) {
-      const x =
-        col === 0
-          ? -frameWidth / 4 - DIMENSIONS.stileWidth / 4
-          : frameWidth / 4 + DIMENSIONS.stileWidth / 4;
-      const y = frameHeight / 3 - row * (panelHeight + DIMENSIONS.railHeight / 2);
+      const x = col === 0 ? -openingWidth / 2 : openingWidth / 2;
+      const y = frameHeight / 3 - row * (frameHeight / 3);
 
-      const panelComp = createRaisedPanel(panelWidth, panelHeight);
-      components.push({
-        ...panelComp,
-        position: new THREE.Vector3(x, y, 0),
-        name: `panel-${panelIndex}`,
-      });
+      const isTopRow = row === 0;
+      const shouldHaveGlass = hasGlass && isTopRow && config.panelConfig.glassInTop;
+
+      if (shouldHaveGlass) {
+        // Add glass panel with beads
+        const glassComponents = createGlassPanel(panelWidth, panelHeight);
+        glassComponents.forEach((comp, idx) => {
+          components.push({
+            ...comp,
+            position: new THREE.Vector3(
+              x + comp.position.x,
+              y + comp.position.y,
+              comp.position.z
+            ),
+            name: `panel-${panelIndex}-glass-${idx}`,
+          });
+        });
+      } else {
+        // Add raised panel
+        const panelComp = createRaisedPanel(panelWidth, panelHeight);
+        components.push({
+          ...panelComp,
+          position: new THREE.Vector3(x, y, 0),
+          name: `panel-${panelIndex}`,
+        });
+      }
       panelIndex++;
     }
   }
@@ -551,20 +665,30 @@ function addDefaultPanel(
   frameWidth: number,
   frameHeight: number
 ): void {
-  const panelWidth = frameWidth - 50;
-  const panelHeight = frameHeight - 50;
+  // Use preset glazing dimensions if available, otherwise calculate
+  const openingWidth = config.glazingDimensions?.cutOutSize 
+    ? Math.min(frameWidth - 50, frameWidth * 0.85)
+    : frameWidth - 50;
+  const openingHeight = config.glazingDimensions?.cutOutSize 
+    ? config.glazingDimensions.cutOutSize
+    : frameHeight - 50;
 
   if (
     config.selectedGlass &&
     config.selectedGlass.id !== 'none' &&
     config.panelConfig.glassInTop
   ) {
-    // Add glass panels
-    const glassPanels = createGlassPanel(panelWidth, panelHeight);
+    // Add glass panels with preset dimensions
+    const glassPanels = createGlassPanel(
+      openingWidth,
+      openingHeight,
+      config.glazingDimensions?.glassSize,
+      config.glazingDimensions?.glassSize
+    );
     components.push(...glassPanels);
   } else {
     // Add raised panel
-    const panelComp = createRaisedPanel(panelWidth, panelHeight);
+    const panelComp = createRaisedPanel(openingWidth, openingHeight);
     components.push({
       ...panelComp,
       position: new THREE.Vector3(0, 0, 0),
