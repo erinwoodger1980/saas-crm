@@ -58,11 +58,12 @@ export function generateWoodGrainTexture(
     }
   }
   
-  // Draw multiple layers of continuous grain for realistic depth
+  // Draw multiple layers of continuous grain for realistic depth with higher contrast
   const grainLayers = [
-    { opacity: 0.14, width: 1.8, frequency: 0.008, amplitude: 4.5, offset: 0 },
-    { opacity: 0.09, width: 1.2, frequency: 0.012, amplitude: 2.8, offset: 1.5 },
-    { opacity: 0.06, width: 0.9, frequency: 0.016, amplitude: 1.8, offset: 0.8 },
+    { opacity: 0.24, width: 2.2, frequency: 0.008, amplitude: 5.5, offset: 0 },
+    { opacity: 0.16, width: 1.6, frequency: 0.012, amplitude: 3.5, offset: 1.5 },
+    { opacity: 0.11, width: 1.3, frequency: 0.016, amplitude: 2.2, offset: 0.8 },
+    { opacity: 0.07, width: 0.9, frequency: 0.022, amplitude: 1.5, offset: 0.4 },
   ];
   
   grainLayers.forEach((layer) => {
@@ -72,7 +73,7 @@ export function generateWoodGrainTexture(
     for (let i = 0; i < numGrains; i++) {
       const baseX = i * grainSpacing + (Math.random() * 2 - 1);
       
-      ctx.strokeStyle = `rgba(95, 65, 35, ${layer.opacity})`;
+      ctx.strokeStyle = `rgba(75, 50, 25, ${layer.opacity})`;
       ctx.lineWidth = layer.width;
       ctx.beginPath();
       ctx.moveTo(baseX, 0);

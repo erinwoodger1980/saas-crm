@@ -187,10 +187,10 @@ function DoorHardware({
 function Lighting() {
   return (
     <>
-      {/* Main key light - natural diffused daylight like reference photo */}
+      {/* Main key light - stronger directional light to show depth */}
       <directionalLight
-        position={[6, 9, 8]}
-        intensity={1.6}
+        position={[5, 8, 6]}
+        intensity={2.2}
         castShadow
         shadow-mapSize-width={4096}
         shadow-mapSize-height={4096}
@@ -200,29 +200,29 @@ function Lighting() {
         shadow-camera-top={15}
         shadow-camera-bottom={-15}
         shadow-bias={-0.00005}
-        shadow-radius={2}
-        color="#fffdf5"
+        shadow-radius={1.5}
+        color="#fffcf0"
       />
       
-      {/* Soft fill light from left */}
+      {/* Secondary light from left for better detail visibility */}
       <directionalLight
-        position={[-5, 4, 6]}
+        position={[-6, 5, 5]}
+        intensity={0.8}
+        color="#fff8e8"
+      />
+      
+      {/* Softer ambient light */}
+      <ambientLight intensity={0.35} color="#faf7ec" />
+      
+      {/* Subtle rim light for edge definition */}
+      <directionalLight
+        position={[-2, 6, -8]}
         intensity={0.5}
-        color="#fff9ed"
+        color="#fffef5"
       />
       
-      {/* Ambient light - soft natural indoor light */}
-      <ambientLight intensity={0.45} color="#faf8f0" />
-      
-      {/* Subtle rim/back light for depth */}
-      <directionalLight
-        position={[-3, 5, -7]}
-        intensity={0.3}
-        color="#fffef8"
-      />
-      
-      {/* Environment map - neutral natural lighting */}
-      <Environment preset="apartment" background={false} />
+      {/* Environment map - warmer natural lighting */}
+      <Environment preset="city" background={false} />
     </>
   );
 }

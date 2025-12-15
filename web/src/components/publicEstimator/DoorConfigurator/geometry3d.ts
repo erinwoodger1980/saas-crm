@@ -53,7 +53,7 @@ function createRail(width: number, height: number): THREE.BoxGeometry {
 /**
  * Create raised panel geometry with realistic beveled edges
  */
-function createPanel(width: number, height: number, bevel: number = 12): THREE.ExtrudeGeometry {
+function createPanel(width: number, height: number, bevel: number = 22): THREE.ExtrudeGeometry {
   const shape = new THREE.Shape();
   
   // Inner panel area (after bevel)
@@ -67,13 +67,13 @@ function createPanel(width: number, height: number, bevel: number = 12): THREE.E
   shape.lineTo(-innerWidth / 2, -innerHeight / 2);
   
   const extrudeSettings = {
-    steps: 1,
+    steps: 2,
     depth: DEPTHS.panel,
     bevelEnabled: true,
-    bevelThickness: 4,
+    bevelThickness: 7,
     bevelSize: bevel,
     bevelOffset: 0,
-    bevelSegments: 8, // Smooth rounded bevel like in reference photo
+    bevelSegments: 12, // Smooth rounded bevel like in reference photo
   };
   
   const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
@@ -193,18 +193,45 @@ function generateBoardStyleGeometry(config: DoorConfiguration): DoorGeometry {
   
   const doorWidth = dimensions.width;
   const doorHeight = dimensions.height;
-  const boardWidth = 120; // Typical board width
-  const boardDepth = 25; // Board thickness
+  const boardWidth = 135; // Individual plank width
+  const boardDepth = 22; // Plank thickness
+  const boardGap = 3; // Gap between boards for realistic T&G appearance
+  const chamferSize = 2.5; // Edge chamfer for board detail
   const ledgeHeight = 150; // Ledge/brace height
   
-  // Create vertical boards
-  const numBoards = Math.floor(doorWidth / boardWidth);
-  const actualBoardWidth = doorWidth / numBoards;
+  // Create vertical tongue-and-groove boards with visible gaps
+  const numBoards = Math.floor(doorWidth / (boardWidth + boardGap));
+  const totalBoardsWidth = numBoards * boardWidth + (numBoards - 1) * boardGap;
+  const offsetX = -totalBoardsWidth / 2;
   
   for (let i = 0; i < numBoards; i++) {
-    const boardX = -doorWidth / 2 + actualBoardWidth / 2 + i * actualBoardWidth;
+    const boardX = offsetX + boardWidth / 2 + i * (boardWidth + boardGap);
     
-    geometry.boards!.push(new THREE.BoxGeometry(actualBoardWidth - 2, doorHeight, boardDepth));
+    // Create board shape with chamfered edges for realistic appearance
+    const boardShape = new THREE.Shape();
+    const hw = (boardWidth - chamferSize * 2) / 2;
+    const hh = (doorHeight - chamferSize * 2) / 2;
+    
+    boardShape.moveTo(-hw, -hh);
+    boardShape.lineTo(hw, -hh);
+    boardShape.lineTo(hw, hh);
+    boardShape.lineTo(-hw, hh);
+    boardShape.lineTo(-hw, -hh);
+    
+    const extrudeSettings = {
+      steps: 1,
+      depth: boardDepth,
+      bevelEnabled: true,
+      bevelThickness: chamferSize,
+      bevelSize: chamferSize,
+      bevelSegments: 2,
+    };
+    
+    const boardGeometry = new THREE.ExtrudeGeometry(boardShape, extrudeSettings);
+    boardGeometry.rotateY(Math.PI / 2);
+    boardGeometry.computeVertexNormals();
+    
+    geometry.boards!.push(boardGeometry as any);
     geometry.positions.boards!.push(new THREE.Vector3(boardX, 0, 0));
   }
   
