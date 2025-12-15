@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { DoorConfigurator } from "@/components/publicEstimator/DoorConfigurator";
+import { DoorConfigurator as ProDoorConfigurator } from "@/components/configurator/DoorConfigurator";
 import { WindowConfigurator } from "@/components/publicEstimator/WindowConfigurator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -71,7 +71,15 @@ export default function EstimatePage() {
           </TabsList>
 
           <TabsContent value="doors">
-            <DoorConfigurator />
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <ProDoorConfigurator
+                tenantId="wealden-joinery"
+                entityType="door-estimator"
+                entityId="default"
+                width="100%"
+                height="720px"
+              />
+            </div>
           </TabsContent>
 
           <TabsContent value="windows">
