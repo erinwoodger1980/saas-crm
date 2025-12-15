@@ -65,6 +65,26 @@ export const GLASS_OPTIONS: GlassOption[] = [
 // Door styles
 export const DOOR_STYLES: DoorStyle[] = [
   {
+    id: 'joplin-board',
+    name: 'Joplin',
+    description: 'Solid vertical tongue-and-groove boards - cottage style',
+    category: 'cottage',
+    panelCount: 0,
+    panelLayout: 'vertical',
+    glassOptions: GLASS_OPTIONS.filter(g => g.id === 'none'),
+    baseMultiplier: 1.0,
+  },
+  {
+    id: 'franklin-glazed',
+    name: 'Franklin',
+    description: 'Vertical boards with central glazed panel',
+    category: 'cottage',
+    panelCount: 1,
+    panelLayout: 'vertical',
+    glassOptions: GLASS_OPTIONS,
+    baseMultiplier: 1.15,
+  },
+  {
     id: 'four-panel-victorian',
     name: 'Four Panel Victorian',
     description: 'Classic Victorian style with 4 raised panels',
