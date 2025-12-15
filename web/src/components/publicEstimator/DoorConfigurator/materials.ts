@@ -258,10 +258,6 @@ export function createPaintedMaterial(params: PaintedMaterialParams): THREE.Mesh
   material.aoMap!.repeat.set(1.8, 1.8);
   
   return material;
-    envMapIntensity: 0.5,
-  });
-  
-  return material;
 }
 
 /**
