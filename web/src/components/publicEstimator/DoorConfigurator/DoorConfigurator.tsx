@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Suspense, lazy } from 'react';
 import { DoorConfiguration } from './types';
 import { DOOR_STYLES, DOOR_COLORS, GLASS_OPTIONS, STANDARD_SIZES } from './constants';
 import { calculateDoorPrice, formatPrice, getPriceDescription } from './pricing';
@@ -24,12 +24,21 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
+// Lazy load 3D renderer for performance
+const Door3DRenderer = lazy(() => 
+  import('./Door3DRenderer').then(mod => ({ default: mod.Door3DRenderer }))
+);
+const Door3DRendererFallback = lazy(() =>
+  import('./Door3DRenderer').then(mod => ({ default: mod.Door3DRendererFallback }))
+);
+
 interface DoorConfiguratorProps {
   onComplete?: (config: DoorConfiguration) => void;
   onPriceChange?: (price: number) => void;
 }
 
 export function DoorConfigurator({ onComplete, onPriceChange }: DoorConfiguratorProps) {
+  const [use3DRenderer, setUse3DRenderer] = useState(false);
   const [config, setConfig] = useState<DoorConfiguration>({
     dimensions: { width: 914, height: 2032 },
     style: DOOR_STYLES[0],
@@ -104,20 +113,52 @@ export function DoorConfigurator({ onComplete, onPriceChange }: DoorConfigurator
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
-      {/* Left column: Preview */}
       <div className="space-y-4">
         <Card>
           <CardHeader>
-            <CardTitle>Door Preview</CardTitle>
-            <CardDescription>
-              Live preview of your configured door
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Door Preview</CardTitle>
+                <CardDescription>
+                  {use3DRenderer ? 'Photorealistic 3D render' : 'Stylized 2D illustration'}
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="3d-toggle" className="text-sm">
+                  {use3DRenderer ? '3D' : '2D'}
+                </Label>
+                <Switch
+                  id="3d-toggle"
+                  checked={use3DRenderer}
+                  onCheckedChange={setUse3DRenderer}
+                />
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
-            <div 
-              className="flex items-center justify-center bg-slate-50 rounded-lg p-4"
-              dangerouslySetInnerHTML={{ __html: doorSVG }}
-            />
+            {use3DRenderer ? (
+              <Suspense fallback={
+                <div className="flex items-center justify-center bg-slate-50 rounded-lg p-4 h-[600px]">
+                  <div className="text-center text-slate-500">
+                    <div className="animate-spin h-8 w-8 border-4 border-emerald-500 border-t-transparent rounded-full mx-auto mb-2" />
+                    <div>Loading 3D preview...</div>
+                  </div>
+                </div>
+              }>
+                <Door3DRenderer
+                  config={config}
+                  width={400}
+                  height={600}
+                  enableOrbitControls={true}
+                  showInContext={false}
+                />
+              </Suspense>
+            ) : (
+              <div 
+                className="flex items-center justify-center bg-slate-50 rounded-lg p-4"
+                dangerouslySetInnerHTML={{ __html: doorSVG }}
+              />
+            )}
             
             <div className="mt-4 space-y-2 text-sm text-slate-600">
               <div className="flex justify-between">
@@ -128,6 +169,11 @@ export function DoorConfigurator({ onComplete, onPriceChange }: DoorConfigurator
                 <span>Height:</span>
                 <span className="font-medium">{config.dimensions.height}mm</span>
               </div>
+              {use3DRenderer && (
+                <div className="text-xs text-slate-500 pt-2 border-t">
+                  💡 Drag to rotate • Scroll to zoom
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

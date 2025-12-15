@@ -31,6 +31,8 @@
     "@radix-ui/react-switch": "^1.1.7",
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-toast": "^1.2.15",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.4.2",
     "@tanstack/react-table": "^8.20.5",
     "@tiptap/pm": "^3.10.2",
     "@tiptap/react": "^3.10.2",
@@ -55,6 +57,7 @@
     "swr": "^2.3.6",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
+    "three": "^0.182.0",
     "zod": "^4.1.12"
   },
   "devDependencies": {
@@ -67,6 +70,7 @@
     "@types/node": "^20.19.19",
     "@types/react": "^18.2.42",
     "@types/react-dom": "^18.2.18",
+    "@types/three": "^0.182.0",
     "@typescript-eslint/parser": "^8.46.3",
     "autoprefixer": "^10.4.21",
     "eslint": "^9",
