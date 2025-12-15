@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { DoorConfigurator } from "@/components/publicEstimator/DoorConfigurator";
 
 export const metadata: Metadata = {
-  title: "Get an Instant Estimate | Wealden Joinery",
+  title: "Door Configurator | Wealden Joinery",
   description:
-    "Get a tailored estimate for your timber windows and doors in minutes. AI-powered tool provides instant ballpark pricing based on your specifications.",
+    "Design your perfect entrance door with our interactive configurator. Choose style, size, colors, and see instant pricing with live preview.",
 };
 
 export default function EstimatePage() {
@@ -14,71 +15,57 @@ export default function EstimatePage() {
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="px-6 py-12 md:px-10 md:py-16">
           <div className="mx-auto max-w-3xl space-y-6 text-center">
-            <p className="inline-block rounded-full bg-emerald-50 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-emerald-700">Instant Estimate</p>
+            <p className="inline-block rounded-full bg-emerald-50 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-emerald-700">Door Configurator</p>
             <h1 className="text-4xl font-semibold leading-tight text-slate-900 md:text-5xl">
-              Get a Tailored Estimate in Minutes
+              Design Your Perfect Entrance Door
             </h1>
             <p className="text-lg text-slate-600">
-              Our AI-powered estimator provides an instant ballpark price for your timber windows and doors. No sales pressure,
-              no obligation—just honest, transparent pricing to help you plan.
+              Configure your bespoke timber door with our interactive designer. Choose your style, size, colors, and see instant pricing with a live visual preview. No sales pressure, no obligation.
             </p>
           </div>
         </div>
       </section>
 
       {/* Why Use the Estimator */}
+      {/* Why Use the Configurator */}
       <section className="rounded-2xl border border-slate-200 bg-slate-50 p-6 shadow-sm">
-        <h3 className="text-lg font-semibold text-slate-900">Why use our estimator?</h3>
+        <h3 className="text-lg font-semibold text-slate-900">Why use our door configurator?</h3>
         <ul className="mt-4 grid gap-3 md:grid-cols-2">
           <li className="flex gap-2 text-sm text-slate-700">
             <span className="text-emerald-700">✓</span>
             <span>
-              <strong className="font-semibold text-slate-900">Instant results</strong> — Get a ballpark figure in under 5
-              minutes
+              <strong className="font-semibold text-slate-900">Visual preview</strong> — See your door design in real-time as
+              you configure
             </span>
           </li>
           <li className="flex gap-2 text-sm text-slate-700">
             <span className="text-emerald-700">✓</span>
             <span>
-              <strong className="font-semibold text-slate-900">Tailored to your spec</strong> — Choose timber, glazing, and
-              style options
+              <strong className="font-semibold text-slate-900">Instant pricing</strong> — Live updates as you change style,
+              size, and options
             </span>
           </li>
           <li className="flex gap-2 text-sm text-slate-700">
             <span className="text-emerald-700">✓</span>
             <span>
-              <strong className="font-semibold text-slate-900">No sales follow-up</strong> — We won't pester you unless you ask
+              <strong className="font-semibold text-slate-900">Parametric design</strong> — Stiles and rails stay proportionally
+              correct
             </span>
           </li>
           <li className="flex gap-2 text-sm text-slate-700">
             <span className="text-emerald-700">✓</span>
             <span>
-              <strong className="font-semibold text-slate-900">Based on real projects</strong> — Trained on hundreds of actual
-              quotes
+              <strong className="font-semibold text-slate-900">Complete entrance</strong> — Add side lights and top lights to
+              match
             </span>
           </li>
         </ul>
       </section>
 
-      {/* Estimator Component Placeholder */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-        <div className="mx-auto max-w-4xl space-y-6">
-          {/* In a real implementation, import and render the existing estimator component here */}
-          <div className="space-y-4 text-center text-sm text-slate-700">
-            <p className="text-base font-semibold text-slate-900">Estimator Tool</p>
-            <p>
-              The estimator component would be embedded here. In the actual implementation, import the existing estimator
-              component from wherever it lives in the codebase (e.g., `PublicEstimatorStepper` or similar).
-            </p>
-            <p className="text-xs italic text-slate-600">
-              <strong>Implementation note:</strong> Find the existing Wealden estimator component (likely in{" "}
-              <code>`src/components/publicestimator/`</code> or similar), import it, and render it here with appropriate props
-              for tenant slug <code>"wealden-joinery"</code>.
-            </p>
-          </div>
-        </div>
+      {/* Door Configurator */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 md:p-8 shadow-sm">
+        <DoorConfigurator />
       </section>
-
       {/* FAQ */}
       <section>
         <h3 className="mb-6 text-xl font-semibold text-slate-900">Estimator FAQs</h3>
