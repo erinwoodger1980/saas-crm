@@ -8,6 +8,7 @@
 import { useState, useEffect, useMemo, Suspense, lazy } from 'react';
 import { DoorConfiguration } from './types';
 import { DOOR_STYLES, DOOR_COLORS, GLASS_OPTIONS, STANDARD_SIZES } from './constants';
+import { DOOR_PRESETS, getPresetById } from './doorPresets';
 import { calculateDoorPrice, formatPrice, getPriceDescription } from './pricing';
 import { generateDoorSVG } from './renderer';
 import { generateTechnicalDrawing } from './technicalDrawing';
@@ -40,6 +41,7 @@ interface DoorConfiguratorProps {
 
 export function DoorConfigurator({ onComplete, onPriceChange }: DoorConfiguratorProps) {
   const [use3DRenderer, setUse3DRenderer] = useState(false);
+  const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [config, setConfig] = useState<DoorConfiguration>({
     dimensions: { width: 914, height: 2032 },
     style: DOOR_STYLES[0],
@@ -68,6 +70,21 @@ export function DoorConfigurator({ onComplete, onPriceChange }: DoorConfigurator
       knocker: false,
     },
   });
+
+  // Apply preset configuration
+  const applyPreset = (presetId: string) => {
+    const preset = getPresetById(presetId);
+    if (!preset) return;
+
+    setSelectedPreset(presetId);
+    const style = DOOR_STYLES.find(s => s.id === preset.style) || DOOR_STYLES[0];
+    
+    setConfig(prev => ({
+      ...prev,
+      dimensions: preset.dimensions,
+      style,
+    }));
+  };
 
   // Calculate price whenever config changes
   const priceBreakdown = useMemo(() => calculateDoorPrice(config), [config]);
@@ -211,6 +228,61 @@ export function DoorConfigurator({ onComplete, onPriceChange }: DoorConfigurator
 
       {/* Right column: Configuration */}
       <div className="space-y-6">
+        {/* Quick Presets */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Quick Start Presets</CardTitle>
+            <CardDescription>Select from elevation options or customize</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="preset-select" className="text-sm font-medium">
+                Door Elevation
+              </Label>
+              <Select value={selectedPreset || ''} onValueChange={applyPreset}>
+                <SelectTrigger id="preset-select">
+                  <SelectValue placeholder="Choose a preset door..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Custom Size</SelectItem>
+                  <div className="px-2 py-1.5 text-xs font-semibold text-slate-500">
+                    Large Doors
+                  </div>
+                  {DOOR_PRESETS.filter(p => p.category === 'large').map(preset => (
+                    <SelectItem key={preset.id} value={preset.id}>
+                      {preset.name} ({preset.dimensions.width}×{preset.dimensions.height}mm)
+                    </SelectItem>
+                  ))}
+                  <div className="px-2 py-1.5 text-xs font-semibold text-slate-500">
+                    Medium Doors
+                  </div>
+                  {DOOR_PRESETS.filter(p => p.category === 'medium').map(preset => (
+                    <SelectItem key={preset.id} value={preset.id}>
+                      {preset.name} ({preset.dimensions.width}×{preset.dimensions.height}mm)
+                    </SelectItem>
+                  ))}
+                  <div className="px-2 py-1.5 text-xs font-semibold text-slate-500">
+                    Small Doors
+                  </div>
+                  {DOOR_PRESETS.filter(p => p.category === 'small').map(preset => (
+                    <SelectItem key={preset.id} value={preset.id}>
+                      {preset.name} ({preset.dimensions.width}×{preset.dimensions.height}mm)
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {selectedPreset && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm">
+                <div className="font-medium text-emerald-900">Preset Applied</div>
+                <div className="text-emerald-700">
+                  {getPresetById(selectedPreset)?.description}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <Tabs defaultValue="style" className="w-full">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="style">Style</TabsTrigger>
