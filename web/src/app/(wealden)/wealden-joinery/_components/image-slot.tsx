@@ -243,13 +243,23 @@ export function ImageSlot({
     <div className={`image-slot relative ${aspectRatio} bg-slate-100 ${sizeClasses[size]} overflow-hidden group`}>
       {imageUrl ? (
         <div className="relative w-full h-full">
-          <Image
-            src={imageUrl}
-            alt={label}
-            fill
-            className="object-cover transition-transform duration-300 group-hover:scale-105"
-            unoptimized
-          />
+          {imageUrl.startsWith('data:') ? (
+            // Use regular img tag for data URLs (Next.js Image doesn't handle them well)
+            <img
+              src={imageUrl}
+              alt={label}
+              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+            />
+          ) : (
+            // Use Next.js Image for regular URLs
+            <Image
+              src={imageUrl}
+              alt={label}
+              fill
+              className="object-cover transition-transform duration-300 group-hover:scale-105"
+              unoptimized
+            />
+          )}
           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
         </div>
       ) : (
