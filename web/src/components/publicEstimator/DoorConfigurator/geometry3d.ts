@@ -13,13 +13,16 @@ export interface DoorGeometry {
   panels: THREE.BoxGeometry[];
   glazingBeads: THREE.BoxGeometry[];
   glass: THREE.BoxGeometry[];
+  boards?: THREE.BoxGeometry[]; // For cottage-style vertical boards
   positions: {
     stiles: THREE.Vector3[];
     rails: THREE.Vector3[];
     panels: THREE.Vector3[];
     glazingBeads: THREE.Vector3[];
     glass: THREE.Vector3[];
+    boards?: THREE.Vector3[]; // For cottage-style vertical boards
   };
+  isBoardStyle?: boolean;
 }
 
 // Depth constants (mm) for realistic joinery
@@ -84,6 +87,11 @@ export function generateDoorGeometry(config: DoorConfiguration): DoorGeometry {
   const { dimensions, style } = config;
   const elements = DOOR_ELEMENTS;
   
+  // Check if this is a board-style cottage door
+  if (style.id === 'joplin-board' || style.id === 'franklin-glazed') {
+    return generateBoardStyleGeometry(config);
+  }
+  
   const geometry: DoorGeometry = {
     stiles: [],
     rails: [],
@@ -137,6 +145,83 @@ export function generateDoorGeometry(config: DoorConfiguration): DoorGeometry {
     generateTwoPanelGeometry(geometry, dimensions, elements, config);
   } else if (style.panelCount === 1) {
     generateSinglePanelGeometry(geometry, dimensions, elements, config);
+  }
+  
+  return geometry;
+}
+
+/**
+ * Generate vertical board-style cottage door geometry
+ */
+function generateBoardStyleGeometry(config: DoorConfiguration): DoorGeometry {
+  const { dimensions, style, selectedGlass } = config;
+  
+  const geometry: DoorGeometry = {
+    stiles: [],
+    rails: [],
+    panels: [],
+    glazingBeads: [],
+    glass: [],
+    boards: [],
+    positions: {
+      stiles: [],
+      rails: [],
+      panels: [],
+      glazingBeads: [],
+      glass: [],
+      boards: [],
+    },
+    isBoardStyle: true,
+  };
+  
+  const doorWidth = dimensions.width;
+  const doorHeight = dimensions.height;
+  const boardWidth = 120; // Typical board width
+  const boardDepth = 25; // Board thickness
+  const ledgeHeight = 150; // Ledge/brace height
+  
+  // Create vertical boards
+  const numBoards = Math.floor(doorWidth / boardWidth);
+  const actualBoardWidth = doorWidth / numBoards;
+  
+  for (let i = 0; i < numBoards; i++) {
+    const boardX = -doorWidth / 2 + actualBoardWidth / 2 + i * actualBoardWidth;
+    
+    geometry.boards!.push(new THREE.BoxGeometry(actualBoardWidth - 2, doorHeight, boardDepth));
+    geometry.positions.boards!.push(new THREE.Vector3(boardX, 0, 0));
+  }
+  
+  // Add horizontal ledges (3 ledges - top, middle, bottom)
+  const ledgePositions = [
+    doorHeight / 2 - ledgeHeight / 2,  // Top
+    0,                                  // Middle
+    -doorHeight / 2 + ledgeHeight / 2   // Bottom
+  ];
+  
+  ledgePositions.forEach(y => {
+    geometry.rails.push(new THREE.BoxGeometry(doorWidth, ledgeHeight, boardDepth * 0.8));
+    geometry.positions.rails.push(new THREE.Vector3(0, y, -boardDepth * 0.4));
+  });
+  
+  // Add diagonal brace
+  const braceWidth = 120;
+  const braceLength = Math.sqrt(doorWidth * doorWidth + (doorHeight / 2) * (doorHeight / 2));
+  const braceAngle = Math.atan2(doorHeight / 2, doorWidth);
+  
+  geometry.rails.push(new THREE.BoxGeometry(braceLength, braceWidth, boardDepth * 0.7));
+  geometry.positions.rails.push(new THREE.Vector3(0, doorHeight / 4, -boardDepth * 0.5));
+  
+  // If Franklin style with glass
+  if (style.id === 'franklin-glazed' && selectedGlass.id !== 'none') {
+    const glassWidth = doorWidth * 0.35;
+    const glassHeight = doorHeight * 0.4;
+    
+    addGlassPanel(
+      geometry,
+      glassWidth,
+      glassHeight,
+      new THREE.Vector3(0, doorHeight * 0.1, boardDepth / 2)
+    );
   }
   
   return geometry;

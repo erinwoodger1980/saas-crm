@@ -23,14 +23,15 @@ export interface PaintedMaterialParams {
 }
 
 /**
- * Generate procedural wood grain normal map
+ * Generate procedural wood grain texture with realistic continuous grain lines
  * Creates realistic wood grain depth without external textures
  */
 export function generateWoodGrainTexture(
-  width: number = 1024,
-  height: number = 1024,
-  grainIntensity: number = 0.3,
-  grainScale: number = 1.0
+  width: number = 2048,
+  height: number = 2048,
+  grainIntensity: number = 0.4,
+  grainScale: number = 1.0,
+  isVertical: boolean = true
 ): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -39,42 +40,68 @@ export function generateWoodGrainTexture(
   
   if (!ctx) throw new Error('Canvas context not available');
   
-  // Base fill
-  ctx.fillStyle = '#808080';
+  // Base wood color with subtle variation
+  const gradient = ctx.createLinearGradient(0, 0, width, 0);
+  gradient.addColorStop(0, '#f5e6d3');
+  gradient.addColorStop(0.5, '#f0ddc0');
+  gradient.addColorStop(1, '#ead5b8');
+  ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, width, height);
   
-  const imageData = ctx.getImageData(0, 0, width, height);
-  const data = imageData.data;
+  // Draw continuous grain lines
+  ctx.strokeStyle = 'rgba(139, 90, 43, 0.15)';
+  ctx.lineWidth = 1.5;
   
-  // Generate wood grain pattern using Perlin-like noise
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const i = (y * width + x) * 4;
-      
-      // Primary grain (vertical with slight waviness)
-      const grainX = x * grainScale / width;
-      const grainY = y * grainScale / height;
-      
-      // Multiple octaves of noise for realistic grain
-      let grain = 0;
-      grain += Math.sin((grainX * 40 + Math.sin(grainY * 3) * 0.5) * Math.PI) * 0.4;
-      grain += Math.sin((grainX * 80 + Math.sin(grainY * 7) * 0.3) * Math.PI) * 0.2;
-      grain += Math.sin((grainX * 160 + Math.sin(grainY * 13) * 0.15) * Math.PI) * 0.1;
-      
-      // Add random knots
-      const knotNoise = simplex2D(grainX * 10, grainY * 10) * 0.3;
-      grain += knotNoise;
-      
-      // Normalize and apply intensity
-      const normalizedGrain = (grain + 1) / 2; // 0 to 1
-      const value = 128 + (normalizedGrain - 0.5) * 255 * grainIntensity;
-      
-      data[i] = data[i + 1] = data[i + 2] = Math.max(0, Math.min(255, value));
-      data[i + 3] = 255;
+  const grainSpacing = 8 * grainScale;
+  const numGrains = Math.floor(width / grainSpacing);
+  
+  for (let i = 0; i < numGrains; i++) {
+    const baseX = i * grainSpacing;
+    
+    ctx.beginPath();
+    ctx.moveTo(baseX, 0);
+    
+    // Create smooth, continuous vertical grain lines with subtle waviness
+    for (let y = 0; y < height; y += 5) {
+      const waveOffset = Math.sin(y * 0.01 + i * 0.5) * 3 + 
+                        Math.sin(y * 0.02 + i * 0.3) * 1.5;
+      const x = baseX + waveOffset;
+      ctx.lineTo(x, y);
+    }
+    
+    ctx.stroke();
+    
+    // Secondary finer grain lines
+    if (i % 3 === 0) {
+      ctx.strokeStyle = 'rgba(139, 90, 43, 0.08)';
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(baseX + grainSpacing * 0.5, 0);
+      for (let y = 0; y < height; y += 5) {
+        const waveOffset = Math.sin(y * 0.015 + i * 0.4) * 2;
+        ctx.lineTo(baseX + grainSpacing * 0.5 + waveOffset, y);
+      }
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(139, 90, 43, 0.15)';
+      ctx.lineWidth = 1.5;
     }
   }
   
-  ctx.putImageData(imageData, 0, 0);
+  // Add subtle knots occasionally
+  const numKnots = Math.floor((width * height) / 500000);
+  for (let i = 0; i < numKnots; i++) {
+    const knotX = Math.random() * width;
+    const knotY = Math.random() * height;
+    const knotSize = 15 + Math.random() * 25;
+    
+    const knotGradient = ctx.createRadialGradient(knotX, knotY, 0, knotX, knotY, knotSize);
+    knotGradient.addColorStop(0, 'rgba(101, 67, 33, 0.3)');
+    knotGradient.addColorStop(0.5, 'rgba(101, 67, 33, 0.15)');
+    knotGradient.addColorStop(1, 'rgba(101, 67, 33, 0)');
+    
+    ctx.fillStyle = knotGradient;
+    ctx.fillRect(knotX - knotSize, knotY - knotSize, knotSize * 2, knotSize * 2);
+  }
   
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
@@ -169,29 +196,31 @@ export function generateAOMap(
  */
 export function createWoodMaterial(params: WoodMaterialParams): THREE.MeshStandardMaterial {
   const grainTexture = generateWoodGrainTexture(
-    1024, 
-    1024, 
+    2048, 
+    2048, 
     params.grainIntensity, 
-    params.grainScale
+    params.grainScale,
+    true
   );
   
-  const roughnessTexture = generateRoughnessMap(512, 512, params.roughness, 0.15);
-  const aoTexture = generateAOMap(512, 512);
+  const roughnessTexture = generateRoughnessMap(1024, 1024, params.roughness, 0.1);
   
-  // Parse base color and add slight variation
+  // Parse base color
   const color = new THREE.Color(params.baseColor);
   
   const material = new THREE.MeshStandardMaterial({
+    map: grainTexture,
     color: color,
     roughness: params.roughness,
     metalness: params.metalness,
-    normalMap: grainTexture,
-    normalScale: new THREE.Vector2(0.3, 0.3),
     roughnessMap: roughnessTexture,
-    aoMap: aoTexture,
-    aoMapIntensity: 0.4,
-    envMapIntensity: 0.8,
+    envMapIntensity: 1.2,
+    side: THREE.FrontSide,
   });
+  
+  // Apply texture scaling for realistic size
+  material.map!.repeat.set(2, 2);
+  material.roughnessMap!.repeat.set(2, 2);
   
   return material;
 }

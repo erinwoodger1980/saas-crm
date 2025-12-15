@@ -189,31 +189,31 @@ function Lighting() {
     <>
       {/* Main directional light (soft daylight from window) */}
       <directionalLight
-        position={[5, 8, 5]}
-        intensity={1.2}
+        position={[8, 10, 6]}
+        intensity={2.5}
         castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
+        shadow-mapSize-width={4096}
+        shadow-mapSize-height={4096}
         shadow-camera-far={50}
-        shadow-camera-left={-10}
-        shadow-camera-right={10}
-        shadow-camera-top={10}
-        shadow-camera-bottom={-10}
-        shadow-bias={-0.0001}
+        shadow-camera-left={-15}
+        shadow-camera-right={15}
+        shadow-camera-top={15}
+        shadow-camera-bottom={-15}
+        shadow-bias={-0.00001}
       />
       
       {/* Fill light (soft ambient) */}
-      <ambientLight intensity={0.4} />
+      <ambientLight intensity={0.6} />
       
-      {/* Subtle rim light */}
+      {/* Subtle rim light from behind */}
       <directionalLight
-        position={[-3, 2, -5]}
-        intensity={0.3}
-        color="#ffffff"
+        position={[-5, 5, -8]}
+        intensity={0.8}
+        color="#fffef0"
       />
       
       {/* Environment map for realistic reflections */}
-      <Environment preset="apartment" />
+      <Environment preset="studio" />
     </>
   );
 }

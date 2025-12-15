@@ -10,6 +10,7 @@ import { DoorConfiguration } from './types';
 import { DOOR_STYLES, DOOR_COLORS, GLASS_OPTIONS, STANDARD_SIZES } from './constants';
 import { calculateDoorPrice, formatPrice, getPriceDescription } from './pricing';
 import { generateDoorSVG } from './renderer';
+import { generateTechnicalDrawing } from './technicalDrawing';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
@@ -71,8 +72,8 @@ export function DoorConfigurator({ onComplete, onPriceChange }: DoorConfigurator
   // Calculate price whenever config changes
   const priceBreakdown = useMemo(() => calculateDoorPrice(config), [config]);
   
-  // Generate SVG preview
-  const doorSVG = useMemo(() => generateDoorSVG({ config, width: 400, height: 600 }), [config]);
+  // Generate technical drawing for 2D mode
+  const doorSVG = useMemo(() => generateTechnicalDrawing(config), [config]);
 
   // Notify parent of price changes
   useEffect(() => {
