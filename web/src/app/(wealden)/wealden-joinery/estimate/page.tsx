@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { DoorConfigurator } from "@/components/publicEstimator/DoorConfigurator";
+import { WindowConfigurator } from "@/components/publicEstimator/WindowConfigurator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export const metadata: Metadata = {
-  title: "Door Configurator | Wealden Joinery",
+  title: "Door & Window Configurator | Wealden Joinery",
   description:
-    "Design your perfect entrance door with our interactive configurator. Choose style, size, colors, and see instant pricing with live preview.",
+    "Design your perfect doors and windows with our interactive configurators. Choose style, size, colors, and see instant pricing with live preview.",
 };
 
 export default function EstimatePage() {
@@ -15,26 +17,25 @@ export default function EstimatePage() {
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="px-6 py-12 md:px-10 md:py-16">
           <div className="mx-auto max-w-3xl space-y-6 text-center">
-            <p className="inline-block rounded-full bg-emerald-50 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-emerald-700">Door Configurator</p>
+            <p className="inline-block rounded-full bg-emerald-50 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-emerald-700">Product Configurators</p>
             <h1 className="text-4xl font-semibold leading-tight text-slate-900 md:text-5xl">
-              Design Your Perfect Entrance Door
+              Design Your Perfect Doors & Windows
             </h1>
             <p className="text-lg text-slate-600">
-              Configure your bespoke timber door with our interactive designer. Choose your style, size, colors, and see instant pricing with a live visual preview. No sales pressure, no obligation.
+              Configure your bespoke timber doors and windows with our interactive designers. Choose your style, size, colors, and see instant pricing with live visual previews. No sales pressure, no obligation.
             </p>
           </div>
         </div>
       </section>
 
-      {/* Why Use the Estimator */}
-      {/* Why Use the Configurator */}
+      {/* Why Use the Configurators */}
       <section className="rounded-2xl border border-slate-200 bg-slate-50 p-6 shadow-sm">
-        <h3 className="text-lg font-semibold text-slate-900">Why use our door configurator?</h3>
+        <h3 className="text-lg font-semibold text-slate-900">Why use our configurators?</h3>
         <ul className="mt-4 grid gap-3 md:grid-cols-2">
           <li className="flex gap-2 text-sm text-slate-700">
             <span className="text-emerald-700">✓</span>
             <span>
-              <strong className="font-semibold text-slate-900">Visual preview</strong> — See your door design in real-time as
+              <strong className="font-semibold text-slate-900">Visual preview</strong> — See your design in real-time as
               you configure
             </span>
           </li>
@@ -48,23 +49,35 @@ export default function EstimatePage() {
           <li className="flex gap-2 text-sm text-slate-700">
             <span className="text-emerald-700">✓</span>
             <span>
-              <strong className="font-semibold text-slate-900">Parametric design</strong> — Stiles and rails stay proportionally
-              correct
+              <strong className="font-semibold text-slate-900">Parametric design</strong> — Frames stay proportionally
+              correct at any size
             </span>
           </li>
           <li className="flex gap-2 text-sm text-slate-700">
             <span className="text-emerald-700">✓</span>
             <span>
-              <strong className="font-semibold text-slate-900">Complete entrance</strong> — Add side lights and top lights to
-              match
+              <strong className="font-semibold text-slate-900">All window types</strong> — Sash, casement, and alu-clad options
             </span>
           </li>
         </ul>
       </section>
 
-      {/* Door Configurator */}
+      {/* Product Configurators */}
       <section className="rounded-2xl border border-slate-200 bg-white p-4 md:p-8 shadow-sm">
-        <DoorConfigurator />
+        <Tabs defaultValue="doors" className="w-full">
+          <TabsList className="grid w-full grid-cols-2 mb-6">
+            <TabsTrigger value="doors">Doors</TabsTrigger>
+            <TabsTrigger value="windows">Windows</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="doors">
+            <DoorConfigurator />
+          </TabsContent>
+
+          <TabsContent value="windows">
+            <WindowConfigurator />
+          </TabsContent>
+        </Tabs>
       </section>
       {/* FAQ */}
       <section>
