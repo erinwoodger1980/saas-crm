@@ -234,8 +234,8 @@ export function createWoodMaterial(params: WoodMaterialParams): THREE.MeshStanda
  * Create painted/stained material with micro-roughness
  */
 export function createPaintedMaterial(params: PaintedMaterialParams): THREE.MeshStandardMaterial {
-  const roughnessTexture = generateRoughnessMap(512, 512, params.roughness, 0.08);
-  const aoTexture = generateAOMap(512, 512);
+  const roughnessTexture = generateRoughnessMap(1024, 1024, params.roughness, 0.06);
+  const aoTexture = generateAOMap(1024, 1024);
   
   const color = new THREE.Color(params.baseColor);
   
@@ -245,9 +245,19 @@ export function createPaintedMaterial(params: PaintedMaterialParams): THREE.Mesh
     metalness: 0.0,
     roughnessMap: roughnessTexture,
     aoMap: aoTexture,
-    aoMapIntensity: 0.3,
+    aoMapIntensity: 0.5,
     sheen: params.sheen,
-    sheenColor: new THREE.Color(0xffffff),
+    sheenColor: new THREE.Color(0xf5f0e8),
+    sheenRoughness: 0.6,
+    envMapIntensity: 0.6,
+    side: THREE.FrontSide,
+  });
+  
+  // Apply texture scaling
+  material.roughnessMap!.repeat.set(2.5, 2.5);
+  material.aoMap!.repeat.set(1.8, 1.8);
+  
+  return material;
     envMapIntensity: 0.5,
   });
   
@@ -259,16 +269,19 @@ export function createPaintedMaterial(params: PaintedMaterialParams): THREE.Mesh
  */
 export function createGlassMaterial(opacity: number = 0.3): THREE.MeshPhysicalMaterial {
   const material = new THREE.MeshPhysicalMaterial({
-    color: new THREE.Color(0xbbdefb),
+    color: new THREE.Color(0xd0e8f2),
     metalness: 0.0,
-    roughness: 0.05,
-    transmission: 0.9,
-    thickness: 5,
-    ior: 1.5,
-    reflectivity: 0.5,
+    roughness: 0.08,
+    transmission: 1.0,
+    thickness: 3,
+    ior: 1.52,
+    reflectivity: 0.6,
     transparent: true,
-    opacity: opacity,
-    side: THREE.DoubleSide,
+    opacity: 0.95,
+    side: THREE.FrontSide,
+    envMapIntensity: 0.8,
+    clearcoat: 0.3,
+    clearcoatRoughness: 0.1,
   });
   
   return material;

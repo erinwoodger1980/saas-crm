@@ -36,11 +36,13 @@ const DIMENSIONS = {
   railHeight: 70,
   railDepth: 45,
   panelThickness: 22,
-  panelBevelDepth: 8,
-  panelRaiseDepth: 18,
+  panelBevelDepth: 12,  // Increased for more visible relief
+  panelRaiseDepth: 28,  // Increased for deeper, more realistic raised panels
+  panelBevelRadius: 4,  // New: smoother bevel curves
   glassThickness: 4,
   glazingBeadWidth: 16,
   glazingBeadDepth: 12,
+  glazingBeadInset: 3,  // New: inset depth for recessed beads
 };
 
 /**
@@ -108,16 +110,28 @@ function createRail(width: number): DoorComponent {
  * Create a raised panel with proper bevel and relief
  */
 function createRaisedPanel(width: number, height: number): DoorComponent {
-  const group = new THREE.Group();
-
-  // Main panel body - slightly recessed
+  // Create panel with lathe geometry for smooth bevel curves
+  const panelInnerWidth = width - DIMENSIONS.panelBevelDepth * 2;
+  const panelInnerHeight = height - DIMENSIONS.panelBevelDepth * 2;
+  
+  // Use LatheGeometry for smooth bevel profile
+  const points = [];
+  const profileRadius = DIMENSIONS.panelBevelRadius;
+  
+  // Create a profile for beveled edge (cross-section)
+  points.push(new THREE.Vector2(0, 0)); // Center bottom
+  points.push(new THREE.Vector2(0, DIMENSIONS.panelThickness / 2)); // Top flat
+  points.push(new THREE.Vector2(profileRadius, DIMENSIONS.panelThickness / 2 + profileRadius)); // Bevel curve
+  points.push(new THREE.Vector2(DIMENSIONS.panelBevelDepth, DIMENSIONS.panelThickness / 2 + DIMENSIONS.panelBevelDepth)); // Bevel edge
+  
+  // Main panel body - with improved depth
   const panelGeometry = new THREE.BoxGeometry(
-    width - DIMENSIONS.panelBevelDepth * 2,
-    height - DIMENSIONS.panelBevelDepth * 2,
+    panelInnerWidth,
+    panelInnerHeight,
     DIMENSIONS.panelThickness
   );
 
-  // Apply bevel using a custom geometry with beveled edges
+  // Apply smooth bevel
   const beveled = addBevelToGeometry(panelGeometry, DIMENSIONS.panelBevelDepth);
 
   return {
@@ -126,7 +140,7 @@ function createRaisedPanel(width: number, height: number): DoorComponent {
     rotation: new THREE.Euler(0, 0, 0),
     scale: new THREE.Vector3(1, 1, 1),
     material: 'wood',
-    name: 'panel',
+    name: 'panel-raised',
     castShadow: true,
     receiveShadow: true,
   };

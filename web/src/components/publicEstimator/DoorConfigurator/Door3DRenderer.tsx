@@ -81,42 +81,49 @@ function Door3D({ config }: { config: DoorConfiguration }) {
 function Lighting() {
   return (
     <>
-      {/* Main key light - stronger directional light to show depth */}
+      {/* Main key light - professional studio setup */}
       <directionalLight
-        position={[5, 8, 6]}
-        intensity={2.2}
+        position={[6, 10, 8]}
+        intensity={2.4}
         castShadow
         shadow-mapSize-width={4096}
         shadow-mapSize-height={4096}
         shadow-camera-far={50}
-        shadow-camera-left={-15}
-        shadow-camera-right={15}
-        shadow-camera-top={15}
+        shadow-camera-left={-20}
+        shadow-camera-right={20}
+        shadow-camera-top={20}
         shadow-camera-bottom={-15}
-        shadow-bias={-0.00005}
-        shadow-radius={1.5}
-        color="#fffcf0"
-      />
-      
-      {/* Secondary light from left for better detail visibility */}
-      <directionalLight
-        position={[-6, 5, 5]}
-        intensity={0.8}
-        color="#fff8e8"
-      />
-      
-      {/* Softer ambient light */}
-      <ambientLight intensity={0.35} color="#faf7ec" />
-      
-      {/* Subtle rim light for edge definition */}
-      <directionalLight
-        position={[-2, 6, -8]}
-        intensity={0.5}
+        shadow-bias={-0.00008}
+        shadow-radius={2.0}
         color="#fffef5"
       />
       
-      {/* Environment map - warmer natural lighting */}
-      <Environment preset="city" background={false} />
+      {/* Fill light from left - reduces harsh shadows */}
+      <directionalLight
+        position={[-8, 6, 4]}
+        intensity={1.0}
+        color="#fff8f0"
+      />
+      
+      {/* Softer ambient light - overall illumination */}
+      <ambientLight intensity={0.42} color="#faf8f3" />
+      
+      {/* Rim light - highlights edges and depth */}
+      <directionalLight
+        position={[-3, 7, -10]}
+        intensity={0.7}
+        color="#fffcf5"
+      />
+      
+      {/* Soft back light - separates door from background */}
+      <directionalLight
+        position={[0, 4, -8]}
+        intensity={0.35}
+        color="#f5f0e8"
+      />
+      
+      {/* Environment map - warm natural lighting */}
+      <Environment preset="city" background={false} intensity={0.8} />
     </>
   );
 }
@@ -125,30 +132,41 @@ function Lighting() {
  * Optional context scene (wall background)
  */
 function ContextScene({ showInContext }: { showInContext: boolean }) {
-  if (!showInContext) return null;
-  
   return (
-    <group>
-      {/* Brick wall */}
-      <mesh position={[0, 0, -0.5]} receiveShadow>
-        <planeGeometry args={[20, 15]} />
+    <>
+      {/* Ground plane for shadow catching */}
+      <mesh position={[0, -8, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[50, 50]} />
         <meshStandardMaterial
-          color="#c9a98f"
-          roughness={0.8}
+          color="#9d9d9d"
+          roughness={0.95}
           metalness={0.0}
         />
       </mesh>
       
-      {/* Floor/ground plane */}
-      <mesh position={[0, -5, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[30, 30]} />
-        <meshStandardMaterial
-          color="#8b8b8b"
-          roughness={0.9}
-          metalness={0.0}
-        />
-      </mesh>
-    </group>
+      {showInContext && (
+        <>
+          {/* Wall background */}
+          <mesh position={[0, 0, -12]} receiveShadow>
+            <planeGeometry args={[25, 20]} />
+            <meshStandardMaterial
+              color="#d4cac0"
+              roughness={0.85}
+              metalness={0.0}
+            />
+          </mesh>
+        </>
+      )}
+      
+      {/* Contact shadows for depth */}
+      <ContactShadows
+        position={[0, -7.9, 0]}
+        opacity={0.35}
+        scale={30}
+        blur={2.5}
+        far={20}
+      />
+    </>
   );
 }
 
@@ -163,7 +181,7 @@ export function Door3DRenderer({
   showInContext = false,
 }: Door3DRendererProps) {
   return (
-    <div style={{ width, height, background: '#e6e6e6', borderRadius: '8px', overflow: 'hidden' }}>
+    <div style={{ width, height, background: 'linear-gradient(135deg, #f0ede8 0%, #e8e3dd 100%)', borderRadius: '8px', overflow: 'hidden' }}>
       <Canvas
         shadows="soft"
         dpr={[1, 2]}
