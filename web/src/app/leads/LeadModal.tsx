@@ -682,6 +682,31 @@ export default function LeadModal({
     }
   ];
 
+  // Required columns used to guarantee the type modal, dropdowns, and color picker exist even if a user has an old layout saved.
+  const REQUIRED_COLUMNS: ColumnConfig[] = [
+    { key: "itemNumber", label: "Item #", type: "number", width: 80, frozen: true, visible: true },
+    { key: "productType", label: "Type", type: "type", width: 200, frozen: false, visible: true },
+    { key: "width_mm", label: "Width (mm)", type: "number", width: 120, frozen: false, visible: true },
+    { key: "height_mm", label: "Height (mm)", type: "number", width: 120, frozen: false, visible: true },
+    { key: "glazingType", label: "Glazing Type", type: "select", width: 160, frozen: false, visible: true, options: ["Single", "Double", "Triple"] },
+    { key: "curvedOrArched", label: "Curved or Arched Design", type: "select", width: 200, frozen: false, visible: true, options: ["Standard", "Curved", "Arched"] },
+    { key: "windowStyle", label: "Window Style", type: "select", width: 180, frozen: false, visible: true, options: ["Casement", "Sash", "Tilt & Turn", "Alu-Clad", "Stormproof"] },
+    { key: "doorType", label: "Door Type", type: "select", width: 160, frozen: false, visible: true, options: ["Entrance", "French", "Sliding", "Bifold"] },
+    { key: "finishColor", label: "Finish Colour", type: "color", width: 140, frozen: false, visible: true },
+  ];
+
+  const mergeColumnConfig = (saved?: ColumnConfig[]): ColumnConfig[] => {
+    const base = saved ? [...saved] : [];
+    // Ensure required columns exist; if missing, append them (preserve any user-defined overrides if present)
+    REQUIRED_COLUMNS.forEach((required) => {
+      const existing = base.find((c) => c.key === required.key);
+      if (!existing) {
+        base.push(required);
+      }
+    });
+    return base;
+  };
+
   // Initialize quote items from custom data
   useEffect(() => {
     if (!lead?.custom) return;
@@ -697,22 +722,16 @@ export default function LeadModal({
     
     setQuoteItems(convertedItems);
     
-    // Initialize column config from localStorage or defaults
-    const savedConfig = localStorage.getItem(`quote-column-config-${lead.id}`);
-    if (savedConfig) {
-      setColumnConfig(JSON.parse(savedConfig));
+    // Initialize column config from localStorage or defaults, ensuring required columns exist
+    const savedConfigRaw = localStorage.getItem(`quote-column-config-${lead.id}`);
+    if (savedConfigRaw) {
+      const parsed: ColumnConfig[] = JSON.parse(savedConfigRaw);
+      setColumnConfig(mergeColumnConfig(parsed));
     } else {
-      // Default columns
-      const defaultColumns: ColumnConfig[] = [
-        { key: "itemNumber", label: "Item #", type: "number", width: 80, frozen: true, visible: true },
-        { key: "productType", label: "Type", type: "type", width: 200, frozen: false, visible: true },
-        { key: "width_mm", label: "Width (mm)", type: "number", width: 120, frozen: false, visible: true },
-        { key: "height_mm", label: "Height (mm)", type: "number", width: 120, frozen: false, visible: true },
-      ];
-      
-      // Add columns from public fields
+      // Start from required set, then append public fields (avoiding duplicates)
+      const defaultColumns: ColumnConfig[] = [...REQUIRED_COLUMNS];
       publicFields.slice(0, 5).forEach((field) => {
-        if (field.key && !defaultColumns.some(c => c.key === field.key)) {
+        if (field.key && !defaultColumns.some((c) => c.key === field.key)) {
           defaultColumns.push({
             key: field.key,
             label: field.label,
@@ -724,7 +743,6 @@ export default function LeadModal({
           });
         }
       });
-      
       setColumnConfig(defaultColumns);
     }
   }, [lead?.custom, lead?.id, publicFields]);
