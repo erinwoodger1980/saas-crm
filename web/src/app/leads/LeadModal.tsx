@@ -987,6 +987,11 @@ export default function LeadModal({
                 : [...results, [], []];
               setClientFields((client || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: true, showOnLead: true, sortOrder: f.sortOrder || 0, productTypes: Array.isArray(f.productTypes) ? f.productTypes : undefined })) as NormalizedQuestionnaireField[]);
               setQuoteDetailsFields((quoteDetails || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: true, showOnLead: true, sortOrder: f.sortOrder || 0, productTypes: Array.isArray(f.productTypes) ? f.productTypes : undefined })) as NormalizedQuestionnaireField[]);
+              console.log('[LeadModal] Loaded fields:', {
+                client: client?.length || 0,
+                quoteDetails: quoteDetails?.length || 0,
+                hasProductTypes: (quoteDetails || []).some((f: any) => f.productTypes?.length > 0)
+              });
               setManufacturingFields((manuf || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, visibleAfterOrder: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
               setFireDoorScheduleFields((fireDoorSched || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
               setFireDoorLineItemsFields((fireDoorItems || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);

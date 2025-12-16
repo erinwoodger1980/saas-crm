@@ -151,8 +151,13 @@ export default function ProductTypesSection() {
   const loadProducts = async () => {
     try {
       const data = await apiFetch<{ productTypes?: ProductCategory[] }>("/tenant/settings");
+      console.log("[ProductTypesSection] Loaded settings data:", data);
+      console.log("[ProductTypesSection] productTypes from API:", data.productTypes);
       if (data.productTypes) {
+        console.log("[ProductTypesSection] Setting products to:", data.productTypes);
         setProducts(data.productTypes);
+      } else {
+        console.warn("[ProductTypesSection] No productTypes in response");
       }
     } catch (err) {
       console.error("Failed to load product types:", err);
