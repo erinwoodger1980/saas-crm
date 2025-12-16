@@ -135,28 +135,15 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-6">
             <div className="relative">
               <div className="relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-[36px] border border-slate-200/80 bg-white shadow-[0_30px_60px_-36px_rgba(15,23,42,0.65)]">
-                {logoUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={logoUrl.startsWith('http') ? logoUrl : `${process.env.NEXT_PUBLIC_API_BASE_URL || ''}${logoUrl}`}
-                    alt={`${brandName} logo`}
-                    className="h-full w-full object-contain p-3"
-                    onError={(e) => {
-                      // Hide broken image and show initials fallback
-                      e.currentTarget.style.display = 'none';
-                      const fallback = e.currentTarget.nextElementSibling;
-                      if (fallback) {
-                        (fallback as HTMLElement).style.display = 'flex';
-                      }
-                    }}
-                  />
-                ) : null}
-                <div 
-                  className="text-2xl font-bold text-slate-600 absolute inset-0 flex items-center justify-center"
-                  style={{ display: logoUrl ? 'none' : 'flex' }}
-                >
-                  {initials}
-                </div>
+                {/* Always show JoineryAI logo */}
+                <Image
+                  src="/images/joineryai-logo.png"
+                  alt="JoineryAI"
+                  width={96}
+                  height={96}
+                  className="h-full w-full object-contain p-2"
+                  priority
+                />
               </div>
               <span className="absolute -bottom-2 -right-2 rounded-full border border-white bg-emerald-500 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-white shadow-sm">
                 Live
