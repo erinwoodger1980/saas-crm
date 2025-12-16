@@ -261,6 +261,24 @@ const corsOptions: cors.CorsOptions = {
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions)); // preflight for all routes
 
+// Fallback: add CORS headers to all responses as a safety net
+app.use((_req: any, res: any, next: any) => {
+  const origin = _req.get("origin");
+  if (origin) {
+    const norm = origin.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    const match = [...allowedOriginsSet].some(
+      (o) => o.replace(/^https?:\/\//, "").replace(/\/$/, "") === norm
+    );
+    if (match) {
+      res.header("Access-Control-Allow-Origin", origin);
+      res.header("Access-Control-Allow-Credentials", "true");
+      res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+      res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Tenant-Id, X-User-Id, X-Requested-With");
+    }
+  }
+  next();
+});
+
 /** ---------- Stripe webhook (raw body) BEFORE express.json() ---------- */
 if (stripeWebhook) {
   app.post("/billing/webhook", express.raw({ type: "application/json" }), stripeWebhook);
