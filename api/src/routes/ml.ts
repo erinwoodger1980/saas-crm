@@ -1376,3 +1376,151 @@ router.post("/save-diagram-svg", async (req, res) => {
 });
 
 export default router;
+/**
+ * POST /ml/search-product-type
+ * Search for a product type using AI natural language understanding
+ */
+router.post("/search-product-type", async (req, res) => {
+  try {
+    const { description } = req.body;
+
+    if (!description?.trim()) {
+      return res.status(400).json({ error: "description required" });
+    }
+
+    // Call OpenAI to match description to product type
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    if (!openaiApiKey) {
+      // Fallback to simple keyword matching if no OpenAI key
+      return fallbackProductTypeSearch(description, res);
+    }
+
+    const systemPrompt = `You are a product classifier for a joinery company. Given a description, identify the best matching product from our catalog.
+
+Product Catalog:
+Doors:
+- entrance: Single Door, Double Door
+- bifold: 2 Panel, 3 Panel, 4 Panel
+- sliding: Single Slider, Double Slider
+- french: Standard French, Extended French
+
+Windows:
+- sash-cord: Single Hung, Double Hung
+- sash-spring: Single Hung, Double Hung
+- casement: Single Casement, Double Casement
+- stormproof: Single Stormproof, Double Stormproof
+- alu-clad: Single Alu-clad, Double Alu-clad
+
+Respond ONLY with a JSON object in this exact format:
+{
+  "category": "doors" or "windows",
+  "type": "entrance|bifold|sliding|french|sash-cord|sash-spring|casement|stormproof|alu-clad",
+  "option": "the exact option name from the list above",
+  "confidence": 0.0 to 1.0
+}`;
+
+    const userPrompt = `Product description: ${description}`;
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${openaiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.3,
+        max_tokens: 200,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      console.error("[ml/search-product-type] OpenAI error:", error);
+      return fallbackProductTypeSearch(description, res);
+    }
+
+    const data = await response.json();
+    let content = data.choices?.[0]?.message?.content?.trim() || "{}";
+
+    // Clean up markdown artifacts
+    content = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+
+    const result = JSON.parse(content);
+
+    if (result.category && result.type && result.option) {
+      res.json(result);
+    } else {
+      return fallbackProductTypeSearch(description, res);
+    }
+  } catch (error: any) {
+    console.error("[ml/search-product-type] error:", error);
+    return fallbackProductTypeSearch(req.body.description, res);
+  }
+});
+
+/**
+ * Fallback product type search using simple keyword matching
+ */
+function fallbackProductTypeSearch(description: string, res: any) {
+  const desc = description.toLowerCase();
+
+  // Door types
+  if (desc.includes("door")) {
+    if (desc.includes("bifold") || desc.includes("bi-fold") || desc.includes("bi fold")) {
+      const panels = desc.match(/(\d+)\s*panel/);
+      const panelCount = panels ? panels[1] : "2";
+      return res.json({ category: "doors", type: "bifold", option: `${panelCount} Panel`, confidence: 0.7 });
+    }
+    if (desc.includes("sliding") || desc.includes("slide")) {
+      const isDouble = desc.includes("double");
+      return res.json({ category: "doors", type: "sliding", option: isDouble ? "Double Slider" : "Single Slider", confidence: 0.7 });
+    }
+    if (desc.includes("french")) {
+      return res.json({ category: "doors", type: "french", option: "Standard French", confidence: 0.7 });
+    }
+    // Default to entrance door
+    const isDouble = desc.includes("double") || desc.includes("pair");
+    return res.json({ category: "doors", type: "entrance", option: isDouble ? "Double Door" : "Single Door", confidence: 0.6 });
+  }
+
+  // Window types
+  if (desc.includes("window")) {
+    if (desc.includes("sash")) {
+      const isCord = desc.includes("cord") || desc.includes("weight");
+      const isSpring = desc.includes("spring");
+      const isDouble = desc.includes("double hung") || desc.includes("double-hung");
+      
+      if (isCord) {
+        return res.json({ category: "windows", type: "sash-cord", option: isDouble ? "Double Hung" : "Single Hung", confidence: 0.8 });
+      }
+      if (isSpring) {
+        return res.json({ category: "windows", type: "sash-spring", option: isDouble ? "Double Hung" : "Single Hung", confidence: 0.8 });
+      }
+      return res.json({ category: "windows", type: "sash-cord", option: isDouble ? "Double Hung" : "Single Hung", confidence: 0.6 });
+    }
+    if (desc.includes("casement")) {
+      const isDouble = desc.includes("double") || desc.includes("pair");
+      return res.json({ category: "windows", type: "casement", option: isDouble ? "Double Casement" : "Single Casement", confidence: 0.8 });
+    }
+    if (desc.includes("stormproof") || desc.includes("storm proof")) {
+      const isDouble = desc.includes("double");
+      return res.json({ category: "windows", type: "stormproof", option: isDouble ? "Double Stormproof" : "Single Stormproof", confidence: 0.8 });
+    }
+    if (desc.includes("alu-clad") || desc.includes("alu clad") || desc.includes("aluminium clad") || desc.includes("aluminum clad")) {
+      const isDouble = desc.includes("double");
+      return res.json({ category: "windows", type: "alu-clad", option: isDouble ? "Double Alu-clad" : "Single Alu-clad", confidence: 0.8 });
+    }
+    // Default to casement
+    const isDouble = desc.includes("double");
+    return res.json({ category: "windows", type: "casement", option: isDouble ? "Double Casement" : "Single Casement", confidence: 0.5 });
+  }
+
+  // No match
+  res.status(404).json({ error: "No matching product type found", confidence: 0.0 });
+}
+

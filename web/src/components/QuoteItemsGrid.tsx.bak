@@ -2,11 +2,8 @@
 
 import { useRef, useState, useEffect } from "react";
 import { Button } from "./ui/button";
-import { Plus, Trash2, Settings, Wand2 } from "lucide-react";
+import { Plus, Trash2, Settings } from "lucide-react";
 import { TypeSelectorModal } from "./TypeSelectorModal";
-import { RAL_COLORS } from "@/lib/ralColors";
-import { apiFetch } from "@/lib/api";
-import { useToast } from "@/components/ui/use-toast";
 
 export type QuoteItem = {
   id: string;
@@ -42,10 +39,6 @@ export function QuoteItemsGrid({
   const [editingCell, setEditingCell] = useState<{ itemId: string; key: string } | null>(null);
   const [editValue, setEditValue] = useState<string>("");
   const [showTypeSelector, setShowTypeSelector] = useState<{ itemId: string; key: string } | null>(null);
-  const [showAiSearch, setShowAiSearch] = useState<{ itemId: string; key: string } | null>(null);
-  const [aiSearchQuery, setAiSearchQuery] = useState<string>("");
-  const [aiSearching, setAiSearching] = useState(false);
-  const { toast } = useToast();
 
   // Sync scroll between header and body
   const handleBodyScroll = () => {
@@ -101,45 +94,6 @@ export function QuoteItemsGrid({
     );
     onItemsChange(updatedItems);
     setShowTypeSelector(null);
-    setShowAiSearch(null);
-  };
-
-  const handleAiSearch = async () => {
-    if (!aiSearchQuery.trim() || !showAiSearch) return;
-
-    setAiSearching(true);
-    try {
-      const response = await apiFetch<{ category: string; type: string; option: string; confidence: number }>("/ml/search-product-type", {
-        method: "POST",
-        json: { description: aiSearchQuery },
-      });
-
-      if (response.category && response.type && response.option) {
-        handleTypeSelection(showAiSearch.itemId, showAiSearch.key, {
-          category: response.category,
-          type: response.type,
-          option: response.option,
-        });
-        toast({
-          title: "Product type found",
-          description: `Matched: ${response.category} - ${response.type} - ${response.option}`,
-        });
-      } else {
-        toast({
-          title: "No match found",
-          description: "Try refining your description",
-          variant: "destructive",
-        });
-      }
-    } catch (error: any) {
-      toast({
-        title: "Search failed",
-        description: error.message || "Could not search product types",
-        variant: "destructive",
-      });
-    } finally {
-      setAiSearching(false);
-    }
   };
 
   const handleCellChange = (itemId: string, key: string, value: any) => {
@@ -164,20 +118,10 @@ export function QuoteItemsGrid({
     if (column.type === "type") {
       return (
         <div
-          className="w-full h-full px-2 py-1 cursor-pointer truncate hover:bg-sky-50 flex items-center justify-between gap-1"
+          className="w-full h-full px-2 py-1 cursor-pointer truncate hover:bg-sky-50"
           onClick={() => handleCellClick(item.id, column.key, value, column)}
         >
-          <span className="flex-1 truncate">{value || <span className="text-slate-400">Select type...</span>}</span>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowAiSearch({ itemId: item.id, key: column.key });
-            }}
-            className="flex-shrink-0 p-0.5 hover:bg-sky-100 rounded"
-            title="AI Search"
-          >
-            <Wand2 className="h-3 w-3 text-blue-600" />
-          </button>
+          {value || <span className="text-slate-400">Select type...</span>}
         </div>
       );
     }
@@ -196,23 +140,6 @@ export function QuoteItemsGrid({
             {column.options.map((opt) => (
               <option key={opt} value={opt}>
                 {opt}
-              </option>
-            ))}
-          </select>
-        );
-      } else if (column.type === "ral-color") {
-        return (
-          <select
-            autoFocus
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            onBlur={handleCellBlur}
-            className="w-full h-full px-2 py-1 border-0 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
-          >
-            <option value="">Select RAL...</option>
-            {RAL_COLORS.map((ral) => (
-              <option key={ral.code} value={ral.code}>
-                {ral.code} - {ral.name}
               </option>
             ))}
           </select>
@@ -262,22 +189,6 @@ export function QuoteItemsGrid({
     }
 
     // Display value
-    if (column.type === "ral-color" && value) {
-      const ralColor = RAL_COLORS.find(c => c.code === value);
-      return (
-        <div
-          className="w-full h-full flex items-center gap-2 px-2 py-1 cursor-pointer"
-          onClick={() => handleCellClick(item.id, column.key, value, column)}
-        >
-          <div
-            className="w-5 h-5 rounded border border-slate-300 flex-shrink-0"
-            style={{ backgroundColor: ralColor?.hex || "#ffffff" }}
-          />
-          <span className="text-xs truncate">{ralColor ? ralColor.code : value}</span>
-        </div>
-      );
-    }
-
     if (column.type === "color" && value) {
       const bgColor = column.color || value;
       return (
@@ -427,70 +338,6 @@ export function QuoteItemsGrid({
             handleTypeSelection(showTypeSelector.itemId, showTypeSelector.key, selection)
           }
         />
-      )}
-
-      {/* AI Product Type Search Modal */}
-      {showAiSearch && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">AI Product Type Search</h3>
-              <button
-                onClick={() => setShowAiSearch(null)}
-                className="text-slate-400 hover:text-slate-600 text-2xl leading-none"
-              >
-                ×
-              </button>
-            </div>
-            <p className="text-sm text-slate-600">
-              Describe the product in plain English, or paste an AI-generated description from a photo.
-            </p>
-            <textarea
-              value={aiSearchQuery}
-              onChange={(e) => setAiSearchQuery(e.target.value)}
-              placeholder="e.g., 'Double casement window with georgian bars' or paste AI description..."
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              rows={4}
-              autoFocus
-            />
-            <div className="flex gap-2 justify-end">
-              <Button
-                variant="outline"
-                onClick={() => setShowAiSearch(null)}
-                disabled={aiSearching}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleAiSearch}
-                disabled={!aiSearchQuery.trim() || aiSearching}
-              >
-                {aiSearching ? (
-                  <>
-                    <Wand2 className="h-4 w-4 mr-2 animate-spin" />
-                    Searching...
-                  </>
-                ) : (
-                  <>
-                    <Wand2 className="h-4 w-4 mr-2" />
-                    Search
-                  </>
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  const current = showAiSearch;
-                  setShowAiSearch(null);
-                  setTimeout(() => setShowTypeSelector(current), 50);
-                }}
-                disabled={aiSearching}
-              >
-                Browse Manually
-              </Button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

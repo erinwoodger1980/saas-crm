@@ -690,9 +690,8 @@ export default function LeadModal({
     { key: "height_mm", label: "Height (mm)", type: "number", width: 120, frozen: false, visible: true },
     { key: "glazingType", label: "Glazing Type", type: "select", width: 160, frozen: false, visible: true, options: ["Single", "Double", "Triple"] },
     { key: "curvedOrArched", label: "Curved or Arched Design", type: "select", width: 200, frozen: false, visible: true, options: ["Standard", "Curved", "Arched"] },
-    { key: "windowStyle", label: "Window Style", type: "select", width: 180, frozen: false, visible: true, options: ["Casement", "Sash", "Tilt & Turn", "Alu-Clad", "Stormproof"] },
-    { key: "doorType", label: "Door Type", type: "select", width: 160, frozen: false, visible: true, options: ["Entrance", "French", "Sliding", "Bifold"] },
-    { key: "finishColor", label: "Finish Colour", type: "color", width: 140, frozen: false, visible: true },
+    { key: "gridType", label: "Grid Type", type: "select", width: 160, frozen: false, visible: true, options: ["None", "Georgian", "Cottage", "Prairie", "Custom"] },
+    { key: "finishColor", label: "Finish Colour", type: "ral-color", width: 180, frozen: false, visible: true },
   ];
 
   const COLUMN_CONFIG_KEY = lead?.id ? `quote-column-config-v2-${lead.id}` : null;
