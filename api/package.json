@@ -84,6 +84,7 @@
     "puppeteer": "^23.7.1",
     "qrcode": "^1.5.4",
     "replicate": "^0.34.1",
+    "resend": "^3.4.0",
     "sharp": "^0.34.5",
     "stripe": "^19.1.0",
     "undici": "^7.16.0",

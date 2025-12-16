@@ -586,9 +586,18 @@ router.post("/feedback/:id/notify", requireDeveloper, async (req: any, res) => {
       <p style="color: #666; font-size: 0.9em; margin-top: 20px;">Thank you for helping us improve!</p>
     `;
 
-    // Send email using resend
-    const { Resend } = require('resend');
-    const resend = new Resend(process.env.RESEND_API_KEY);
+    // Send email using Resend (guard if missing)
+    let resend: any = null;
+    try {
+      const { Resend } = require('resend');
+      if (!process.env.RESEND_API_KEY) {
+        throw new Error('Missing RESEND_API_KEY environment variable');
+      }
+      resend = new Resend(process.env.RESEND_API_KEY);
+    } catch (e: any) {
+      console.error('[dev/feedback/notify] Resend unavailable:', e?.message || e);
+      return res.status(500).json({ error: 'Email service unavailable: ' + (e?.message || 'resend not installed or missing API key') });
+    }
 
     // Create a unique Message-ID for this feedback notification
     const messageId = `feedback-${feedback.id}@${process.env.EMAIL_DOMAIN || 'joineryai.app'}`;
