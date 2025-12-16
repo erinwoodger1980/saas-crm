@@ -80,6 +80,7 @@ router.post("/", requireAuth, async (req: any, res) => {
       costingInputKey,
       isActive = true,
       questionnaireId: incomingQuestionnaireId,
+      productTypes,
     } = req.body;
 
     if (!key || !label || !type) {
@@ -144,6 +145,7 @@ router.post("/", requireAuth, async (req: any, res) => {
         costingInputKey: costingInputKey || null,
         scope: scope || "item",
         isActive,
+        productTypes: Array.isArray(productTypes) ? productTypes : [],
       },
     });
 
@@ -182,6 +184,7 @@ router.put("/:id", requireAuth, async (req: any, res) => {
       isActive,
       scope,
       questionnaireId: newQuestionnaireId,
+      productTypes,
     } = req.body;
 
     // Validate type if provided
@@ -215,6 +218,7 @@ router.put("/:id", requireAuth, async (req: any, res) => {
         ...(costingInputKey !== undefined && { costingInputKey }),
         ...(scope !== undefined && { scope }),
         ...(isActive !== undefined && { isActive }),
+        ...(productTypes !== undefined && { productTypes: Array.isArray(productTypes) ? productTypes : [] }),
         ...questionnaireUpdate,
       },
     });

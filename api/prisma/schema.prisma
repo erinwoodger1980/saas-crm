@@ -1933,6 +1933,7 @@ model QuestionnaireField {
   scope               String?                   @default("item")
   isHidden            Boolean                   @default(false)
   isStandard          Boolean                   @default(false)
+  productTypes        String[]                  @default([])
   examplePhotoAnswers ExamplePhotoFieldAnswer[]
   answers             QuestionnaireAnswer[]
   questionnaire       Questionnaire             @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)

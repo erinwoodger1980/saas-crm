@@ -7,6 +7,7 @@ import useSWR from "swr";
 import InlineEditableCell from "./InlineEditableCell";
 import CreateQuestionnaireFieldModal, { NewFieldPayload } from "./CreateQuestionnaireFieldModal";
 import { VisualOptionsEditor } from "./VisualOptionsEditor";
+import { ProductTypeSelector } from "./ProductTypeSelector";
 
 export interface QuestionnaireFieldRow {
   id: string;
@@ -18,6 +19,7 @@ export interface QuestionnaireFieldRow {
   options?: string[] | null;
   isStandard?: boolean; // true for built-in fields
   scope?: "client" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal"; // where field is used
+  productTypes?: string[]; // Array of product type IDs this question applies to (e.g., ["doors-entrance", "doors-bifold"])
 }
 
 const FIELD_TYPES: Array<QuestionnaireFieldRow["type"]> = ["text", "number", "select", "boolean"];
@@ -43,6 +45,7 @@ function SortableRow({ field, onChange, onDelete }: { field: QuestionnaireFieldR
   };
   const isStandard = field.isStandard;
   const [showOptionsEditor, setShowOptionsEditor] = useState(false);
+  const [showProductTypeSelector, setShowProductTypeSelector] = useState(false);
   
   return (
     <>
@@ -100,6 +103,15 @@ function SortableRow({ field, onChange, onDelete }: { field: QuestionnaireFieldR
             <span className="text-slate-400">—</span>
           )}
         </td>
+        <td className="w-36">
+          <button
+            onClick={() => setShowProductTypeSelector(!showProductTypeSelector)}
+            className="px-3 py-1 rounded text-[11px] bg-purple-50 text-purple-600 hover:bg-purple-100"
+            title="Link to product types"
+          >
+            {field.productTypes?.length ? `${field.productTypes.length} products` : 'All products'}
+          </button>
+        </td>
         <td className="w-20 text-right pr-2">
           {!isStandard ? (
             <button
@@ -116,7 +128,7 @@ function SortableRow({ field, onChange, onDelete }: { field: QuestionnaireFieldR
       </tr>
       {showOptionsEditor && field.type === "select" && (
         <tr>
-          <td colSpan={8} className="p-4 bg-slate-50">
+          <td colSpan={9} className="p-4 bg-slate-50">
             <div className="max-w-2xl">
               <h4 className="text-sm font-semibold mb-3 text-slate-700">Edit Options for "{field.label}"</h4>
               <VisualOptionsEditor
@@ -125,6 +137,22 @@ function SortableRow({ field, onChange, onDelete }: { field: QuestionnaireFieldR
                   onChange({ options: newOptions });
                   setShowOptionsEditor(false);
                 }}
+              />
+            </div>
+          </td>
+        </tr>
+      )}
+      {showProductTypeSelector && (
+        <tr>
+          <td colSpan={9} className="p-4 bg-purple-50">
+            <div className="max-w-3xl">
+              <h4 className="text-sm font-semibold mb-3 text-slate-700">Link "{field.label}" to Product Types</h4>
+              <ProductTypeSelector
+                selectedProductTypes={field.productTypes || []}
+                onChange={(productTypes) => {
+                  onChange({ productTypes: productTypes.length > 0 ? productTypes : undefined });
+                }}
+                onClose={() => setShowProductTypeSelector(false)}
               />
             </div>
           </td>
@@ -302,18 +330,19 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
               <div className="rounded border bg-white shadow-sm overflow-hidden">
                 <SortableContext items={standardFields.map((r) => r.id)} strategy={verticalListSortingStrategy}>
                   <table className="w-full text-xs">
-                    <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
-                      <tr>
-                        <th className="w-6"></th>
-                        <th className="text-left font-medium py-2 px-2">Label</th>
-                        <th className="text-left font-medium">Type</th>
-                        <th className="text-left font-medium">Scope</th>
-                        <th className="text-center font-medium">Required</th>
-                        <th className="text-left font-medium">Costing Key</th>
-                        <th className="text-left font-medium">Options</th>
-                        <th></th>
-                      </tr>
-                    </thead>
+                  <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="w-6"></th>
+                      <th className="text-left font-medium py-2 px-2">Label</th>
+                      <th className="text-left font-medium">Type</th>
+                      <th className="text-left font-medium">Scope</th>
+                      <th className="text-center font-medium">Required</th>
+                      <th className="text-left font-medium">Costing Key</th>
+                      <th className="text-left font-medium">Options</th>
+                      <th className="text-left font-medium">Product Types</th>
+                      <th></th>
+                    </tr>
+                  </thead>
                     <tbody>
                       {standardFields.map((r) => (
                         <SortableRow
@@ -340,7 +369,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
               </div>
             ) : (
               <div className="rounded border bg-white shadow-sm overflow-hidden">
-                <SortableContext items={customFields.map((r) => r.id)} strategy={verticalListSortingStrategy}>
+                <SortableContext items={standardFields.map((r) => r.id)} strategy={verticalListSortingStrategy}>
                   <table className="w-full text-xs">
                     <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
                       <tr>
@@ -351,6 +380,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
                         <th className="text-center font-medium">Required</th>
                         <th className="text-left font-medium">Costing Key</th>
                         <th className="text-left font-medium">Options</th>
+                        <th className="text-left font-medium">Product Types</th>
                         <th></th>
                       </tr>
                     </thead>
