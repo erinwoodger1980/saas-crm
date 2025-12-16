@@ -135,15 +135,20 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-6">
             <div className="relative">
               <div className="relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-[36px] border border-slate-200/80 bg-white shadow-[0_30px_60px_-36px_rgba(15,23,42,0.65)]">
-                {/* Always show JoineryAI logo */}
-                <Image
-                  src="/images/joineryai-logo.png"
-                  alt="JoineryAI"
-                  width={96}
-                  height={96}
-                  className="h-full w-full object-contain p-2"
-                  priority
-                />
+                {logoUrl ? (
+                  <Image
+                    src={logoUrl}
+                    alt={`${brandName} logo`}
+                    width={96}
+                    height={96}
+                    className="h-full w-full object-contain"
+                    priority
+                  />
+                ) : (
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-slate-500 to-slate-700 text-xl font-bold text-white">
+                    {brandName.split(' ').map(w => w[0] || '').join('').slice(0, 2).toUpperCase()}
+                  </span>
+                )}
               </div>
               <span className="absolute -bottom-2 -right-2 rounded-full border border-white bg-emerald-500 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-white shadow-sm">
                 Live
