@@ -240,10 +240,30 @@ export function TypeSelectorModal({ isOpen, onClose, onSelect }: TypeSelectorMod
                   className="p-6 border-2 border-slate-200 rounded-lg hover:border-sky-400 hover:bg-sky-50 transition-all group"
                 >
                   <div className="aspect-square bg-slate-100 rounded-lg mb-4 flex items-center justify-center overflow-hidden">
-                    {/* Placeholder for diagram - will be replaced with actual SVGs */}
-                    <div className="text-4xl text-slate-400">
-                      {category === "doors" ? "🚪" : "🪟"}
-                    </div>
+                    {/* SVG Diagram */}
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 100 100"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="w-16 h-16 text-slate-600"
+                    >
+                      {option.id.includes("alu-clad") ? (
+                        <>
+                          {/* outer clad */}
+                          <rect x="16" y="16" width="68" height="68" rx="2" />
+                          {/* timber frame inside */}
+                          <rect x="20" y="20" width="60" height="60" rx="2" strokeWidth="2" />
+                          {/* sash */}
+                          <rect x="24" y="24" width="52" height="52" rx="1" />
+                        </>
+                      ) : (
+                        <circle cx="50" cy="50" r="30" />
+                      )}
+                    </svg>
                   </div>
                   <div className="text-sm font-semibold text-slate-900 text-center">
                     {option.label}
