@@ -705,6 +705,7 @@ export default function LeadModal({
       // Default columns
       const defaultColumns: ColumnConfig[] = [
         { key: "itemNumber", label: "Item #", type: "number", width: 80, frozen: true, visible: true },
+        { key: "productType", label: "Type", type: "type", width: 200, frozen: false, visible: true },
         { key: "width_mm", label: "Width (mm)", type: "number", width: 120, frozen: false, visible: true },
         { key: "height_mm", label: "Height (mm)", type: "number", width: 120, frozen: false, visible: true },
       ];

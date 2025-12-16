@@ -3,6 +3,7 @@
 import { useRef, useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { Plus, Trash2, Settings } from "lucide-react";
+import { TypeSelectorModal } from "./TypeSelectorModal";
 
 export type QuoteItem = {
   id: string;
@@ -17,6 +18,7 @@ export type ColumnConfig = {
   frozen: boolean;
   visible: boolean;
   options?: string[];
+  color?: string;
 };
 
 interface QuoteItemsGridProps {
@@ -36,6 +38,7 @@ export function QuoteItemsGrid({
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const [editingCell, setEditingCell] = useState<{ itemId: string; key: string } | null>(null);
   const [editValue, setEditValue] = useState<string>("");
+  const [showTypeSelector, setShowTypeSelector] = useState<{ itemId: string; key: string } | null>(null);
 
   // Sync scroll between header and body
   const handleBodyScroll = () => {
@@ -66,9 +69,31 @@ export function QuoteItemsGrid({
     onItemsChange(items.filter((item) => item.id !== itemId));
   };
 
-  const handleCellClick = (itemId: string, key: string, currentValue: any) => {
+  const handleCellClick = (itemId: string, key: string, currentValue: any, column: ColumnConfig) => {
+    // If column type is "type", open the type selector modal
+    if (column.type === "type") {
+      setShowTypeSelector({ itemId, key });
+      return;
+    }
     setEditingCell({ itemId, key });
     setEditValue(String(currentValue ?? ""));
+  };
+
+  const handleTypeSelection = (itemId: string, key: string, selection: { category: string; type: string; option: string }) => {
+    const displayValue = `${selection.category === "doors" ? "Door" : "Window"} - ${selection.type} - ${selection.option}`;
+    const updatedItems = items.map((item) =>
+      item.id === itemId
+        ? {
+            ...item,
+            [key]: displayValue,
+            [`${key}_category`]: selection.category,
+            [`${key}_type`]: selection.type,
+            [`${key}_option`]: selection.option,
+          }
+        : item
+    );
+    onItemsChange(updatedItems);
+    setShowTypeSelector(null);
   };
 
   const handleCellChange = (itemId: string, key: string, value: any) => {
@@ -88,6 +113,18 @@ export function QuoteItemsGrid({
   const renderCell = (item: QuoteItem, column: ColumnConfig) => {
     const value = item[column.key];
     const isEditing = editingCell?.itemId === item.id && editingCell?.key === column.key;
+
+    // Type selector cells
+    if (column.type === "type") {
+      return (
+        <div
+          className="w-full h-full px-2 py-1 cursor-pointer truncate hover:bg-sky-50"
+          onClick={() => handleCellClick(item.id, column.key, value, column)}
+        >
+          {value || <span className="text-slate-400">Select type...</span>}
+        </div>
+      );
+    }
 
     if (isEditing) {
       if (column.type === "select" && column.options) {
@@ -153,14 +190,15 @@ export function QuoteItemsGrid({
 
     // Display value
     if (column.type === "color" && value) {
+      const bgColor = column.color || value;
       return (
         <div
           className="w-full h-full flex items-center gap-2 px-2 py-1 cursor-pointer"
-          onClick={() => handleCellClick(item.id, column.key, value)}
+          onClick={() => handleCellClick(item.id, column.key, value, column)}
         >
           <div
             className="w-6 h-6 rounded border border-slate-300"
-            style={{ backgroundColor: value }}
+            style={{ backgroundColor: bgColor }}
           />
           <span className="text-xs">{value}</span>
         </div>
@@ -170,7 +208,7 @@ export function QuoteItemsGrid({
     return (
       <div
         className="w-full h-full px-2 py-1 cursor-pointer truncate"
-        onClick={() => handleCellClick(item.id, column.key, value)}
+        onClick={() => handleCellClick(item.id, column.key, value, column)}
       >
         {value ?? ""}
       </div>
@@ -290,6 +328,17 @@ export function QuoteItemsGrid({
         )}
         </div>
       </div>
+
+      {/* Type Selector Modal */}
+      {showTypeSelector && (
+        <TypeSelectorModal
+          isOpen={true}
+          onClose={() => setShowTypeSelector(null)}
+          onSelect={(selection) =>
+            handleTypeSelection(showTypeSelector.itemId, showTypeSelector.key, selection)
+          }
+        />
+      )}
     </div>
   );
 }
