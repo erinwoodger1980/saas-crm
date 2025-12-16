@@ -13,6 +13,7 @@ import PdfTemplatesSection from "@/components/settings/PdfTemplatesSection";
 import MaterialCostDebugPanel from "@/components/settings/MaterialCostDebugPanel";
 import AdminQuestionnaireFieldsTable from "@/components/questionnaire/AdminQuestionnaireFieldsTable";
 import ProductTypesSection from "@/components/settings/ProductTypesSection";
+import { DiagramSvgGenerator } from "@/components/settings/DiagramSvgGenerator";
 import {
   DEFAULT_TASK_PLAYBOOK,
   MANUAL_TASK_KEYS,
@@ -2520,9 +2521,15 @@ export default function SettingsPage() {
       )}
 
       {currentStage === "products" && (
-        <Section title="Product Types" description="Manage your product catalog with images and ML training">
-          <ProductTypesSection />
-        </Section>
+        <>
+          <Section title="Product Types" description="Manage your product catalog with images and ML training">
+            <ProductTypesSection />
+          </Section>
+          
+          <Section title="Diagram SVG Generator" description="Generate coloured elevation-style diagrams from text descriptions">
+            <DiagramSvgGenerator />
+          </Section>
+        </>
       )}
 
       {currentStage === "integrations" && (

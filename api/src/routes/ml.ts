@@ -1138,10 +1138,16 @@ router.post("/train-product-types", async (req, res) => {
 /**
  * POST /ml/generate-product-svg
  * Generate SVG diagram for a product option using AI
+ * Now supports both simple templates and AI-generated detailed diagrams
  */
 router.post("/generate-product-svg", async (req, res) => {
   try {
-    const { category, type, option } = req.body;
+    const { category, type, option, description } = req.body;
+
+    // If description is provided, generate detailed AI diagram
+    if (description) {
+      return await generateDetailedDiagram(req, res);
+    }
 
     if (!category || !type || !option) {
       return res.status(400).json({ error: "category, type, and option required" });
@@ -1209,6 +1215,162 @@ router.post("/generate-product-svg", async (req, res) => {
     res.json({ svg });
   } catch (error: any) {
     console.error("[ml/generate-product-svg] error:", error);
+    res.status(500).json({ error: error.message || "internal_error" });
+  }
+});
+
+/**
+ * Generate detailed AI diagram from text description
+ * (Helper function called from /generate-product-svg when description is provided)
+ */
+async function generateDetailedDiagram(req: any, res: any) {
+  try {
+    const { description, fileName } = req.body;
+
+    if (!description?.trim()) {
+      return res.status(400).json({ error: "description required" });
+    }
+
+    // Call OpenAI to generate SVG
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    if (!openaiApiKey) {
+      return res.status(500).json({ error: "OpenAI API key not configured" });
+    }
+
+    const systemPrompt = `You are an expert technical illustrator that creates colored elevation-style joinery diagrams as SVG code.
+
+MANDATORY RULES:
+1. Output ONLY the SVG code, no markdown, no explanations, no \`\`\`svg blocks
+2. Use viewBox="0 0 140 170" (width 140, height 170)
+3. White background (#FFFFFF)
+4. Colors:
+   - Timber: #B45A4D
+   - Dark timber accent: #9E4B40
+   - Glass: #56DDE5
+   - Lines/text: #1F1F1F
+5. Stroke widths:
+   - Outer frame: 2
+   - Internal joinery: 1.5
+   - Muntins: 1.2
+   - Dimensions: 1.6
+6. Font: Arial, Helvetica, sans-serif, size 12
+7. Include dimension lines with:
+   - Top horizontal line with width label (e.g., "800mm")
+   - Left vertical line (rotated -90°) with height label (e.g., "2025mm")
+   - Small tick marks at dimension line ends
+8. NO gradients, shadows, scripts, or external references
+9. Draw as a front elevation view with proper proportions
+10. Show panels, glazing, rails, stiles, muntins as specified
+11. Use <rect> for solid panels (timber color)
+12. Use <rect> for glass (glass color)
+13. Draw dimension lines outside the main frame`;
+
+    const userPrompt = `Create a colored joinery elevation diagram for: ${description}
+
+Remember:
+- Start with white background rectangle
+- Draw outer frame in timber color
+- Add glazing zones in glass color
+- Add panels in timber/dark timber
+- Include dimension lines and labels
+- Output ONLY the SVG code`;
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${openaiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.7,
+        max_tokens: 2000,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      console.error("[ml/generate-diagram] OpenAI error:", error);
+      return res.status(500).json({ error: "OpenAI API error: " + (error.error?.message || "unknown") });
+    }
+
+    const data = await response.json();
+    let svg = data.choices?.[0]?.message?.content?.trim() || "";
+
+    // Clean up any markdown artifacts
+    svg = svg.replace(/```svg\n?/g, "").replace(/```\n?/g, "").trim();
+
+    // Validate SVG
+    if (!svg.startsWith("<svg")) {
+      return res.status(400).json({ error: "Invalid SVG generated (missing <svg tag)" });
+    }
+
+    if (svg.includes("<script")) {
+      return res.status(400).json({ error: "Invalid SVG generated (contains script tags)" });
+    }
+
+    if (svg.length > 50000) {
+      return res.status(400).json({ error: "SVG too large (exceeds 50KB)" });
+    }
+
+    res.json({ svg });
+  } catch (error: any) {
+    console.error("[ml/generate-diagram] error:", error);
+    res.status(500).json({ error: error.message || "internal_error" });
+  }
+}
+
+/**
+ * POST /ml/save-diagram-svg
+ * Save generated SVG to project files
+ */
+router.post("/save-diagram-svg", async (req, res) => {
+  try {
+    const { fileName, svg } = req.body;
+
+    if (!fileName?.trim() || !svg?.trim()) {
+      return res.status(400).json({ error: "fileName and svg required" });
+    }
+
+    // Validate SVG
+    if (!svg.startsWith("<svg")) {
+      return res.status(400).json({ error: "Invalid SVG" });
+    }
+
+    // Security: restrict to development or admin users
+    const isAdmin = (req as any).auth?.role === "admin" || (req as any).auth?.role === "owner";
+    const isDev = process.env.NODE_ENV === "development";
+    
+    if (!isDev && !isAdmin) {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    // Ensure .svg extension
+    const safeFileName = fileName.endsWith(".svg") ? fileName : `${fileName}.svg`;
+    
+    // Write to diagrams directory
+    const fs = await import("fs/promises");
+    const path = await import("path");
+    
+    const diagramsDir = path.join(process.cwd(), "../web/public/diagrams/product-types");
+    await fs.mkdir(diagramsDir, { recursive: true });
+    
+    const filePath = path.join(diagramsDir, safeFileName);
+    await fs.writeFile(filePath, svg, "utf-8");
+
+    const publicPath = `/diagrams/product-types/${safeFileName}`;
+    
+    res.json({ 
+      path: filePath,
+      publicPath,
+      message: "SVG saved successfully"
+    });
+  } catch (error: any) {
+    console.error("[ml/save-diagram-svg] error:", error);
     res.status(500).json({ error: error.message || "internal_error" });
   }
 });
