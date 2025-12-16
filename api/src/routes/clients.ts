@@ -44,6 +44,7 @@ router.get("/", async (req, res) => {
       select: {
         id: true,
         name: true,
+        type: true,
         email: true,
         phone: true,
         companyName: true,
@@ -125,6 +126,7 @@ router.get("/:id", async (req, res) => {
       select: {
         id: true,
         name: true,
+        type: true,
         email: true,
         phone: true,
         companyName: true,
