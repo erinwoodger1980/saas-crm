@@ -130,6 +130,7 @@ type NormalizedQuestionnaireField = {
   internalOnly?: boolean;
   visibleAfterOrder?: boolean;
   sortOrder: number;
+  productTypes?: string[];
 };
 
 type TenantSettings = {
@@ -285,6 +286,9 @@ function normalizeQuestionnaireFields(
         typeof (raw as any).sortOrder === "number" && Number.isFinite((raw as any).sortOrder)
           ? (raw as any).sortOrder
           : idx;
+      const productTypes = Array.isArray((raw as any).productTypes)
+        ? (raw as any).productTypes.filter((pt: any) => typeof pt === "string" && pt.trim()).map((pt: any) => pt.trim())
+        : undefined;
       return {
         id,
         key,
@@ -297,6 +301,7 @@ function normalizeQuestionnaireFields(
         internalOnly,
         visibleAfterOrder,
         sortOrder,
+        productTypes,
       } as NormalizedQuestionnaireField;
     })
     .filter((item): item is NormalizedQuestionnaireField => Boolean(item?.key))
@@ -980,8 +985,8 @@ export default function LeadModal({
               const [client, quoteDetails, manuf, pub, internal, fireDoorSched, fireDoorItems] = isFireDoor 
                 ? results 
                 : [...results, [], []];
-              setClientFields((client || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: true, showOnLead: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
-              setQuoteDetailsFields((quoteDetails || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: true, showOnLead: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
+              setClientFields((client || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: true, showOnLead: true, sortOrder: f.sortOrder || 0, productTypes: Array.isArray(f.productTypes) ? f.productTypes : undefined })) as NormalizedQuestionnaireField[]);
+              setQuoteDetailsFields((quoteDetails || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: true, showOnLead: true, sortOrder: f.sortOrder || 0, productTypes: Array.isArray(f.productTypes) ? f.productTypes : undefined })) as NormalizedQuestionnaireField[]);
               setManufacturingFields((manuf || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, visibleAfterOrder: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
               setFireDoorScheduleFields((fireDoorSched || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
               setFireDoorLineItemsFields((fireDoorItems || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
@@ -2469,6 +2474,27 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     () => normalizeQuestionnaireFields(settings?.questionnaire ?? null),
     [settings?.questionnaire]
   );
+  
+  // Extract selected product types from quote items
+  const selectedProductTypes = useMemo(() => {
+    const types = new Set<string>();
+    quoteItems.forEach((item) => {
+      Object.keys(item).forEach((key) => {
+        // Look for fields with _category and _type suffixes
+        if (key.endsWith('_category')) {
+          const baseKey = key.replace('_category', '');
+          const category = item[key];
+          const type = item[`${baseKey}_type`];
+          if (category && type) {
+            // Product type format: "category-type" (e.g., "doors-bifold")
+            types.add(`${category}-${type}`);
+          }
+        }
+      });
+    });
+    return Array.from(types);
+  }, [quoteItems]);
+  
   const baseWorkspaceFields = useMemo(
     () =>
       questionnaireFields.filter((field) => {
@@ -2476,9 +2502,23 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         if (field.visibleAfterOrder) {
           return uiStatus === "WON";
         }
+        
+        // Filter by product types if field has productTypes specified
+        if (field.productTypes && field.productTypes.length > 0) {
+          // Only show this field if at least one selected product type matches
+          if (selectedProductTypes.length === 0) {
+            // No products selected yet, hide fields with specific product type requirements
+            return false;
+          }
+          // Check if any selected product type matches the field's product types
+          const hasMatch = field.productTypes.some((pt) => selectedProductTypes.includes(pt));
+          if (!hasMatch) return false;
+        }
+        // If field has no productTypes, show it for all products
+        
         return true;
       }),
-    [questionnaireFields, uiStatus]
+    [questionnaireFields, uiStatus, selectedProductTypes]
   );
   const workspaceFields = useMemo(() => {
     const existingKeys = new Set(baseWorkspaceFields.map((field) => field.key));
@@ -3559,7 +3599,16 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       Quote Details
                     </div>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {quoteDetailsFields.map((field) => {
+                      {quoteDetailsFields
+                        .filter((field) => {
+                          // Filter by product types if field has productTypes specified
+                          if (field.productTypes && field.productTypes.length > 0) {
+                            if (selectedProductTypes.length === 0) return false;
+                            return field.productTypes.some((pt) => selectedProductTypes.includes(pt));
+                          }
+                          return true;
+                        })
+                        .map((field) => {
                         const key = field.key;
                         if (!key) return null;
                         const value = (customData as any)?.[key] ?? "";
