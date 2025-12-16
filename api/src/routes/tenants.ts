@@ -448,8 +448,15 @@ async function updateSettings(req: any, res: any) {
       update.isGroupCoachingMember = !!isGroupCoachingMember;
     }
     if (productTypes !== undefined) {
-      const parsedProductTypes = safeParseJson(productTypes, []);
-      update.productTypes = Array.isArray(parsedProductTypes) ? parsedProductTypes : [];
+      // productTypes is Json type in Prisma, accept array or string
+      if (Array.isArray(productTypes)) {
+        update.productTypes = productTypes;
+      } else if (typeof productTypes === 'string') {
+        const parsed = safeParseJson(productTypes, []);
+        update.productTypes = Array.isArray(parsed) ? parsed : [];
+      } else {
+        update.productTypes = [];
+      }
     }
 
     if (ownerFirstName !== undefined) {
