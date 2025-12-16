@@ -288,6 +288,43 @@ export default function ProductTypesSection() {
     }
   };
 
+  const addCategory = () => {
+    setProducts((prev) => [
+      ...prev,
+      {
+        id: `category-custom-${Date.now()}`,
+        label: "New Category",
+        types: [
+          {
+            type: `type-${Date.now()}`,
+            label: "New Type",
+            options: [{ id: `option-${Date.now()}`, label: "New Option" }],
+          },
+        ],
+      },
+    ]);
+  };
+
+  const addType = (categoryId: string) => {
+    setProducts((prev) =>
+      prev.map((cat) =>
+        cat.id === categoryId
+          ? {
+              ...cat,
+              types: [
+                ...cat.types,
+                {
+                  type: `type-${Date.now()}`,
+                  label: "New Type",
+                  options: [{ id: `option-${Date.now()}`, label: "New Option" }],
+                },
+              ],
+            }
+          : cat
+      )
+    );
+  };
+
   const addOption = (categoryId: string, typeIdx: number) => {
     setProducts((prev) =>
       prev.map((cat) =>
@@ -314,6 +351,20 @@ export default function ProductTypesSection() {
     );
   };
 
+  const deleteCategory = (categoryId: string) => {
+    setProducts((prev) => prev.filter((cat) => cat.id !== categoryId));
+  };
+
+  const deleteType = (categoryId: string, typeIdx: number) => {
+    setProducts((prev) =>
+      prev.map((cat) =>
+        cat.id === categoryId
+          ? { ...cat, types: cat.types.filter((_, idx) => idx !== typeIdx) }
+          : cat
+      )
+    );
+  };
+
   const deleteOption = (categoryId: string, typeIdx: number, optionId: string) => {
     setProducts((prev) =>
       prev.map((cat) =>
@@ -327,6 +378,29 @@ export default function ProductTypesSection() {
                       options: type.options.filter((opt) => opt.id !== optionId),
                     }
                   : type
+              ),
+            }
+          : cat
+      )
+    );
+  };
+
+  const updateCategoryLabel = (categoryId: string, label: string) => {
+    setProducts((prev) =>
+      prev.map((cat) =>
+        cat.id === categoryId ? { ...cat, label } : cat
+      )
+    );
+  };
+
+  const updateTypeLabel = (categoryId: string, typeIdx: number, label: string) => {
+    setProducts((prev) =>
+      prev.map((cat) =>
+        cat.id === categoryId
+          ? {
+              ...cat,
+              types: cat.types.map((type, idx) =>
+                idx === typeIdx ? { ...type, label } : type
               ),
             }
           : cat
@@ -370,19 +444,36 @@ export default function ProductTypesSection() {
         <p className="text-sm text-slate-600">
           Manage your product catalog. Images are used in the type selector modal and feed into ML training for automated quote detection.
         </p>
-        <Button onClick={saveProducts} disabled={saving}>
-          {saving ? "Saving..." : "Save Products"}
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={addCategory}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Category
+          </Button>
+          <Button onClick={saveProducts} disabled={saving}>
+            {saving ? "Saving..." : "Save Products"}
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-3">
-        {products.map((category) => (
+        {products.map((category, categoryIdx) => (
           <div key={category.id} className="border rounded-lg bg-white">
-            <button
-              onClick={() => toggleCategory(category.id)}
-              className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
-            >
-              <div className="flex items-center gap-2">
+            {expandedCategories[category.id] ? (
+              <div className="border-b p-4 space-y-2 bg-slate-50">
+                <label className="block text-xs font-semibold text-slate-600">Category Name</label>
+                <Input
+                  value={category.label}
+                  onChange={(e) => updateCategoryLabel(category.id, e.target.value)}
+                  className="mb-2"
+                  placeholder="Category name"
+                />
+              </div>
+            ) : null}
+            <div className="flex items-center justify-between p-4 hover:bg-slate-50 transition-colors">
+              <button
+                onClick={() => toggleCategory(category.id)}
+                className="flex-1 flex items-center gap-2"
+              >
                 {expandedCategories[category.id] ? (
                   <ChevronDown className="h-4 w-4" />
                 ) : (
@@ -392,8 +483,29 @@ export default function ProductTypesSection() {
                 <span className="text-xs text-slate-500">
                   {category.types.reduce((sum, t) => sum + t.options.length, 0)} options
                 </span>
+              </button>
+              <div className="flex gap-2">
+                {expandedCategories[category.id] && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => addType(category.id)}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add Type
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => deleteCategory(category.id)}
+                  className="text-red-600 hover:text-red-700"
+                  title="Delete category"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
               </div>
-            </button>
+            </div>
 
             {expandedCategories[category.id] && (
               <div className="border-t p-4 space-y-4">
@@ -401,11 +513,22 @@ export default function ProductTypesSection() {
                   const typeKey = `${category.id}-${type.type}`;
                   return (
                     <div key={type.type} className="border rounded-lg bg-slate-50">
-                      <button
-                        onClick={() => toggleType(typeKey)}
-                        className="w-full flex items-center justify-between p-3 hover:bg-slate-100 transition-colors"
-                      >
-                        <div className="flex items-center gap-2">
+                      {expandedTypes[typeKey] ? (
+                        <div className="border-b p-3 space-y-2 bg-white">
+                          <label className="block text-xs font-semibold text-slate-600">Type Name</label>
+                          <Input
+                            value={type.label}
+                            onChange={(e) => updateTypeLabel(category.id, typeIdx, e.target.value)}
+                            className="mb-2"
+                            placeholder="Type name"
+                          />
+                        </div>
+                      ) : null}
+                      <div className="flex items-center justify-between p-3 hover:bg-slate-100 transition-colors">
+                        <button
+                          onClick={() => toggleType(typeKey)}
+                          className="flex-1 flex items-center gap-2"
+                        >
                           {expandedTypes[typeKey] ? (
                             <ChevronDown className="h-3 w-3" />
                           ) : (
@@ -413,19 +536,32 @@ export default function ProductTypesSection() {
                           )}
                           <span className="text-sm font-medium text-slate-800">{type.label}</span>
                           <span className="text-xs text-slate-500">{type.options.length} options</span>
+                        </button>
+                        <div className="flex gap-2">
+                          {expandedTypes[typeKey] && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                addOption(category.id, typeIdx);
+                              }}
+                            >
+                              <Plus className="h-3 w-3 mr-1" />
+                              Add Option
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => deleteType(category.id, typeIdx)}
+                            className="text-red-600 hover:text-red-700"
+                            title="Delete type"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            addOption(category.id, typeIdx);
-                          }}
-                        >
-                          <Plus className="h-3 w-3 mr-1" />
-                          Add Option
-                        </Button>
-                      </button>
+                      </div>
 
                       {expandedTypes[typeKey] && (
                         <div className="border-t p-3 space-y-3">
