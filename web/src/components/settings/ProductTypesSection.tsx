@@ -7,6 +7,9 @@ import { apiFetch } from "@/lib/api";
 import { Upload, Trash2, Plus, Wand2, ChevronRight, ChevronDown } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
+const DEFAULT_SVG_PROMPT =
+  "Provide a detailed elevation with correct timber/glass fills, rails, stiles, panels, muntins, and dimension lines (800mm top, 2025mm left).";
+
 type ProductOption = {
   id: string;
   label: string;
@@ -131,6 +134,13 @@ export default function ProductTypesSection() {
   const [expandedTypes, setExpandedTypes] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
   const [generatingSvg, setGeneratingSvg] = useState<string | null>(null);
+  const [svgDialog, setSvgDialog] = useState<{
+    categoryId: string;
+    typeIdx: number;
+    optionId: string;
+    label: string;
+  } | null>(null);
+  const [svgDescription, setSvgDescription] = useState<string>("");
 
   useEffect(() => {
     loadProducts();
@@ -191,7 +201,9 @@ export default function ProductTypesSection() {
                       ? {
                           ...type,
                           options: type.options.map((opt) =>
-                            opt.id === optionId ? { ...opt, imageDataUrl: dataUrl } : opt
+                            opt.id === optionId
+                              ? { ...opt, imageDataUrl: dataUrl, imagePath: dataUrl, svg: undefined }
+                              : opt
                           ),
                         }
                       : type
@@ -211,7 +223,13 @@ export default function ProductTypesSection() {
     }
   };
 
-  const generateSvg = async (categoryId: string, typeIdx: number, optionId: string, label: string) => {
+  const generateSvg = async (
+    categoryId: string,
+    typeIdx: number,
+    optionId: string,
+    label: string,
+    description: string,
+  ) => {
     setGeneratingSvg(optionId);
     try {
       const response = await apiFetch<{ svg: string }>("/ml/generate-product-svg", {
@@ -220,8 +238,20 @@ export default function ProductTypesSection() {
           category: categoryId,
           type: products.find((c) => c.id === categoryId)?.types[typeIdx]?.type,
           option: label,
+          description,
         },
       });
+
+      const svg = response.svg?.trim();
+      if (!svg || !svg.startsWith("<svg")) {
+        throw new Error("Invalid SVG returned");
+      }
+      if (!svg.includes('viewBox="0 0 140 170"')) {
+        throw new Error("SVG missing required viewBox 0 0 140 170");
+      }
+      if (svg.includes("<script")) {
+        throw new Error("SVG contains forbidden script tag");
+      }
 
       setProducts((prev) =>
         prev.map((cat) =>
@@ -233,7 +263,7 @@ export default function ProductTypesSection() {
                     ? {
                         ...type,
                         options: type.options.map((opt) =>
-                          opt.id === optionId ? { ...opt, svg: response.svg } : opt
+                          opt.id === optionId ? { ...opt, svg, imageDataUrl: undefined, imagePath: undefined } : opt
                         ),
                       }
                     : type
@@ -463,9 +493,15 @@ export default function ProductTypesSection() {
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    onClick={() =>
-                                      generateSvg(category.id, typeIdx, option.id, option.label)
-                                    }
+                                    onClick={() => {
+                                      setSvgDialog({
+                                        categoryId: category.id,
+                                        typeIdx,
+                                        optionId: option.id,
+                                        label: option.label,
+                                      });
+                                      setSvgDescription(`${option.label}. ${DEFAULT_SVG_PROMPT}`);
+                                    }}
                                     disabled={generatingSvg === option.id}
                                   >
                                     <Wand2 className="h-3 w-3 mr-1" />
@@ -495,6 +531,50 @@ export default function ProductTypesSection() {
           </div>
         ))}
       </div>
+
+      {svgDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-lg bg-white p-4 shadow-xl">
+            <div className="mb-2 text-lg font-semibold">Describe the SVG</div>
+            <p className="mb-3 text-sm text-muted-foreground">
+              Include panels, rails, stiles, muntins, glass areas, and dimensions. Colors should be fills, not just outlines.
+            </p>
+            <textarea
+              className="w-full rounded-md border p-2 text-sm"
+              rows={5}
+              value={svgDescription}
+              onChange={(e) => setSvgDescription(e.target.value)}
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setSvgDialog(null);
+                  setSvgDescription("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  if (!svgDialog) return;
+                  generateSvg(
+                    svgDialog.categoryId,
+                    svgDialog.typeIdx,
+                    svgDialog.optionId,
+                    svgDialog.label,
+                    svgDescription.trim() || `${svgDialog.label}. ${DEFAULT_SVG_PROMPT}`,
+                  );
+                  setSvgDialog(null);
+                }}
+                disabled={generatingSvg === svgDialog.optionId}
+              >
+                {generatingSvg === svgDialog.optionId ? "Generating..." : "Generate"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

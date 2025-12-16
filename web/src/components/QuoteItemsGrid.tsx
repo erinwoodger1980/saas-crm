@@ -45,6 +45,13 @@ export function QuoteItemsGrid({
   const [showAiSearch, setShowAiSearch] = useState<{ itemId: string; key: string } | null>(null);
   const [aiSearchQuery, setAiSearchQuery] = useState<string>("");
   const [aiSearching, setAiSearching] = useState(false);
+  const [aiClarifications, setAiClarifications] = useState<
+    | null
+    | Array<{
+        question: string;
+        options: Array<{ label: string; category: string; type: string; option: string; hint?: string }>;
+      }>
+  >(null);
   const { toast } = useToast();
 
   // Sync scroll between header and body
@@ -109,20 +116,33 @@ export function QuoteItemsGrid({
 
     setAiSearching(true);
     try {
-      const response = await apiFetch<{ category: string; type: string; option: string; confidence: number }>("/ml/search-product-type", {
+      const response = await apiFetch<
+        | { category: string; type: string; option: string; confidence: number; clarifications?: never }
+        | { clarifications: Array<{ question: string; options: Array<{ label: string; category: string; type: string; option: string; hint?: string }> }>; message?: string }
+      >("/ml/search-product-type", {
         method: "POST",
         json: { description: aiSearchQuery },
       });
 
-      if (response.category && response.type && response.option) {
+      if ((response as any).clarifications) {
+        const data = response as { clarifications: Array<{ question: string; options: any[] }>; message?: string };
+        setAiClarifications(data.clarifications);
+        if (data.message) {
+          toast({ title: "Need more detail", description: data.message });
+        }
+        return;
+      }
+
+      const match = response as { category: string; type: string; option: string; confidence: number };
+      if (match.category && match.type && match.option) {
         handleTypeSelection(showAiSearch.itemId, showAiSearch.key, {
-          category: response.category,
-          type: response.type,
-          option: response.option,
+          category: match.category,
+          type: match.type,
+          option: match.option,
         });
         toast({
           title: "Product type found",
-          description: `Matched: ${response.category} - ${response.type} - ${response.option}`,
+          description: `Matched: ${match.category} - ${match.type} - ${match.option}`,
         });
       } else {
         toast({
@@ -140,6 +160,21 @@ export function QuoteItemsGrid({
     } finally {
       setAiSearching(false);
     }
+  };
+
+  const handleClarificationSelect = (option: { label: string; category: string; type: string; option: string }) => {
+    if (!showAiSearch) return;
+    handleTypeSelection(showAiSearch.itemId, showAiSearch.key, {
+      category: option.category,
+      type: option.type,
+      option: option.option,
+    });
+    setAiClarifications(null);
+    setShowAiSearch(null);
+    toast({
+      title: "Product type selected",
+      description: `${option.category} - ${option.type} - ${option.option}`,
+    });
   };
 
   const handleCellChange = (itemId: string, key: string, value: any) => {
@@ -436,59 +471,114 @@ export function QuoteItemsGrid({
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold">AI Product Type Search</h3>
               <button
-                onClick={() => setShowAiSearch(null)}
+                onClick={() => {
+                  setShowAiSearch(null);
+                  setAiClarifications(null);
+                }}
                 className="text-slate-400 hover:text-slate-600 text-2xl leading-none"
               >
                 ×
               </button>
             </div>
-            <p className="text-sm text-slate-600">
-              Describe the product in plain English, or paste an AI-generated description from a photo.
-            </p>
-            <textarea
-              value={aiSearchQuery}
-              onChange={(e) => setAiSearchQuery(e.target.value)}
-              placeholder="e.g., 'Double casement window with georgian bars' or paste AI description..."
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              rows={4}
-              autoFocus
-            />
-            <div className="flex gap-2 justify-end">
-              <Button
-                variant="outline"
-                onClick={() => setShowAiSearch(null)}
-                disabled={aiSearching}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleAiSearch}
-                disabled={!aiSearchQuery.trim() || aiSearching}
-              >
-                {aiSearching ? (
-                  <>
-                    <Wand2 className="h-4 w-4 mr-2 animate-spin" />
-                    Searching...
-                  </>
-                ) : (
-                  <>
-                    <Wand2 className="h-4 w-4 mr-2" />
-                    Search
-                  </>
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  const current = showAiSearch;
-                  setShowAiSearch(null);
-                  setTimeout(() => setShowTypeSelector(current), 50);
-                }}
-                disabled={aiSearching}
-              >
-                Browse Manually
-              </Button>
-            </div>
+            {!aiClarifications && (
+              <>
+                <p className="text-sm text-slate-600">
+                  Describe the product in plain English, or paste an AI-generated description from a photo.
+                </p>
+                <textarea
+                  value={aiSearchQuery}
+                  onChange={(e) => setAiSearchQuery(e.target.value)}
+                  placeholder="e.g., 'Double casement window with georgian bars' or paste AI description..."
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  rows={4}
+                  autoFocus
+                />
+                <div className="flex gap-2 justify-end">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowAiSearch(null)}
+                    disabled={aiSearching}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleAiSearch}
+                    disabled={!aiSearchQuery.trim() || aiSearching}
+                  >
+                    {aiSearching ? (
+                      <>
+                        <Wand2 className="h-4 w-4 mr-2 animate-spin" />
+                        Searching...
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 className="h-4 w-4 mr-2" />
+                        Search
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const current = showAiSearch;
+                      setShowAiSearch(null);
+                      setTimeout(() => setShowTypeSelector(current), 50);
+                    }}
+                    disabled={aiSearching}
+                  >
+                    Browse Manually
+                  </Button>
+                </div>
+              </>
+            )}
+
+            {aiClarifications && (
+              <div className="space-y-4">
+                <p className="text-sm text-slate-600">
+                  We need a bit more detail to pick the right product. Choose an option below.
+                </p>
+                {aiClarifications.map((clarification, idx) => (
+                  <div key={idx} className="space-y-2">
+                    <div className="font-medium text-slate-900">{clarification.question}</div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                      {clarification.options.map((opt) => (
+                        <button
+                          key={`${opt.type}-${opt.option}-${opt.label}`}
+                          onClick={() => handleClarificationSelect(opt)}
+                          className="border rounded-lg p-3 text-left hover:border-blue-500 hover:bg-blue-50 transition"
+                        >
+                          <div className="font-semibold text-slate-900">{opt.label}</div>
+                          <div className="text-xs text-slate-500">{opt.option}</div>
+                          {opt.hint && <div className="text-xs text-slate-500 mt-1">{opt.hint}</div>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setAiClarifications(null);
+                    }}
+                    disabled={aiSearching}
+                  >
+                    Back
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setAiClarifications(null);
+                      setAiSearchQuery("");
+                      setShowAiSearch(null);
+                    }}
+                    disabled={aiSearching}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

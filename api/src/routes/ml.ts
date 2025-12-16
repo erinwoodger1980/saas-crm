@@ -1261,9 +1261,10 @@ MANDATORY RULES:
 8. NO gradients, shadows, scripts, or external references
 9. Draw as a front elevation view with proper proportions
 10. Show panels, glazing, rails, stiles, muntins as specified
-11. Use <rect> for solid panels (timber color)
-12. Use <rect> for glass (glass color)
-13. Draw dimension lines outside the main frame`;
+11. Use <rect> for solid panels (timber color) and fill them (do not leave white)
+12. Use <rect> for glass (glass color) and fill them (do not leave transparent)
+13. Use fills for joinery elements; do NOT return stroke-only monochrome drawings
+14. Draw dimension lines outside the main frame`;
 
     const userPrompt = `Create a colored joinery elevation diagram for: ${description}
 
@@ -1388,6 +1389,12 @@ router.post("/search-product-type", async (req, res) => {
       return res.status(400).json({ error: "description required" });
     }
 
+    // If the description mentions bi-fold doors but lacks panel/door counts, ask for clarification.
+    const bifoldClarification = getBifoldClarification(description);
+    if (bifoldClarification) {
+      return res.json(bifoldClarification);
+    }
+
     // Call OpenAI to match description to product type
     const openaiApiKey = process.env.OPENAI_API_KEY;
     if (!openaiApiKey) {
@@ -1469,6 +1476,11 @@ Respond ONLY with a JSON object in this exact format:
 function fallbackProductTypeSearch(description: string, res: any) {
   const desc = description.toLowerCase();
 
+  const bifoldClarification = getBifoldClarification(description);
+  if (bifoldClarification) {
+    return res.json(bifoldClarification);
+  }
+
   // Door types
   if (desc.includes("door")) {
     if (desc.includes("bifold") || desc.includes("bi-fold") || desc.includes("bi fold")) {
@@ -1522,5 +1534,39 @@ function fallbackProductTypeSearch(description: string, res: any) {
 
   // No match
   res.status(404).json({ error: "No matching product type found", confidence: 0.0 });
+}
+
+function getBifoldClarification(description: string) {
+  const desc = description.toLowerCase();
+  const mentionsBifold = desc.includes("bifold") || desc.includes("bi-fold") || desc.includes("bi fold");
+  if (!mentionsBifold) return null;
+
+  const panelMatch = desc.match(/(\d+)\s*(panel|panels|leaf|leaves)/);
+  const panelCount = panelMatch ? parseInt(panelMatch[1], 10) : null;
+
+  // If we have a clean panel count that maps to a known option, return it directly.
+  if (panelCount && [2, 3, 4].includes(panelCount)) {
+    return {
+      category: "doors",
+      type: "bifold",
+      option: `${panelCount} Panel`,
+      confidence: 0.8,
+    };
+  }
+
+  // Otherwise, ask the user to pick a panel count (and implicitly how many door leaves).
+  return {
+    clarifications: [
+      {
+        question: "How many panels does the bi-fold door have? (This also tells us how many door leaves)",
+        options: [
+          { label: "2 panels (single set)", category: "doors", type: "bifold", option: "2 Panel", hint: "One opening with two folding leaves" },
+          { label: "3 panels", category: "doors", type: "bifold", option: "3 Panel", hint: "Asymmetric set with three leaves" },
+          { label: "4 panels (pair of doors)", category: "doors", type: "bifold", option: "4 Panel", hint: "Wider opening or two-door pair" },
+        ],
+      },
+    ],
+    message: "Select panels so we can choose the correct bi-fold door type",
+  };
 }
 
