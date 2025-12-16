@@ -345,7 +345,7 @@ function toIsoOrUndefined(localValue: string): string | undefined {
 
 /* ----------------------------- Component ----------------------------- */
 
-type Stage = 'client' | 'quote' | 'questionnaire' | 'tasks' | 'order';
+type Stage = 'client' | 'quote' | 'tasks' | 'order';
 
 export default function LeadModal({
   open,
@@ -667,12 +667,6 @@ export default function LeadModal({
       title: 'Quote Details',
       icon: '�',
       description: 'Questionnaire and quote information'
-    },
-    {
-      id: 'questionnaire' as const,
-      title: 'Questionnaire',
-      icon: '📋',
-      description: 'Client questionnaire answers and photos'
     },
     {
       id: 'tasks' as const,
@@ -3122,7 +3116,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                 // Store client data and type
                                 setCurrentClientData(client);
                                 setClientType(client.type || "public");
-                                // Auto-fill name, email, phone if not already set
+                                // Auto-fill name, email, phone, and address if not already set
                                 const updates: any = { clientId };
                                 if (!nameInput && client.name) {
                                   setNameInput(client.name);
@@ -3135,6 +3129,11 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                 if (!phoneInput && client.phone) {
                                   setPhoneInput(client.phone);
                                   updates.phone = client.phone;
+                                }
+                                // Auto-populate address fields from client
+                                if (client.address && !customDraft.address) {
+                                  setCustomDraft((prev) => ({ ...prev, address: client.address }));
+                                  updates.custom = { ...customData, address: client.address };
                                 }
                                 setLead((l) => (l ? { ...l, ...updates } : l));
                                 await savePatch(updates);
@@ -3315,6 +3314,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         {workspaceFields
                           .filter((field) => {
                             // Filter out address fields as they're now in Lead Details
+                            // Also filter out date fields that belong in Order tab
                             const key = field.key.toLowerCase();
                             return !(
                               key.includes("address") ||
@@ -3323,7 +3323,11 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                               key.includes("town") ||
                               key.includes("postcode") ||
                               key.includes("zipcode") ||
-                              key.includes("location")
+                              key.includes("location") ||
+                              key === "startdate" ||
+                              key === "deliverydate" ||
+                              key === "installationstartdate" ||
+                              key === "installationenddate"
                             );
                           })
                           .map((field) => {
