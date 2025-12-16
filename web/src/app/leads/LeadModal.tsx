@@ -3135,25 +3135,45 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                 // Store client data and type
                                 setCurrentClientData(client);
                                 setClientType(client.type || "public");
-                                // Auto-fill name, email, phone, and address if not already set
-                                const updates: any = { clientId };
-                                if (!nameInput && client.name) {
-                                  setNameInput(client.name);
-                                  updates.contactName = client.name;
+
+                                // Map common address fields from client -> lead custom
+                                const addressFields: Record<string, string | null | undefined> = {
+                                  address: client.address,
+                                  addressLine1: client.addressLine1 || client.address,
+                                  addressLine2: client.addressLine2,
+                                  street: client.street,
+                                  city: client.city,
+                                  town: client.town,
+                                  postcode: client.postcode || client.postalCode || client.zipcode,
+                                  zipcode: client.zipcode || client.postcode || client.postalCode,
+                                };
+
+                                // Auto-fill name/email/phone directly from client (always, to keep them linked)
+                                const updates: any = {
+                                  clientId,
+                                  contactName: client.name || nameInput || null,
+                                  email: client.email || emailInput || null,
+                                  phone: client.phone || phoneInput || null,
+                                };
+
+                                setNameInput(updates.contactName || "");
+                                setEmailInput(updates.email || "");
+                                setPhoneInput(updates.phone || "");
+
+                                // Merge address data into customDraft; only fill missing keys to avoid overwriting user edits
+                                let customUpdates = { ...customData };
+                                let touchedAddress = false;
+                                Object.entries(addressFields).forEach(([key, val]) => {
+                                  if (val && !customDraft[key]) {
+                                    customUpdates = { ...customUpdates, [key]: val };
+                                    touchedAddress = true;
+                                  }
+                                });
+                                if (touchedAddress) {
+                                  setCustomDraft((prev) => ({ ...prev, ...customUpdates }));
+                                  updates.custom = customUpdates;
                                 }
-                                if (!emailInput && client.email) {
-                                  setEmailInput(client.email);
-                                  updates.email = client.email;
-                                }
-                                if (!phoneInput && client.phone) {
-                                  setPhoneInput(client.phone);
-                                  updates.phone = client.phone;
-                                }
-                                // Auto-populate address fields from client
-                                if (client.address && !customDraft.address) {
-                                  setCustomDraft((prev) => ({ ...prev, address: client.address }));
-                                  updates.custom = { ...customData, address: client.address };
-                                }
+
                                 setLead((l) => (l ? { ...l, ...updates } : l));
                                 await savePatch(updates);
                               } else {
