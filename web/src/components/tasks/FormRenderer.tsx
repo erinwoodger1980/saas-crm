@@ -350,7 +350,7 @@ export function FormRenderer({
               <SelectValue placeholder={field.placeholder || "Select an option"} />
             </SelectTrigger>
             <SelectContent>
-              {field.options?.map((option) => (
+              {field.options?.filter(option => option && option.trim()).map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
                 </SelectItem>

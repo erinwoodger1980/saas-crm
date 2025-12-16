@@ -381,7 +381,7 @@ export function FormBuilder({ existingTemplate, onSaved, onCancel }: FormBuilder
                             <SelectValue placeholder="Select an option" />
                           </SelectTrigger>
                           <SelectContent>
-                            {field.options?.map((opt, idx) => (
+                            {field.options?.filter(opt => opt && opt.trim()).map((opt, idx) => (
                               <SelectItem key={idx} value={opt}>
                                 {opt}
                               </SelectItem>
