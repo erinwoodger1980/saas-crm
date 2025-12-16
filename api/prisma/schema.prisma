@@ -255,6 +255,9 @@ model Lead {
   contactName           String
   email                 String?
   number                String?
+  phone                 String?
+  address               String?
+  deliveryAddress       String?
   description           String?
   status                LeadStatus                @default(NEW)
   capturedAt            DateTime                  @default(now())
@@ -538,6 +541,7 @@ model TenantSettings {
   testimonials              Json?
   fireDoorScheduleColors    Json?
   fireDoorLineItemLayout    Json?
+  productTypes              Json?
 }
 
 model FollowUpLog {

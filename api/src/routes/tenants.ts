@@ -306,10 +306,12 @@ router.get("/settings", async (req, res) => {
     
     // Safe quote defaults parsing - critical for settings page
     const quoteDefaults = safeParseJson(s?.quoteDefaults, {});
+    const productTypes = safeParseJson(s?.productTypes, []);
     
     res.json({
       ...s,
       quoteDefaults,
+      productTypes,
       taskPlaybook: normalizedPlaybook,
       questionnaire: normalizedQuestionnaire,
       questionnaireEmailSubject: s?.questionnaireEmailSubject ?? DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
@@ -365,6 +367,7 @@ async function updateSettings(req: any, res: any) {
     aiFollowupLearning,
     isFireDoorManufacturer,
     isGroupCoachingMember,
+    productTypes,
   } = req.body || {};
 
   try {
@@ -443,6 +446,10 @@ async function updateSettings(req: any, res: any) {
     }
     if (isGroupCoachingMember !== undefined) {
       update.isGroupCoachingMember = !!isGroupCoachingMember;
+    }
+    if (productTypes !== undefined) {
+      const parsedProductTypes = safeParseJson(productTypes, []);
+      update.productTypes = Array.isArray(parsedProductTypes) ? parsedProductTypes : [];
     }
 
     if (ownerFirstName !== undefined) {

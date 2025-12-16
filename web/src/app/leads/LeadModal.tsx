@@ -38,6 +38,8 @@ export type Lead = {
   contactName?: string | null;
   email?: string | null;
   phone?: string | null;
+  address?: string | null;
+  deliveryAddress?: string | null;
   clientId?: string | null;
   quoteId?: string | null;
   quoteStatus?: string | null;
@@ -410,6 +412,8 @@ export default function LeadModal({
   const [nameInput, setNameInput] = useState("");
   const [emailInput, setEmailInput] = useState("");
   const [phoneInput, setPhoneInput] = useState("");
+  const [addressInput, setAddressInput] = useState("");
+  const [deliveryAddressInput, setDeliveryAddressInput] = useState("");
   const [descInput, setDescInput] = useState("");
   const [customDraft, setCustomDraft] = useState<Record<string, string>>({});
   const [clientType, setClientType] = useState<string>("public");
@@ -838,6 +842,8 @@ export default function LeadModal({
       setNameInput(normalized.contactName ?? "");
       setEmailInput(normalized.email ?? "");
       setPhoneInput(normalized.phone ?? "");
+      setAddressInput(normalized.address ?? "");
+      setDeliveryAddressInput(normalized.deliveryAddress ?? "");
       setDescInput(previewDescription);
 
       return normalized;
@@ -3113,11 +3119,50 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
                           value={phoneInput}
                           onChange={(e) => setPhoneInput(e.target.value)}
-                          onBlur={() => {
+                          onBlur={async () => {
                             setLead((l) => (l ? { ...l, phone: phoneInput || null } : l));
-                            savePatch({ phone: phoneInput || null });
+                            await savePatch({ phone: phoneInput || null });
+                            // Also update client if linked
+                            if (lead?.clientId && phoneInput) {
+                              try {
+                                await apiFetch(`/clients/${lead.clientId}`, {
+                                  method: "PATCH",
+                                  json: { phone: phoneInput },
+                                });
+                              } catch (error) {
+                                console.error("Failed to sync phone to client:", error);
+                              }
+                            }
                           }}
                           placeholder="Phone number"
+                        />
+                      </label>
+
+                      <label className="text-sm">
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                          Address
+                        </span>
+                        <input
+                          type="text"
+                          className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                          value={addressInput}
+                          onChange={(e) => setAddressInput(e.target.value)}
+                          onBlur={async () => {
+                            setLead((l) => (l ? { ...l, address: addressInput || null } : l));
+                            await savePatch({ address: addressInput || null });
+                            // Also update client if linked
+                            if (lead?.clientId && addressInput) {
+                              try {
+                                await apiFetch(`/clients/${lead.clientId}`, {
+                                  method: "PATCH",
+                                  json: { address: addressInput },
+                                });
+                              } catch (error) {
+                                console.error("Failed to sync address to client:", error);
+                              }
+                            }
+                          }}
+                          placeholder="Client address"
                         />
                       </label>
 
@@ -3151,17 +3196,19 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                   zipcode: client.zipcode || client.postcode || client.postalCode,
                                 };
 
-                                // Auto-fill name/email/phone directly from client (always, to keep them linked)
+                                // Auto-fill name/email/phone/address directly from client (always, to keep them linked)
                                 const updates: any = {
                                   clientId,
                                   contactName: client.name || nameInput || null,
                                   email: client.email || emailInput || null,
                                   phone: client.phone || phoneInput || null,
+                                  address: client.address || addressInput || null,
                                 };
 
                                 setNameInput(updates.contactName || "");
                                 setEmailInput(updates.email || "");
                                 setPhoneInput(updates.phone || "");
+                                setAddressInput(updates.address || "");
 
                                 // Merge address data into customDraft; only fill missing keys to avoid overwriting user edits
                                 let customUpdates = { ...customData };
@@ -3263,69 +3310,49 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                             >
                               Trade
                             </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setClientType("reseller");
+                                try {
+                                  await apiFetch(`/clients/${lead.clientId}`, {
+                                    method: "PATCH",
+                                    json: { type: "reseller" },
+                                  });
+                                  setCurrentClientData({ ...currentClientData, type: "reseller" });
+                                } catch (error) {
+                                  console.error("Failed to update client type:", error);
+                                }
+                              }}
+                              className={`flex-1 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                                clientType === "reseller"
+                                  ? "bg-sky-500 text-white shadow-lg"
+                                  : "bg-white border border-slate-200 text-slate-600 hover:border-sky-300"
+                              }`}
+                            >
+                              Reseller
+                            </button>
                           </div>
                         </div>
                       )}
 
-                      {/* Address fields from questionnaire */}
-                      {workspaceFields
-                        .filter((field) => {
-                          const key = field.key.toLowerCase();
-                          return (
-                            key.includes("address") ||
-                            key.includes("street") ||
-                            key.includes("city") ||
-                            key.includes("town") ||
-                            key.includes("postcode") ||
-                            key.includes("zipcode") ||
-                            key.includes("location")
-                          );
-                        })
-                        .map((field) => {
-                          const key = field.key;
-                          if (!key) return null;
-                          const value = customDraft[key] ?? "";
-                          const label = field.label || key;
-                          const baseClasses =
-                            "w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-200";
-
-                          if (field.type === "textarea") {
-                            return (
-                              <label key={key} className="text-sm">
-                                <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
-                                  {label}
-                                  {field.required && <span className="text-rose-500"> *</span>}
-                                </span>
-                                <textarea
-                                  className={`${baseClasses} min-h-20`}
-                                  value={value}
-                                  onChange={(e) =>
-                                    setCustomDraft((prev) => ({ ...prev, [key]: e.target.value }))
-                                  }
-                                  onBlur={(e) => saveCustomField(field, e.target.value)}
-                                />
-                              </label>
-                            );
-                          }
-
-                          return (
-                            <label key={key} className="text-sm">
-                              <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
-                                {label}
-                                {field.required && <span className="text-rose-500"> *</span>}
-                              </span>
-                              <input
-                                type="text"
-                                className={baseClasses}
-                                value={value}
-                                onChange={(e) =>
-                                  setCustomDraft((prev) => ({ ...prev, [key]: e.target.value }))
-                                }
-                                onBlur={(e) => saveCustomField(field, e.target.value)}
-                              />
-                            </label>
-                          );
-                        })}
+                      {/* Delivery Address (Project-Specific) */}
+                      <label className="text-sm col-span-full">
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                          Delivery Address <span className="text-slate-400 font-normal">(project-specific)</span>
+                        </span>
+                        <input
+                          type="text"
+                          className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                          value={deliveryAddressInput}
+                          onChange={(e) => setDeliveryAddressInput(e.target.value)}
+                          onBlur={() => {
+                            setLead((l) => (l ? { ...l, deliveryAddress: deliveryAddressInput || null } : l));
+                            savePatch({ deliveryAddress: deliveryAddressInput || null });
+                          }}
+                          placeholder="Delivery location for this project (if different from client address)"
+                        />
+                      </label>
 
                       <label className="text-sm">
                         <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">

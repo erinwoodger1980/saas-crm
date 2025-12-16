@@ -309,10 +309,17 @@ export default function ClientDetailPage() {
                   >
                     Trade
                   </button>
+                  <button
+                    type="button"
+                    className={`px-3 py-1 rounded-full border ${formData.type === "reseller" ? "bg-purple-600 text-white border-purple-600" : "bg-white text-slate-700 border-slate-300"}`}
+                    onClick={() => setFormData({ ...formData, type: "reseller" })}
+                  >
+                    Reseller
+                  </button>
                 </div>
               ) : (
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${client.type === "trade" ? "bg-amber-100 text-amber-700 border border-amber-200" : "bg-sky-100 text-sky-700 border border-sky-200"}`}>
-                  {client.type === "trade" ? "Trade" : "Public"}
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${client.type === "trade" ? "bg-amber-100 text-amber-700 border border-amber-200" : client.type === "reseller" ? "bg-purple-100 text-purple-700 border border-purple-200" : "bg-sky-100 text-sky-700 border border-sky-200"}`}>
+                  {client.type === "trade" ? "Trade" : client.type === "reseller" ? "Reseller" : "Public"}
                 </span>
               )}
             </div>
