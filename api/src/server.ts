@@ -218,6 +218,8 @@ const defaultOrigins = [
 
 const allowedOriginsSet = new Set<string>([...defaultOrigins, ...configuredOrigins]);
 
+console.log('[CORS] Allowed origins:', [...allowedOriginsSet]);
+
 const corsOptions: cors.CorsOptions = {
   origin(origin, cb) {
     if (!origin) return cb(null, true); // same-origin / curl / Postman
@@ -225,14 +227,23 @@ const corsOptions: cors.CorsOptions = {
     const match = [...allowedOriginsSet].some(
       (o) => o.replace(/^https?:\/\//, "").replace(/\/$/, "") === norm
     );
-    if (match) return cb(null, true);
+    if (match) {
+      console.log(`[CORS] ✅ Allowed origin: ${origin}`);
+      return cb(null, true);
+    }
 
     // Allow any localhost origin when not in production (dev convenience)
     const isProd = process.env.NODE_ENV === "production";
     if (!isProd && (norm.startsWith("localhost") || norm.startsWith("127.0.0.1"))) {
+      console.log(`[CORS] ✅ Allowed localhost origin: ${origin}`);
       return cb(null, true);
     }
 
+    console.error(`[CORS] ❌ Rejected origin: ${origin}`, {
+      allowedOrigins: [...allowedOriginsSet],
+      normalized: norm,
+      isProd
+    });
     cb(new Error(`CORS: origin not allowed: ${origin}`));
   },
   credentials: true, // ✅ allow cookies
