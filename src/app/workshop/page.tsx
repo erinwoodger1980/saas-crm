@@ -230,10 +230,10 @@ export default function WorkshopPage() {
                   </SelectContent>
                 </Select>
 
-                <Select value={String(adding[proj.id].assignedUserId || "")} onValueChange={(v) => setAdding((prev) => ({ ...prev, [proj.id]: { ...prev[proj.id], assignedUserId: v } }))}>
+                <Select value={String(adding[proj.id].assignedUserId || "unassigned")} onValueChange={(v) => setAdding((prev) => ({ ...prev, [proj.id]: { ...prev[proj.id], assignedUserId: v === "unassigned" ? "" : v } }))}>
                   <SelectTrigger className="w-[200px]"><SelectValue placeholder="Assign (optional)" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Unassigned</SelectItem>
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
                     {users.map((u) => (
                       <SelectItem key={u.id} value={u.id}>{u.name || u.email}</SelectItem>
                     ))}

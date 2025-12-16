@@ -210,6 +210,7 @@ model Client {
   country       String?       @default("UK")
   contactPerson String?
   companyName   String?
+  type          String?       @default("public")
   isActive      Boolean       @default(true)
   notes         String?
   tags          String[]      @default([])
@@ -224,6 +225,7 @@ model Client {
   @@index([tenantId])
   @@index([tenantId, name])
   @@index([tenantId, email])
+  @@index([tenantId, type])
 }
 
 model ClientContact {

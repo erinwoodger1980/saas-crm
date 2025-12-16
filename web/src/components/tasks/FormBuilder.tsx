@@ -392,7 +392,7 @@ export function FormBuilder({ existingTemplate, onSaved, onCancel }: FormBuilder
 
                       {field.type === "radio" && (
                         <div className="space-y-2">
-                          {field.options?.map((opt, idx) => (
+                          {field.options?.filter(opt => opt && opt.trim()).map((opt, idx) => (
                             <div key={idx} className="flex items-center gap-2">
                               <input
                                 type="radio"

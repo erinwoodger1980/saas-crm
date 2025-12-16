@@ -412,6 +412,8 @@ export default function LeadModal({
   const [phoneInput, setPhoneInput] = useState("");
   const [descInput, setDescInput] = useState("");
   const [customDraft, setCustomDraft] = useState<Record<string, string>>({});
+  const [clientType, setClientType] = useState<string>("public");
+  const [currentClientData, setCurrentClientData] = useState<any>(null);
 
   // Communication logging
   const [newNote, setNewNote] = useState("");
@@ -901,9 +903,23 @@ export default function LeadModal({
           capturedAt: row.capturedAt ?? null,
           computed: row.computed ?? null,
           communicationLog: (row.custom?.communicationLog || []) as Lead['communicationLog'],
+          clientId: (row as any)?.clientId ?? null,
         };
         setLead(normalized);
         setUiStatus(sUi);
+
+        // If lead has a client, fetch client data including type
+        if ((row as any)?.clientId) {
+          try {
+            const clientData = await apiFetch<any>(`/clients/${(row as any).clientId}`, { headers: authHeaders });
+            if (clientData) {
+              setCurrentClientData(clientData);
+              setClientType(clientData.type || "public");
+            }
+          } catch (err) {
+            console.error("Failed to fetch client data:", err);
+          }
+        }
 
         // seed inputs
         setNumberInput((row as any)?.number || "");
@@ -3103,6 +3119,9 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                             try {
                               const client = await apiFetch<any>(`/clients/${clientId}`, { headers: authHeaders });
                               if (client) {
+                                // Store client data and type
+                                setCurrentClientData(client);
+                                setClientType(client.type || "public");
                                 // Auto-fill name, email, phone if not already set
                                 const updates: any = { clientId };
                                 if (!nameInput && client.name) {
@@ -3120,11 +3139,15 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                 setLead((l) => (l ? { ...l, ...updates } : l));
                                 await savePatch(updates);
                               } else {
+                                setCurrentClientData(null);
+                                setClientType("public");
                                 setLead((l) => (l ? { ...l, clientId } : l));
                                 await savePatch({ clientId });
                               }
                             } catch (error) {
                               console.error('Failed to fetch client details:', error);
+                              setCurrentClientData(null);
+                              setClientType("public");
                               setLead((l) => (l ? { ...l, clientId } : l));
                               await savePatch({ clientId });
                             }
@@ -3147,6 +3170,61 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           }}
                         />
                       </div>
+
+                      {/* Client Type Selector */}
+                      {lead?.clientId && currentClientData && (
+                        <div className="col-span-full">
+                          <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                            Client Type
+                          </span>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setClientType("public");
+                                try {
+                                  await apiFetch(`/clients/${lead.clientId}`, {
+                                    method: "PATCH",
+                                    json: { type: "public" },
+                                  });
+                                  setCurrentClientData({ ...currentClientData, type: "public" });
+                                } catch (error) {
+                                  console.error("Failed to update client type:", error);
+                                }
+                              }}
+                              className={`flex-1 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                                clientType === "public"
+                                  ? "bg-sky-500 text-white shadow-lg"
+                                  : "bg-white border border-slate-200 text-slate-600 hover:border-sky-300"
+                              }`}
+                            >
+                              Public
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setClientType("trade");
+                                try {
+                                  await apiFetch(`/clients/${lead.clientId}`, {
+                                    method: "PATCH",
+                                    json: { type: "trade" },
+                                  });
+                                  setCurrentClientData({ ...currentClientData, type: "trade" });
+                                } catch (error) {
+                                  console.error("Failed to update client type:", error);
+                                }
+                              }}
+                              className={`flex-1 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                                clientType === "trade"
+                                  ? "bg-sky-500 text-white shadow-lg"
+                                  : "bg-white border border-slate-200 text-slate-600 hover:border-sky-300"
+                              }`}
+                            >
+                              Trade
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Address fields from questionnaire */}
                       {workspaceFields

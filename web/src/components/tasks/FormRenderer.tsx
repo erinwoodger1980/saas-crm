@@ -361,7 +361,7 @@ export function FormRenderer({
 
         {field.type === "radio" && (
           <div className="space-y-2">
-            {field.options?.map((option) => (
+            {field.options?.filter(option => option && option.trim()).map((option) => (
               <div key={option} className="flex items-center space-x-2">
                 <input
                   type="radio"

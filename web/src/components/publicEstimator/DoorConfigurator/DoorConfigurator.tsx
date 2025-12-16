@@ -73,6 +73,12 @@ export function DoorConfigurator({ onComplete, onPriceChange }: DoorConfigurator
 
   // Apply preset configuration
   const applyPreset = (presetId: string) => {
+    // Handle custom size selection
+    if (presetId === 'custom') {
+      setSelectedPreset(null);
+      return;
+    }
+
     const preset = getPresetById(presetId);
     if (!preset) return;
 
@@ -244,12 +250,12 @@ export function DoorConfigurator({ onComplete, onPriceChange }: DoorConfigurator
               <Label htmlFor="preset-select" className="text-sm font-medium">
                 Door Elevation
               </Label>
-              <Select value={selectedPreset || ''} onValueChange={applyPreset}>
+              <Select value={selectedPreset || 'custom'} onValueChange={applyPreset}>
                 <SelectTrigger id="preset-select">
                   <SelectValue placeholder="Choose a preset door..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Custom Size</SelectItem>
+                  <SelectItem value="custom">Custom Size</SelectItem>
                   <div className="px-2 py-1.5 text-xs font-semibold text-slate-500">
                     Large Doors
                   </div>

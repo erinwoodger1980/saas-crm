@@ -382,6 +382,7 @@ router.patch("/:id", async (req, res) => {
       postcode,
       notes,
       tags,
+      type,
     } = req.body;
 
     // Verify client exists and belongs to tenant
@@ -407,6 +408,7 @@ router.patch("/:id", async (req, res) => {
     if (postcode !== undefined) updateData.postcode = postcode?.trim() || null;
     if (notes !== undefined) updateData.notes = notes?.trim() || null;
     if (tags !== undefined) updateData.tags = Array.isArray(tags) ? tags : [];
+    if (type !== undefined) updateData.type = type === "trade" || type === "public" ? type : "public";
 
     const client = await prisma.client.update({
       where: { id },
