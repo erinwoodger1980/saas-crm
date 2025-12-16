@@ -28,6 +28,7 @@ type ClientContact = {
 type Client = {
   id: string;
   name: string;
+  type?: string | null;
   email?: string | null;
   phone?: string | null;
   mobile?: string | null;
@@ -89,6 +90,7 @@ export default function ClientDetailPage() {
 
   const [formData, setFormData] = useState({
     name: "",
+    type: "public" as string,
     email: "",
     phone: "",
     companyName: "",
@@ -124,6 +126,7 @@ export default function ClientDetailPage() {
       setClient(data);
       setFormData({
         name: data.name || "",
+        type: (data as any).type || "public",
         email: data.email || "",
         phone: data.phone || "",
         companyName: data.companyName || "",
@@ -284,6 +287,33 @@ export default function ClientDetailPage() {
                 />
               ) : (
                 <p className="text-slate-900">{client.name}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Client Type
+              </label>
+              {editing ? (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className={`px-3 py-1 rounded-full border ${formData.type === "public" ? "bg-sky-600 text-white border-sky-600" : "bg-white text-slate-700 border-slate-300"}`}
+                    onClick={() => setFormData({ ...formData, type: "public" })}
+                  >
+                    Public
+                  </button>
+                  <button
+                    type="button"
+                    className={`px-3 py-1 rounded-full border ${formData.type === "trade" ? "bg-amber-600 text-white border-amber-600" : "bg-white text-slate-700 border-slate-300"}`}
+                    onClick={() => setFormData({ ...formData, type: "trade" })}
+                  >
+                    Trade
+                  </button>
+                </div>
+              ) : (
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${client.type === "trade" ? "bg-amber-100 text-amber-700 border border-amber-200" : "bg-sky-100 text-sky-700 border border-sky-200"}`}>
+                  {client.type === "trade" ? "Trade" : "Public"}
+                </span>
               )}
             </div>
 
