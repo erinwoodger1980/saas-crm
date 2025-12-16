@@ -12,6 +12,7 @@ import SoftwareProfilesSection from "@/components/settings/SoftwareProfilesSecti
 import PdfTemplatesSection from "@/components/settings/PdfTemplatesSection";
 import MaterialCostDebugPanel from "@/components/settings/MaterialCostDebugPanel";
 import AdminQuestionnaireFieldsTable from "@/components/questionnaire/AdminQuestionnaireFieldsTable";
+import ProductTypesSection from "@/components/settings/ProductTypesSection";
 import {
   DEFAULT_TASK_PLAYBOOK,
   MANUAL_TASK_KEYS,
@@ -232,7 +233,7 @@ export default function SettingsPage() {
     return 'business';
   })();
   
-  const [currentStage, setCurrentStage] = useState<"business" | "data-fields" | "email-templates" | "marketing" | "automation" | "workshop-processes" | "integrations" | "suppliers" | "software-profiles" | "pdf-templates" | "material-costs">(initialTab as any);
+  const [currentStage, setCurrentStage] = useState<"business" | "data-fields" | "email-templates" | "marketing" | "automation" | "workshop-processes" | "integrations" | "suppliers" | "software-profiles" | "pdf-templates" | "material-costs" | "products">(initialTab as any);
   const [s, setS] = useState<Settings | null>(null);
   const [inbox, setInbox] = useState<InboxCfg>({ gmail: false, ms365: false, intervalMinutes: 10 });
   const [savingInbox, setSavingInbox] = useState(false);
@@ -1005,6 +1006,7 @@ export default function SettingsPage() {
         {[
           { key: "business", label: "Business", icon: "🏢", description: "Company profile and quote settings" },
           { key: "data-fields", label: "Data Fields", icon: "📋", description: "Custom fields for leads, quotes & projects" },
+          { key: "products", label: "Products", icon: "📦", description: "Manage product types and images" },
           { key: "email-templates", label: "Email Templates", icon: "📧", description: "Customize email templates" },
           { key: "marketing", label: "Marketing", icon: "�", description: "Landing pages and SEO" },
           { key: "automation", label: "Automation", icon: "⚡", description: "Task playbooks and workflows" },
@@ -2514,6 +2516,12 @@ export default function SettingsPage() {
       {currentStage === "material-costs" && (
         <Section title="Material Cost Debug" description="Verify material costs are visible and correct in the database">
           <MaterialCostDebugPanel />
+        </Section>
+      )}
+
+      {currentStage === "products" && (
+        <Section title="Product Types" description="Manage your product catalog with images and ML training">
+          <ProductTypesSection />
         </Section>
       )}
 

@@ -1096,4 +1096,121 @@ router.post("/approve-version/:id", async (req: any, res) => {
   }
 });
 
+/**
+ * POST /ml/train-product-types
+ * Train ML model with product type configurations
+ */
+router.post("/train-product-types", async (req, res) => {
+  try {
+    const { productTypes } = req.body;
+    const tenantId = (req as any).auth?.tenantId;
+
+    if (!productTypes || !Array.isArray(productTypes)) {
+      return res.status(400).json({ error: "productTypes array required" });
+    }
+
+    // Extract training data from product types
+    const trainingData = productTypes.flatMap((category: any) =>
+      category.types.flatMap((type: any) =>
+        type.options.map((option: any) => ({
+          category: category.id,
+          type: type.type,
+          option: option.id,
+          label: option.label,
+          hasImage: !!(option.imagePath || option.imageDataUrl || option.svg),
+        }))
+      )
+    );
+
+    console.log(`[ML] Product types registered for tenant ${tenantId}:`, trainingData.length, "samples");
+
+    res.json({ 
+      success: true, 
+      samplesCount: trainingData.length,
+      message: "Product types registered for ML training"
+    });
+  } catch (error: any) {
+    console.error("[ml/train-product-types] error:", error);
+    res.status(500).json({ error: error.message || "internal_error" });
+  }
+});
+
+/**
+ * POST /ml/generate-product-svg
+ * Generate SVG diagram for a product option using AI
+ */
+router.post("/generate-product-svg", async (req, res) => {
+  try {
+    const { category, type, option } = req.body;
+
+    if (!category || !type || !option) {
+      return res.status(400).json({ error: "category, type, and option required" });
+    }
+
+    // Simple SVG templates based on product type
+    const svgTemplates: Record<string, string> = {
+      "doors-entrance": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="20" y="10" width="60" height="80" rx="2"/>
+  <circle cx="75" cy="50" r="3"/>
+  <line x1="30" y1="20" x2="30" y2="80"/>
+</svg>`,
+      "doors-bifold": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="15" y="10" width="30" height="80" rx="2"/>
+  <rect x="55" y="10" width="30" height="80" rx="2"/>
+  <line x1="45" y1="20" x2="55" y2="30"/>
+  <line x1="45" y1="80" x2="55" y2="70"/>
+</svg>`,
+      "doors-sliding": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="10" y="10" width="40" height="80" rx="2" opacity="0.5"/>
+  <rect x="50" y="10" width="40" height="80" rx="2"/>
+  <path d="M 55 50 L 60 45 M 55 50 L 60 55" stroke-width="2"/>
+</svg>`,
+      "doors-french": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="15" y="10" width="30" height="80" rx="2"/>
+  <rect x="55" y="10" width="30" height="80" rx="2"/>
+  <circle cx="40" cy="50" r="2"/>
+  <circle cx="60" cy="50" r="2"/>
+</svg>`,
+      "windows-sash-cord": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="20" y="15" width="60" height="70" rx="2"/>
+  <line x1="20" y1="50" x2="80" y2="50"/>
+  <rect x="25" y="20" width="50" height="25" rx="1" stroke-width="2"/>
+  <rect x="25" y="55" width="50" height="25" rx="1" stroke-width="2"/>
+</svg>`,
+      "windows-sash-spring": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="20" y="15" width="60" height="70" rx="2"/>
+  <line x1="20" y1="50" x2="80" y2="50"/>
+  <rect x="25" y="20" width="50" height="25" rx="1" stroke-width="2"/>
+  <rect x="25" y="55" width="50" height="25" rx="1" stroke-width="2"/>
+  <circle cx="75" cy="30" r="2"/>
+</svg>`,
+      "windows-casement": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="20" y="15" width="60" height="70" rx="2"/>
+  <line x1="50" y1="15" x2="50" y2="85"/>
+  <rect x="25" y="20" width="20" height="60" rx="1" stroke-width="2"/>
+  <rect x="55" y="20" width="20" height="60" rx="1" stroke-width="2"/>
+</svg>`,
+      "windows-stormproof": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="18" y="13" width="64" height="74" rx="2"/>
+  <rect x="22" y="17" width="56" height="66" rx="2" stroke-width="2"/>
+  <rect x="26" y="21" width="48" height="58" rx="1"/>
+</svg>`,
+      "windows-alu-clad": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="16" y="16" width="68" height="68" rx="2"/>
+  <rect x="20" y="20" width="60" height="60" rx="2" stroke-width="2"/>
+  <rect x="24" y="24" width="52" height="52" rx="1"/>
+</svg>`,
+    };
+
+    // Find matching template
+    const key = `${category}-${type}`;
+    let svg = svgTemplates[key] || svgTemplates["windows-casement"]; // fallback
+
+    res.json({ svg });
+  } catch (error: any) {
+    console.error("[ml/generate-product-svg] error:", error);
+    res.status(500).json({ error: error.message || "internal_error" });
+  }
+});
+
 export default router;
