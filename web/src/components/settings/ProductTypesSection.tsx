@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiFetch } from "@/lib/api";
-import { Upload, Trash2, Plus, Wand2, ChevronRight, ChevronDown } from "lucide-react";
+import { Upload, Trash2, Plus, Wand2, ChevronRight, ChevronDown, Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
 const DEFAULT_SVG_PROMPT =
@@ -141,6 +141,8 @@ export default function ProductTypesSection() {
     label: string;
   } | null>(null);
   const [svgDescription, setSvgDescription] = useState<string>("");
+  const [svgPreview, setSvgPreview] = useState<string | null>(null);
+  const [previewGenerating, setPreviewGenerating] = useState(false);
 
   useEffect(() => {
     loadProducts();
@@ -223,22 +225,22 @@ export default function ProductTypesSection() {
     }
   };
 
-  const generateSvg = async (
-    categoryId: string,
-    typeIdx: number,
-    optionId: string,
-    label: string,
-    description: string,
-  ) => {
-    setGeneratingSvg(optionId);
+  const generateSvgPreview = async (description: string) => {
+    if (!description.trim()) {
+      toast({
+        title: "Description required",
+        description: "Please enter a description",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setPreviewGenerating(true);
     try {
       const response = await apiFetch<{ svg: string }>("/ml/generate-product-svg", {
         method: "POST",
         json: {
-          category: categoryId,
-          type: products.find((c) => c.id === categoryId)?.types[typeIdx]?.type,
-          option: label,
-          description,
+          description: description.trim(),
         },
       });
 
@@ -253,30 +255,7 @@ export default function ProductTypesSection() {
         throw new Error("SVG contains forbidden script tag");
       }
 
-      setProducts((prev) =>
-        prev.map((cat) =>
-          cat.id === categoryId
-            ? {
-                ...cat,
-                types: cat.types.map((type, idx) =>
-                  idx === typeIdx
-                    ? {
-                        ...type,
-                        options: type.options.map((opt) =>
-                          opt.id === optionId ? { ...opt, svg, imageDataUrl: undefined, imagePath: undefined } : opt
-                        ),
-                      }
-                    : type
-                ),
-              }
-            : cat
-        )
-      );
-
-      toast({
-        title: "SVG generated",
-        description: "AI-generated diagram created",
-      });
+      setSvgPreview(svg);
     } catch (err: any) {
       toast({
         title: "Generation failed",
@@ -284,8 +263,41 @@ export default function ProductTypesSection() {
         variant: "destructive",
       });
     } finally {
-      setGeneratingSvg(null);
+      setPreviewGenerating(false);
     }
+  };
+
+  const saveSvgToOption = (categoryId: string, typeIdx: number, optionId: string) => {
+    if (!svgPreview) return;
+
+    setProducts((prev) =>
+      prev.map((cat) =>
+        cat.id === categoryId
+          ? {
+              ...cat,
+              types: cat.types.map((type, idx) =>
+                idx === typeIdx
+                  ? {
+                      ...type,
+                      options: type.options.map((opt) =>
+                        opt.id === optionId ? { ...opt, svg: svgPreview, imageDataUrl: undefined, imagePath: undefined } : opt
+                      ),
+                    }
+                  : type
+              ),
+            }
+          : cat
+      )
+    );
+
+    toast({
+      title: "SVG saved to product",
+      description: "Diagram linked to option",
+    });
+
+    setSvgDialog(null);
+    setSvgDescription("");
+    setSvgPreview(null);
   };
 
   const addCategory = () => {
@@ -669,45 +681,110 @@ export default function ProductTypesSection() {
       </div>
 
       {svgDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-lg bg-white p-4 shadow-xl">
-            <div className="mb-2 text-lg font-semibold">Describe the SVG</div>
-            <p className="mb-3 text-sm text-muted-foreground">
-              Include panels, rails, stiles, muntins, glass areas, and dimensions. Colors should be fills, not just outlines.
-            </p>
-            <textarea
-              className="w-full rounded-md border p-2 text-sm"
-              rows={5}
-              value={svgDescription}
-              onChange={(e) => setSvgDescription(e.target.value)}
-            />
-            <div className="mt-3 flex justify-end gap-2">
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setSvgDialog(null);
-                  setSvgDescription("");
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={() => {
-                  if (!svgDialog) return;
-                  generateSvg(
-                    svgDialog.categoryId,
-                    svgDialog.typeIdx,
-                    svgDialog.optionId,
-                    svgDialog.label,
-                    svgDescription.trim() || `${svgDialog.label}. ${DEFAULT_SVG_PROMPT}`,
-                  );
-                  setSvgDialog(null);
-                }}
-                disabled={generatingSvg === svgDialog.optionId}
-              >
-                {generatingSvg === svgDialog.optionId ? "Generating..." : "Generate"}
-              </Button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-y-auto">
+          <div className="w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl my-8">
+            <div className="mb-2 text-lg font-semibold">
+              {svgPreview ? "Preview & Refine SVG" : "Generate SVG Diagram"}
             </div>
+
+            {!svgPreview ? (
+              <>
+                <p className="mb-3 text-sm text-muted-foreground">
+                  Include panels, rails, stiles, muntins, glass areas, and dimensions. Colors should be fills, not just outlines.
+                </p>
+                <textarea
+                  className="w-full rounded-md border p-2 text-sm mb-3"
+                  rows={5}
+                  value={svgDescription}
+                  onChange={(e) => setSvgDescription(e.target.value)}
+                  placeholder="e.g., Single casement window with 2x2 muntins grid, timber frame, glass panes..."
+                  autoFocus
+                />
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setSvgDialog(null);
+                      setSvgDescription("");
+                      setSvgPreview(null);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() =>
+                      generateSvgPreview(
+                        svgDescription.trim() || `${svgDialog?.label || "Product"}. ${DEFAULT_SVG_PROMPT}`
+                      )
+                    }
+                    disabled={previewGenerating || !svgDescription.trim()}
+                  >
+                    {previewGenerating ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Generating Preview...
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 className="h-4 w-4 mr-2" />
+                        Generate Preview
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mb-4">
+                  <label className="block text-xs font-semibold text-slate-600 mb-2">Preview</label>
+                  <div className="border rounded-lg p-4 bg-slate-50 flex items-center justify-center min-h-64">
+                    <div
+                      dangerouslySetInnerHTML={{ __html: svgPreview }}
+                      className="w-full flex items-center justify-center"
+                      style={{ maxWidth: "280px" }}
+                    />
+                  </div>
+                </div>
+                <div className="mb-4">
+                  <label className="block text-xs font-semibold text-slate-600 mb-2">Description</label>
+                  <textarea
+                    className="w-full rounded-md border p-2 text-sm"
+                    rows={3}
+                    value={svgDescription}
+                    onChange={(e) => setSvgDescription(e.target.value)}
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setSvgPreview(null);
+                    }}
+                    disabled={previewGenerating}
+                  >
+                    Refine Description
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setSvgDialog(null);
+                      setSvgDescription("");
+                      setSvgPreview(null);
+                    }}
+                  >
+                    Discard
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      if (!svgDialog) return;
+                      saveSvgToOption(svgDialog.categoryId, svgDialog.typeIdx, svgDialog.optionId);
+                    }}
+                  >
+                    Save to Product
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
