@@ -341,12 +341,12 @@ function BasicTaskForm({ tenantId, userId, onCreated, setSaving, saving, related
 
       <div>
         <label className="text-sm font-medium mb-2 block">Assign To</label>
-        <Select value={assignToUserId} onValueChange={setAssignToUserId} disabled={loadingUsers}>
+        <Select value={assignToUserId || "unassigned"} onValueChange={(v) => setAssignToUserId(v === "unassigned" ? "" : v)} disabled={loadingUsers}>
           <SelectTrigger>
             <SelectValue placeholder={loadingUsers ? "Loading users..." : "Select user"} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Unassigned</SelectItem>
+            <SelectItem value="unassigned">Unassigned</SelectItem>
             {users.map((user) => (
               <SelectItem key={user.id} value={user.id}>
                 {user.name || user.email}
