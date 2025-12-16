@@ -308,6 +308,14 @@ router.get("/settings", async (req, res) => {
     const quoteDefaults = safeParseJson(s?.quoteDefaults, {});
     const productTypes = safeParseJson(s?.productTypes, []);
     
+    console.log('[GET /tenant/settings] Response data:', {
+      tenantId,
+      hasProductTypes: !!s?.productTypes,
+      productTypesRaw: s?.productTypes,
+      productTypesParsed: productTypes,
+      productTypesLength: productTypes?.length
+    });
+    
     res.json({
       ...s,
       quoteDefaults,
