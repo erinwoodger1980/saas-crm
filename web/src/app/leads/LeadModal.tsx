@@ -695,6 +695,8 @@ export default function LeadModal({
     { key: "finishColor", label: "Finish Colour", type: "color", width: 140, frozen: false, visible: true },
   ];
 
+  const COLUMN_CONFIG_KEY = lead?.id ? `quote-column-config-v2-${lead.id}` : null;
+
   const mergeColumnConfig = (saved?: ColumnConfig[]): ColumnConfig[] => {
     const base = saved ? [...saved] : [];
     // Ensure required columns exist; if missing, append them (preserve any user-defined overrides if present)
@@ -723,7 +725,7 @@ export default function LeadModal({
     setQuoteItems(convertedItems);
     
     // Initialize column config from localStorage or defaults, ensuring required columns exist
-    const savedConfigRaw = localStorage.getItem(`quote-column-config-${lead.id}`);
+    const savedConfigRaw = COLUMN_CONFIG_KEY ? localStorage.getItem(COLUMN_CONFIG_KEY) : null;
     if (savedConfigRaw) {
       const parsed: ColumnConfig[] = JSON.parse(savedConfigRaw);
       setColumnConfig(mergeColumnConfig(parsed));
@@ -1620,7 +1622,9 @@ export default function LeadModal({
   function handleSaveColumnConfig(config: ColumnConfig[]) {
     setColumnConfig(config);
     if (lead?.id) {
-      localStorage.setItem(`quote-column-config-${lead.id}`, JSON.stringify(config));
+      if (COLUMN_CONFIG_KEY) {
+        localStorage.setItem(COLUMN_CONFIG_KEY, JSON.stringify(config));
+      }
     }
   }
 
