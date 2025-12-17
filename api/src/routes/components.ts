@@ -60,7 +60,13 @@ router.get('/', async (req, res) => {
       ]
     });
 
-    res.json(components);
+    // Ensure productTypes is always an array for all components
+    const safeComponents = components.map(c => ({
+      ...c,
+      productTypes: Array.isArray(c.productTypes) ? c.productTypes : []
+    }));
+
+    res.json(safeComponents);
   } catch (error) {
     console.error('Error fetching components:', error);
     res.status(500).json({ error: 'Failed to fetch components' });
@@ -87,7 +93,13 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Component not found' });
     }
 
-    res.json(component);
+    // Ensure productTypes is always an array
+    const safeComponent = {
+      ...component,
+      productTypes: Array.isArray(component.productTypes) ? component.productTypes : []
+    };
+
+    res.json(safeComponent);
   } catch (error) {
     console.error('Error fetching component:', error);
     res.status(500).json({ error: 'Failed to fetch component' });
