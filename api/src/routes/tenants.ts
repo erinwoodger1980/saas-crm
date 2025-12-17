@@ -45,6 +45,130 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 });
 
+// Restore default product catalog (doors + windows) for the tenant
+router.post("/tenant/product-types/restore", requireAuth, async (req: any, res) => {
+  const tenantId = authTenantId(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  // Default catalog mirrors web ProductTypesSection INITIAL_PRODUCTS
+  const defaultCatalog = [
+    {
+      id: "doors",
+      label: "Doors",
+      types: [
+        {
+          type: "entrance",
+          label: "Entrance Door",
+          options: [
+            { id: "entrance-single", label: "Single Door", imagePath: "/diagrams/doors/entrance-single.svg" },
+            { id: "entrance-double", label: "Double Door", imagePath: "/diagrams/doors/entrance-double.svg" },
+          ],
+        },
+        {
+          type: "bifold",
+          label: "Bi-fold",
+          options: [
+            { id: "bifold-2-panel", label: "2 Panel", imagePath: "/diagrams/doors/bifold-2.svg" },
+            { id: "bifold-3-panel", label: "3 Panel", imagePath: "/diagrams/doors/bifold-3.svg" },
+            { id: "bifold-4-panel", label: "4 Panel", imagePath: "/diagrams/doors/bifold-4.svg" },
+          ],
+        },
+        {
+          type: "sliding",
+          label: "Sliding",
+          options: [
+            { id: "sliding-single", label: "Single Slider", imagePath: "/diagrams/doors/sliding-single.svg" },
+            { id: "sliding-double", label: "Double Slider", imagePath: "/diagrams/doors/sliding-double.svg" },
+          ],
+        },
+        {
+          type: "french",
+          label: "French Door",
+          options: [
+            { id: "french-standard", label: "Standard French", imagePath: "/diagrams/doors/french-standard.svg" },
+            { id: "french-extended", label: "Extended French", imagePath: "/diagrams/doors/french-extended.svg" },
+          ],
+        },
+      ],
+    },
+    {
+      id: "windows",
+      label: "Windows",
+      types: [
+        {
+          type: "sash-cord",
+          label: "Sash (Cord)",
+          options: [
+            { id: "sash-cord-single", label: "Single Hung", imagePath: "/diagrams/windows/sash-cord-single.svg" },
+            { id: "sash-cord-double", label: "Double Hung", imagePath: "/diagrams/windows/sash-cord-double.svg" },
+          ],
+        },
+        {
+          type: "sash-spring",
+          label: "Sash (Spring)",
+          options: [
+            { id: "sash-spring-single", label: "Single Hung", imagePath: "/diagrams/windows/sash-spring-single.svg" },
+            { id: "sash-spring-double", label: "Double Hung", imagePath: "/diagrams/windows/sash-spring-double.svg" },
+          ],
+        },
+        {
+          type: "casement",
+          label: "Casement",
+          options: [
+            { id: "casement-single", label: "Single Casement", imagePath: "/diagrams/windows/casement-single.svg" },
+            { id: "casement-double", label: "Double Casement", imagePath: "/diagrams/windows/casement-double.svg" },
+          ],
+        },
+        {
+          type: "stormproof",
+          label: "Stormproof",
+          options: [
+            { id: "stormproof-single", label: "Single Stormproof", imagePath: "/diagrams/windows/stormproof-single.svg" },
+            { id: "stormproof-double", label: "Double Stormproof", imagePath: "/diagrams/windows/stormproof-double.svg" },
+          ],
+        },
+        {
+          type: "alu-clad",
+          label: "Alu-Clad",
+          options: [
+            {
+              id: "alu-clad-casement",
+              label: "Casement",
+              imagePath: "/diagrams/windows/alu-clad.svg",
+              svg: "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"16\" y=\"16\" width=\"68\" height=\"68\" rx=\"2\"/><rect x=\"20\" y=\"20\" width=\"60\" height=\"60\" rx=\"2\" stroke-width=\"2\"/><rect x=\"24\" y=\"24\" width=\"52\" height=\"52\" rx=\"1\"/></svg>",
+            },
+            { id: "alu-clad-tilt-turn", label: "Tilt & Turn", imagePath: "/diagrams/windows/alu-clad-tilt-turn.svg" },
+          ],
+        },
+      ],
+    },
+  ];
+
+  try {
+    const updated = await prisma.tenantSettings.upsert({
+      where: { tenantId },
+      update: { productTypes: defaultCatalog },
+      create: {
+        tenantId,
+        slug: `tenant-${tenantId.slice(0, 6).toLowerCase()}`,
+        brandName: "Your Company",
+        introHtml: "<p>Thank you for your enquiry. Please tell us a little more below.</p>",
+        links: [],
+        taskPlaybook: DEFAULT_TASK_PLAYBOOK,
+        questionnaireEmailSubject: DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
+        questionnaireEmailBody: DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
+        questionnaire: [],
+        productTypes: defaultCatalog,
+      },
+    });
+
+    res.json({ ok: true, productTypes: updated.productTypes });
+  } catch (err: any) {
+    console.error("[POST /tenant/product-types/restore] Failed:", err?.message || err);
+    res.status(500).json({ error: "restore_failed", message: err?.message || "unknown error" });
+  }
+});
+
 /* ------------------------- helpers ------------------------- */
 function authTenantId(req: any): string | null {
   return (req?.auth?.tenantId as string) || null;

@@ -541,6 +541,7 @@ model TenantSettings {
   testimonials              Json?
   fireDoorScheduleColors    Json?
   fireDoorLineItemLayout    Json?
+  fireDoorScheduleColumnConfig Json?
   productTypes              Json?
 }
 

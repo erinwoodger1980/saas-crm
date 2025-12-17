@@ -969,6 +969,8 @@ export default function LeadModal({
               const fetchPromises = [
                 fetchQuestionnaireFields({ tenantSlug: slug, scope: "client" }).catch(() => []),
                 fetchQuestionnaireFields({ tenantSlug: slug, scope: "quote_details" }).catch(() => []),
+                // Back-compat: some tenants still store item fields under legacy scope "item"
+                fetchQuestionnaireFields({ tenantSlug: slug, scope: "item" as any }).catch(() => []),
                 fetchQuestionnaireFields({ tenantSlug: slug, scope: "manufacturing" }).catch(() => []),
                 fetchQuestionnaireFields({ tenantSlug: slug, scope: "public" }).catch(() => []),
                 fetchQuestionnaireFields({ tenantSlug: slug, scope: "internal" }).catch(() => []),
@@ -982,15 +984,23 @@ export default function LeadModal({
               }
               
               const results = await Promise.all(fetchPromises);
-              const [client, quoteDetails, manuf, pub, internal, fireDoorSched, fireDoorItems] = isFireDoor 
+              const [client, quoteDetails, itemFields, manuf, pub, internal, fireDoorSched, fireDoorItems] = isFireDoor 
                 ? results 
                 : [...results, [], []];
+              const quoteDetailsMerged = [...(quoteDetails || []), ...(itemFields || [])]
+                .filter(Boolean)
+                .reduce((acc: any[], field: any) => {
+                  const exists = acc.find((f) => f.id === field.id || f.key === field.key);
+                  if (!exists) acc.push(field);
+                  return acc;
+                }, []);
+
               setClientFields((client || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: true, showOnLead: true, sortOrder: f.sortOrder || 0, productTypes: Array.isArray(f.productTypes) ? f.productTypes : undefined })) as NormalizedQuestionnaireField[]);
-              setQuoteDetailsFields((quoteDetails || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: true, showOnLead: true, sortOrder: f.sortOrder || 0, productTypes: Array.isArray(f.productTypes) ? f.productTypes : undefined })) as NormalizedQuestionnaireField[]);
+              setQuoteDetailsFields((quoteDetailsMerged || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: true, showOnLead: true, sortOrder: f.sortOrder || 0, productTypes: Array.isArray(f.productTypes) ? f.productTypes : undefined })) as NormalizedQuestionnaireField[]);
               console.log('[LeadModal] Loaded fields:', {
                 client: client?.length || 0,
-                quoteDetails: quoteDetails?.length || 0,
-                hasProductTypes: (quoteDetails || []).some((f: any) => f.productTypes?.length > 0)
+                quoteDetails: quoteDetailsMerged?.length || 0,
+                hasProductTypes: (quoteDetailsMerged || []).some((f: any) => f.productTypes?.length > 0)
               });
               setManufacturingFields((manuf || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, visibleAfterOrder: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
               setFireDoorScheduleFields((fireDoorSched || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);

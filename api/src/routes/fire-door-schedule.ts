@@ -209,6 +209,77 @@ router.post("/colors", async (req: any, res: Response) => {
 });
 
 // ============================================================================
+// GET /fire-door-schedule/column-config
+// Get custom fire door schedule column configurations for the current tenant
+// NOTE: Must come BEFORE /:id route to avoid "column-config" being treated as an ID
+// ============================================================================
+router.get("/column-config", async (req: any, res: Response) => {
+  try {
+    const tenantId = req.auth?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const tenantSettings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { 
+        isFireDoorManufacturer: true,
+        fireDoorScheduleColumnConfig: true 
+      },
+    });
+
+    if (!tenantSettings?.isFireDoorManufacturer) {
+      return res.status(403).json({ error: "Fire door schedule is only available for fire door manufacturers" });
+    }
+
+    // Return column configs or empty object if not set
+    res.json({ columnConfig: tenantSettings.fireDoorScheduleColumnConfig || {} });
+  } catch (error) {
+    console.error("Error fetching fire door schedule column config:", error);
+    res.status(500).json({ error: "Failed to fetch column config" });
+  }
+});
+
+// ============================================================================
+// POST /fire-door-schedule/column-config
+// Save custom fire door schedule column configurations for the current tenant
+// NOTE: Must come BEFORE /:id route to avoid "column-config" being treated as an ID
+// ============================================================================
+router.post("/column-config", async (req: any, res: Response) => {
+  try {
+    const tenantId = req.auth?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const tenantSettings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { isFireDoorManufacturer: true },
+    });
+
+    if (!tenantSettings?.isFireDoorManufacturer) {
+      return res.status(403).json({ error: "Fire door schedule is only available for fire door manufacturers" });
+    }
+
+    const { columnConfig } = req.body;
+    if (!columnConfig || typeof columnConfig !== 'object') {
+      return res.status(400).json({ error: "Invalid column config format" });
+    }
+
+    // Update tenant settings with new column config
+    await prisma.tenantSettings.update({
+      where: { tenantId },
+      data: { fireDoorScheduleColumnConfig: columnConfig },
+    });
+
+    res.json({ success: true, columnConfig });
+  } catch (error) {
+    console.error("Error saving fire door schedule column config:", error);
+    res.status(500).json({ error: "Failed to save column config" });
+  }
+});
+
+// ============================================================================
 // GET /fire-door-schedule/:id
 // Get a single project by ID
 // ============================================================================

@@ -68,6 +68,8 @@ export default function FireDoorSchedulePage() {
   const [customColors, setCustomColors] = useState<Record<string, {bg: string, text: string}>>({});
   const colorsLoadedRef = useRef(false); // Track if colors have been loaded from API
   const initialColorsRef = useRef<string>(""); // Track initial colors JSON to detect real changes
+  const columnConfigLoadedRef = useRef(false); // Track if column config has been loaded from API
+  const initialColumnConfigRef = useRef<string>(""); // Track initial column config JSON to detect real changes
   const [frozenColumns, setFrozenColumns] = useState<string[]>(['mjsNumber']); // Default freeze MJS column
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
   const [showColumnFreezeModal, setShowColumnFreezeModal] = useState(false);
@@ -214,6 +216,37 @@ export default function FireDoorSchedulePage() {
     }
   }, [user?.tenantId]);
 
+  // Fetch custom column config from API
+  useEffect(() => {
+    const fetchColumnConfig = async () => {
+      try {
+        console.log("[COLUMN CONFIG] Fetching column config from API...");
+        const data = await apiFetch<{ columnConfig: Record<string, any[]> }>("/fire-door-schedule/column-config");
+        console.log("[COLUMN CONFIG] Fetched data:", data);
+        
+        if (data.columnConfig && Object.keys(data.columnConfig).length > 0) {
+          console.log("[COLUMN CONFIG] Setting custom column config from API:", data.columnConfig);
+          setTabColumnConfigs(data.columnConfig);
+          initialColumnConfigRef.current = JSON.stringify(data.columnConfig); // Store initial state
+          columnConfigLoadedRef.current = true; // Mark as loaded from API
+        } else {
+          console.log("[COLUMN CONFIG] No column config in database, using defaults");
+          columnConfigLoadedRef.current = true; // Mark as loaded
+        }
+      } catch (error) {
+        console.error("[COLUMN CONFIG] Error fetching column config:", error);
+        columnConfigLoadedRef.current = true; // Mark as loaded even on error to allow saving
+      }
+    };
+    
+    if (user?.tenantId) {
+      console.log("[COLUMN CONFIG] User tenant ID:", user.tenantId);
+      fetchColumnConfig();
+    } else {
+      console.log("[COLUMN CONFIG] No user or tenant ID, skipping column config fetch");
+    }
+  }, [user?.tenantId]);
+
   useEffect(() => {
     loadData();
     // Load persisted UI prefs
@@ -225,7 +258,7 @@ export default function FireDoorSchedulePage() {
       const savedSortD = localStorage.getItem("fds:sortDir") as "asc" | "desc" | null;
       const savedFrozenColumns = localStorage.getItem("fds:frozenColumns");
       const savedColumnFilters = localStorage.getItem("fds:columnFilters");
-      const savedTabColumnConfigs = localStorage.getItem("fds:tabColumnConfigs");
+      // Note: tabColumnConfigs now loaded from API, not localStorage
       if (savedView) setShowTable(savedView === "table");
       if (savedActiveTab) setActiveTab(savedActiveTab);
       if (savedFrozenColumns) {
@@ -236,11 +269,6 @@ export default function FireDoorSchedulePage() {
       if (savedColumnFilters) {
         try {
           setColumnFilters(JSON.parse(savedColumnFilters));
-        } catch {}
-      }
-      if (savedTabColumnConfigs) {
-        try {
-          setTabColumnConfigs(JSON.parse(savedTabColumnConfigs));
         } catch {}
       }
       
@@ -344,10 +372,42 @@ export default function FireDoorSchedulePage() {
   useEffect(() => {
     try { localStorage.setItem("fds:columnFilters", JSON.stringify(columnFilters)); } catch {}
   }, [columnFilters]);
+  // Save column config to API (tenant-wide, not per-user)
   useEffect(() => {
-    console.log('[COLUMN CONFIG] Saving to localStorage:', tabColumnConfigs);
-    try { localStorage.setItem("fds:tabColumnConfigs", JSON.stringify(tabColumnConfigs)); } catch {}
-  }, [tabColumnConfigs]);
+    // Only save if column config has been loaded and actually changed
+    if (user?.tenantId && Object.keys(tabColumnConfigs).length > 0 && columnConfigLoadedRef.current) {
+      const currentConfigStr = JSON.stringify(tabColumnConfigs);
+      // Only save if config has actually changed from initial state
+      if (currentConfigStr !== initialColumnConfigRef.current) {
+        const saveColumnConfig = async () => {
+          try {
+            console.log("[COLUMN CONFIG] Saving column config to API:", tabColumnConfigs);
+            
+            const response = await apiFetch("/fire-door-schedule/column-config", {
+              method: "POST",
+              json: { columnConfig: tabColumnConfigs },
+            });
+            
+            console.log("[COLUMN CONFIG] Save response:", response);
+            console.log("[COLUMN CONFIG] Column config saved successfully");
+            // Update initial ref to prevent re-saving the same data
+            initialColumnConfigRef.current = currentConfigStr;
+          } catch (error) {
+            console.error("[COLUMN CONFIG] Error saving column config:", error);
+          }
+        };
+        // Debounce the save to avoid too many requests
+        const timeoutId = setTimeout(saveColumnConfig, 500);
+        return () => clearTimeout(timeoutId);
+      } else {
+        console.log("[COLUMN CONFIG] No change detected, skipping save");
+      }
+    } else {
+      if (!columnConfigLoadedRef.current) {
+        console.log("[COLUMN CONFIG] Column config not yet loaded from API, skipping save");
+      }
+    }
+  }, [tabColumnConfigs, user?.tenantId]);
 
   // Load dropdown options from localStorage
   useEffect(() => {
