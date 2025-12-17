@@ -80,6 +80,8 @@ export default function FireDoorSchedulePage() {
   const headerRowRef = useRef<HTMLTableRowElement | null>(null);
   const [headerHeight, setHeaderHeight] = useState<number>(0);
   const ACTIONS_WIDTH = 140; // Actions column width for frozen column calculations
+  const [userIsInteracting, setUserIsInteracting] = useState(false);
+  const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Dropdown options state - must be declared before useEffect hooks that reference them
   const [jobLocationOptions, setJobLocationOptions] = useState<string[]>([
@@ -501,13 +503,49 @@ export default function FireDoorSchedulePage() {
 
   // Using stable constant-based left offsets for frozen columns
 
-  // Auto-refresh schedule data every 3 minutes
+  // Track user interaction to pause auto-refresh
+  useEffect(() => {
+    const handleUserInteraction = () => {
+      setUserIsInteracting(true);
+      if (interactionTimeoutRef.current) {
+        clearTimeout(interactionTimeoutRef.current);
+      }
+      // Reset interaction flag after 30 seconds of no activity
+      interactionTimeoutRef.current = setTimeout(() => {
+        setUserIsInteracting(false);
+      }, 30000);
+    };
+
+    // Listen for any user interaction
+    window.addEventListener('focus', handleUserInteraction);
+    window.addEventListener('input', handleUserInteraction);
+    window.addEventListener('change', handleUserInteraction);
+    window.addEventListener('click', handleUserInteraction);
+    window.addEventListener('keydown', handleUserInteraction);
+    window.addEventListener('scroll', handleUserInteraction);
+
+    return () => {
+      window.removeEventListener('focus', handleUserInteraction);
+      window.removeEventListener('input', handleUserInteraction);
+      window.removeEventListener('change', handleUserInteraction);
+      window.removeEventListener('click', handleUserInteraction);
+      window.removeEventListener('keydown', handleUserInteraction);
+      window.removeEventListener('scroll', handleUserInteraction);
+      if (interactionTimeoutRef.current) {
+        clearTimeout(interactionTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Auto-refresh schedule data every 3 minutes (only when user is not interacting)
   useEffect(() => {
     const interval = setInterval(() => {
-      loadData();
+      if (!userIsInteracting) {
+        loadData();
+      }
     }, 180000);
     return () => clearInterval(interval);
-  }, []);
+  }, [userIsInteracting]);
 
   // Apply search + tab filters + column filters
   const filteredProjects = projects
