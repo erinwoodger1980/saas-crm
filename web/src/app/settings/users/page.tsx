@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Trash2, KeyRound } from "lucide-react";
 
-type UserRow = { id: string; name: string | null; email: string; workshopUsername?: string | null; role?: string; workshopHoursPerDay?: number | null; workshopProcessCodes?: string[]; passwordHash?: string | null; firstName?: string | null; lastName?: string | null; emailFooter?: string | null };
+type UserRow = { id: string; name: string | null; email: string; workshopUsername?: string | null; role?: string; workshopHoursPerDay?: number | null; workshopProcessCodes?: string[]; passwordHash?: string | null; firstName?: string | null; lastName?: string | null; emailFooter?: string | null; isEarlyAdopter?: boolean };
 
 type UsersResponse = { ok: boolean; items: UserRow[] };
 
@@ -191,6 +191,23 @@ export default function UsersSettingsPage() {
     }
   }
 
+  async function toggleEarlyAdopter(userId: string, isEarlyAdopter: boolean) {
+    try {
+      await apiFetch(`/workshop/users/${userId}/early-adopter`, {
+        method: "PATCH",
+        json: { isEarlyAdopter },
+      });
+      await loadUsers();
+      
+      // If the current user toggled their own status, refresh the AppShell
+      if (currentUser?.id === userId) {
+        await mutateCurrentUser();
+      }
+    } catch (e: any) {
+      setError(e?.message || "Failed to update early adopter status");
+    }
+  }
+
   async function resetUserPassword(userId: string) {
     if (!newPassword || newPassword.length < 8) {
       setError("Password must be at least 8 characters");
@@ -368,6 +385,15 @@ export default function UsersSettingsPage() {
                       </Button>
                     )}
                     <div className="text-xs uppercase bg-slate-100 text-slate-700 px-2 py-0.5 rounded">{(u.role || 'user').toString()}</div>
+                    <label className="flex items-center gap-2 text-xs cursor-pointer" title="Early adopters can see the feedback button">
+                      <input
+                        type="checkbox"
+                        checked={!!u.isEarlyAdopter}
+                        onChange={(e) => toggleEarlyAdopter(u.id, e.target.checked)}
+                        className="h-4 w-4"
+                      />
+                      <span className="text-muted-foreground">Early Adopter</span>
+                    </label>
                     <div className="flex items-center gap-2">
                       <label className="text-xs text-muted-foreground whitespace-nowrap">Workshop hrs/day:</label>
                       {editingHours[u.id] !== undefined ? (

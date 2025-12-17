@@ -242,7 +242,6 @@ export default function SettingsPage() {
   const [ms365Conn, setMs365Conn] = useState<{ ms365Address?: string | null } | null>(null);
   const [userGmailConn, setUserGmailConn] = useState<{ gmailAddress?: string | null } | null>(null);
   const [userMs365Conn, setUserMs365Conn] = useState<{ ms365Address?: string | null } | null>(null);
-  const [updatingEarlyAccess, setUpdatingEarlyAccess] = useState(false);
   const [profileFirstName, setProfileFirstName] = useState("");
   const [profileLastName, setProfileLastName] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
@@ -1697,18 +1696,6 @@ export default function SettingsPage() {
         Add Certification
       </Button>
     </div>
-  </Section>
-  
-  <Section title="Early Access">
-    <label className="flex items-center gap-2">
-      <input
-        type="checkbox"
-        checked={!!user?.isEarlyAdopter}
-        disabled={updatingEarlyAccess}
-        onChange={(e) => updateEarlyAccess(e.target.checked)}
-      />
-      <span>{user?.isEarlyAdopter ? "Enabled" : "Disabled"}</span>
-    </label>
   </Section>
 
   <Section title="Fire Door Calculator" description="Enable advanced fire door costing and pricing calculator">

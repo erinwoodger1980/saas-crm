@@ -32,7 +32,7 @@ router.get("/users", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
   const users = await prisma.user.findMany({
     where: { tenantId },
-    select: { id: true, name: true, email: true, role: true, workshopHoursPerDay: true, workshopColor: true, workshopProcessCodes: true, passwordHash: true, firstName: true, lastName: true, emailFooter: true },
+    select: { id: true, name: true, email: true, role: true, workshopHoursPerDay: true, workshopColor: true, workshopProcessCodes: true, passwordHash: true, firstName: true, lastName: true, emailFooter: true, isEarlyAdopter: true },
     orderBy: { name: "asc" },
   });
   res.json({ ok: true, items: users });
@@ -368,6 +368,39 @@ router.patch("/users/:userId/color", async (req: any, res) => {
   });
   
   res.json({ ok: true, user: updated });
+});
+
+// PATCH /workshop/users/:userId/early-adopter { isEarlyAdopter: boolean }
+router.patch("/users/:userId/early-adopter", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const { userId } = req.params;
+  const { isEarlyAdopter } = req.body;
+  
+  if (typeof isEarlyAdopter !== "boolean") {
+    return res.status(400).json({ error: "isEarlyAdopter must be a boolean" });
+  }
+  
+  try {
+    // Verify user belongs to tenant
+    const user = await prisma.user.findFirst({
+      where: { id: userId, tenantId },
+    });
+    
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { isEarlyAdopter },
+      select: { id: true, name: true, email: true, isEarlyAdopter: true },
+    });
+    
+    res.json({ ok: true, user: updated });
+  } catch (e: any) {
+    console.error("[PATCH /users/:userId/early-adopter] failed:", e?.message || e);
+    res.status(500).json({ error: "internal_error" });
+  }
 });
 
 // PATCH /workshop/users/:userId/profile { firstName?: string, lastName?: string, emailFooter?: string }
