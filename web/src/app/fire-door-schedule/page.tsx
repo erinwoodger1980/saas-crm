@@ -661,6 +661,19 @@ export default function FireDoorSchedulePage() {
     return bgClass ? (TAILWIND_BG_TO_HEX[bgClass] || '#ffffff') : '#ffffff';
   }
 
+  // Get BOM status color for a specific status value
+  function getBOMStatusColor(status: string | undefined): string {
+    if (!status) return '#e2e8f0'; // slate-200
+    const customColor = customColors[status];
+    if (customColor) return customColor.bg;
+    
+    const tailwindClasses = MATERIAL_STATUS_COLORS[status];
+    if (!tailwindClasses) return '#e2e8f0';
+    
+    const bgClass = tailwindClasses.split(' ').find(c => c.startsWith('bg-'));
+    return bgClass ? (TAILWIND_BG_TO_HEX[bgClass] || '#e2e8f0') : '#e2e8f0';
+  }
+
   // Calculate BOM completion percentage
   function calculateBOMPercent(project: FireDoorProject): number {
     const statuses = [
@@ -2330,6 +2343,39 @@ export default function FireDoorSchedulePage() {
                     <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(project.signOffStatus)}`}>
                       {project.signOffStatus?.replace(/_/g, " ") || "No Status"}
                     </span>
+                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-50 border border-slate-200">
+                      <span className="text-[10px] font-semibold text-slate-500 mr-0.5">BOM:</span>
+                      <div className="flex items-center gap-1">
+                        <div className="flex flex-col items-center">
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getBOMStatusColor(project.blanksStatus) }} title={`Blanks: ${project.blanksStatus || 'Not set'}`} />
+                          <span className="text-[8px] font-medium text-slate-400 mt-0.5">B</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getBOMStatusColor(project.lippingsStatus) }} title={`Lippings: ${project.lippingsStatus || 'Not set'}`} />
+                          <span className="text-[8px] font-medium text-slate-400 mt-0.5">L</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getBOMStatusColor(project.facingsStatus) }} title={`Facings: ${project.facingsStatus || 'Not set'}`} />
+                          <span className="text-[8px] font-medium text-slate-400 mt-0.5">F</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getBOMStatusColor(project.glassStatus) }} title={`Glass: ${project.glassStatus || 'Not set'}`} />
+                          <span className="text-[8px] font-medium text-slate-400 mt-0.5">G</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getBOMStatusColor(project.cassettesStatus) }} title={`Cassettes: ${project.cassettesStatus || 'Not set'}`} />
+                          <span className="text-[8px] font-medium text-slate-400 mt-0.5">C</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getBOMStatusColor(project.timbersStatus) }} title={`Timbers: ${project.timbersStatus || 'Not set'}`} />
+                          <span className="text-[8px] font-medium text-slate-400 mt-0.5">T</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getBOMStatusColor(project.ironmongeryStatus) }} title={`Ironmongery: ${project.ironmongeryStatus || 'Not set'}`} />
+                          <span className="text-[8px] font-medium text-slate-400 mt-0.5">I</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                   <div className="space-y-2 mb-4 text-sm">
                     <div className="flex items-center gap-2 text-slate-600">
