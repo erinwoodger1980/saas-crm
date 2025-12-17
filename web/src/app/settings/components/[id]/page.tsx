@@ -6,6 +6,7 @@ import { ArrowLeft, Plus, Edit2, Trash2, Package, DollarSign, Tag, Layers } from
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { apiFetch } from '@/lib/api';
+import ComponentAttributeModal from '@/components/ComponentAttributeModal';
 
 interface Component {
   id: string;
@@ -68,6 +69,8 @@ export default function ComponentDetailPage() {
   const [attributes, setAttributes] = useState<ComponentAttribute[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'variants' | 'attributes'>('overview');
+  const [showAttributeModal, setShowAttributeModal] = useState(false);
+  const [editingAttribute, setEditingAttribute] = useState<ComponentAttribute | null>(null);
 
   useEffect(() => {
     loadComponent();
@@ -424,7 +427,13 @@ export default function ComponentDetailPage() {
               <p className="text-sm text-slate-600">
                 {attributes.length} attribute{attributes.length !== 1 ? 's' : ''} defined for {component.componentType.replace(/_/g, ' ')}
               </p>
-              <Button size="sm">
+              <Button 
+                size="sm"
+                onClick={() => {
+                  setEditingAttribute(null);
+                  setShowAttributeModal(true);
+                }}
+              >
                 <Plus className="mr-2 h-4 w-4" />
                 Add Attribute
               </Button>
@@ -437,7 +446,13 @@ export default function ComponentDetailPage() {
                 <p className="mt-2 text-sm text-slate-600">
                   Define attributes like timber types, dimensions, finishes to create component variants
                 </p>
-                <Button className="mt-4">
+                <Button 
+                  className="mt-4"
+                  onClick={() => {
+                    setEditingAttribute(null);
+                    setShowAttributeModal(true);
+                  }}
+                >
                   <Plus className="mr-2 h-4 w-4" />
                   Define First Attribute
                 </Button>
@@ -497,10 +512,28 @@ export default function ComponentDetailPage() {
                       </div>
 
                       <div className="flex gap-2">
-                        <button className="rounded p-1.5 text-slate-600 hover:bg-blue-50 hover:text-blue-600">
+                        <button 
+                          onClick={() => {
+                            setEditingAttribute(attr);
+                            setShowAttributeModal(true);
+                          }}
+                          className="rounded p-1.5 text-slate-600 hover:bg-blue-50 hover:text-blue-600"
+                        >
                           <Edit2 className="h-4 w-4" />
                         </button>
-                        <button className="rounded p-1.5 text-slate-600 hover:bg-red-50 hover:text-red-600">
+                        <button 
+                          onClick={async () => {
+                            if (!confirm('Delete this attribute? This will affect all variants using it.')) return;
+                            try {
+                              await apiFetch(`/component-attributes/${attr.id}`, { method: 'DELETE' });
+                              toast({ title: 'Success', description: 'Attribute deleted' });
+                              loadAttributes();
+                            } catch (error: any) {
+                              toast({ title: 'Error', description: error.message, variant: 'destructive' });
+                            }
+                          }}
+                          className="rounded p-1.5 text-slate-600 hover:bg-red-50 hover:text-red-600"
+                        >
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
@@ -512,6 +545,26 @@ export default function ComponentDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Attribute Modal */}
+      {component && (
+        <ComponentAttributeModal
+          isOpen={showAttributeModal}
+          onClose={() => {
+            setShowAttributeModal(false);
+            setEditingAttribute(null);
+          }}
+          onSave={() => {
+            loadAttributes();
+            toast({
+              title: 'Success',
+              description: editingAttribute ? 'Attribute updated' : 'Attribute created'
+            });
+          }}
+          componentType={component.componentType}
+          attribute={editingAttribute}
+        />
+      )}
     </div>
   );
 }
