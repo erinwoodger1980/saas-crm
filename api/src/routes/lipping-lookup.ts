@@ -1,8 +1,7 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../prisma';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // GET /lipping-lookup - Get all lipping lookup entries for tenant
 router.get('/', async (req, res) => {

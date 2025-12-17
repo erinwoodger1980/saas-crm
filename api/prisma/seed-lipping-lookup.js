@@ -1,5 +1,4 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const { prisma } = require('../dist/prisma');
 
 // Default lipping lookup data from CSV
 const defaultLippingData = [
