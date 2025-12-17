@@ -592,40 +592,42 @@ export default function ComponentDetailPage() {
 
       {/* Attribute Modal */}
       {component && (
-        <ComponentAttributeModal
-          isOpen={showAttributeModal}
-          onClose={() => {
-            setShowAttributeModal(false);
-            setEditingAttribute(null);
-          }}
-          onSave={() => {
-            loadAttributes();
-            toast({
-              title: 'Success',
-              description: editingAttribute ? 'Attribute updated' : 'Attribute created'
-            });
-          }}
-          componentType={component.componentType}
-          attribute={editingAttribute}
-        />
-        <ComponentVariantModal
-          component={component}
-          attributes={attributes}
-          suppliers={suppliers}
-          variant={editingVariant}
-          isOpen={showVariantModal}
-          onClose={() => {
-            setShowVariantModal(false);
-            setEditingVariant(null);
-          }}
-          onSave={() => {
-            loadVariants();
-            toast({
-              title: 'Success',
-              description: editingVariant ? 'Variant updated successfully' : 'Variant created successfully'
-            });
-          }}
-        />
+        <>
+          <ComponentAttributeModal
+            isOpen={showAttributeModal}
+            onClose={() => {
+              setShowAttributeModal(false);
+              setEditingAttribute(null);
+            }}
+            onSave={() => {
+              loadAttributes();
+              toast({
+                title: 'Success',
+                description: editingAttribute ? 'Attribute updated' : 'Attribute created'
+              });
+            }}
+            componentType={component.componentType}
+            attribute={editingAttribute}
+          />
+          <ComponentVariantModal
+            component={component}
+            attributes={attributes}
+            suppliers={suppliers}
+            variant={editingVariant}
+            isOpen={showVariantModal}
+            onClose={() => {
+              setShowVariantModal(false);
+              setEditingVariant(null);
+            }}
+            onSave={() => {
+              loadVariants();
+              toast({
+                title: 'Success',
+                description: editingVariant ? 'Variant updated successfully' : 'Variant created successfully'
+              });
+            }}
+          />
+        </>
       )}
     </div>
   );
