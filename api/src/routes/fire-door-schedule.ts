@@ -626,17 +626,24 @@ router.get("/stats/summary", async (req: any, res: Response) => {
       signedOff,
       inProduction,
     ] = await Promise.all([
-      prisma.fireDoorScheduleProject.count({ where: { tenantId } }),
+      // Total Current Projects: exclude CANCELLED and COMPLETE & DELIVERED
+      prisma.fireDoorScheduleProject.count({ 
+        where: { 
+          tenantId,
+          jobLocation: { notIn: ["CANCELLED", "COMPLETE & DELIVERED"] }
+        } 
+      }),
       prisma.fireDoorScheduleProject.count({
         where: { tenantId, jobLocation: "RED FOLDER" },
       }),
       prisma.fireDoorScheduleProject.count({
         where: { tenantId, jobLocation: "IN PROGRESS" },
       }),
+      // Complete in Factory only
       prisma.fireDoorScheduleProject.count({
         where: { 
           tenantId, 
-          jobLocation: { in: ["COMPLETE IN FACTORY", "COMPLETE & DELIVERED"] } 
+          jobLocation: "COMPLETE IN FACTORY"
         },
       }),
       prisma.fireDoorScheduleProject.count({

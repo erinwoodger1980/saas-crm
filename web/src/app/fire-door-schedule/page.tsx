@@ -1718,15 +1718,15 @@ export default function FireDoorSchedulePage() {
         {/* Beautiful Stats Cards */}
         {stats && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            {/* Total Projects */}
-            <div onClick={() => setSelectedLocations(jobLocationOptions)} className="group backdrop-blur-xl bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-blue-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
+            {/* Total Current Projects */}
+            <div onClick={() => setSelectedLocations(jobLocationOptions.filter(loc => loc !== 'CANCELLED' && loc !== 'COMPLETE & DELIVERED'))} className="group backdrop-blur-xl bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-blue-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-sm font-medium text-slate-600 mb-1">Total Projects</p>
+                  <p className="text-sm font-medium text-slate-600 mb-1">Total Current Projects</p>
                   <h3 className="text-4xl font-bold text-slate-900">{stats.totalProjects}</h3>
                   <p className="text-xs text-slate-500 mt-2 flex items-center gap-1">
                     <TrendingUp className="w-3 h-3" />
-                    All fire door projects
+                    Active fire door projects
                   </p>
                 </div>
                 <div className="p-3 rounded-xl bg-blue-500/20 group-hover:bg-blue-500/30 transition-colors">
@@ -1769,11 +1769,11 @@ export default function FireDoorSchedulePage() {
               </div>
             </div>
 
-            {/* Complete */}
-            <div onClick={() => setSelectedLocations(['COMPLETE IN FACTORY', 'COMPLETE & DELIVERED'])} className="group backdrop-blur-xl bg-gradient-to-br from-green-500/10 via-emerald-500/10 to-green-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
+            {/* Complete in Factory */}
+            <div onClick={() => setSelectedLocations(['COMPLETE IN FACTORY'])} className="group backdrop-blur-xl bg-gradient-to-br from-green-500/10 via-emerald-500/10 to-green-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-sm font-medium text-slate-600 mb-1">Complete</p>
+                  <p className="text-sm font-medium text-slate-600 mb-1">Complete in Factory</p>
                   <h3 className="text-4xl font-bold text-slate-900">{stats.byLocation.complete}</h3>
                   <p className="text-xs text-slate-500 mt-2 flex items-center gap-1">
                     <CheckCircle2 className="w-3 h-3" />
