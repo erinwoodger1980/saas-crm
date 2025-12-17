@@ -1,10 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Save, X, Search, Filter, Upload, Download, Package } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Plus, Edit2, Trash2, Save, X, Search, Filter, Upload, Download, Package, ChevronDown, Layers, Tag, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { apiFetch } from '@/lib/api';
+import ComponentAttributeModal from '@/components/ComponentAttributeModal';
+import ComponentVariantModal from '@/components/ComponentVariantModal';
 
 interface Supplier {
   id: string;
@@ -75,6 +78,7 @@ const emptyFormData: ComponentFormData = {
 };
 
 export default function ComponentsPage() {
+  const router = useRouter();
   const { toast } = useToast();
   const [components, setComponents] = useState<Component[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -87,6 +91,14 @@ export default function ComponentsPage() {
   const [filterActive, setFilterActive] = useState<string>('active');
   const [componentTypes, setComponentTypes] = useState<string[]>([]);
   const [productTypeOptions, setProductTypeOptions] = useState<Array<{ id: string; label: string }>>([]);
+  const [productTypesDropdownOpen, setProductTypesDropdownOpen] = useState(false);
+  const [modalTab, setModalTab] = useState<'details' | 'variants' | 'attributes' | 'processes'>('details');
+  const [variants, setVariants] = useState<any[]>([]);
+  const [attributes, setAttributes] = useState<any[]>([]);
+  const [showVariantModal, setShowVariantModal] = useState(false);
+  const [showAttributeModal, setShowAttributeModal] = useState(false);
+  const [editingVariant, setEditingVariant] = useState<any>(null);
+  const [editingAttribute, setEditingAttribute] = useState<any>(null);
 
   useEffect(() => {
     loadComponents();
@@ -160,7 +172,7 @@ export default function ComponentsPage() {
           if (category.types && Array.isArray(category.types)) {
             category.types.forEach(type => {
               if (type.options && Array.isArray(type.options)) {
-                type.options.forEach(option => {
+                type.options.forEach((option: any) => {
                   allTypes.push({ id: option.id, label: option.label });
                 });
               }
@@ -220,7 +232,58 @@ export default function ComponentsPage() {
       supplierId: component.supplierId || '',
       isActive: component.isActive
     });
+    setModalTab('details');
     setShowModal(true);
+  };
+
+  const handleViewDetails = async (component: Component) => {
+    setEditingComponent(component);
+    setFormData({
+      code: component.code,
+      name: component.name,
+      description: component.description || '',
+      componentType: component.componentType,
+      productTypes: Array.isArray(component.productTypes) ? component.productTypes : [],
+      unitOfMeasure: component.unitOfMeasure,
+      basePrice: component.basePrice.toString(),
+      leadTimeDays: component.leadTimeDays.toString(),
+      supplierId: component.supplierId || '',
+      isActive: component.isActive
+    });
+    setModalTab('details');
+    setShowModal(true);
+    
+    // Load variants and attributes in parallel
+    try {
+      const [variantsData, attributesData] = await Promise.all([
+        apiFetch<any[]>(`/component-variants?componentLookupId=${component.id}`),
+        apiFetch<any[]>(`/component-attributes?componentType=${component.componentType}`)
+      ]);
+      setVariants(variantsData);
+      setAttributes(attributesData);
+    } catch (error) {
+      console.error('Error loading component details:', error);
+    }
+  };
+
+  const handleVariantSaved = () => {
+    if (editingComponent) {
+      apiFetch<any[]>(`/component-variants?componentLookupId=${editingComponent.id}`)
+        .then(setVariants)
+        .catch(console.error);
+    }
+    setShowVariantModal(false);
+    setEditingVariant(null);
+  };
+
+  const handleAttributeSaved = () => {
+    if (editingComponent) {
+      apiFetch<any[]>(`/component-attributes?componentType=${editingComponent.componentType}`)
+        .then(setAttributes)
+        .catch(console.error);
+    }
+    setShowAttributeModal(false);
+    setEditingAttribute(null);
   };
 
   const handleDelete = async (component: Component) => {
@@ -495,7 +558,7 @@ export default function ComponentsPage() {
                       {comps.map((component) => (
                         <tr 
                           key={component.id} 
-                          onClick={() => router.push(`/settings/components/${component.id}`)}
+                          onClick={() => handleViewDetails(component)}
                           className="cursor-pointer hover:bg-blue-50/30 transition-colors group"
                           title="Click to view variants, attributes, and processes"
                         >
@@ -538,6 +601,16 @@ export default function ComponentsPage() {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                  handleViewDetails(component);
+                                }}
+                                className="rounded px-2 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200"
+                                title="View variants, attributes, and processes"
+                              >
+                                View Details
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   handleEdit(component);
                                 }}
                                 className="rounded p-1.5 text-slate-600 hover:bg-blue-50 hover:text-blue-600"
@@ -548,7 +621,7 @@ export default function ComponentsPage() {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleDelete(component.id);
+                                  handleDelete(component);
                                 }}
                                 className="rounded p-1.5 text-slate-600 hover:bg-red-50 hover:text-red-600"
                                 title="Delete"
@@ -571,20 +644,79 @@ export default function ComponentsPage() {
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-2xl rounded-xl bg-white shadow-2xl">
+          <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b px-6 py-4">
               <h2 className="text-lg font-semibold text-slate-900">
-                {editingComponent ? 'Edit Component' : 'Add Component'}
+                {editingComponent ? formData.name : 'Add Component'}
               </h2>
               <button
-                onClick={() => setShowModal(false)}
+                onClick={() => {
+                  setShowModal(false);
+                  setModalTab('details');
+                }}
                 className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6">
+            {/* Tab Navigation */}
+            {editingComponent && (
+              <div className="flex gap-1 border-b px-6 bg-slate-50">
+                <button
+                  type="button"
+                  onClick={() => setModalTab('details')}
+                  className={`px-4 py-3 text-sm font-medium transition-colors ${
+                    modalTab === 'details'
+                      ? 'border-b-2 border-blue-600 text-blue-600'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Package className="inline-block h-4 w-4 mr-2" />
+                  Details
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalTab('variants')}
+                  className={`px-4 py-3 text-sm font-medium transition-colors ${
+                    modalTab === 'variants'
+                      ? 'border-b-2 border-blue-600 text-blue-600'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Layers className="inline-block h-4 w-4 mr-2" />
+                  Variants ({variants.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalTab('attributes')}
+                  className={`px-4 py-3 text-sm font-medium transition-colors ${
+                    modalTab === 'attributes'
+                      ? 'border-b-2 border-blue-600 text-blue-600'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Tag className="inline-block h-4 w-4 mr-2" />
+                  Attributes ({attributes.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalTab('processes')}
+                  className={`px-4 py-3 text-sm font-medium transition-colors ${
+                    modalTab === 'processes'
+                      ? 'border-b-2 border-blue-600 text-blue-600'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Clock className="inline-block h-4 w-4 mr-2" />
+                  Processes
+                </button>
+              </div>
+            )}
+
+            <div className="flex-1 overflow-y-auto">
+              {modalTab === 'details' && (
+                <form onSubmit={handleSubmit} className="p-6">
               <div className="grid grid-cols-2 gap-4">
                 {/* Code */}
                 <div>
@@ -649,27 +781,52 @@ export default function ComponentsPage() {
                 </div>
 
                 {/* Product Types */}
-                <div className="col-span-2">
-                  <label className="mb-2 block text-sm font-medium text-slate-700">
+                <div className="col-span-2 relative">
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
                     Product Types
                   </label>
-                  <div className="flex flex-wrap gap-2">
-                    {productTypeOptions.length > 0 ? (
-                      productTypeOptions.map(type => (
-                        <label key={type.id} className="inline-flex items-center">
-                          <input
-                            type="checkbox"
-                            checked={formData.productTypes.includes(type.id)}
-                            onChange={() => toggleProductType(type.id)}
-                            className="mr-2 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500/20"
-                          />
-                          <span className="text-sm text-slate-700">{type.label}</span>
-                        </label>
-                      ))
+                  <button
+                    type="button"
+                    onClick={() => setProductTypesDropdownOpen(!productTypesDropdownOpen)}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  >
+                    {formData.productTypes.length === 0 ? (
+                      <span className="text-slate-400">Select product types...</span>
                     ) : (
-                      <p className="text-sm text-slate-500">Loading product types...</p>
+                      <span className="text-slate-700">
+                        {formData.productTypes.length} selected
+                        {formData.productTypes.length <= 3 && (
+                          <span className="text-slate-500 ml-1">
+                            ({formData.productTypes.map(id => productTypeOptions.find(opt => opt.id === id)?.label).filter(Boolean).join(', ')})
+                          </span>
+                        )}
+                      </span>
                     )}
-                  </div>
+                  </button>
+                  {productTypesDropdownOpen && (
+                    <div className="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg max-h-64 overflow-y-auto">
+                      {productTypeOptions.length > 0 ? (
+                        <div className="p-2 space-y-1">
+                          {productTypeOptions.map(type => (
+                            <label
+                              key={type.id}
+                              className="flex items-center px-3 py-2 hover:bg-slate-50 rounded cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={formData.productTypes.includes(type.id)}
+                                onChange={() => toggleProductType(type.id)}
+                                className="mr-2 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500/20"
+                              />
+                              <span className="text-sm text-slate-700">{type.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-4 text-center text-sm text-slate-500">Loading product types...</div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Unit of Measure */}
@@ -749,7 +906,10 @@ export default function ComponentsPage() {
               <div className="mt-6 flex justify-end gap-3">
                 <Button
                   type="button"
-                  onClick={() => setShowModal(false)}
+                  onClick={() => {
+                    setShowModal(false);
+                    setModalTab('details');
+                  }}
                   variant="outline"
                 >
                   Cancel
@@ -760,8 +920,238 @@ export default function ComponentsPage() {
                 </Button>
               </div>
             </form>
+              )}
+
+              {/* Variants Tab */}
+              {modalTab === 'variants' && editingComponent && (
+                <div className="p-6">
+                  <div className="mb-4 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-900">Component Variants</h3>
+                      <p className="text-sm text-slate-600">
+                        Define specific variations of this component with different attributes and pricing
+                      </p>
+                    </div>
+                    <Button
+                      onClick={() => {
+                        setEditingVariant(null);
+                        setShowVariantModal(true);
+                      }}
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Variant
+                    </Button>
+                  </div>
+
+                  {variants.length === 0 ? (
+                    <div className="text-center py-12 bg-slate-50 rounded-lg">
+                      <Layers className="h-12 w-12 text-slate-400 mx-auto mb-3" />
+                      <p className="text-sm text-slate-600 mb-4">No variants yet</p>
+                      <Button
+                        onClick={() => {
+                          setEditingVariant(null);
+                          setShowVariantModal(true);
+                        }}
+                        size="sm"
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        Create First Variant
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {variants.map((variant) => (
+                        <div
+                          key={variant.id}
+                          className="flex items-start justify-between rounded-lg border border-slate-200 p-4 hover:border-blue-300 transition-colors"
+                        >
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <code className="rounded bg-slate-100 px-2 py-1 text-xs font-mono text-slate-700">
+                                {variant.variantCode}
+                              </code>
+                              <span className="font-medium text-slate-900">{variant.variantName}</span>
+                              {variant.isStocked && (
+                                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                                  Stocked
+                                </span>
+                              )}
+                              {!variant.isActive && (
+                                <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                                  Inactive
+                                </span>
+                              )}
+                            </div>
+                            {Object.keys(variant.attributeValues || {}).length > 0 && (
+                              <div className="flex flex-wrap gap-2 mb-2">
+                                {Object.entries(variant.attributeValues).map(([key, value]) => (
+                                  <span key={key} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded">
+                                    {key}: {String(value)}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            <div className="flex items-center gap-4 text-sm text-slate-600">
+                              <span className="font-medium text-slate-900">
+                                £{(variant.unitPrice || ((editingComponent.basePrice || 0) + variant.priceModifier)).toFixed(2)}
+                              </span>
+                              {variant.supplier && (
+                                <span>Supplier: {variant.supplier.name}</span>
+                              )}
+                              {variant.leadTimeDays && (
+                                <span>Lead: {variant.leadTimeDays}d</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => {
+                                setEditingVariant(variant);
+                                setShowVariantModal(true);
+                              }}
+                              className="rounded p-2 text-slate-400 hover:bg-slate-100 hover:text-blue-600"
+                            >
+                              <Edit2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Attributes Tab */}
+              {modalTab === 'attributes' && editingComponent && (
+                <div className="p-6">
+                  <div className="mb-4 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-900">Component Attributes</h3>
+                      <p className="text-sm text-slate-600">
+                        Define attributes that can vary across component variants
+                      </p>
+                    </div>
+                    <Button
+                      onClick={() => {
+                        setEditingAttribute(null);
+                        setShowAttributeModal(true);
+                      }}
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Attribute
+                    </Button>
+                  </div>
+
+                  {attributes.length === 0 ? (
+                    <div className="text-center py-12 bg-slate-50 rounded-lg">
+                      <Tag className="h-12 w-12 text-slate-400 mx-auto mb-3" />
+                      <p className="text-sm text-slate-600 mb-4">No attributes defined yet</p>
+                      <Button
+                        onClick={() => {
+                          setEditingAttribute(null);
+                          setShowAttributeModal(true);
+                        }}
+                        size="sm"
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        Create First Attribute
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {attributes.map((attr) => (
+                        <div
+                          key={attr.id}
+                          className="flex items-start justify-between rounded-lg border border-slate-200 p-4"
+                        >
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="font-medium text-slate-900">{attr.attributeName}</span>
+                              <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
+                                {attr.attributeType}
+                              </span>
+                              {attr.isRequired && (
+                                <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded">
+                                  Required
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-2 text-xs text-slate-600">
+                              {attr.affectsPrice && (
+                                <span className="bg-green-50 text-green-700 px-2 py-1 rounded">Affects Price</span>
+                              )}
+                              {attr.affectsBOM && (
+                                <span className="bg-purple-50 text-purple-700 px-2 py-1 rounded">Affects BOM</span>
+                              )}
+                              {attr.calculationFormula && (
+                                <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded">Calculated</span>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setEditingAttribute(attr);
+                              setShowAttributeModal(true);
+                            }}
+                            className="rounded p-2 text-slate-400 hover:bg-slate-100 hover:text-blue-600"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Processes Tab */}
+              {modalTab === 'processes' && editingComponent && (
+                <div className="p-6">
+                  <div className="mb-4">
+                    <h3 className="text-lg font-semibold text-slate-900">Process & Timing</h3>
+                    <p className="text-sm text-slate-600">
+                      Define manufacturing processes and lead times for this component
+                    </p>
+                  </div>
+                  <div className="text-center py-12 bg-slate-50 rounded-lg">
+                    <Clock className="h-12 w-12 text-slate-400 mx-auto mb-3" />
+                    <p className="text-sm text-slate-600">Process management coming soon</p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
+      )}
+
+      {/* Variant Modal */}
+      {showVariantModal && editingComponent && (
+        <ComponentVariantModal
+          isOpen={showVariantModal}
+          component={editingComponent}
+          variant={editingVariant}
+          attributes={attributes}
+          suppliers={suppliers}
+          onClose={() => {
+            setShowVariantModal(false);
+            setEditingVariant(null);
+          }}
+          onSave={handleVariantSaved}
+        />
+      )}
+
+      {/* Attribute Modal */}
+      {showAttributeModal && editingComponent && (
+        <ComponentAttributeModal
+          isOpen={showAttributeModal}
+          componentType={editingComponent.componentType}
+          attribute={editingAttribute}
+          onClose={() => {
+            setShowAttributeModal(false);
+            setEditingAttribute(null);
+          }}
+          onSave={handleAttributeSaved}
+        />
       )}
     </div>
   );
