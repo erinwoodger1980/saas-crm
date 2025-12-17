@@ -86,11 +86,13 @@ export default function ComponentsPage() {
   const [filterType, setFilterType] = useState<string>('');
   const [filterActive, setFilterActive] = useState<string>('active');
   const [componentTypes, setComponentTypes] = useState<string[]>([]);
+  const [productTypeOptions, setProductTypeOptions] = useState<Array<{ id: string; label: string }>>([]);
 
   useEffect(() => {
     loadComponents();
     loadSuppliers();
     loadComponentTypes();
+    loadProductTypes();
   }, []);
 
   const loadComponents = async () => {
@@ -134,12 +136,49 @@ export default function ComponentsPage() {
 
   const loadSuppliers = async () => {
     try {
-      const data = await apiFetch<Supplier[]>('/suppliers');
-      const items = Array.isArray(data) ? data : [];
+      const data = await apiFetch<{ ok?: boolean; items?: Supplier[] } | Supplier[]>('/suppliers');
+      // Handle both { ok: true, items: [...] } and direct array responses
+      const items = Array.isArray(data) 
+        ? data 
+        : (data as any)?.items && Array.isArray((data as any).items)
+        ? (data as any).items
+        : [];
       setSuppliers(items);
     } catch (error) {
       console.error('Error loading suppliers:', error);
       setSuppliers([]);
+    }
+  };
+
+  const loadProductTypes = async () => {
+    try {
+      const data = await apiFetch<{ productTypes?: Array<{ id: string; label: string; types: any[] }> }>('/tenant/settings');
+      if (data.productTypes && Array.isArray(data.productTypes)) {
+        // Flatten all product types from all categories
+        const allTypes: Array<{ id: string; label: string }> = [];
+        data.productTypes.forEach(category => {
+          if (category.types && Array.isArray(category.types)) {
+            category.types.forEach(type => {
+              if (type.options && Array.isArray(type.options)) {
+                type.options.forEach(option => {
+                  allTypes.push({ id: option.id, label: option.label });
+                });
+              }
+            });
+          }
+        });
+        setProductTypeOptions(allTypes);
+      }
+    } catch (error) {
+      console.error('Error loading product types:', error);
+      // Fallback to default types if loading fails
+      setProductTypeOptions([
+        { id: 'FIRE_DOOR', label: 'Fire Door' },
+        { id: 'FIRE_DOOR_SET', label: 'Fire Door Set' },
+        { id: 'WINDOW', label: 'Window' },
+        { id: 'CONSERVATORY', label: 'Conservatory' },
+        { id: 'BIFOLD_DOOR', label: 'Bifold Door' }
+      ]);
     }
   };
 
@@ -614,17 +653,21 @@ export default function ComponentsPage() {
                     Product Types
                   </label>
                   <div className="flex flex-wrap gap-2">
-                    {['FIRE_DOOR', 'FIRE_DOOR_SET', 'WINDOW', 'CONSERVATORY', 'BIFOLD_DOOR'].map(type => (
-                      <label key={type} className="inline-flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={formData.productTypes.includes(type)}
-                          onChange={() => toggleProductType(type)}
-                          className="mr-2 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500/20"
-                        />
-                        <span className="text-sm text-slate-700">{type.replace(/_/g, ' ')}</span>
-                      </label>
-                    ))}
+                    {productTypeOptions.length > 0 ? (
+                      productTypeOptions.map(type => (
+                        <label key={type.id} className="inline-flex items-center">
+                          <input
+                            type="checkbox"
+                            checked={formData.productTypes.includes(type.id)}
+                            onChange={() => toggleProductType(type.id)}
+                            className="mr-2 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500/20"
+                          />
+                          <span className="text-sm text-slate-700">{type.label}</span>
+                        </label>
+                      ))
+                    ) : (
+                      <p className="text-sm text-slate-500">Loading product types...</p>
+                    )}
                   </div>
                 </div>
 
