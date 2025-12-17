@@ -19,21 +19,21 @@ async function fixFailedMigration() {
       
       console.log('Current migration state:', checkResult.rows);
       
-      if (checkResult.rows.length > 0 && !checkResult.rows[0].finished_at) {
-        console.log('\nMarking failed migration as rolled back...');
+      if (checkResult.rows.length > 0) {
+        console.log('\nMarking failed migration as rolled back and clearing error logs...');
         
-        // Mark as rolled back so new migrations can proceed
+        // Mark as rolled back and clear error logs so new migrations can proceed
         await client.query(`
           UPDATE _prisma_migrations
           SET rolled_back_at = NOW(),
-              finished_at = NOW()
+              finished_at = NOW(),
+              logs = NULL
           WHERE migration_name = '20251217000000_add_fire_door_schedule_column_config'
-          AND finished_at IS NULL
         `);
         
-        console.log('✅ Migration marked as rolled back');
+        console.log('✅ Migration marked as rolled back and logs cleared');
       } else {
-        console.log('Migration is already finished or does not exist');
+        console.log('Migration does not exist');
       }
       
       // Check if column exists
