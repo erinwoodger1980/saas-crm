@@ -563,7 +563,7 @@ export default function FireDoorSchedulePage() {
         });
       }
     }
-  }, [loading, projects]);
+  }, [loading]);
 
   // Auto-refresh schedule data every 3 minutes (only when user is not interacting)
   useEffect(() => {
@@ -1507,7 +1507,22 @@ export default function FireDoorSchedulePage() {
       return (
         <select
           value={value || ''}
-          onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
+          onChange={(e) => {
+            const newValue = e.target.value;
+            const updates: any = { [field]: newValue };
+            
+            // Always update date ordered field when status changes to any value
+            if (newValue) {
+              updates.ironmongeryDateOrdered = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+            }
+            
+            // Auto-populate date received when status changes to Received
+            if (newValue === 'Received' || newValue === 'Received from TGS' || newValue === 'Received from Customer') {
+              updates.ironmongeryDateReceived = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+            }
+            
+            updateProject(project.id, updates);
+          }}
           className={`text-[11px] font-medium px-3 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${colorClasses}`}
           style={customColor ? { backgroundColor: customColor.bg, color: customColor.text, borderColor: customColor.bg } : undefined}
         >
