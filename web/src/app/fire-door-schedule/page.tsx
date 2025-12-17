@@ -1449,11 +1449,9 @@ export default function FireDoorSchedulePage() {
             const newValue = e.target.value;
             const updates: any = { [field]: newValue };
             
-            // Auto-populate date ordered field when status changes (any status change)
-            const dateOrderedField = field.replace('Status', 'DateOrdered');
-            const currentOrderedDate = project[dateOrderedField as keyof FireDoorProject];
-            // Set date ordered if not already set
-            if (newValue && (!currentOrderedDate || currentOrderedDate === '' || currentOrderedDate === 'dd/mm/yyyy')) {
+            // Always update date ordered field when status changes to any value
+            if (newValue) {
+              const dateOrderedField = field.replace('Status', 'DateOrdered');
               updates[dateOrderedField] = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
             }
             
@@ -2285,11 +2283,10 @@ export default function FireDoorSchedulePage() {
                         return (
                         <td
                           key={field}
-                          className={`px-4 py-3 text-slate-700 font-semibold cursor-pointer ${isFrozen ? `sticky z-[50] bg-white bg-clip-padding shadow-[inset_-1px_0_0_rgba(15,23,42,0.06)]` : 'z-0 group-hover:bg-blue-50/40'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
+                          className={`px-4 py-3 text-slate-700 font-semibold ${isFrozen ? `sticky z-[50] bg-white bg-clip-padding shadow-[inset_-1px_0_0_rgba(15,23,42,0.06)]` : 'z-0 group-hover:bg-blue-50/40'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
                           style={isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px`, width: `${fieldWidth}px`, minWidth: `${fieldWidth}px`, maxWidth: `${fieldWidth}px` } : { width: `${fieldWidth}px`, minWidth: `${fieldWidth}px`, maxWidth: `${fieldWidth}px` }}
-                          onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
                         >
-                          <div onClick={(e) => e.stopPropagation()} className="relative z-40">
+                          <div className="relative z-40">
                             {renderCell(project, field)}
                           </div>
                         </td>
