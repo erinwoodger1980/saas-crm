@@ -154,7 +154,7 @@ export default function ComponentsPage() {
       name: component.name,
       description: component.description || '',
       componentType: component.componentType,
-      productTypes: component.productTypes,
+      productTypes: Array.isArray(component.productTypes) ? component.productTypes : [],
       unitOfMeasure: component.unitOfMeasure,
       basePrice: component.basePrice.toString(),
       leadTimeDays: component.leadTimeDays.toString(),
