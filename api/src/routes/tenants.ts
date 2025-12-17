@@ -46,7 +46,7 @@ const upload = multer({
 });
 
 // Restore default product catalog (doors + windows) for the tenant
-router.post("/tenant/product-types/restore", requireAuth, async (req: any, res) => {
+router.post("/tenant/product-types/restore", async (req: any, res) => {
   const tenantId = authTenantId(req);
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
