@@ -232,7 +232,7 @@ export default function ComponentDetailPage() {
           </div>
         </div>
 
-        {/* Overview Tab */}
+        {/* Overview Tab - Component Details */}
         {activeTab === 'overview' && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
