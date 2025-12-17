@@ -103,9 +103,25 @@ export default function ComponentsPage() {
       if (searchQuery) params.append('search', searchQuery);
 
       const data = await apiFetch<Component[]>(`/components?${params.toString()}`);
-      setComponents(data);
+      
+      // Normalize data shape - handle array, object with items, or fallback to empty
+      const items = Array.isArray(data) 
+        ? data 
+        : Array.isArray((data as any)?.items) 
+        ? (data as any).items 
+        : [];
+      
+      // Ensure each component has valid productTypes array
+      const safeComponents = items.map((c: Component) => ({
+        ...c,
+        productTypes: Array.isArray(c.productTypes) ? c.productTypes : []
+      }));
+      
+      setComponents(safeComponents);
     } catch (error) {
       console.error('Error loading components:', error);
+      // Don't crash - set empty array and show toast
+      setComponents([]);
       toast({
         title: 'Error',
         description: 'Failed to load components',
@@ -119,18 +135,22 @@ export default function ComponentsPage() {
   const loadSuppliers = async () => {
     try {
       const data = await apiFetch<Supplier[]>('/suppliers');
-      setSuppliers(data);
+      const items = Array.isArray(data) ? data : [];
+      setSuppliers(items);
     } catch (error) {
       console.error('Error loading suppliers:', error);
+      setSuppliers([]);
     }
   };
 
   const loadComponentTypes = async () => {
     try {
       const types = await apiFetch<string[]>('/components/types/all');
-      setComponentTypes(types);
+      const items = Array.isArray(types) ? types : [];
+      setComponentTypes(items);
     } catch (error) {
       console.error('Error loading component types:', error);
+      setComponentTypes([]);
     }
   };
 
