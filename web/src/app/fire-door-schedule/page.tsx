@@ -850,6 +850,7 @@ export default function FireDoorSchedulePage() {
         'scheduledBy',
         'signOffDate',
         'leadTimeWeeks',
+        'calculatedCompletionDate',
         'workingDaysRemaining',
         'blanksStatus',
         'blanksDateOrdered',
