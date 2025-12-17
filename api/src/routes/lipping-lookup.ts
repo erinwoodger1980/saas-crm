@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { authTenantId } from '../middleware/auth.js';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -8,7 +7,10 @@ const prisma = new PrismaClient();
 // GET /lipping-lookup - Get all lipping lookup entries for tenant
 router.get('/', async (req, res) => {
   try {
-    const tenantId = authTenantId(req);
+    const tenantId = req.auth?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
 
     const lippingLookups = await prisma.lippingLookup.findMany({
       where: {
@@ -30,7 +32,10 @@ router.get('/', async (req, res) => {
 // GET /lipping-lookup/:id - Get specific lipping lookup entry
 router.get('/:id', async (req, res) => {
   try {
-    const tenantId = authTenantId(req);
+    const tenantId = req.auth?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
     const { id } = req.params;
 
     const lippingLookup = await prisma.lippingLookup.findFirst({
@@ -54,7 +59,10 @@ router.get('/:id', async (req, res) => {
 // GET /lipping-lookup/type/:doorsetType - Get by doorset type
 router.get('/type/:doorsetType', async (req, res) => {
   try {
-    const tenantId = authTenantId(req);
+    const tenantId = req.auth?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
     const { doorsetType } = req.params;
 
     const lippingLookup = await prisma.lippingLookup.findUnique({
@@ -80,7 +88,10 @@ router.get('/type/:doorsetType', async (req, res) => {
 // POST /lipping-lookup - Create new lipping lookup entry
 router.post('/', async (req, res) => {
   try {
-    const tenantId = authTenantId(req);
+    const tenantId = req.auth?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
     const {
       doorsetType,
       topMm,
@@ -142,7 +153,10 @@ router.post('/', async (req, res) => {
 // PUT /lipping-lookup/:id - Update lipping lookup entry
 router.put('/:id', async (req, res) => {
   try {
-    const tenantId = authTenantId(req);
+    const tenantId = req.auth?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
     const { id } = req.params;
     const {
       doorsetType,
@@ -217,7 +231,10 @@ router.put('/:id', async (req, res) => {
 // DELETE /lipping-lookup/:id - Delete (soft delete) lipping lookup entry
 router.delete('/:id', async (req, res) => {
   try {
-    const tenantId = authTenantId(req);
+    const tenantId = req.auth?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
     const { id } = req.params;
 
     // Verify ownership
@@ -248,7 +265,10 @@ router.delete('/:id', async (req, res) => {
 // POST /lipping-lookup/calculate - Calculate lipping requirements
 router.post('/calculate', async (req, res) => {
   try {
-    const tenantId = authTenantId(req);
+    const tenantId = req.auth?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
     const { doorsetType, doorWidth, doorHeight, quantity = 1 } = req.body;
 
     if (!doorsetType) {
