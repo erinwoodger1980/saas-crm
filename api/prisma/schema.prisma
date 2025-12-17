@@ -118,6 +118,8 @@ model Tenant {
   componentLookups           ComponentLookup[]           @relation("ComponentLookups")
   productTypeComponents      ProductTypeComponent[]      @relation("ProductTypeComponents")
   projects                   Project[]                   @relation("TenantProjects")
+  processTimingPredictions   ProcessTimingPrediction[]   @relation("TenantProcessTimings")
+  processCostRates           ProcessCostRate[]           @relation("TenantProcessCostRates")
 }
 
 model LippingLookup {
@@ -170,10 +172,11 @@ model ComponentLookup {
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
   
-  tenant             Tenant        @relation("ComponentLookups", fields: [tenantId], references: [id], onDelete: Cascade)
-  supplier           Supplier?     @relation("SupplierComponents", fields: [supplierId], references: [id])
-  profile            ComponentProfile? @relation("ComponentProfile")
-  bomLineItems       BOMLineItem[] @relation("ComponentBOMItems")
+  tenant             Tenant              @relation("ComponentLookups", fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier           Supplier?           @relation("SupplierComponents", fields: [supplierId], references: [id])
+  profile            ComponentProfile?   @relation("ComponentProfile")
+  bomLineItems       BOMLineItem[]       @relation("ComponentBOMItems")
+  componentProcesses ComponentProcess[]  @relation("ComponentProcesses")
   
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -273,6 +276,86 @@ model BOMLineItem {
   @@index([componentLookupId])
   @@index([status])
   @@index([supplierId])
+}
+
+// Links components to required processes with base time estimates
+model ComponentProcess {
+  id                      String                     @id @default(cuid())
+  componentLookupId       String
+  processDefinitionId     String                     // Links to existing WorkshopProcessDefinition
+  sequence                Int                        @default(0) // Order in which processes should be done
+  baseTimeMinutes         Float                      @default(0) // Initial time estimate
+  timePerUnit             Float                      @default(0) // Additional time per unit of measure
+  setupTimeMinutes        Float                      @default(0) // One-time setup time
+  formulaEnabled          Boolean                    @default(false)
+  formulaExpression       String?                    // Calculate time dynamically (e.g., "perimeter * 0.5")
+  isRequired              Boolean                    @default(true)
+  isActive                Boolean                    @default(true)
+  metadata                Json?
+  createdAt               DateTime                   @default(now())
+  updatedAt               DateTime                   @updatedAt
+  
+  component               ComponentLookup            @relation("ComponentProcesses", fields: [componentLookupId], references: [id], onDelete: Cascade)
+  processDefinition       WorkshopProcessDefinition  @relation("ProcessComponentLinks", fields: [processDefinitionId], references: [id], onDelete: Cascade)
+  
+  @@unique([componentLookupId, processDefinitionId])
+  @@index([componentLookupId])
+  @@index([processDefinitionId])
+}
+
+// ML-powered timing predictions learned from actual time tracking
+model ProcessTimingPrediction {
+  id                   String                     @id @default(cuid())
+  tenantId             String
+  processDefinitionId  String                     // Links to existing WorkshopProcessDefinition
+  componentType        String                     // Link to component type for pattern matching
+  productType          String?                    // Optional product type for more specific predictions
+  
+  // Prediction data
+  predictedMinutes     Float
+  confidenceScore      Float                      @default(0.5) // 0-1, higher = more confident
+  sampleSize           Int                        @default(0) // How many actual timings contributed
+  
+  // ML learning data
+  averageActualMinutes Float?
+  minActualMinutes     Float?
+  maxActualMinutes     Float?
+  stdDeviation         Float?
+  lastLearnedAt        DateTime?
+  
+  // Context for predictions
+  metadata             Json?                      // Store factors that affect timing (complexity, size, etc.)
+  createdAt            DateTime                   @default(now())
+  updatedAt            DateTime                   @updatedAt
+  
+  tenant               Tenant                     @relation("TenantProcessTimings", fields: [tenantId], references: [id], onDelete: Cascade)
+  processDefinition    WorkshopProcessDefinition  @relation("ProcessTimingPredictions", fields: [processDefinitionId], references: [id], onDelete: Cascade)
+  
+  @@unique([tenantId, processDefinitionId, componentType, productType])
+  @@index([tenantId])
+  @@index([processDefinitionId])
+  @@index([componentType])
+}
+
+// Cost rates per process (labor cost per hour)
+model ProcessCostRate {
+  id                  String                     @id @default(cuid())
+  tenantId            String
+  processDefinitionId String                     // Links to existing WorkshopProcessDefinition
+  costPerHour         Float                      // Labor cost for this process
+  effectiveFrom       DateTime                   @default(now())
+  effectiveTo         DateTime?                  // Null = current rate
+  currency            String                     @default("GBP")
+  notes               String?
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+  
+  tenant              Tenant                     @relation("TenantProcessCostRates", fields: [tenantId], references: [id], onDelete: Cascade)
+  processDefinition   WorkshopProcessDefinition  @relation("ProcessCostRates", fields: [processDefinitionId], references: [id], onDelete: Cascade)
+  
+  @@index([tenantId])
+  @@index([processDefinitionId])
+  @@index([effectiveFrom])
 }
 
 model FeatureRequest {
@@ -1615,22 +1698,25 @@ model UserPreference {
 }
 
 model WorkshopProcessDefinition {
-  id                   String                     @id @default(cuid())
+  id                   String                       @id @default(cuid())
   tenantId             String
   code                 String
   name                 String
-  sortOrder            Int                        @default(0)
-  requiredByDefault    Boolean                    @default(true)
+  sortOrder            Int                          @default(0)
+  requiredByDefault    Boolean                      @default(true)
   estimatedHours       Decimal?
-  isColorKey           Boolean                    @default(false)
+  isColorKey           Boolean                      @default(false)
   assignmentGroup      String?
-  isGeneric            Boolean                    @default(false)
-  isLastManufacturing  Boolean                    @default(false)
-  isLastInstallation   Boolean                    @default(false)
-  createdAt            DateTime                   @default(now())
-  updatedAt            DateTime                   @updatedAt
+  isGeneric            Boolean                      @default(false)
+  isLastManufacturing  Boolean                      @default(false)
+  isLastInstallation   Boolean                      @default(false)
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
   projectProcesses     ProjectProcessAssignment[]
-  tenant               Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  componentProcesses   ComponentProcess[]           @relation("ProcessComponentLinks")
+  timingPredictions    ProcessTimingPrediction[]    @relation("ProcessTimingPredictions")
+  costRates            ProcessCostRate[]            @relation("ProcessCostRates")
+  tenant               Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, code])
   @@index([tenantId, sortOrder])

@@ -133,6 +133,7 @@ import lookupRouter from "./routes/lookup";
 import wealdenRouter from "./routes/wealden";
 import lippingLookupRouter from "./routes/lipping-lookup";
 import componentsRouter from "./routes/components";
+import componentProcessesRouter from "./routes/component-processes";
 
 type BillingModule = typeof import("./routes/billing");
 type PublicSignupModule = typeof import("./routes/public-signup");
@@ -728,6 +729,8 @@ app.use("/api/lookup", requireAuth, lookupRouter);
 app.use("/lipping-lookup", requireAuth, lippingLookupRouter);
 // Component catalog and product type configuration
 app.use("/components", requireAuth, componentsRouter);
+// Component process tracking, ML timing predictions, and cost calculations
+app.use("/component-processes", requireAuth, componentProcessesRouter);
 // Material cost debug routes (internal debugging tool)
 app.use("/material-debug", requireAuth, materialDebugRouter);
 // Developer Console routes
