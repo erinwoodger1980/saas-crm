@@ -267,7 +267,7 @@ export default function ComponentsPage() {
       c.code,
       c.name,
       c.componentType,
-      c.productTypes.join(';'),
+      (Array.isArray(c.productTypes) ? c.productTypes : []).join(';'),
       c.unitOfMeasure,
       c.basePrice,
       c.leadTimeDays,
