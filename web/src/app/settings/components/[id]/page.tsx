@@ -299,7 +299,7 @@ export default function ComponentDetailPage() {
                 <div className="col-span-2">
                   <dt className="text-sm text-slate-600">Product Types</dt>
                   <dd className="mt-1 flex flex-wrap gap-2">
-                    {component.productTypes.length > 0 ? (
+                    {Array.isArray(component.productTypes) && component.productTypes.length > 0 ? (
                       component.productTypes.map(type => (
                         <span key={type} className="inline-flex rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">
                           {type.replace(/_/g, ' ')}
