@@ -378,7 +378,7 @@ export default function ComponentsPage() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-slate-900">Component Catalog</h1>
             <p className="mt-2 text-sm text-slate-600">
-              Manage components for all your product types. Components can be used across fire doors, windows, conservatories, and more.
+              Manage components for all your product types. Click any component row to create variants, define attributes, and manage processes.
             </p>
           </div>
           <div className="flex gap-2">
@@ -496,7 +496,8 @@ export default function ComponentsPage() {
                         <tr 
                           key={component.id} 
                           onClick={() => router.push(`/settings/components/${component.id}`)}
-                          className="cursor-pointer hover:bg-slate-50/50 transition-colors"
+                          className="cursor-pointer hover:bg-blue-50/30 transition-colors group"
+                          title="Click to view variants, attributes, and processes"
                         >
                           <td className="px-6 py-4">
                             <code className="rounded bg-slate-100 px-2 py-1 text-xs font-mono text-slate-700">
@@ -540,7 +541,7 @@ export default function ComponentsPage() {
                                   handleEdit(component);
                                 }}
                                 className="rounded p-1.5 text-slate-600 hover:bg-blue-50 hover:text-blue-600"
-                                title="Edit"
+                                title="Quick edit basic details"
                               >
                                 <Edit2 className="h-4 w-4" />
                               </button>

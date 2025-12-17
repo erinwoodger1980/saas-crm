@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, Edit2, Trash2, Package, DollarSign, Tag, Layers } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Trash2, Package, DollarSign, Tag, Layers, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { apiFetch } from '@/lib/api';
@@ -71,7 +71,7 @@ export default function ComponentDetailPage() {
   const [attributes, setAttributes] = useState<ComponentAttribute[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'variants' | 'attributes'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'variants' | 'attributes' | 'processes'>('overview');
   const [showAttributeModal, setShowAttributeModal] = useState(false);
   const [editingAttribute, setEditingAttribute] = useState<ComponentAttribute | null>(null);
   const [showVariantModal, setShowVariantModal] = useState(false);
@@ -229,6 +229,17 @@ export default function ComponentDetailPage() {
               }`}
             >
               Attributes ({attributes.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('processes')}
+              className={`pb-3 text-sm font-medium transition-colors ${
+                activeTab === 'processes'
+                  ? 'border-b-2 border-blue-600 text-blue-600'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Clock className="inline h-4 w-4 mr-1" />
+              Processes & Timing
             </button>
           </div>
         </div>
@@ -587,6 +598,43 @@ export default function ComponentDetailPage() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Processes Tab */}
+        {activeTab === 'processes' && (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-6">
+              <div className="flex items-start gap-3">
+                <Clock className="h-5 w-5 text-blue-600 mt-0.5" />
+                <div>
+                  <h3 className="font-semibold text-blue-900 mb-2">Process Timing & Cost Tracking</h3>
+                  <p className="text-sm text-blue-800 mb-3">
+                    Track manufacturing processes, machine time, labor hours, and costs for this component.
+                    This data feeds into production planning and BOM costing.
+                  </p>
+                  <div className="space-y-2 text-sm text-blue-800">
+                    <p><strong>Coming soon:</strong></p>
+                    <ul className="list-disc list-inside space-y-1 ml-4">
+                      <li>Define process steps (e.g., "CNC Routing", "Edge Banding", "Assembly")</li>
+                      <li>Set time estimates and machine/labor rates</li>
+                      <li>Track actual vs estimated times from workshop</li>
+                      <li>Calculate total manufacturing cost per unit</li>
+                      <li>ML-powered time prediction based on historical data</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border bg-white p-12 text-center shadow-sm">
+              <Clock className="mx-auto h-12 w-12 text-slate-300" />
+              <h3 className="mt-4 text-lg font-semibold text-slate-900">Process Management Coming Soon</h3>
+              <p className="mt-2 text-sm text-slate-600">
+                Process timing and cost tracking will be available in the next update.
+                For now, you can manage component variants and attributes above.
+              </p>
+            </div>
           </div>
         )}
       </div>
