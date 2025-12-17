@@ -9,7 +9,7 @@ import { apiFetch } from '@/lib/api';
 import ComponentAttributeModal from '@/components/ComponentAttributeModal';
 import ComponentVariantModal from '@/components/ComponentVariantModal';
 
-// Component detail page with variants and attributes management
+// Component detail page - Last updated: 2025-12-17 16:35:00
 interface Component {
   id: string;
   code: string;
