@@ -115,6 +115,9 @@ model Tenant {
   fireDoorQRScans            FireDoorQRScan[]            @relation("FireDoorQRScans")
   fireDoorMaintenanceRecords FireDoorMaintenanceRecord[] @relation("FireDoorMaintenanceRecords")
   lippingLookups             LippingLookup[]             @relation("LippingLookups")
+  componentLookups           ComponentLookup[]           @relation("ComponentLookups")
+  productTypeComponents      ProductTypeComponent[]      @relation("ProductTypeComponents")
+  projects                   Project[]                   @relation("TenantProjects")
 }
 
 model LippingLookup {
@@ -139,6 +142,137 @@ model LippingLookup {
 
   @@unique([tenantId, doorsetType])
   @@index([tenantId, isActive])
+}
+
+enum BOMStatus {
+  DRAFT
+  PENDING_ORDER
+  ORDERED
+  IN_TRANSIT
+  RECEIVED
+  CANCELLED
+}
+
+model ComponentLookup {
+  id                 String        @id @default(cuid())
+  tenantId           String
+  productTypes       String[]      // Which products this component works with (e.g., ["FIRE_DOOR", "STANDARD_DOOR", "CUSTOM_PRODUCT"])
+  componentType      String        // Flexible component type (e.g., "LIPPING", "HINGE", tenant custom types)
+  code               String        // Unique component code (e.g., "LIPT25", "HNG-BT-SS")
+  name               String        // Display name
+  description        String?       // Detailed description
+  unitOfMeasure      String        @default("EA") // EA, M, MM, KG, L, etc.
+  basePrice          Float         @default(0)
+  leadTimeDays       Int           @default(0)
+  supplierId         String?       // Reference to supplier by ID
+  isActive           Boolean       @default(true)
+  metadata           Json?         // Flexible storage for component-specific data (dimensions, specs, etc.)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  
+  tenant             Tenant        @relation("ComponentLookups", fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier           Supplier?     @relation("SupplierComponents", fields: [supplierId], references: [id])
+  profile            ComponentProfile? @relation("ComponentProfile")
+  bomLineItems       BOMLineItem[] @relation("ComponentBOMItems")
+  
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([componentType])
+  @@index([supplierId])
+}
+
+model ProductTypeComponent {
+  id                 String   @id @default(cuid())
+  tenantId           String   // Make it tenant-specific
+  productType        String   // Flexible product type string (e.g., "FIRE_DOOR", "CONSERVATORY", tenant custom)
+  componentType      String   // Flexible component type string
+  displayName        String   // How to label this in UI
+  isRequired         Boolean  @default(false)
+  defaultCode        String?  // Default component code to pre-select
+  sortOrder          Int      @default(0)
+  formulaEnabled     Boolean  @default(false) // Can this use calculated fields?
+  formulaExpression  String?  // JavaScript expression for calculations
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  tenant             Tenant   @relation("ProductTypeComponents", fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  @@unique([tenantId, productType, componentType])
+  @@index([tenantId, productType])
+}
+
+model ComponentProfile {
+  id                 String   @id @default(cuid())
+  componentLookupId  String   @unique // Links to ComponentLookup.id
+  profileType        String   // RECTANGULAR, L_SHAPE, U_CHANNEL, etc.
+  dimensions         Json     // {width, height, depth, etc.}
+  geometry           Json?    // 3D geometry data for rendering
+  materialProperties Json?    // Density, grain direction, etc.
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  component          ComponentLookup @relation("ComponentProfile", fields: [componentLookupId], references: [id], onDelete: Cascade)
+  
+  @@index([profileType])
+}
+
+model Project {
+  id                 String    @id @default(cuid())
+  tenantId           String
+  projectType        String    // "FIRE_DOOR_SCHEDULE", "QUOTE", "OPPORTUNITY", "CONSERVATORY_JOB", etc.
+  projectName        String?
+  referenceNumber    String?   // Job number, quote number, etc.
+  
+  // Polymorphic relations - link to actual project record
+  fireDoorScheduleId String?   @unique
+  quoteId            String?   @unique
+  opportunityId      String?   @unique
+  
+  status             String?
+  startDate          DateTime?
+  completionDate     DateTime?
+  metadata           Json?     // Flexible storage for project-specific data
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  
+  tenant             Tenant                   @relation("TenantProjects", fields: [tenantId], references: [id], onDelete: Cascade)
+  fireDoorSchedule   FireDoorScheduleProject? @relation("ProjectFireDoorSchedule", fields: [fireDoorScheduleId], references: [id])
+  quote              Quote?                   @relation("ProjectQuote", fields: [quoteId], references: [id])
+  opportunity        Opportunity?             @relation("ProjectOpportunity", fields: [opportunityId], references: [id])
+  bomLineItems       BOMLineItem[]            @relation("ProjectBOM")
+  
+  @@index([tenantId])
+  @@index([projectType])
+  @@index([fireDoorScheduleId])
+  @@index([quoteId])
+  @@index([opportunityId])
+}
+
+model BOMLineItem {
+  id                 String    @id @default(cuid())
+  projectId          String    // Links to Project.id (works for any project type)
+  componentLookupId  String    // Links to ComponentLookup.id
+  componentType      String    // Flexible component type
+  quantity           Float     @default(1)
+  unitPrice          Float     @default(0)
+  totalPrice         Float     @default(0)
+  supplierId         String?   // Reference to Supplier by ID
+  status             BOMStatus @default(DRAFT)
+  dateOrdered        DateTime?
+  dateReceived       DateTime?
+  notes              String?
+  metadata           Json?     // Store component-specific data (dimensions, calculations, etc.)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  
+  project            Project          @relation("ProjectBOM", fields: [projectId], references: [id], onDelete: Cascade)
+  component          ComponentLookup  @relation("ComponentBOMItems", fields: [componentLookupId], references: [id])
+  supplier           Supplier?        @relation("SupplierBOMItems", fields: [supplierId], references: [id])
+  
+  @@index([projectId])
+  @@index([componentLookupId])
+  @@index([status])
+  @@index([supplierId])
 }
 
 model FeatureRequest {
@@ -393,6 +527,7 @@ model Opportunity {
   supplierQuoteRequests    SupplierQuoteRequest[]
   timeEntries              TimeEntry[]
   workshopTimers           WorkshopTimer[]
+  project                  Project?                   @relation("ProjectOpportunity")
 
   @@index([tenantId, stage])
   @@index([clientId])
@@ -873,6 +1008,7 @@ model Quote {
   questionnaireMatches  QuoteQuestionnaireMatch[]
   shoppingLists         ShoppingList[]
   supplierFiles         UploadedFile[]
+  project               Project?                  @relation("ProjectQuote")
 
   @@index([tenantId, leadId])
   @@index([clientAccountId])
@@ -1810,6 +1946,9 @@ model Supplier {
   defaultCurrency       String?                @default("GBP")
   isActive              Boolean                @default(true)
   notes                 String?
+  leadTimeDays          Int?                   // New field for component system
+  preferredForTypes     String[]               @default([]) // Component types this supplier prefers
+  contactInfo           Json?                  // Structured contact data for component system
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   materialItems         MaterialItem[]
@@ -1817,6 +1956,8 @@ model Supplier {
   tenant                Tenant                 @relation("SupplierToTenant", fields: [tenantId], references: [id])
   supplierQuoteRequests SupplierQuoteRequest[]
   users                 User[]
+  components            ComponentLookup[]      @relation("SupplierComponents") // New relation
+  bomLineItems          BOMLineItem[]          @relation("SupplierBOMItems") // New relation
 
   @@index([tenantId])
   @@index([email])
@@ -2836,6 +2977,7 @@ model FireDoorScheduleProject {
   timbersDateOrdered      DateTime?
   timbersDateReceived     DateTime?
   productionLogs          FireDoorProductionLog[]
+  project                 Project?                @relation("ProjectFireDoorSchedule")
   tenant                  Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
