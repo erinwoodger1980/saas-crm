@@ -160,7 +160,7 @@ enum BOMStatus {
 model ComponentLookup {
   id                 String        @id @default(cuid())
   tenantId           String
-  productTypes       String[]      // Which products this component works with (e.g., ["FIRE_DOOR", "STANDARD_DOOR", "CUSTOM_PRODUCT"])
+  productTypes       String[]      @default([]) // Which products this component works with (e.g., ["FIRE_DOOR", "STANDARD_DOOR", "CUSTOM_PRODUCT"])
   componentType      String        // Flexible component type (e.g., "LIPPING", "HINGE", tenant custom types)
   code               String        // Unique component code (e.g., "LIPT25", "HNG-BT-SS")
   name               String        // Display name
