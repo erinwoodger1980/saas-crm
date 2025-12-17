@@ -1,4 +1,4 @@
-const { Pool } = require('pg');
+import { Pool } from 'pg';
 
 async function fixFailedMigration() {
   const pool = new Pool({
@@ -75,4 +75,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { fixFailedMigration };
+export { fixFailedMigration };
