@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { FollowUpTaskPanel } from "@/components/follow-up/FollowUpTaskPanel";
@@ -599,7 +600,12 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
     }
   }
 
-  return (
+  if (!open) return null;
+  
+  // Only render on client-side
+  if (typeof window === 'undefined') return null;
+
+  const modalContent = (
     <div
       className="fixed inset-0 z-[9999] flex items-start justify-center bg-gradient-to-br from-sky-500/40 via-indigo-900/40 to-rose-400/40 backdrop-blur-sm overflow-y-auto px-4 py-4 md:py-12"
       role="dialog"
@@ -1475,4 +1481,6 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }

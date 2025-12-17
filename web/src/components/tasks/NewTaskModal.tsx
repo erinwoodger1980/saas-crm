@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 
@@ -64,7 +65,10 @@ export function NewTaskModal({
     }
   }
 
-  return (
+  // Only render on client-side
+  if (typeof window === 'undefined') return null;
+
+  const modalContent = (
       <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-gradient-to-br from-sky-400/30 via-indigo-700/20 to-rose-500/30 px-4 py-6 backdrop-blur">
       <div className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-white/30 bg-white/90 p-6 sm:p-8 shadow-[0_22px_55px_-25px_rgba(79,70,229,0.45)] backdrop-blur-xl">
         <div aria-hidden="true" className="pointer-events-none absolute -top-10 -left-6 h-40 w-40 rounded-full bg-sky-200/60 blur-3xl" />
@@ -162,4 +166,6 @@ export function NewTaskModal({
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }
