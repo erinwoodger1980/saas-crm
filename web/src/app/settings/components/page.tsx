@@ -434,7 +434,11 @@ export default function ComponentsPage() {
                     </thead>
                     <tbody className="divide-y">
                       {comps.map((component) => (
-                        <tr key={component.id} className="hover:bg-slate-50/50">
+                        <tr 
+                          key={component.id} 
+                          onClick={() => router.push(`/settings/components/${component.id}`)}
+                          className="cursor-pointer hover:bg-slate-50/50 transition-colors"
+                        >
                           <td className="px-6 py-4">
                             <code className="rounded bg-slate-100 px-2 py-1 text-xs font-mono text-slate-700">
                               {component.code}
@@ -472,14 +476,20 @@ export default function ComponentsPage() {
                           <td className="px-6 py-4 text-right">
                             <div className="flex justify-end gap-2">
                               <button
-                                onClick={() => handleEdit(component)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEdit(component);
+                                }}
                                 className="rounded p-1.5 text-slate-600 hover:bg-blue-50 hover:text-blue-600"
                                 title="Edit"
                               >
                                 <Edit2 className="h-4 w-4" />
                               </button>
                               <button
-                                onClick={() => handleDelete(component)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDelete(component.id);
+                                }}
                                 className="rounded p-1.5 text-slate-600 hover:bg-red-50 hover:text-red-600"
                                 title="Delete"
                               >

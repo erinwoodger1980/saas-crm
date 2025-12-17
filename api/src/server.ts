@@ -134,6 +134,8 @@ import wealdenRouter from "./routes/wealden";
 import lippingLookupRouter from "./routes/lipping-lookup";
 import componentsRouter from "./routes/components";
 import componentProcessesRouter from "./routes/component-processes";
+import componentAttributesRouter from "./routes/component-attributes";
+import componentVariantsRouter from "./routes/component-variants";
 
 type BillingModule = typeof import("./routes/billing");
 type PublicSignupModule = typeof import("./routes/public-signup");
@@ -731,6 +733,8 @@ app.use("/lipping-lookup", requireAuth, lippingLookupRouter);
 app.use("/components", requireAuth, componentsRouter);
 // Component process tracking, ML timing predictions, and cost calculations
 app.use("/component-processes", requireAuth, componentProcessesRouter);
+app.use("/component-attributes", requireAuth, componentAttributesRouter); // Component attribute management (timber types, dimensions, etc)
+app.use("/component-variants", requireAuth, componentVariantsRouter); // Component variants with specific specifications
 // Material cost debug routes (internal debugging tool)
 app.use("/material-debug", requireAuth, materialDebugRouter);
 // Developer Console routes
