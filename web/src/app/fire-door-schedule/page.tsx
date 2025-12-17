@@ -521,6 +521,8 @@ export default function FireDoorSchedulePage() {
     window.addEventListener('input', handleUserInteraction);
     window.addEventListener('change', handleUserInteraction);
     window.addEventListener('click', handleUserInteraction);
+    window.addEventListener('mousedown', handleUserInteraction);
+    window.addEventListener('mousemove', handleUserInteraction);
     window.addEventListener('keydown', handleUserInteraction);
     window.addEventListener('scroll', handleUserInteraction);
 
@@ -529,6 +531,8 @@ export default function FireDoorSchedulePage() {
       window.removeEventListener('input', handleUserInteraction);
       window.removeEventListener('change', handleUserInteraction);
       window.removeEventListener('click', handleUserInteraction);
+      window.removeEventListener('mousedown', handleUserInteraction);
+      window.removeEventListener('mousemove', handleUserInteraction);
       window.removeEventListener('keydown', handleUserInteraction);
       window.removeEventListener('scroll', handleUserInteraction);
       if (interactionTimeoutRef.current) {
