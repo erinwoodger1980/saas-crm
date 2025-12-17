@@ -120,6 +120,8 @@ model Tenant {
   projects                   Project[]                   @relation("TenantProjects")
   processTimingPredictions   ProcessTimingPrediction[]   @relation("TenantProcessTimings")
   processCostRates           ProcessCostRate[]           @relation("TenantProcessCostRates")
+  componentAttributes        ComponentAttribute[]        @relation("ComponentAttributes")
+  componentVariants          ComponentVariant[]          @relation("ComponentVariants")
 }
 
 model LippingLookup {
@@ -177,6 +179,7 @@ model ComponentLookup {
   profile            ComponentProfile?   @relation("ComponentProfile")
   bomLineItems       BOMLineItem[]       @relation("ComponentBOMItems")
   componentProcesses ComponentProcess[]  @relation("ComponentProcesses")
+  variants           ComponentVariant[]  @relation("ComponentVariants")
   
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -219,6 +222,114 @@ model ComponentProfile {
   @@index([profileType])
 }
 
+// Dynamic attributes that can be selected for each component (e.g., timber types, finishes, grades)
+model ComponentAttribute {
+  id                String              @id @default(cuid())
+  tenantId          String
+  componentType     String              // LIPPING, DOOR_BLANK, etc.
+  attributeName     String              // "Timber", "Finish", "Grade", "Profile"
+  attributeType     String              // "SELECT", "DIMENSION", "CALCULATED", "TEXT"
+  displayOrder      Int                 @default(0)
+  isRequired        Boolean             @default(false)
+  
+  // For SELECT type attributes
+  options           Json?               // Array of {value, label, priceModifier, metadata}
+  
+  // For CALCULATED type attributes
+  calculationFormula String?            // e.g., "blankHeight * 2 + blankWidth * 2" for perimeter
+  calculationUnit    String?            // mm, m, m2, etc.
+  
+  // Affects pricing/BOM
+  affectsPrice      Boolean             @default(false)
+  affectsBOM        Boolean             @default(false)
+  
+  metadata          Json?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  
+  tenant            Tenant              @relation("ComponentAttributes", fields: [tenantId], references: [id], onDelete: Cascade)
+  variants          ComponentVariant[]  @relation("VariantAttributes")
+  
+  @@unique([tenantId, componentType, attributeName])
+  @@index([tenantId, componentType])
+}
+
+// Specific variant/specification of a component with actual values
+model ComponentVariant {
+  id                   String              @id @default(cuid())
+  componentLookupId    String              // Base component this is a variant of
+  tenantId             String
+  variantCode          String              // e.g., "LIP-OAK-10MM"
+  variantName          String              // e.g., "Oak Lipping 10mm"
+  
+  // Selected attribute values (JSON: {timber: "Oak", thickness: "10mm", etc.})
+  attributeValues      Json
+  
+  // Calculated dimensions (can reference parent door dimensions)
+  dimensionFormulas    Json?               // {width: "blankThickness", length: "blankHeight", thickness: "10"}
+  
+  // Variant-specific pricing and sourcing
+  priceModifier        Float               @default(0) // Added to base component price
+  unitPrice            Float?              // Override base price entirely
+  supplierId           String?
+  supplierSKU          String?             // Supplier's part number for this specific variant
+  leadTimeDays         Int?
+  minimumOrderQty      Float?
+  
+  // Metadata for this specific variant
+  specifications       Json?               // Technical specs, certifications, etc.
+  isActive             Boolean             @default(true)
+  isStocked            Boolean             @default(false)
+  stockLevel           Float?
+  
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  
+  component            ComponentLookup     @relation("ComponentVariants", fields: [componentLookupId], references: [id], onDelete: Cascade)
+  tenant               Tenant              @relation("ComponentVariants", fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier             Supplier?           @relation("SupplierVariants", fields: [supplierId], references: [id])
+  attribute            ComponentAttribute? @relation("VariantAttributes", fields: [attributeId], references: [id])
+  attributeId          String?
+  bomVariantLineItems  BOMVariantLineItem[] @relation("VariantBOMItems")
+  
+  @@unique([tenantId, variantCode])
+  @@index([componentLookupId])
+  @@index([tenantId])
+  @@index([supplierId])
+}
+
+// Enhanced BOM line item that can reference specific variants
+model BOMVariantLineItem {
+  id                   String              @id @default(cuid())
+  projectId            String
+  componentVariantId   String              // Links to specific variant with all attributes
+  quantity             Float               @default(1)
+  
+  // Calculated at time of BOM generation
+  calculatedDimensions Json?               // Actual dimensions based on parent door
+  unitPrice            Float               @default(0)
+  totalPrice           Float               @default(0)
+  laborCost            Float?              // From process costing
+  materialCost         Float?              // From component variant price
+  
+  supplierId           String?
+  status               BOMStatus           @default(DRAFT)
+  dateOrdered          DateTime?
+  dateReceived         DateTime?
+  notes                String?
+  metadata             Json?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  
+  project              Project             @relation("ProjectVariantBOM", fields: [projectId], references: [id], onDelete: Cascade)
+  variant              ComponentVariant    @relation("VariantBOMItems", fields: [componentVariantId], references: [id])
+  supplier             Supplier?           @relation("SupplierVariantBOM", fields: [supplierId], references: [id])
+  
+  @@index([projectId])
+  @@index([componentVariantId])
+  @@index([status])
+}
+
 model Project {
   id                 String    @id @default(cuid())
   tenantId           String
@@ -238,11 +349,12 @@ model Project {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
   
-  tenant             Tenant                   @relation("TenantProjects", fields: [tenantId], references: [id], onDelete: Cascade)
-  fireDoorSchedule   FireDoorScheduleProject? @relation("ProjectFireDoorSchedule", fields: [fireDoorScheduleId], references: [id])
-  quote              Quote?                   @relation("ProjectQuote", fields: [quoteId], references: [id])
-  opportunity        Opportunity?             @relation("ProjectOpportunity", fields: [opportunityId], references: [id])
-  bomLineItems       BOMLineItem[]            @relation("ProjectBOM")
+  tenant                Tenant                   @relation("TenantProjects", fields: [tenantId], references: [id], onDelete: Cascade)
+  fireDoorSchedule      FireDoorScheduleProject? @relation("ProjectFireDoorSchedule", fields: [fireDoorScheduleId], references: [id])
+  quote                 Quote?                   @relation("ProjectQuote", fields: [quoteId], references: [id])
+  opportunity           Opportunity?             @relation("ProjectOpportunity", fields: [opportunityId], references: [id])
+  bomLineItems          BOMLineItem[]            @relation("ProjectBOM")
+  bomVariantLineItems   BOMVariantLineItem[]     @relation("ProjectVariantBOM")
   
   @@index([tenantId])
   @@index([projectType])
@@ -2041,9 +2153,11 @@ model Supplier {
   purchaseOrders        PurchaseOrder[]
   tenant                Tenant                 @relation("SupplierToTenant", fields: [tenantId], references: [id])
   supplierQuoteRequests SupplierQuoteRequest[]
-  users                 User[]
-  components            ComponentLookup[]      @relation("SupplierComponents") // New relation
-  bomLineItems          BOMLineItem[]          @relation("SupplierBOMItems") // New relation
+  users                   User[]
+  components              ComponentLookup[]        @relation("SupplierComponents")
+  bomLineItems            BOMLineItem[]            @relation("SupplierBOMItems")
+  componentVariants       ComponentVariant[]       @relation("SupplierVariants")
+  bomVariantLineItems     BOMVariantLineItem[]     @relation("SupplierVariantBOM")
 
   @@index([tenantId])
   @@index([email])
