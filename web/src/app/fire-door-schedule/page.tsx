@@ -82,6 +82,7 @@ export default function FireDoorSchedulePage() {
   const ACTIONS_WIDTH = 140; // Actions column width for frozen column calculations
   const [userIsInteracting, setUserIsInteracting] = useState(false);
   const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollPositionRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   
   // Dropdown options state - must be declared before useEffect hooks that reference them
   const [jobLocationOptions, setJobLocationOptions] = useState<string[]>([
@@ -455,6 +456,15 @@ export default function FireDoorSchedulePage() {
   }, [transportOptions]);
 
   async function loadData() {
+    // Save current scroll position before loading
+    const scrollEl = (window as any).__fdsTableScrollEl;
+    if (scrollEl) {
+      scrollPositionRef.current = {
+        x: scrollEl.scrollLeft,
+        y: scrollEl.scrollTop
+      };
+    }
+
     setLoading(true);
     try {
       const now = new Date();
@@ -540,6 +550,20 @@ export default function FireDoorSchedulePage() {
       }
     };
   }, []);
+
+  // Restore scroll position after data loads
+  useEffect(() => {
+    if (!loading && scrollPositionRef.current) {
+      const scrollEl = (window as any).__fdsTableScrollEl;
+      if (scrollEl) {
+        // Use requestAnimationFrame to ensure DOM is updated
+        requestAnimationFrame(() => {
+          scrollEl.scrollLeft = scrollPositionRef.current.x;
+          scrollEl.scrollTop = scrollPositionRef.current.y;
+        });
+      }
+    }
+  }, [loading, projects]);
 
   // Auto-refresh schedule data every 3 minutes (only when user is not interacting)
   useEffect(() => {
