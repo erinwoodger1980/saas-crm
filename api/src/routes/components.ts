@@ -96,12 +96,16 @@ router.get('/:id', async (req, res) => {
     }
 
     // Ensure productTypes is always an array (handle null, undefined, or non-array values)
+    console.log(`[COMPONENT ${id}] Raw productTypes:`, component.productTypes, `Type: ${typeof component.productTypes}, IsArray: ${Array.isArray(component.productTypes)}`);
+    
     const safeComponent = {
       ...component,
       productTypes: (Array.isArray(component.productTypes) && component.productTypes !== null) 
         ? component.productTypes 
         : []
     };
+    
+    console.log(`[COMPONENT ${id}] Safe productTypes:`, safeComponent.productTypes);
 
     res.json(safeComponent);
   } catch (error) {
