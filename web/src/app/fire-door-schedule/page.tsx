@@ -27,6 +27,7 @@ interface FireDoorProject {
   scheduledBy?: string; // LAJ Scheduler
   signOffDate?: string; // Backend field name
   leadTimeWeeks?: number;
+  calculatedCompletionDate?: string;
   workingDaysRemaining?: number; // Backend field name
   orderingStatus?: string;
   overallProgress?: number;
@@ -742,6 +743,7 @@ export default function FireDoorSchedulePage() {
         'scheduledBy',
         'signOffDate',
         'leadTimeWeeks',
+        'calculatedCompletionDate',
         'workingDaysRemaining',
       ]
     },
@@ -918,37 +920,38 @@ export default function FireDoorSchedulePage() {
     scheduledBy: 'LAJ Scheduler',
     signOffDate: 'Date Signed Off',
     leadTimeWeeks: 'Lead Time in Weeks',
+    calculatedCompletionDate: 'Calc Completion Date',
     approxDeliveryDate: 'Approx Delivery',
     workingDaysRemaining: 'Approx Working Days Remaining',
     bomPercent: 'BOM Progress',
     paperworkPercent: 'Paperwork Progress',
     productionPercent: 'Production Progress',
     blanksStatus: 'Blanks Status',
-    blanksDateOrdered: 'Blanks Date Ordered',
+    blanksDateOrdered: 'Blanks Date',
     blanksDateExpected: 'Blanks Date Expected',
     blanksDateReceived: 'Blanks Date Received',
     lippingsStatus: 'Lippings Status',
-    lippingsDateOrdered: 'Lippings Date Ordered',
+    lippingsDateOrdered: 'Lippings Date',
     lippingsDateExpected: 'Lippings Date Expected',
     lippingsDateReceived: 'Lippings Date Received',
     facingsStatus: 'Facings Status',
-    facingsDateOrdered: 'Facings Date Ordered',
+    facingsDateOrdered: 'Facings Date',
     facingsDateExpected: 'Facings Date Expected',
     facingsDateReceived: 'Facings Date Received',
     glassStatus: 'Glass Status',
-    glassDateOrdered: 'Glass Date Ordered',
+    glassDateOrdered: 'Glass Date',
     glassDateExpected: 'Glass Date Expected',
     glassDateReceived: 'Glass Date Received',
     cassettesStatus: 'Cassettes Status',
-    cassettesDateOrdered: 'Cassettes Date Ordered',
+    cassettesDateOrdered: 'Cassettes Date',
     cassettesDateExpected: 'Cassettes Date Expected',
     cassettesDateReceived: 'Cassettes Date Received',
     timbersStatus: 'Timbers Status',
-    timbersDateOrdered: 'Timbers Date Ordered',
+    timbersDateOrdered: 'Timbers Date',
     timbersDateExpected: 'Timbers Date Expected',
     timbersDateReceived: 'Timbers Date Received',
     ironmongeryStatus: 'Ironmongery Status',
-    ironmongeryDateOrdered: 'Ironmongery Date Ordered',
+    ironmongeryDateOrdered: 'Ironmongery Date',
     ironmongeryDateExpected: 'Ironmongery Date Expected',
     ironmongeryDateReceived: 'Ironmongery Date Received',
     doorPaperworkStatus: 'Door Paperwork',
@@ -1108,6 +1111,19 @@ export default function FireDoorSchedulePage() {
       return <div className="text-[11px] text-slate-400 px-3 py-1.5">—</div>;
     }
     
+    // Handle calculated completion date field
+    if (field === 'calculatedCompletionDate') {
+      if (project.calculatedCompletionDate) {
+        const completionDate = new Date(project.calculatedCompletionDate);
+        return (
+          <div className="text-[11px] font-medium px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">
+            {completionDate.toLocaleDateString('en-GB')}
+          </div>
+        );
+      }
+      return <div className="text-[11px] text-slate-400 px-3 py-1.5">—</div>;
+    }
+    
     const value = project[field];
 
     // Date fields
@@ -1119,7 +1135,20 @@ export default function FireDoorSchedulePage() {
           value={value ? new Date(value).toISOString().slice(0, 10) : ''}
           onChange={(e) => {
             const dateValue = e.target.value ? new Date(e.target.value).toISOString() : undefined;
-            updateProject(project.id, { signOffDate: dateValue });
+            const updates: any = { signOffDate: dateValue };
+            
+            // Calculate completion date if we have both signOffDate and leadTimeWeeks
+            if (dateValue && project.leadTimeWeeks) {
+              const signOffDate = new Date(dateValue);
+              const weeksToAdd = project.leadTimeWeeks * 7;
+              const completionDate = new Date(signOffDate);
+              completionDate.setDate(completionDate.getDate() + weeksToAdd);
+              updates.calculatedCompletionDate = completionDate.toISOString();
+            } else {
+              updates.calculatedCompletionDate = undefined;
+            }
+            
+            updateProject(project.id, updates);
           }}
         />
       );
@@ -1419,14 +1448,18 @@ export default function FireDoorSchedulePage() {
             const newValue = e.target.value;
             const updates: any = { [field]: newValue };
             
-            // Auto-populate date ordered when status changes to Received
+            // Auto-populate date ordered field when status changes (any status change)
+            const dateOrderedField = field.replace('Status', 'DateOrdered');
+            const currentOrderedDate = project[dateOrderedField as keyof FireDoorProject];
+            // Set date ordered if not already set
+            if (newValue && (!currentOrderedDate || currentOrderedDate === '' || currentOrderedDate === 'dd/mm/yyyy')) {
+              updates[dateOrderedField] = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+            }
+            
+            // Auto-populate date received when status changes to Received
             if (newValue === 'Received') {
-              const dateField = field.replace('Status', 'DateOrdered');
-              const currentDate = project[dateField as keyof FireDoorProject];
-              // Only set if not already set (check for null, undefined, or empty string)
-              if (!currentDate || currentDate === '' || currentDate === 'dd/mm/yyyy') {
-                updates[dateField] = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-              }
+              const dateReceivedField = field.replace('Status', 'DateReceived');
+              updates[dateReceivedField] = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
             }
             
             updateProject(project.id, updates);
@@ -1501,6 +1534,8 @@ export default function FireDoorSchedulePage() {
             const newWeeks = parseInt(e.target.value) || 0;
             let approxDeliveryDate: string | undefined = project.approxDeliveryDate;
             let workingDaysRemaining: number | undefined = project.workingDaysRemaining;
+            let calculatedCompletionDate: string | undefined = undefined;
+            
             if (project.dateReceived && newWeeks > 0) {
               const base = new Date(project.dateReceived);
               base.setDate(base.getDate() + newWeeks * 7);
@@ -1515,7 +1550,17 @@ export default function FireDoorSchedulePage() {
               approxDeliveryDate = undefined;
               workingDaysRemaining = undefined;
             }
-            updateProject(project.id, { leadTimeWeeks: newWeeks || undefined, approxDeliveryDate, workingDaysRemaining });
+            
+            // Calculate completion date if we have both signOffDate and leadTimeWeeks
+            if (project.signOffDate && newWeeks > 0) {
+              const signOffDate = new Date(project.signOffDate);
+              const weeksToAdd = newWeeks * 7;
+              const completionDate = new Date(signOffDate);
+              completionDate.setDate(completionDate.getDate() + weeksToAdd);
+              calculatedCompletionDate = completionDate.toISOString();
+            }
+            
+            updateProject(project.id, { leadTimeWeeks: newWeeks || undefined, approxDeliveryDate, workingDaysRemaining, calculatedCompletionDate });
           }}
           className="bg-white border border-slate-200 rounded px-2 py-1 w-20 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-300"
         />
