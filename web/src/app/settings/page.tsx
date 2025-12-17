@@ -1015,6 +1015,7 @@ export default function SettingsPage() {
           { key: "software-profiles", label: "Software", icon: "💻", description: "PDF parsing profiles" },
           { key: "pdf-templates", label: "PDF Templates", icon: "📄", description: "View annotated PDF templates" },
           { key: "material-costs", label: "Material Costs", icon: "💰", description: "Debug material cost data" },
+          { key: "lipping-lookup", label: "Lipping Lookup", icon: "📐", description: "Door lipping specifications" },
           { key: "integrations", label: "Integrations", icon: "🔗", description: "Email and external connections" },
         ].map((stage) => (
           <Button
@@ -2504,6 +2505,23 @@ export default function SettingsPage() {
       {currentStage === "material-costs" && (
         <Section title="Material Cost Debug" description="Verify material costs are visible and correct in the database">
           <MaterialCostDebugPanel />
+        </Section>
+      )}
+
+      {currentStage === "lipping-lookup" && (
+        <Section title="Lipping Lookup" description="Manage door lipping specifications for manufacturing">
+          <div className="rounded-lg border bg-white p-4">
+            <p className="text-sm text-gray-600 mb-4">
+              Configure lipping specifications for different doorset types. These values are used in door manufacturing calculations, material costing, and the door configurator.
+            </p>
+            <a 
+              href="/settings/lipping-lookup" 
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+            >
+              Manage Lipping Lookup
+              <span>→</span>
+            </a>
+          </div>
         </Section>
       )}
 

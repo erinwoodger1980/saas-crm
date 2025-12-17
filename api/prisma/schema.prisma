@@ -114,6 +114,31 @@ model Tenant {
   fireDoorProcessQRConfigs   FireDoorProcessQRConfig[]   @relation("FireDoorProcessQRConfigs")
   fireDoorQRScans            FireDoorQRScan[]            @relation("FireDoorQRScans")
   fireDoorMaintenanceRecords FireDoorMaintenanceRecord[] @relation("FireDoorMaintenanceRecords")
+  lippingLookups             LippingLookup[]             @relation("LippingLookups")
+}
+
+model LippingLookup {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  doorsetType        String   // e.g., "STANDARD CONCEALED", "D/A 44", "SAFEHINGE 54"
+  topMm              Int?     // Top edge lipping thickness in mm
+  bottomMm           Int?     // Bottom edge lipping thickness in mm
+  hingeMm            Int?     // Hinge side lipping thickness in mm
+  lockMm             Int?     // Lock side lipping thickness in mm
+  safeHingeMm        Int?     // Safe hinge lipping thickness in mm
+  daExposedMm        Int?     // D/A exposed lipping thickness in mm
+  trimMm             Int?     // Trim lipping thickness in mm
+  postformedMm       Int?     // Postformed lipping thickness in mm
+  extrasMm           Int?     // Extra lipping thickness in mm
+  commentsForNotes   String?  // Additional notes/comments
+  isActive           Boolean  @default(true)
+  sortOrder          Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  tenant             Tenant   @relation("LippingLookups", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, doorsetType])
+  @@index([tenantId, isActive])
 }
 
 model FeatureRequest {

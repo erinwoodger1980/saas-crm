@@ -131,6 +131,7 @@ import coachingRouter from "./routes/coaching";
 import fireDoorQRRouter from "./routes/fire-door-qr";
 import lookupRouter from "./routes/lookup";
 import wealdenRouter from "./routes/wealden";
+import lippingLookupRouter from "./routes/lipping-lookup";
 
 type BillingModule = typeof import("./routes/billing");
 type PublicSignupModule = typeof import("./routes/public-signup");
@@ -722,6 +723,8 @@ app.use("/ironmongery-items", requireAuth, ironmongeryItemsRouter);
 app.use("/rfis", requireAuth, rfisRouter);
 // Generic lookup API for calculated fields
 app.use("/api/lookup", requireAuth, lookupRouter);
+// Lipping lookup table (door manufacturing lipping specifications)
+app.use("/lipping-lookup", requireAuth, lippingLookupRouter);
 // Material cost debug routes (internal debugging tool)
 app.use("/material-debug", requireAuth, materialDebugRouter);
 // Developer Console routes
