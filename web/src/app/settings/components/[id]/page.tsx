@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { apiFetch } from '@/lib/api';
 import ComponentAttributeModal from '@/components/ComponentAttributeModal';
+import ComponentVariantModal from '@/components/ComponentVariantModal';
 
 interface Component {
   id: string;
@@ -67,15 +68,19 @@ export default function ComponentDetailPage() {
   const [component, setComponent] = useState<Component | null>(null);
   const [variants, setVariants] = useState<ComponentVariant[]>([]);
   const [attributes, setAttributes] = useState<ComponentAttribute[]>([]);
+  const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'variants' | 'attributes'>('overview');
   const [showAttributeModal, setShowAttributeModal] = useState(false);
   const [editingAttribute, setEditingAttribute] = useState<ComponentAttribute | null>(null);
+  const [showVariantModal, setShowVariantModal] = useState(false);
+  const [editingVariant, setEditingVariant] = useState<ComponentVariant | null>(null);
 
   useEffect(() => {
     loadComponent();
     loadVariants();
     loadAttributes();
+    loadSuppliers();
   }, [params.id]);
 
   const loadComponent = async () => {
@@ -110,6 +115,15 @@ export default function ComponentDetailPage() {
       setAttributes(data);
     } catch (error) {
       console.error('Error loading attributes:', error);
+    }
+  };
+
+  const loadSuppliers = async () => {
+    try {
+      const data = await apiFetch<any[]>('/suppliers');
+      setSuppliers(data);
+    } catch (error) {
+      console.error('Error loading suppliers:', error);
     }
   };
 
@@ -322,7 +336,13 @@ export default function ComponentDetailPage() {
               <p className="text-sm text-slate-600">
                 {variants.length} variant{variants.length !== 1 ? 's' : ''} available
               </p>
-              <Button size="sm">
+              <Button 
+                size="sm"
+                onClick={() => {
+                  setEditingVariant(null);
+                  setShowVariantModal(true);
+                }}
+              >
                 <Plus className="mr-2 h-4 w-4" />
                 Add Variant
               </Button>
@@ -335,7 +355,13 @@ export default function ComponentDetailPage() {
                 <p className="mt-2 text-sm text-slate-600">
                   Create variants to define specific configurations like timber types, dimensions, and pricing
                 </p>
-                <Button className="mt-4">
+                <Button 
+                  className="mt-4"
+                  onClick={() => {
+                    setEditingVariant(null);
+                    setShowVariantModal(true);
+                  }}
+                >
                   <Plus className="mr-2 h-4 w-4" />
                   Create First Variant
                 </Button>
@@ -402,10 +428,28 @@ export default function ComponentDetailPage() {
                           </td>
                           <td className="px-6 py-4 text-right">
                             <div className="flex justify-end gap-2">
-                              <button className="rounded p-1.5 text-slate-600 hover:bg-blue-50 hover:text-blue-600">
+                              <button 
+                                onClick={() => {
+                                  setEditingVariant(variant);
+                                  setShowVariantModal(true);
+                                }}
+                                className="rounded p-1.5 text-slate-600 hover:bg-blue-50 hover:text-blue-600"
+                              >
                                 <Edit2 className="h-4 w-4" />
                               </button>
-                              <button className="rounded p-1.5 text-slate-600 hover:bg-red-50 hover:text-red-600">
+                              <button 
+                                onClick={async () => {
+                                  if (!confirm(`Delete variant "${variant.variantName}"?`)) return;
+                                  try {
+                                    await apiFetch(`/component-variants/${variant.id}`, { method: 'DELETE' });
+                                    toast({ title: 'Success', description: 'Variant deleted' });
+                                    loadVariants();
+                                  } catch (error: any) {
+                                    toast({ title: 'Error', description: error.message, variant: 'destructive' });
+                                  }
+                                }}
+                                className="rounded p-1.5 text-slate-600 hover:bg-red-50 hover:text-red-600"
+                              >
                                 <Trash2 className="h-4 w-4" />
                               </button>
                             </div>
@@ -563,6 +607,24 @@ export default function ComponentDetailPage() {
           }}
           componentType={component.componentType}
           attribute={editingAttribute}
+        />
+        <ComponentVariantModal
+          component={component}
+          attributes={attributes}
+          suppliers={suppliers}
+          variant={editingVariant}
+          isOpen={showVariantModal}
+          onClose={() => {
+            setShowVariantModal(false);
+            setEditingVariant(null);
+          }}
+          onSave={() => {
+            loadVariants();
+            toast({
+              title: 'Success',
+              description: editingVariant ? 'Variant updated successfully' : 'Variant created successfully'
+            });
+          }}
         />
       )}
     </div>
