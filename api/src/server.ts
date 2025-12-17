@@ -132,6 +132,7 @@ import fireDoorQRRouter from "./routes/fire-door-qr";
 import lookupRouter from "./routes/lookup";
 import wealdenRouter from "./routes/wealden";
 import lippingLookupRouter from "./routes/lipping-lookup";
+import componentsRouter from "./routes/components";
 
 type BillingModule = typeof import("./routes/billing");
 type PublicSignupModule = typeof import("./routes/public-signup");
@@ -725,6 +726,8 @@ app.use("/rfis", requireAuth, rfisRouter);
 app.use("/api/lookup", requireAuth, lookupRouter);
 // Lipping lookup table (door manufacturing lipping specifications)
 app.use("/lipping-lookup", requireAuth, lippingLookupRouter);
+// Component catalog and product type configuration
+app.use("/components", requireAuth, componentsRouter);
 // Material cost debug routes (internal debugging tool)
 app.use("/material-debug", requireAuth, materialDebugRouter);
 // Developer Console routes

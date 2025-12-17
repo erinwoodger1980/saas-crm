@@ -1012,10 +1012,10 @@ export default function SettingsPage() {
           { key: "automation", label: "Automation", icon: "⚡", description: "Task playbooks and workflows" },
           { key: "workshop-processes", label: "Workshop", icon: "🛠️", description: "Workshop processes" },
           { key: "suppliers", label: "Suppliers", icon: "🏗️", description: "Manage supplier contacts" },
+          { key: "components", label: "Components", icon: "🔧", description: "Component catalog & product configuration" },
           { key: "software-profiles", label: "Software", icon: "💻", description: "PDF parsing profiles" },
           { key: "pdf-templates", label: "PDF Templates", icon: "📄", description: "View annotated PDF templates" },
           { key: "material-costs", label: "Material Costs", icon: "💰", description: "Debug material cost data" },
-          { key: "lipping-lookup", label: "Lipping Lookup", icon: "📐", description: "Door lipping specifications" },
           { key: "integrations", label: "Integrations", icon: "🔗", description: "Email and external connections" },
         ].map((stage) => (
           <Button
@@ -2508,19 +2508,62 @@ export default function SettingsPage() {
         </Section>
       )}
 
-      {currentStage === "lipping-lookup" && (
-        <Section title="Lipping Lookup" description="Manage door lipping specifications for manufacturing">
-          <div className="rounded-lg border bg-white p-4">
-            <p className="text-sm text-gray-600 mb-4">
-              Configure lipping specifications for different doorset types. These values are used in door manufacturing calculations, material costing, and the door configurator.
-            </p>
-            <a 
-              href="/settings/lipping-lookup" 
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-            >
-              Manage Lipping Lookup
-              <span>→</span>
-            </a>
+      {currentStage === "components" && (
+        <Section title="Component Catalog" description="Universal component system for all product types">
+          <div className="space-y-4">
+            <div className="rounded-lg border bg-gradient-to-br from-blue-50 to-white p-6">
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">🔧 Component Management</h3>
+              <p className="text-sm text-slate-600 mb-4">
+                Manage your complete component catalog: hinges, locks, intumescent strips, lipping, frames, and more. 
+                Components can be used across fire doors, windows, conservatories, and any other product type.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div className="rounded-lg border bg-white p-4">
+                  <div className="text-2xl mb-2">📦</div>
+                  <h4 className="font-semibold text-slate-900 mb-1">Component Catalog</h4>
+                  <p className="text-xs text-slate-600">Browse and manage all components with pricing, suppliers, and lead times</p>
+                </div>
+                <div className="rounded-lg border bg-white p-4">
+                  <div className="text-2xl mb-2">🎯</div>
+                  <h4 className="font-semibold text-slate-900 mb-1">Product Configuration</h4>
+                  <p className="text-xs text-slate-600">Configure which components appear for each product type (fire doors, windows, etc.)</p>
+                </div>
+                <div className="rounded-lg border bg-white p-4">
+                  <div className="text-2xl mb-2">📊</div>
+                  <h4 className="font-semibold text-slate-900 mb-1">BOM Generation</h4>
+                  <p className="text-xs text-slate-600">Generate bills of materials for projects with ordering and tracking</p>
+                </div>
+              </div>
+              <a 
+                href="/settings/components" 
+                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 transition-colors"
+              >
+                Open Component Catalog
+                <span>→</span>
+              </a>
+            </div>
+
+            <div className="rounded-lg border bg-white p-6">
+              <h4 className="font-semibold text-slate-900 mb-3">Component Types</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {[
+                  'Lipping', 'Intumescent Strip', 'Smoke Seal', 'Hinge',
+                  'Lock', 'Door Closer', 'Vision Panel', 'Glazing Bead',
+                  'Door Blank', 'Facing Material', 'Frame', 'Threshold', 'Paint/Finish'
+                ].map(type => (
+                  <div key={type} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700">
+                    {type}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+              <p className="text-sm text-blue-900">
+                <strong>💡 Migration Complete:</strong> Your existing lipping data has been migrated to the new component system. 
+                You can now manage all components in one place and configure them for different product types.
+              </p>
+            </div>
           </div>
         </Section>
       )}
