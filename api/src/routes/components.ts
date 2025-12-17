@@ -60,10 +60,12 @@ router.get('/', async (req, res) => {
       ]
     });
 
-    // Ensure productTypes is always an array for all components
+    // Ensure productTypes is always an array for all components (handle null, undefined, or non-array values)
     const safeComponents = components.map(c => ({
       ...c,
-      productTypes: Array.isArray(c.productTypes) ? c.productTypes : []
+      productTypes: (Array.isArray(c.productTypes) && c.productTypes !== null) 
+        ? c.productTypes 
+        : []
     }));
 
     res.json(safeComponents);
@@ -93,10 +95,12 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Component not found' });
     }
 
-    // Ensure productTypes is always an array
+    // Ensure productTypes is always an array (handle null, undefined, or non-array values)
     const safeComponent = {
       ...component,
-      productTypes: Array.isArray(component.productTypes) ? component.productTypes : []
+      productTypes: (Array.isArray(component.productTypes) && component.productTypes !== null) 
+        ? component.productTypes 
+        : []
     };
 
     res.json(safeComponent);
