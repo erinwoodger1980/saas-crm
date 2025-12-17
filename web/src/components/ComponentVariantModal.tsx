@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { X, DollarSign, Package, Truck, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { apiFetch } from "@/lib/api";
 
 interface AttributeOption {
   value: string;
@@ -240,20 +241,16 @@ export default function ComponentVariantModal({
         stockLevel: formData.isStocked ? formData.stockLevel : null,
       };
 
-      const url = variant
-        ? `/api/component-variants/${variant.id}`
-        : "/api/component-variants";
-      const method = variant ? "PUT" : "POST";
-
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to save variant");
+      if (variant) {
+        await apiFetch(`/component-variants/${variant.id}`, {
+          method: 'PUT',
+          json: payload
+        });
+      } else {
+        await apiFetch('/component-variants', {
+          method: 'POST',
+          json: payload
+        });
       }
 
       onSave();
