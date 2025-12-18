@@ -76,13 +76,17 @@ export default function ProductConfigurationSection() {
     (async () => {
       setLoading(true);
       try {
-        const settings = await apiFetch<{ productTypes?: ProductCategory[]; questionnaire?: any[] }>(
+        // Fetch product types from settings
+        const settings = await apiFetch<{ productTypes?: ProductCategory[] }>(
           "/tenant/settings"
         );
         const cats = Array.isArray(settings.productTypes) ? settings.productTypes : [];
         setCategories(cats);
-        const qFields = Array.isArray(settings.questionnaire) ? settings.questionnaire : [];
-        const normalizedQ = qFields
+
+        // Fetch questionnaire fields from LeadFieldDef (actual source of truth)
+        // This ensures we get the live fields configured in the Data Fields UI
+        const leadFields = await apiFetch<any[]>("/lead-fields");
+        const normalizedQ = (Array.isArray(leadFields) ? leadFields : [])
           .map((f: any) => ({ key: String(f.key || "").trim(), label: String(f.label || f.key || ""), type: String(f.type || "text") }))
           .filter((f: QuestionnaireField) => !!f.key);
         setQuestionnaire(normalizedQ);
