@@ -3107,30 +3107,14 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Lead details */}
+                  {/* Client details */}
                   <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
                     <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
                       <span aria-hidden="true">👤</span>
-                      Lead Details
+                      Client Details
                     </div>
                     <div className="space-y-4">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <label className="text-sm">
-                          <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
-                            Number
-                          </span>
-                          <input
-                            className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
-                            value={numberInput}
-                            onChange={(e) => setNumberInput(e.target.value)}
-                            onBlur={() => {
-                              setLead((l) => (l ? { ...l, number: numberInput || null } : l));
-                              savePatch({ number: numberInput || null });
-                            }}
-                            placeholder="Lead number"
-                          />
-                        </label>
-
                         <label className="text-sm">
                           <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
                             Name
@@ -3314,87 +3298,60 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         />
                       </div>
 
-                      {/* Client Type Selector */}
-                      {lead?.clientId && currentClientData && (
-                        <div className="col-span-full">
-                          <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
-                            Client Type
-                          </span>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                setClientType("public");
-                                try {
-                                  await apiFetch(`/clients/${lead.clientId}`, {
-                                    method: "PATCH",
-                                    json: { type: "public" },
-                                  });
-                                  setCurrentClientData({ ...currentClientData, type: "public" });
-                                } catch (error) {
-                                  console.error("Failed to update client type:", error);
-                                }
-                              }}
-                              className={`flex-1 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                                clientType === "public"
-                                  ? "bg-sky-500 text-white shadow-lg"
-                                  : "bg-white border border-slate-200 text-slate-600 hover:border-sky-300"
-                              }`}
-                            >
-                              Public
-                            </button>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                setClientType("trade");
-                                try {
-                                  await apiFetch(`/clients/${lead.clientId}`, {
-                                    method: "PATCH",
-                                    json: { type: "trade" },
-                                  });
-                                  setCurrentClientData({ ...currentClientData, type: "trade" });
-                                } catch (error) {
-                                  console.error("Failed to update client type:", error);
-                                }
-                              }}
-                              className={`flex-1 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                                clientType === "trade"
-                                  ? "bg-sky-500 text-white shadow-lg"
-                                  : "bg-white border border-slate-200 text-slate-600 hover:border-sky-300"
-                              }`}
-                            >
-                              Trade
-                            </button>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                setClientType("reseller");
-                                try {
-                                  await apiFetch(`/clients/${lead.clientId}`, {
-                                    method: "PATCH",
-                                    json: { type: "reseller" },
-                                  });
-                                  setCurrentClientData({ ...currentClientData, type: "reseller" });
-                                } catch (error) {
-                                  console.error("Failed to update client type:", error);
-                                }
-                              }}
-                              className={`flex-1 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                                clientType === "reseller"
-                                  ? "bg-sky-500 text-white shadow-lg"
-                                  : "bg-white border border-slate-200 text-slate-600 hover:border-sky-300"
-                              }`}
-                            >
-                              Reseller
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                      {/* Source field - moved to Client Details */}
+                      <div className="col-span-full">
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                          Source
+                        </span>
+                        <LeadSourcePicker
+                          leadId={lead?.id}
+                          value={typeof customData?.source === "string" ? customData.source : null}
+                          onSaved={(next) => {
+                            const nextStr = next ?? "";
+                            setCustomDraft((prev) => ({ ...prev, source: nextStr }));
+                            setLead((current) => {
+                              if (!current) return current;
+                              const prevCustom =
+                                current.custom && typeof current.custom === "object"
+                                  ? { ...(current.custom as Record<string, any>) }
+                                  : {};
+                              prevCustom.source = next ?? null;
+                              return { ...current, custom: prevCustom };
+                            });
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </section>
 
-                      {/* Delivery Address (Project-Specific) */}
-                      <label className="text-sm col-span-full">
+                  {/* Project Details */}
+                  <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
+                      <span aria-hidden="true">🗂️</span>
+                      Project Details
+                    </div>
+                    <div className="space-y-4">
+                      {/* Enquiry Number */}
+                      <label className="text-sm">
                         <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
-                          Delivery Address <span className="text-slate-400 font-normal">(project-specific)</span>
+                          Enquiry Number
+                        </span>
+                        <input
+                          className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                          value={numberInput}
+                          onChange={(e) => setNumberInput(e.target.value)}
+                          onBlur={() => {
+                            setLead((l) => (l ? { ...l, number: numberInput || null } : l));
+                            savePatch({ number: numberInput || null });
+                          }}
+                          placeholder="Enquiry number"
+                        />
+                      </label>
+
+                      {/* Delivery Address */}
+                      <label className="text-sm">
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                          Delivery Address
                         </span>
                         <input
                           type="text"
@@ -3405,10 +3362,11 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                             setLead((l) => (l ? { ...l, deliveryAddress: deliveryAddressInput || null } : l));
                             savePatch({ deliveryAddress: deliveryAddressInput || null });
                           }}
-                          placeholder="Delivery location for this project (if different from client address)"
+                          placeholder="Delivery location (if different from client address)"
                         />
                       </label>
 
+                      {/* Project Description */}
                       <label className="text-sm">
                         <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
                           Project Description
@@ -3424,70 +3382,38 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           placeholder="Project background, requirements, constraints…"
                         />
                       </label>
-                    </div>
-                  </section>
 
-                  {/* Workspace fields */}
-                  {workspaceFields.length > 0 && (
-                    <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
-                        <span aria-hidden="true">🗂️</span>
-                        Project Details
-                      </div>
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        {workspaceFields
-                          .filter((field) => {
-                            // Filter out address fields as they're now in Lead Details
-                            // Also filter out date fields that belong in Order tab
-                            const key = field.key.toLowerCase();
-                            return !(
-                              key.includes("address") ||
-                              key.includes("street") ||
-                              key.includes("city") ||
-                              key.includes("town") ||
-                              key.includes("postcode") ||
-                              key.includes("zipcode") ||
-                              key.includes("location") ||
-                              key === "startdate" ||
-                              key === "deliverydate" ||
-                              key === "installationstartdate" ||
-                              key === "installationenddate"
-                            );
-                          })
-                          .map((field) => {
+                      {/* Workspace fields */}
+                      {workspaceFields.length > 0 && (
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          {workspaceFields
+                            .filter((field) => {
+                              // Filter out address fields, source, notes, and date fields that belong in Order tab
+                              const key = field.key.toLowerCase();
+                              return !(
+                                key.includes("address") ||
+                                key.includes("street") ||
+                                key.includes("city") ||
+                                key.includes("town") ||
+                                key.includes("postcode") ||
+                                key.includes("zipcode") ||
+                                key.includes("location") ||
+                                key === "source" ||
+                                key === "notes" ||
+                                key === "followupnotes" ||
+                                key === "startdate" ||
+                                key === "deliverydate" ||
+                                key === "installationstartdate" ||
+                                key === "installationenddate"
+                              );
+                            })
+                            .map((field) => {
                           const key = field.key;
                           if (!key) return null;
                           const value = customDraft[key] ?? "";
                           const label = field.label || key;
                           const baseClasses =
                             "w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-200";
-
-                          if (field.type === "source") {
-                            return (
-                              <div key={key} className="space-y-1">
-                                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                                  {label}
-                                </div>
-                                <LeadSourcePicker
-                                  leadId={lead.id}
-                                  value={typeof customData?.[key] === "string" ? customData[key] : null}
-                                  onSaved={(next) => {
-                                    const nextStr = next ?? "";
-                                    setCustomDraft((prev) => ({ ...prev, [key]: nextStr }));
-                                    setLead((current) => {
-                                      if (!current) return current;
-                                      const prevCustom =
-                                        current.custom && typeof current.custom === "object"
-                                          ? { ...(current.custom as Record<string, any>) }
-                                          : {};
-                                      prevCustom[key] = next ?? null;
-                                      return { ...current, custom: prevCustom };
-                                    });
-                                  }}
-                                />
-                              </div>
-                            );
-                          }
 
                           if (field.type === "textarea") {
                             return (
@@ -3579,9 +3505,10 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                             </label>
                           );
                         })}
-                      </div>
-                    </section>
-                  )}
+                        </div>
+                      )}
+                    </div>
+                  </section>
                 </div>
               </div>
             </div>
