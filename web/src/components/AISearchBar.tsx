@@ -377,10 +377,14 @@ export default function AISearchBar() {
         {/* AI Assistant Live Indicator Pill */}
         {isMounted && (insight || taskStats.total > 0) && (
           <button
-            onClick={() => {
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
               setQuery("");
               setIsOpen(true);
-              inputRef.current?.focus();
+              setTimeout(() => {
+                inputRef.current?.focus();
+              }, 50);
             }}
             className={`flex items-center gap-2 px-3 py-2 rounded-full bg-gradient-to-r ${(insight || getDefaultInsight()).color} text-white shadow-lg hover:shadow-xl transition-all hover:scale-105 cursor-pointer`}
             title="Click to see your AI assistant insights"
@@ -405,7 +409,7 @@ export default function AISearchBar() {
       </div>
 
       {/* Search Results Dropdown */}
-      {isMounted && isOpen && (query.trim() || results || error) && (
+      {isMounted && isOpen && (
         <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
           {error && (
             <div className="p-4 text-red-600 text-sm">

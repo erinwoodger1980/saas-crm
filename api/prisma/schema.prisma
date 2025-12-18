@@ -122,27 +122,32 @@ model Tenant {
   processCostRates           ProcessCostRate[]           @relation("TenantProcessCostRates")
   componentAttributes        ComponentAttribute[]        @relation("ComponentAttributes")
   componentVariants          ComponentVariant[]          @relation("ComponentVariants")
+  productTypes               ProductType[]               @relation("TenantProductTypes")
+  attributes                 Attribute[]                 @relation("TenantAttributes")
+  questions                  Question[]                  @relation("TenantQuestions")
+  questionSets               QuestionSet[]               @relation("TenantQuestionSets")
+  legacyQuestionMappings     LegacyQuestionMapping[]     @relation("TenantLegacyMappings")
 }
 
 model LippingLookup {
-  id                 String   @id @default(cuid())
-  tenantId           String
-  doorsetType        String   // e.g., "STANDARD CONCEALED", "D/A 44", "SAFEHINGE 54"
-  topMm              Int?     // Top edge lipping thickness in mm
-  bottomMm           Int?     // Bottom edge lipping thickness in mm
-  hingeMm            Int?     // Hinge side lipping thickness in mm
-  lockMm             Int?     // Lock side lipping thickness in mm
-  safeHingeMm        Int?     // Safe hinge lipping thickness in mm
-  daExposedMm        Int?     // D/A exposed lipping thickness in mm
-  trimMm             Int?     // Trim lipping thickness in mm
-  postformedMm       Int?     // Postformed lipping thickness in mm
-  extrasMm           Int?     // Extra lipping thickness in mm
-  commentsForNotes   String?  // Additional notes/comments
-  isActive           Boolean  @default(true)
-  sortOrder          Int      @default(0)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  tenant             Tenant   @relation("LippingLookups", fields: [tenantId], references: [id], onDelete: Cascade)
+  id               String   @id @default(cuid())
+  tenantId         String
+  doorsetType      String // e.g., "STANDARD CONCEALED", "D/A 44", "SAFEHINGE 54"
+  topMm            Int? // Top edge lipping thickness in mm
+  bottomMm         Int? // Bottom edge lipping thickness in mm
+  hingeMm          Int? // Hinge side lipping thickness in mm
+  lockMm           Int? // Lock side lipping thickness in mm
+  safeHingeMm      Int? // Safe hinge lipping thickness in mm
+  daExposedMm      Int? // D/A exposed lipping thickness in mm
+  trimMm           Int? // Trim lipping thickness in mm
+  postformedMm     Int? // Postformed lipping thickness in mm
+  extrasMm         Int? // Extra lipping thickness in mm
+  commentsForNotes String? // Additional notes/comments
+  isActive         Boolean  @default(true)
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  tenant           Tenant   @relation("LippingLookups", fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, doorsetType])
   @@index([tenantId, isActive])
@@ -158,29 +163,31 @@ enum BOMStatus {
 }
 
 model ComponentLookup {
-  id                 String        @id @default(cuid())
-  tenantId           String
-  productTypes       String[]      @default([]) // Which products this component works with (e.g., ["FIRE_DOOR", "STANDARD_DOOR", "CUSTOM_PRODUCT"])
-  componentType      String        // Flexible component type (e.g., "LIPPING", "HINGE", tenant custom types)
-  code               String        // Unique component code (e.g., "LIPT25", "HNG-BT-SS")
-  name               String        // Display name
-  description        String?       // Detailed description
-  unitOfMeasure      String        @default("EA") // EA, M, MM, KG, L, etc.
-  basePrice          Float         @default(0)
-  leadTimeDays       Int           @default(0)
-  supplierId         String?       // Reference to supplier by ID
-  isActive           Boolean       @default(true)
-  metadata           Json?         // Flexible storage for component-specific data (dimensions, specs, etc.)
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-  
-  tenant             Tenant              @relation("ComponentLookups", fields: [tenantId], references: [id], onDelete: Cascade)
-  supplier           Supplier?           @relation("SupplierComponents", fields: [supplierId], references: [id])
-  profile            ComponentProfile?   @relation("ComponentProfile")
-  bomLineItems       BOMLineItem[]       @relation("ComponentBOMItems")
-  componentProcesses ComponentProcess[]  @relation("ComponentProcesses")
-  variants           ComponentVariant[]  @relation("ComponentVariants")
-  
+  id              String   @id @default(cuid())
+  tenantId        String
+  productTypes    String[] @default([]) // Which products this component works with (e.g., ["FIRE_DOOR", "STANDARD_DOOR", "CUSTOM_PRODUCT"])
+  componentType   String // Flexible component type (e.g., "LIPPING", "HINGE", tenant custom types)
+  code            String // Unique component code (e.g., "LIPT25", "HNG-BT-SS")
+  name            String // Display name
+  description     String? // Detailed description
+  unitOfMeasure   String   @default("EA") // EA, M, MM, KG, L, etc.
+  basePrice       Float    @default(0)
+  leadTimeDays    Int      @default(0)
+  supplierId      String? // Reference to supplier by ID
+  isActive        Boolean  @default(true)
+  metadata        Json? // Flexible storage for component-specific data (dimensions, specs, etc.)
+  inclusionRules  Json? // JSON rules for when component is included based on configuredProduct.selections
+  quantityFormula String? // Formula to calculate quantity based on dimensions and selections
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant             Tenant             @relation("ComponentLookups", fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier           Supplier?          @relation("SupplierComponents", fields: [supplierId], references: [id])
+  profile            ComponentProfile?  @relation("ComponentProfile")
+  bomLineItems       BOMLineItem[]      @relation("ComponentBOMItems")
+  componentProcesses ComponentProcess[] @relation("ComponentProcesses")
+  variants           ComponentVariant[] @relation("ComponentVariants")
+
   @@unique([tenantId, code])
   @@index([tenantId])
   @@index([componentType])
@@ -188,21 +195,21 @@ model ComponentLookup {
 }
 
 model ProductTypeComponent {
-  id                 String   @id @default(cuid())
-  tenantId           String   // Make it tenant-specific
-  productType        String   // Flexible product type string (e.g., "FIRE_DOOR", "CONSERVATORY", tenant custom)
-  componentType      String   // Flexible component type string
-  displayName        String   // How to label this in UI
-  isRequired         Boolean  @default(false)
-  defaultCode        String?  // Default component code to pre-select
-  sortOrder          Int      @default(0)
-  formulaEnabled     Boolean  @default(false) // Can this use calculated fields?
-  formulaExpression  String?  // JavaScript expression for calculations
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  
-  tenant             Tenant   @relation("ProductTypeComponents", fields: [tenantId], references: [id], onDelete: Cascade)
-  
+  id                String   @id @default(cuid())
+  tenantId          String // Make it tenant-specific
+  productType       String // Flexible product type string (e.g., "FIRE_DOOR", "CONSERVATORY", tenant custom)
+  componentType     String // Flexible component type string
+  displayName       String // How to label this in UI
+  isRequired        Boolean  @default(false)
+  defaultCode       String? // Default component code to pre-select
+  sortOrder         Int      @default(0)
+  formulaEnabled    Boolean  @default(false) // Can this use calculated fields?
+  formulaExpression String? // JavaScript expression for calculations
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenant Tenant @relation("ProductTypeComponents", fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, productType, componentType])
   @@index([tenantId, productType])
 }
@@ -210,88 +217,88 @@ model ProductTypeComponent {
 model ComponentProfile {
   id                 String   @id @default(cuid())
   componentLookupId  String   @unique // Links to ComponentLookup.id
-  profileType        String   // RECTANGULAR, L_SHAPE, U_CHANNEL, etc.
-  dimensions         Json     // {width, height, depth, etc.}
-  geometry           Json?    // 3D geometry data for rendering
-  materialProperties Json?    // Density, grain direction, etc.
+  profileType        String // RECTANGULAR, L_SHAPE, U_CHANNEL, etc.
+  dimensions         Json // {width, height, depth, etc.}
+  geometry           Json? // 3D geometry data for rendering
+  materialProperties Json? // Density, grain direction, etc.
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
-  
-  component          ComponentLookup @relation("ComponentProfile", fields: [componentLookupId], references: [id], onDelete: Cascade)
-  
+
+  component ComponentLookup @relation("ComponentProfile", fields: [componentLookupId], references: [id], onDelete: Cascade)
+
   @@index([profileType])
 }
 
 // Dynamic attributes that can be selected for each component (e.g., timber types, finishes, grades)
 model ComponentAttribute {
-  id                String              @id @default(cuid())
-  tenantId          String
-  componentType     String              // LIPPING, DOOR_BLANK, etc.
-  attributeName     String              // "Timber", "Finish", "Grade", "Profile"
-  attributeType     String              // "SELECT", "DIMENSION", "CALCULATED", "TEXT"
-  displayOrder      Int                 @default(0)
-  isRequired        Boolean             @default(false)
-  
+  id            String  @id @default(cuid())
+  tenantId      String
+  componentType String // LIPPING, DOOR_BLANK, etc.
+  attributeName String // "Timber", "Finish", "Grade", "Profile"
+  attributeType String // "SELECT", "DIMENSION", "CALCULATED", "TEXT"
+  displayOrder  Int     @default(0)
+  isRequired    Boolean @default(false)
+
   // For SELECT type attributes
-  options           Json?               // Array of {value, label, priceModifier, metadata}
-  
+  options Json? // Array of {value, label, priceModifier, metadata}
+
   // For CALCULATED type attributes
-  calculationFormula String?            // e.g., "blankHeight * 2 + blankWidth * 2" for perimeter
-  calculationUnit    String?            // mm, m, m2, etc.
-  
+  calculationFormula String? // e.g., "blankHeight * 2 + blankWidth * 2" for perimeter
+  calculationUnit    String? // mm, m, m2, etc.
+
   // Affects pricing/BOM
-  affectsPrice      Boolean             @default(false)
-  affectsBOM        Boolean             @default(false)
-  
-  metadata          Json?
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-  
-  tenant            Tenant              @relation("ComponentAttributes", fields: [tenantId], references: [id], onDelete: Cascade)
-  variants          ComponentVariant[]  @relation("VariantAttributes")
-  
+  affectsPrice Boolean @default(false)
+  affectsBOM   Boolean @default(false)
+
+  metadata  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant   Tenant             @relation("ComponentAttributes", fields: [tenantId], references: [id], onDelete: Cascade)
+  variants ComponentVariant[] @relation("VariantAttributes")
+
   @@unique([tenantId, componentType, attributeName])
   @@index([tenantId, componentType])
 }
 
 // Specific variant/specification of a component with actual values
 model ComponentVariant {
-  id                   String              @id @default(cuid())
-  componentLookupId    String              // Base component this is a variant of
-  tenantId             String
-  variantCode          String              // e.g., "LIP-OAK-10MM"
-  variantName          String              // e.g., "Oak Lipping 10mm"
-  
+  id                String @id @default(cuid())
+  componentLookupId String // Base component this is a variant of
+  tenantId          String
+  variantCode       String // e.g., "LIP-OAK-10MM"
+  variantName       String // e.g., "Oak Lipping 10mm"
+
   // Selected attribute values (JSON: {timber: "Oak", thickness: "10mm", etc.})
-  attributeValues      Json
-  
+  attributeValues Json
+
   // Calculated dimensions (can reference parent door dimensions)
-  dimensionFormulas    Json?               // {width: "blankThickness", length: "blankHeight", thickness: "10"}
-  
+  dimensionFormulas Json? // {width: "blankThickness", length: "blankHeight", thickness: "10"}
+
   // Variant-specific pricing and sourcing
-  priceModifier        Float               @default(0) // Added to base component price
-  unitPrice            Float?              // Override base price entirely
-  supplierId           String?
-  supplierSKU          String?             // Supplier's part number for this specific variant
-  leadTimeDays         Int?
-  minimumOrderQty      Float?
-  
+  priceModifier   Float   @default(0) // Added to base component price
+  unitPrice       Float? // Override base price entirely
+  supplierId      String?
+  supplierSKU     String? // Supplier's part number for this specific variant
+  leadTimeDays    Int?
+  minimumOrderQty Float?
+
   // Metadata for this specific variant
-  specifications       Json?               // Technical specs, certifications, etc.
-  isActive             Boolean             @default(true)
-  isStocked            Boolean             @default(false)
-  stockLevel           Float?
-  
-  createdAt            DateTime            @default(now())
-  updatedAt            DateTime            @updatedAt
-  
-  component            ComponentLookup     @relation("ComponentVariants", fields: [componentLookupId], references: [id], onDelete: Cascade)
-  tenant               Tenant              @relation("ComponentVariants", fields: [tenantId], references: [id], onDelete: Cascade)
-  supplier             Supplier?           @relation("SupplierVariants", fields: [supplierId], references: [id])
-  attribute            ComponentAttribute? @relation("VariantAttributes", fields: [attributeId], references: [id])
-  attributeId          String?
-  bomVariantLineItems  BOMVariantLineItem[] @relation("VariantBOMItems")
-  
+  specifications Json? // Technical specs, certifications, etc.
+  isActive       Boolean @default(true)
+  isStocked      Boolean @default(false)
+  stockLevel     Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  component           ComponentLookup      @relation("ComponentVariants", fields: [componentLookupId], references: [id], onDelete: Cascade)
+  tenant              Tenant               @relation("ComponentVariants", fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier            Supplier?            @relation("SupplierVariants", fields: [supplierId], references: [id])
+  attribute           ComponentAttribute?  @relation("VariantAttributes", fields: [attributeId], references: [id])
+  attributeId         String?
+  bomVariantLineItems BOMVariantLineItem[] @relation("VariantBOMItems")
+
   @@unique([tenantId, variantCode])
   @@index([componentLookupId])
   @@index([tenantId])
@@ -300,62 +307,62 @@ model ComponentVariant {
 
 // Enhanced BOM line item that can reference specific variants
 model BOMVariantLineItem {
-  id                   String              @id @default(cuid())
-  projectId            String
-  componentVariantId   String              // Links to specific variant with all attributes
-  quantity             Float               @default(1)
-  
+  id                 String @id @default(cuid())
+  projectId          String
+  componentVariantId String // Links to specific variant with all attributes
+  quantity           Float  @default(1)
+
   // Calculated at time of BOM generation
-  calculatedDimensions Json?               // Actual dimensions based on parent door
-  unitPrice            Float               @default(0)
-  totalPrice           Float               @default(0)
-  laborCost            Float?              // From process costing
-  materialCost         Float?              // From component variant price
-  
-  supplierId           String?
-  status               BOMStatus           @default(DRAFT)
-  dateOrdered          DateTime?
-  dateReceived         DateTime?
-  notes                String?
-  metadata             Json?
-  createdAt            DateTime            @default(now())
-  updatedAt            DateTime            @updatedAt
-  
-  project              Project             @relation("ProjectVariantBOM", fields: [projectId], references: [id], onDelete: Cascade)
-  variant              ComponentVariant    @relation("VariantBOMItems", fields: [componentVariantId], references: [id])
-  supplier             Supplier?           @relation("SupplierVariantBOM", fields: [supplierId], references: [id])
-  
+  calculatedDimensions Json? // Actual dimensions based on parent door
+  unitPrice            Float  @default(0)
+  totalPrice           Float  @default(0)
+  laborCost            Float? // From process costing
+  materialCost         Float? // From component variant price
+
+  supplierId   String?
+  status       BOMStatus @default(DRAFT)
+  dateOrdered  DateTime?
+  dateReceived DateTime?
+  notes        String?
+  metadata     Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  project  Project          @relation("ProjectVariantBOM", fields: [projectId], references: [id], onDelete: Cascade)
+  variant  ComponentVariant @relation("VariantBOMItems", fields: [componentVariantId], references: [id])
+  supplier Supplier?        @relation("SupplierVariantBOM", fields: [supplierId], references: [id])
+
   @@index([projectId])
   @@index([componentVariantId])
   @@index([status])
 }
 
 model Project {
-  id                 String    @id @default(cuid())
-  tenantId           String
-  projectType        String    // "FIRE_DOOR_SCHEDULE", "QUOTE", "OPPORTUNITY", "CONSERVATORY_JOB", etc.
-  projectName        String?
-  referenceNumber    String?   // Job number, quote number, etc.
-  
+  id              String  @id @default(cuid())
+  tenantId        String
+  projectType     String // "FIRE_DOOR_SCHEDULE", "QUOTE", "OPPORTUNITY", "CONSERVATORY_JOB", etc.
+  projectName     String?
+  referenceNumber String? // Job number, quote number, etc.
+
   // Polymorphic relations - link to actual project record
-  fireDoorScheduleId String?   @unique
-  quoteId            String?   @unique
-  opportunityId      String?   @unique
-  
-  status             String?
-  startDate          DateTime?
-  completionDate     DateTime?
-  metadata           Json?     // Flexible storage for project-specific data
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-  
-  tenant                Tenant                   @relation("TenantProjects", fields: [tenantId], references: [id], onDelete: Cascade)
-  fireDoorSchedule      FireDoorScheduleProject? @relation("ProjectFireDoorSchedule", fields: [fireDoorScheduleId], references: [id])
-  quote                 Quote?                   @relation("ProjectQuote", fields: [quoteId], references: [id])
-  opportunity           Opportunity?             @relation("ProjectOpportunity", fields: [opportunityId], references: [id])
-  bomLineItems          BOMLineItem[]            @relation("ProjectBOM")
-  bomVariantLineItems   BOMVariantLineItem[]     @relation("ProjectVariantBOM")
-  
+  fireDoorScheduleId String? @unique
+  quoteId            String? @unique
+  opportunityId      String? @unique
+
+  status         String?
+  startDate      DateTime?
+  completionDate DateTime?
+  metadata       Json? // Flexible storage for project-specific data
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  tenant              Tenant                   @relation("TenantProjects", fields: [tenantId], references: [id], onDelete: Cascade)
+  fireDoorSchedule    FireDoorScheduleProject? @relation("ProjectFireDoorSchedule", fields: [fireDoorScheduleId], references: [id])
+  quote               Quote?                   @relation("ProjectQuote", fields: [quoteId], references: [id])
+  opportunity         Opportunity?             @relation("ProjectOpportunity", fields: [opportunityId], references: [id])
+  bomLineItems        BOMLineItem[]            @relation("ProjectBOM")
+  bomVariantLineItems BOMVariantLineItem[]     @relation("ProjectVariantBOM")
+
   @@index([tenantId])
   @@index([projectType])
   @@index([fireDoorScheduleId])
@@ -364,26 +371,26 @@ model Project {
 }
 
 model BOMLineItem {
-  id                 String    @id @default(cuid())
-  projectId          String    // Links to Project.id (works for any project type)
-  componentLookupId  String    // Links to ComponentLookup.id
-  componentType      String    // Flexible component type
-  quantity           Float     @default(1)
-  unitPrice          Float     @default(0)
-  totalPrice         Float     @default(0)
-  supplierId         String?   // Reference to Supplier by ID
-  status             BOMStatus @default(DRAFT)
-  dateOrdered        DateTime?
-  dateReceived       DateTime?
-  notes              String?
-  metadata           Json?     // Store component-specific data (dimensions, calculations, etc.)
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-  
-  project            Project          @relation("ProjectBOM", fields: [projectId], references: [id], onDelete: Cascade)
-  component          ComponentLookup  @relation("ComponentBOMItems", fields: [componentLookupId], references: [id])
-  supplier           Supplier?        @relation("SupplierBOMItems", fields: [supplierId], references: [id])
-  
+  id                String    @id @default(cuid())
+  projectId         String // Links to Project.id (works for any project type)
+  componentLookupId String // Links to ComponentLookup.id
+  componentType     String // Flexible component type
+  quantity          Float     @default(1)
+  unitPrice         Float     @default(0)
+  totalPrice        Float     @default(0)
+  supplierId        String? // Reference to Supplier by ID
+  status            BOMStatus @default(DRAFT)
+  dateOrdered       DateTime?
+  dateReceived      DateTime?
+  notes             String?
+  metadata          Json? // Store component-specific data (dimensions, calculations, etc.)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  project   Project         @relation("ProjectBOM", fields: [projectId], references: [id], onDelete: Cascade)
+  component ComponentLookup @relation("ComponentBOMItems", fields: [componentLookupId], references: [id])
+  supplier  Supplier?       @relation("SupplierBOMItems", fields: [supplierId], references: [id])
+
   @@index([projectId])
   @@index([componentLookupId])
   @@index([status])
@@ -392,57 +399,210 @@ model BOMLineItem {
 
 // Links components to required processes with base time estimates
 model ComponentProcess {
-  id                      String                     @id @default(cuid())
-  componentLookupId       String
-  processDefinitionId     String                     // Links to existing WorkshopProcessDefinition
-  sequence                Int                        @default(0) // Order in which processes should be done
-  baseTimeMinutes         Float                      @default(0) // Initial time estimate
-  timePerUnit             Float                      @default(0) // Additional time per unit of measure
-  setupTimeMinutes        Float                      @default(0) // One-time setup time
-  formulaEnabled          Boolean                    @default(false)
-  formulaExpression       String?                    // Calculate time dynamically (e.g., "perimeter * 0.5")
-  isRequired              Boolean                    @default(true)
-  isActive                Boolean                    @default(true)
-  metadata                Json?
-  createdAt               DateTime                   @default(now())
-  updatedAt               DateTime                   @updatedAt
-  
-  component               ComponentLookup            @relation("ComponentProcesses", fields: [componentLookupId], references: [id], onDelete: Cascade)
-  processDefinition       WorkshopProcessDefinition  @relation("ProcessComponentLinks", fields: [processDefinitionId], references: [id], onDelete: Cascade)
-  
+  id                  String   @id @default(cuid())
+  componentLookupId   String
+  processDefinitionId String // Links to existing WorkshopProcessDefinition
+  sequence            Int      @default(0) // Order in which processes should be done
+  baseTimeMinutes     Float    @default(0) // Initial time estimate
+  timePerUnit         Float    @default(0) // Additional time per unit of measure
+  setupTimeMinutes    Float    @default(0) // One-time setup time
+  formulaEnabled      Boolean  @default(false)
+  formulaExpression   String? // Calculate time dynamically (e.g., "perimeter * 0.5")
+  isRequired          Boolean  @default(true)
+  isActive            Boolean  @default(true)
+  metadata            Json?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  component         ComponentLookup           @relation("ComponentProcesses", fields: [componentLookupId], references: [id], onDelete: Cascade)
+  processDefinition WorkshopProcessDefinition @relation("ProcessComponentLinks", fields: [processDefinitionId], references: [id], onDelete: Cascade)
+
   @@unique([componentLookupId, processDefinitionId])
   @@index([componentLookupId])
   @@index([processDefinitionId])
 }
 
+// ============================================================================
+// CANONICAL PRODUCT CONFIGURATION SYSTEM
+// Unified Option/Attribute engine for quote processing
+// ============================================================================
+
+// ProductType: Tree-structured product taxonomy (category -> type -> option)
+model ProductType {
+  id            String   @id @default(cuid())
+  tenantId      String
+  code          String
+  name          String
+  description   String?
+  level         String // 'category', 'type', 'option'
+  parentId      String?
+  questionSetId String?
+  svgPreview    String?
+  sortOrder     Int      @default(0)
+  isActive      Boolean  @default(true)
+  metadata      Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant       Tenant        @relation("TenantProductTypes", fields: [tenantId], references: [id], onDelete: Cascade)
+  parent       ProductType?  @relation("ProductTypeTree", fields: [parentId], references: [id])
+  children     ProductType[] @relation("ProductTypeTree")
+  questionSet  QuestionSet?  @relation("ProductTypeQuestionSet", fields: [questionSetId], references: [id])
+  questionSets QuestionSet[] @relation("QuestionSetProductType")
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([parentId])
+  @@index([level])
+  @@index([questionSetId])
+}
+
+// Attribute: Universal attribute system replacing fragmented questionnaire fields
+model Attribute {
+  id                     String   @id @default(cuid())
+  tenantId               String
+  code                   String
+  name                   String
+  description            String?
+  attributeType          String // 'number', 'text', 'select', 'multiselect', 'boolean', 'date', 'json'
+  unit                   String?
+  options                Json?
+  defaultValue           String?
+  validationRules        Json?
+  requiredForCosting     Boolean  @default(false)
+  requiredForManufacture Boolean  @default(false)
+  affectsPrice           Boolean  @default(false)
+  affectsBOM             Boolean  @default(false)
+  calculationFormula     String?
+  hints                  Json?
+  isActive               Boolean  @default(true)
+  metadata               Json?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  tenant    Tenant     @relation("TenantAttributes", fields: [tenantId], references: [id], onDelete: Cascade)
+  questions Question[] @relation("AttributeQuestions")
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([code])
+}
+
+// Question: UI presentation layer over Attributes
+model Question {
+  id              String   @id @default(cuid())
+  tenantId        String
+  attributeCode   String
+  label           String
+  helpText        String?
+  placeholder     String?
+  controlType     String // 'input', 'select', 'radio', 'checkbox', 'slider', 'date', 'textarea'
+  visibilityRules Json?
+  displayOrder    Int      @default(0)
+  isActive        Boolean  @default(true)
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant           Tenant                @relation("TenantQuestions", fields: [tenantId], references: [id], onDelete: Cascade)
+  attribute        Attribute             @relation("AttributeQuestions", fields: [tenantId, attributeCode], references: [tenantId, code])
+  questionSetLinks QuestionSetQuestion[]
+
+  @@index([tenantId])
+  @@index([attributeCode])
+  @@index([tenantId, attributeCode])
+}
+
+// QuestionSet: Groups questions for product types
+model QuestionSet {
+  id            String   @id @default(cuid())
+  tenantId      String
+  name          String
+  description   String?
+  productTypeId String?
+  isActive      Boolean  @default(true)
+  metadata      Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant       Tenant                @relation("TenantQuestionSets", fields: [tenantId], references: [id], onDelete: Cascade)
+  productType  ProductType?          @relation("QuestionSetProductType", fields: [productTypeId], references: [id])
+  productTypes ProductType[]         @relation("ProductTypeQuestionSet")
+  questions    QuestionSetQuestion[]
+
+  @@index([tenantId])
+  @@index([productTypeId])
+}
+
+// QuestionSetQuestion: Join table for questions in question sets
+model QuestionSetQuestion {
+  id            String   @id @default(cuid())
+  questionSetId String
+  questionId    String
+  sortOrder     Int      @default(0)
+  isRequired    Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  questionSet QuestionSet @relation(fields: [questionSetId], references: [id], onDelete: Cascade)
+  question    Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionSetId, questionId])
+  @@index([questionSetId])
+}
+
+// LegacyQuestionMapping: Dual-write migration bridge
+model LegacyQuestionMapping {
+  id                         String   @id @default(cuid())
+  tenantId                   String
+  legacyFieldId              String   @unique
+  legacyFieldKey             String?
+  attributeCode              String
+  transformExpression        String?
+  inverseTransformExpression String?
+  isActive                   Boolean  @default(true)
+  metadata                   Json?
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  tenant      Tenant             @relation("TenantLegacyMappings", fields: [tenantId], references: [id], onDelete: Cascade)
+  legacyField QuestionnaireField @relation("LegacyFieldMapping", fields: [legacyFieldId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([attributeCode])
+}
+
+// ============================================================================
+// END CANONICAL PRODUCT CONFIGURATION SYSTEM
+// ============================================================================
+
 // ML-powered timing predictions learned from actual time tracking
 model ProcessTimingPrediction {
-  id                   String                     @id @default(cuid())
-  tenantId             String
-  processDefinitionId  String                     // Links to existing WorkshopProcessDefinition
-  componentType        String                     // Link to component type for pattern matching
-  productType          String?                    // Optional product type for more specific predictions
-  
+  id                  String  @id @default(cuid())
+  tenantId            String
+  processDefinitionId String // Links to existing WorkshopProcessDefinition
+  componentType       String // Link to component type for pattern matching
+  productType         String? // Optional product type for more specific predictions
+
   // Prediction data
-  predictedMinutes     Float
-  confidenceScore      Float                      @default(0.5) // 0-1, higher = more confident
-  sampleSize           Int                        @default(0) // How many actual timings contributed
-  
+  predictedMinutes Float
+  confidenceScore  Float @default(0.5) // 0-1, higher = more confident
+  sampleSize       Int   @default(0) // How many actual timings contributed
+
   // ML learning data
   averageActualMinutes Float?
   minActualMinutes     Float?
   maxActualMinutes     Float?
   stdDeviation         Float?
   lastLearnedAt        DateTime?
-  
+
   // Context for predictions
-  metadata             Json?                      // Store factors that affect timing (complexity, size, etc.)
-  createdAt            DateTime                   @default(now())
-  updatedAt            DateTime                   @updatedAt
-  
-  tenant               Tenant                     @relation("TenantProcessTimings", fields: [tenantId], references: [id], onDelete: Cascade)
-  processDefinition    WorkshopProcessDefinition  @relation("ProcessTimingPredictions", fields: [processDefinitionId], references: [id], onDelete: Cascade)
-  
+  metadata  Json? // Store factors that affect timing (complexity, size, etc.)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant            Tenant                    @relation("TenantProcessTimings", fields: [tenantId], references: [id], onDelete: Cascade)
+  processDefinition WorkshopProcessDefinition @relation("ProcessTimingPredictions", fields: [processDefinitionId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, processDefinitionId, componentType, productType])
   @@index([tenantId])
   @@index([processDefinitionId])
@@ -451,20 +611,20 @@ model ProcessTimingPrediction {
 
 // Cost rates per process (labor cost per hour)
 model ProcessCostRate {
-  id                  String                     @id @default(cuid())
+  id                  String    @id @default(cuid())
   tenantId            String
-  processDefinitionId String                     // Links to existing WorkshopProcessDefinition
-  costPerHour         Float                      // Labor cost for this process
-  effectiveFrom       DateTime                   @default(now())
-  effectiveTo         DateTime?                  // Null = current rate
-  currency            String                     @default("GBP")
+  processDefinitionId String // Links to existing WorkshopProcessDefinition
+  costPerHour         Float // Labor cost for this process
+  effectiveFrom       DateTime  @default(now())
+  effectiveTo         DateTime? // Null = current rate
+  currency            String    @default("GBP")
   notes               String?
-  createdAt           DateTime                   @default(now())
-  updatedAt           DateTime                   @updatedAt
-  
-  tenant              Tenant                     @relation("TenantProcessCostRates", fields: [tenantId], references: [id], onDelete: Cascade)
-  processDefinition   WorkshopProcessDefinition  @relation("ProcessCostRates", fields: [processDefinitionId], references: [id], onDelete: Cascade)
-  
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  tenant            Tenant                    @relation("TenantProcessCostRates", fields: [tenantId], references: [id], onDelete: Cascade)
+  processDefinition WorkshopProcessDefinition @relation("ProcessCostRates", fields: [processDefinitionId], references: [id], onDelete: Cascade)
+
   @@index([tenantId])
   @@index([processDefinitionId])
   @@index([effectiveFrom])
@@ -493,52 +653,52 @@ model FeatureRequest {
 }
 
 model User {
-  id                        String                     @id @default(cuid())
-  tenantId                  String
-  email                     String                     @unique
-  workshopUsername          String?                    @unique // Username for workshop users without email
-  name                      String?
-  firstName                 String?
-  lastName                  String?
-  emailFooter               String?
-  role                      String                     @default("user")
-  supplierId                String?
-  isEarlyAdopter            Boolean                    @default(false)
-  passwordHash              String?
-  signupCompleted           Boolean                    @default(false)
-  workshopHoursPerDay       Decimal?                   @default(8)
-  workshopColor             String?
-  profilePictureUrl         String?
-  isInstaller               Boolean                    @default(false)
-  isDeveloper               Boolean                    @default(false)
-  isOwner                   Boolean                    @default(false)
-  workshopProcessCodes      String[]
-  examplePhotos             ExamplePhoto[]
-  goalPlans                 GoalPlan[]
-  resolvedFeedbacks         Feedback[]                 @relation("FeedbackResolver")
-  feedbacks                 Feedback[]                 @relation("FeedbackAuthor")
-  followUpHistories         FollowUpHistory[]
-  GmailTenantConnection     GmailTenantConnection[]
-  gmailUserConnection       GmailUserConnection?       @relation("GmailUserConnection")
-  holidays                  Holiday[]
-  Ms365TenantConnection     Ms365TenantConnection[]
-  ms365UserConnection       Ms365UserConnection?       @relation("Ms365UserConnection")
-  passwordResetToken        PasswordResetToken?
-  PdfLayoutTemplate         PdfLayoutTemplate[]
-  processPlansAssigned      ProcessPlan[]
-  projectProcessAssignments ProjectProcessAssignment[]
-  approvedQuotes            Quote[]                    @relation("QuoteApprovedBy")
-  signupTokens              SignupToken[]
-  supplierQuoteRequests     SupplierQuoteRequest[]
-  timeEntries               TimeEntry[]
-  signedOffTimesheets       Timesheet[]                @relation("TimesheetSignedOffBy")
-  timesheets                Timesheet[]                @relation("TimesheetUser")
-  workshopTimers            WorkshopTimer[]
-  fireDoorQRScans           FireDoorQRScan[]           @relation("FireDoorQRScans")
+  id                         String                      @id @default(cuid())
+  tenantId                   String
+  email                      String                      @unique
+  workshopUsername           String?                     @unique // Username for workshop users without email
+  name                       String?
+  firstName                  String?
+  lastName                   String?
+  emailFooter                String?
+  role                       String                      @default("user")
+  supplierId                 String?
+  isEarlyAdopter             Boolean                     @default(false)
+  passwordHash               String?
+  signupCompleted            Boolean                     @default(false)
+  workshopHoursPerDay        Decimal?                    @default(8)
+  workshopColor              String?
+  profilePictureUrl          String?
+  isInstaller                Boolean                     @default(false)
+  isDeveloper                Boolean                     @default(false)
+  isOwner                    Boolean                     @default(false)
+  workshopProcessCodes       String[]
+  examplePhotos              ExamplePhoto[]
+  goalPlans                  GoalPlan[]
+  resolvedFeedbacks          Feedback[]                  @relation("FeedbackResolver")
+  feedbacks                  Feedback[]                  @relation("FeedbackAuthor")
+  followUpHistories          FollowUpHistory[]
+  GmailTenantConnection      GmailTenantConnection[]
+  gmailUserConnection        GmailUserConnection?        @relation("GmailUserConnection")
+  holidays                   Holiday[]
+  Ms365TenantConnection      Ms365TenantConnection[]
+  ms365UserConnection        Ms365UserConnection?        @relation("Ms365UserConnection")
+  passwordResetToken         PasswordResetToken?
+  PdfLayoutTemplate          PdfLayoutTemplate[]
+  processPlansAssigned       ProcessPlan[]
+  projectProcessAssignments  ProjectProcessAssignment[]
+  approvedQuotes             Quote[]                     @relation("QuoteApprovedBy")
+  signupTokens               SignupToken[]
+  supplierQuoteRequests      SupplierQuoteRequest[]
+  timeEntries                TimeEntry[]
+  signedOffTimesheets        Timesheet[]                 @relation("TimesheetSignedOffBy")
+  timesheets                 Timesheet[]                 @relation("TimesheetUser")
+  workshopTimers             WorkshopTimer[]
+  fireDoorQRScans            FireDoorQRScan[]            @relation("FireDoorQRScans")
   fireDoorMaintenanceRecords FireDoorMaintenanceRecord[] @relation("FireDoorMaintenanceRecords")
-  devTimeEntries            DevTimeEntry[]
-  supplier                  Supplier?                  @relation(fields: [supplierId], references: [id])
-  tenant                    Tenant                     @relation(fields: [tenantId], references: [id])
+  devTimeEntries             DevTimeEntry[]
+  supplier                   Supplier?                   @relation(fields: [supplierId], references: [id])
+  tenant                     Tenant                      @relation(fields: [tenantId], references: [id])
 }
 
 model SignupToken {
@@ -553,7 +713,7 @@ model SignupToken {
 }
 
 model Client {
-  id            String        @id @default(cuid())
+  id            String          @id @default(cuid())
   tenantId      String
   name          String
   email         String?
@@ -561,16 +721,16 @@ model Client {
   address       String?
   city          String?
   postcode      String?
-  country       String?       @default("UK")
+  country       String?         @default("UK")
   contactPerson String?
   companyName   String?
-  type          String?       @default("public")
-  isActive      Boolean       @default(true)
+  type          String?         @default("public")
+  isActive      Boolean         @default(true)
   notes         String?
-  tags          String[]      @default([])
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tags          String[]        @default([])
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   leads         Lead[]
   opportunities Opportunity[]
   contacts      ClientContact[]
@@ -864,40 +1024,40 @@ model LeadTrainingExample {
 /// * ✅ Unified TenantSettings (only ONE model)
 /// * Extended with premium branding + social proof for public mobile estimator.
 model TenantSettings {
-  tenantId                  String    @id
-  slug                      String    @unique
-  brandName                 String
-  introHtml                 String?
-  website                   String?
-  phone                     String?
-  links                     Json?
-  questionnaire             Json?
-  logoUrl                   String?
-  inbox                     Json?
-  inboxLastRun              DateTime?
-  inboxWatchEnabled         Boolean   @default(false)
-  quoteDefaults             Json?
-  taskPlaybook              Json?     @default("{}")
-  questionnaireEmailSubject String?
-  questionnaireEmailBody    String?
-  updatedAt                 DateTime  @updatedAt
-  createdAt                 DateTime  @default(now())
-  beta                      Json      @default("{}")
-  isFireDoorManufacturer    Boolean   @default(false)
-  isGroupCoachingMember     Boolean   @default(false)
-  galleryImageUrls          String[]  @default([])
-  heroImageUrl              String?
-  primaryColor              String?
-  reviewCount               Int?
-  reviewScore               Decimal?
-  reviewSourceLabel         String?
-  secondaryColor            String?
-  serviceArea               String?
-  testimonials              Json?
-  fireDoorScheduleColors    Json?
-  fireDoorLineItemLayout    Json?
+  tenantId                     String    @id
+  slug                         String    @unique
+  brandName                    String
+  introHtml                    String?
+  website                      String?
+  phone                        String?
+  links                        Json?
+  questionnaire                Json?
+  logoUrl                      String?
+  inbox                        Json?
+  inboxLastRun                 DateTime?
+  inboxWatchEnabled            Boolean   @default(false)
+  quoteDefaults                Json?
+  taskPlaybook                 Json?     @default("{}")
+  questionnaireEmailSubject    String?
+  questionnaireEmailBody       String?
+  updatedAt                    DateTime  @updatedAt
+  createdAt                    DateTime  @default(now())
+  beta                         Json      @default("{}")
+  isFireDoorManufacturer       Boolean   @default(false)
+  isGroupCoachingMember        Boolean   @default(false)
+  galleryImageUrls             String[]  @default([])
+  heroImageUrl                 String?
+  primaryColor                 String?
+  reviewCount                  Int?
+  reviewScore                  Decimal?
+  reviewSourceLabel            String?
+  secondaryColor               String?
+  serviceArea                  String?
+  testimonials                 Json?
+  fireDoorScheduleColors       Json?
+  fireDoorLineItemLayout       Json?
   fireDoorScheduleColumnConfig Json?
-  productTypes              Json?
+  productTypes                 Json?
 }
 
 model FollowUpLog {
@@ -1085,49 +1245,49 @@ model EmailMessage {
 /// * =============== AI Follow-up System ===============
 
 model FollowUpRule {
-  id              String   @id @default(cuid())
-  tenantId        String
-  trigger         String   // "questionnaire_sent" | "quote_sent" | "lead_created" | "opportunity_stalled"
-  delayDays       Int
-  condition       String?  // SQL-like condition for filtering
-  taskTitle       String
-  emailSubject    String
-   emailBodyTemplate String? @db.Text
-  contextTemplate String   @db.Text
-  priority        String   @default("MEDIUM") // TASK priority
-  autoSchedule    Boolean  @default(false)
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id                String   @id @default(cuid())
+  tenantId          String
+  trigger           String // "questionnaire_sent" | "quote_sent" | "lead_created" | "opportunity_stalled"
+  delayDays         Int
+  condition         String? // SQL-like condition for filtering
+  taskTitle         String
+  emailSubject      String
+  emailBodyTemplate String?  @db.Text
+  contextTemplate   String   @db.Text
+  priority          String   @default("MEDIUM") // TASK priority
+  autoSchedule      Boolean  @default(false)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, trigger, isActive])
 }
 
 model FollowUpHistory {
-  id              String    @id @default(cuid())
-  taskId          String
-   ruleId          String?
-  tenantId        String
-  userId          String
-  aiDraftSubject  String?
-  aiDraftBody     String?   @db.Text
-  finalSubject    String?
-  finalBody       String?   @db.Text
-  sentAt          DateTime?
-  messageId       String?
-  threadId        String?
-  recipientEmail  String
-  responded       Boolean   @default(false)
-  respondedAt     DateTime?
-  responseTime    Int?      // minutes to response
-  converted       Boolean   @default(false) // led to sale/action
-  userEdited      Boolean   @default(false)
-  editDistance    Int?      // how much user changed AI draft
-  createdAt       DateTime  @default(now())
-  task            Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user            User      @relation(fields: [userId], references: [id])
+  id             String    @id @default(cuid())
+  taskId         String
+  ruleId         String?
+  tenantId       String
+  userId         String
+  aiDraftSubject String?
+  aiDraftBody    String?   @db.Text
+  finalSubject   String?
+  finalBody      String?   @db.Text
+  sentAt         DateTime?
+  messageId      String?
+  threadId       String?
+  recipientEmail String
+  responded      Boolean   @default(false)
+  respondedAt    DateTime?
+  responseTime   Int? // minutes to response
+  converted      Boolean   @default(false) // led to sale/action
+  userEdited     Boolean   @default(false)
+  editDistance   Int? // how much user changed AI draft
+  createdAt      DateTime  @default(now())
+  task           Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user           User      @relation(fields: [userId], references: [id])
 
   @@index([tenantId, userId])
   @@index([taskId])
@@ -1146,7 +1306,7 @@ model EmailConversation {
   subject     String
   body        String   @db.Text
   htmlBody    String?  @db.Text
-  direction   String   // "SENT" or "RECEIVED"
+  direction   String // "SENT" or "RECEIVED"
   timestamp   DateTime
   inReplyTo   String?
   references  String[] @default([])
@@ -1225,6 +1385,7 @@ model QuoteLine {
   deliveryShareGBP  Decimal            @default(0)
   lineTotalGBP      Decimal            @default(0)
   meta              Json?
+  configuredProduct Json? // Canonical product configuration: {productTypeId, selections, derived, provenance}
   quote             Quote              @relation(fields: [quoteId], references: [id])
   shoppingListItems ShoppingListItem[]
 
@@ -1500,31 +1661,31 @@ model TrainingEvent {
 }
 
 model Feedback {
-  id                String           @id @default(cuid())
-  tenantId          String
-  userId            String?
-  feature           String
-  rating            Int?
-  comment           String?
-  sourceUrl         String?
-  status            FeedbackStatus   @default(OPEN)
-  priority          FeedbackPriority @default(MEDIUM)
-  category          String?
-  devNotes          String?
-  devResponse       String?
-  devScreenshotUrls String[]         @default([])
-  linkedTaskId      String?
-  resolvedAt        DateTime?
-  resolvedById      String?
-  emailNotificationSent Boolean       @default(false)
-  userResponseApproved Boolean?       // true = works for them, false = needs more dev
-  userResponseAt    DateTime?         // when user responded
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
-  resolvedBy        User?            @relation("FeedbackResolver", fields: [resolvedById], references: [id])
-  tenant            Tenant           @relation(fields: [tenantId], references: [id])
-  user              User?            @relation("FeedbackAuthor", fields: [userId], references: [id])
-  linkedDevTasks    DevTaskFeedback[]
+  id                    String            @id @default(cuid())
+  tenantId              String
+  userId                String?
+  feature               String
+  rating                Int?
+  comment               String?
+  sourceUrl             String?
+  status                FeedbackStatus    @default(OPEN)
+  priority              FeedbackPriority  @default(MEDIUM)
+  category              String?
+  devNotes              String?
+  devResponse           String?
+  devScreenshotUrls     String[]          @default([])
+  linkedTaskId          String?
+  resolvedAt            DateTime?
+  resolvedById          String?
+  emailNotificationSent Boolean           @default(false)
+  userResponseApproved  Boolean? // true = works for them, false = needs more dev
+  userResponseAt        DateTime? // when user responded
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  resolvedBy            User?             @relation("FeedbackResolver", fields: [resolvedById], references: [id])
+  tenant                Tenant            @relation(fields: [tenantId], references: [id])
+  user                  User?             @relation("FeedbackAuthor", fields: [userId], references: [id])
+  linkedDevTasks        DevTaskFeedback[]
 
   @@index([tenantId, feature, createdAt])
   @@index([tenantId, status, createdAt])
@@ -1532,25 +1693,25 @@ model Feedback {
 }
 
 model DevTask {
-  id             String              @id @default(cuid())
-  title          String
-  description    String?
-  status         DevTaskStatus       @default(BACKLOG)
-  priority       FeedbackPriority    @default(MEDIUM)
-  type           DevTaskType         @default(DEVELOPMENT)
-  category       String?
-  sprint         String?
-  estimatedHours Decimal?
-  actualHours    Decimal?
-  assignee       String?             // User ID of assigned developer
-  feedbackIds    String[]            @default([])
-  tenantIds      String[]            @default([])
-  notes          String?
-  completedAt    DateTime?
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
-  timeEntries    DevTimeEntry[]
-  assignments    DevTaskAssignment[]
+  id              String              @id @default(cuid())
+  title           String
+  description     String?
+  status          DevTaskStatus       @default(BACKLOG)
+  priority        FeedbackPriority    @default(MEDIUM)
+  type            DevTaskType         @default(DEVELOPMENT)
+  category        String?
+  sprint          String?
+  estimatedHours  Decimal?
+  actualHours     Decimal?
+  assignee        String? // User ID of assigned developer
+  feedbackIds     String[]            @default([])
+  tenantIds       String[]            @default([])
+  notes           String?
+  completedAt     DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  timeEntries     DevTimeEntry[]
+  assignments     DevTaskAssignment[]
   linkedFeedbacks DevTaskFeedback[]
 
   @@index([status, priority])
@@ -1560,17 +1721,17 @@ model DevTask {
 }
 
 model DevTimeEntry {
-  id          String   @id @default(cuid())
-  devTaskId   String
-  devTask     DevTask  @relation(fields: [devTaskId], references: [id], onDelete: Cascade)
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
-  startedAt   DateTime @default(now())
-  endedAt     DateTime?
-  durationMs  Int?     @default(0)
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String    @id @default(cuid())
+  devTaskId  String
+  devTask    DevTask   @relation(fields: [devTaskId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  startedAt  DateTime  @default(now())
+  endedAt    DateTime?
+  durationMs Int?      @default(0)
+  notes      String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   @@index([devTaskId])
   @@index([userId])
@@ -1578,25 +1739,25 @@ model DevTimeEntry {
 }
 
 model DevDaySchedule {
-  id              String   @id @default(cuid())
-  date            String   @unique
-  isWorkDay       Boolean  @default(true)
-  availableHours  Float    @default(8)
-  notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String   @id @default(cuid())
+  date           String   @unique
+  isWorkDay      Boolean  @default(true)
+  availableHours Float    @default(8)
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@index([date])
 }
 
 model DevTaskAssignment {
-  id              String   @id @default(cuid())
-  devTaskId       String
-  devTask         DevTask  @relation(fields: [devTaskId], references: [id], onDelete: Cascade)
-  date            String
-  allocatedHours  Float
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String   @id @default(cuid())
+  devTaskId      String
+  devTask        DevTask  @relation(fields: [devTaskId], references: [id], onDelete: Cascade)
+  date           String
+  allocatedHours Float
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@index([devTaskId])
   @@index([date])
@@ -1604,12 +1765,12 @@ model DevTaskAssignment {
 }
 
 model DevTaskFeedback {
-  id          String   @id @default(cuid())
-  devTaskId   String
-  devTask     DevTask  @relation(fields: [devTaskId], references: [id], onDelete: Cascade)
-  feedbackId  String
-  feedback    Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  devTaskId  String
+  devTask    DevTask  @relation(fields: [devTaskId], references: [id], onDelete: Cascade)
+  feedbackId String
+  feedback   Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
 
   @@unique([devTaskId, feedbackId])
   @@index([devTaskId])
@@ -1810,25 +1971,25 @@ model UserPreference {
 }
 
 model WorkshopProcessDefinition {
-  id                   String                       @id @default(cuid())
-  tenantId             String
-  code                 String
-  name                 String
-  sortOrder            Int                          @default(0)
-  requiredByDefault    Boolean                      @default(true)
-  estimatedHours       Decimal?
-  isColorKey           Boolean                      @default(false)
-  assignmentGroup      String?
-  isGeneric            Boolean                      @default(false)
-  isLastManufacturing  Boolean                      @default(false)
-  isLastInstallation   Boolean                      @default(false)
-  createdAt            DateTime                     @default(now())
-  updatedAt            DateTime                     @updatedAt
-  projectProcesses     ProjectProcessAssignment[]
-  componentProcesses   ComponentProcess[]           @relation("ProcessComponentLinks")
-  timingPredictions    ProcessTimingPrediction[]    @relation("ProcessTimingPredictions")
-  costRates            ProcessCostRate[]            @relation("ProcessCostRates")
-  tenant               Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id                  String                     @id @default(cuid())
+  tenantId            String
+  code                String
+  name                String
+  sortOrder           Int                        @default(0)
+  requiredByDefault   Boolean                    @default(true)
+  estimatedHours      Decimal?
+  isColorKey          Boolean                    @default(false)
+  assignmentGroup     String?
+  isGeneric           Boolean                    @default(false)
+  isLastManufacturing Boolean                    @default(false)
+  isLastInstallation  Boolean                    @default(false)
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+  projectProcesses    ProjectProcessAssignment[]
+  componentProcesses  ComponentProcess[]         @relation("ProcessComponentLinks")
+  timingPredictions   ProcessTimingPrediction[]  @relation("ProcessTimingPredictions")
+  costRates           ProcessCostRate[]          @relation("ProcessCostRates")
+  tenant              Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, code])
   @@index([tenantId, sortOrder])
@@ -1878,18 +2039,18 @@ model ProcessPlan {
 }
 
 model TimeEntry {
-  id        String          @id @default(cuid())
+  id        String       @id @default(cuid())
   tenantId  String
-  projectId String?         // Nullable for generic processes (cleaning, admin, etc.)
-  process   String          // Changed from enum to String to support generic processes (CLEANING, ADMIN, etc.)
+  projectId String? // Nullable for generic processes (cleaning, admin, etc.)
+  process   String // Changed from enum to String to support generic processes (CLEANING, ADMIN, etc.)
   userId    String
   date      DateTime
-  hours     Decimal         @default(0)
+  hours     Decimal      @default(0)
   notes     String?
-  createdAt DateTime        @default(now())
-  project   Opportunity?    @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user      User            @relation(fields: [userId], references: [id])
+  createdAt DateTime     @default(now())
+  project   Opportunity? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tenant    Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User         @relation(fields: [userId], references: [id])
 
   @@index([tenantId, projectId, process])
   @@index([tenantId, date])
@@ -1913,21 +2074,21 @@ model Holiday {
 }
 
 model WorkshopTimer {
-  id               String          @id @default(cuid())
+  id               String       @id @default(cuid())
   tenantId         String
   userId           String
   projectId        String?
-  process          String          // Changed from enum to String to support generic processes (CLEANING, ADMIN, etc.)
-  startedAt        DateTime        @default(now())
+  process          String // Changed from enum to String to support generic processes (CLEANING, ADMIN, etc.)
+  startedAt        DateTime     @default(now())
   notes            String?
   latitude         Float?
   longitude        Float?
   locationAccuracy Float?
   locationCaptured DateTime?
-  outsideGeofence  Boolean         @default(false)
-  tenant           Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project          Opportunity?    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  outsideGeofence  Boolean      @default(false)
+  tenant           Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project          Opportunity? @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, userId])
   @@index([userId])
@@ -2144,20 +2305,20 @@ model Supplier {
   defaultCurrency       String?                @default("GBP")
   isActive              Boolean                @default(true)
   notes                 String?
-  leadTimeDays          Int?                   // New field for component system
+  leadTimeDays          Int? // New field for component system
   preferredForTypes     String[]               @default([]) // Component types this supplier prefers
-  contactInfo           Json?                  // Structured contact data for component system
+  contactInfo           Json? // Structured contact data for component system
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   materialItems         MaterialItem[]
   purchaseOrders        PurchaseOrder[]
   tenant                Tenant                 @relation("SupplierToTenant", fields: [tenantId], references: [id])
   supplierQuoteRequests SupplierQuoteRequest[]
-  users                   User[]
-  components              ComponentLookup[]        @relation("SupplierComponents")
-  bomLineItems            BOMLineItem[]            @relation("SupplierBOMItems")
-  componentVariants       ComponentVariant[]       @relation("SupplierVariants")
-  bomVariantLineItems     BOMVariantLineItem[]     @relation("SupplierVariantBOM")
+  users                 User[]
+  components            ComponentLookup[]      @relation("SupplierComponents")
+  bomLineItems          BOMLineItem[]          @relation("SupplierBOMItems")
+  componentVariants     ComponentVariant[]     @relation("SupplierVariants")
+  bomVariantLineItems   BOMVariantLineItem[]   @relation("SupplierVariantBOM")
 
   @@index([tenantId])
   @@index([email])
@@ -2305,6 +2466,7 @@ model QuestionnaireField {
   answers             QuestionnaireAnswer[]
   questionnaire       Questionnaire             @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
   tenant              Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  legacyMapping       LegacyQuestionMapping?    @relation("LegacyFieldMapping")
 
   @@unique([questionnaireId, key])
   @@unique([tenantId, key], name: "tenantId_key")
@@ -2847,7 +3009,7 @@ model FireDoorImport {
 }
 
 model FireDoorLineItem {
-  id                      String         @id @default(cuid())
+  id                      String           @id @default(cuid())
   fireDoorImportId        String
   tenantId                String
   rowIndex                Int
@@ -3079,106 +3241,106 @@ model FireDoorLineItem {
 }
 
 model FireDoorScheduleProject {
-  id                      String                  @id @default(cuid())
-  tenantId                String
-  projectId               String?
-  mjsNumber               String?
-  jobName                 String?
-  clientName              String?
-  dateReceived            DateTime?
-  dateRequired            DateTime?
-  poNumber                String?
-  laqNumber               String?
-  compOrderNumber         String?
-  jobLocation             String?
-  signOffStatus           String?
-  signOffDate             DateTime?
-  scheduledBy             String?
-  leadTimeWeeks           Int?
+  id                       String                  @id @default(cuid())
+  tenantId                 String
+  projectId                String?
+  mjsNumber                String?
+  jobName                  String?
+  clientName               String?
+  dateReceived             DateTime?
+  dateRequired             DateTime?
+  poNumber                 String?
+  laqNumber                String?
+  compOrderNumber          String?
+  jobLocation              String?
+  signOffStatus            String?
+  signOffDate              DateTime?
+  scheduledBy              String?
+  leadTimeWeeks            Int?
   calculatedCompletionDate DateTime?
-  approxDeliveryDate      DateTime?
-  workingDaysRemaining    Int?
-  blanksStatus            String?
-  blanksChecked           Boolean                 @default(false)
-  lippingsStatus          String?
-  lippingsChecked         Boolean                 @default(false)
-  facingsStatus           String?
-  facingsChecked          Boolean                 @default(false)
-  glassStatus             String?
-  glassChecked            Boolean                 @default(false)
-  cassettesStatus         String?
-  cassettesChecked        Boolean                 @default(false)
-  timbersStatus           String?
-  timbersChecked          Boolean                 @default(false)
-  ironmongeryStatus       String?
-  ironmongeryChecked      Boolean                 @default(false)
-  blanksCutPercent        Int?
-  edgebandPercent         Int?
-  calibratePercent        Int?
-  facingsPercent          Int?
-  finalCncPercent         Int?
-  finishPercent           Int?
-  sandPercent             Int?
-  sprayPercent            Int?
-  cutPercent              Int?
-  cncPercent              Int?
-  buildPercent            Int?
-  overallProgress         Int?
-  hiddenStatus            String?
-  doorPaperworkStatus     String?
-  finalCncSheetStatus     String?
-  finalChecksSheetStatus  String?
-  deliveryChecklistStatus String?
-  framesPaperworkStatus   String?
-  paperworkComments       String?
-  bomNotes                String?
-  certificationRequired   String?
-  fscRequired             Boolean                 @default(false)
-  invoiceStatus           String?
-  transportStatus         String?
-  deliveryDate            DateTime?
-  installStart            DateTime?
-  installEnd              DateTime?
-  snaggingStatus          String?
-  snaggingComplete        Boolean                 @default(false)
-  snaggingNotes           String?
-  communicationNotes      String?
-  internalNotes           String?
-  lastUpdatedBy           String?
-  lastUpdatedAt           DateTime                @default(now())
-  createdAt               DateTime                @default(now())
-  updatedAt               DateTime                @updatedAt
-  blanksDateExpected      DateTime?
-  blanksDateOrdered       DateTime?
-  blanksDateReceived      DateTime?
-  bomPercent              Int?
-  cassettesDateExpected   DateTime?
-  cassettesDateOrdered    DateTime?
-  cassettesDateReceived   DateTime?
-  deliveryNotes           String?
-  doorSets                Int?
-  facingsDateExpected     DateTime?
-  facingsDateOrdered      DateTime?
-  facingsDateReceived     DateTime?
-  glassDateExpected       DateTime?
-  glassDateOrdered        DateTime?
-  glassDateReceived       DateTime?
-  ironmongeryDateExpected DateTime?
-  ironmongeryDateOrdered  DateTime?
-  ironmongeryDateReceived DateTime?
-  leaves                  Int?
-  lippingsDateExpected    DateTime?
-  lippingsDateOrdered     DateTime?
-  lippingsDateReceived    DateTime?
-  netValue                Decimal?
-  paperworkPercent        Int?
-  productionPercent       Int?
-  timbersDateExpected     DateTime?
-  timbersDateOrdered      DateTime?
-  timbersDateReceived     DateTime?
-  productionLogs          FireDoorProductionLog[]
-  project                 Project?                @relation("ProjectFireDoorSchedule")
-  tenant                  Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  approxDeliveryDate       DateTime?
+  workingDaysRemaining     Int?
+  blanksStatus             String?
+  blanksChecked            Boolean                 @default(false)
+  lippingsStatus           String?
+  lippingsChecked          Boolean                 @default(false)
+  facingsStatus            String?
+  facingsChecked           Boolean                 @default(false)
+  glassStatus              String?
+  glassChecked             Boolean                 @default(false)
+  cassettesStatus          String?
+  cassettesChecked         Boolean                 @default(false)
+  timbersStatus            String?
+  timbersChecked           Boolean                 @default(false)
+  ironmongeryStatus        String?
+  ironmongeryChecked       Boolean                 @default(false)
+  blanksCutPercent         Int?
+  edgebandPercent          Int?
+  calibratePercent         Int?
+  facingsPercent           Int?
+  finalCncPercent          Int?
+  finishPercent            Int?
+  sandPercent              Int?
+  sprayPercent             Int?
+  cutPercent               Int?
+  cncPercent               Int?
+  buildPercent             Int?
+  overallProgress          Int?
+  hiddenStatus             String?
+  doorPaperworkStatus      String?
+  finalCncSheetStatus      String?
+  finalChecksSheetStatus   String?
+  deliveryChecklistStatus  String?
+  framesPaperworkStatus    String?
+  paperworkComments        String?
+  bomNotes                 String?
+  certificationRequired    String?
+  fscRequired              Boolean                 @default(false)
+  invoiceStatus            String?
+  transportStatus          String?
+  deliveryDate             DateTime?
+  installStart             DateTime?
+  installEnd               DateTime?
+  snaggingStatus           String?
+  snaggingComplete         Boolean                 @default(false)
+  snaggingNotes            String?
+  communicationNotes       String?
+  internalNotes            String?
+  lastUpdatedBy            String?
+  lastUpdatedAt            DateTime                @default(now())
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
+  blanksDateExpected       DateTime?
+  blanksDateOrdered        DateTime?
+  blanksDateReceived       DateTime?
+  bomPercent               Int?
+  cassettesDateExpected    DateTime?
+  cassettesDateOrdered     DateTime?
+  cassettesDateReceived    DateTime?
+  deliveryNotes            String?
+  doorSets                 Int?
+  facingsDateExpected      DateTime?
+  facingsDateOrdered       DateTime?
+  facingsDateReceived      DateTime?
+  glassDateExpected        DateTime?
+  glassDateOrdered         DateTime?
+  glassDateReceived        DateTime?
+  ironmongeryDateExpected  DateTime?
+  ironmongeryDateOrdered   DateTime?
+  ironmongeryDateReceived  DateTime?
+  leaves                   Int?
+  lippingsDateExpected     DateTime?
+  lippingsDateOrdered      DateTime?
+  lippingsDateReceived     DateTime?
+  netValue                 Decimal?
+  paperworkPercent         Int?
+  productionPercent        Int?
+  timbersDateExpected      DateTime?
+  timbersDateOrdered       DateTime?
+  timbersDateReceived      DateTime?
+  productionLogs           FireDoorProductionLog[]
+  project                  Project?                @relation("ProjectFireDoorSchedule")
+  tenant                   Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@index([tenantId, jobLocation])
@@ -3298,7 +3460,7 @@ model FireDoorClientJob {
 }
 
 model FireDoorClientDoorItem {
-  id                           String                       @id @default(cuid())
+  id                           String                      @id @default(cuid())
   tenantId                     String
   fireDoorClientJobId          String
   rowNumber                    Int?
@@ -3381,9 +3543,9 @@ model FireDoorClientDoorItem {
   maintenanceNotes             String?
   fittingInstructions          String?
   installerNotes               String?
-  createdAt                    DateTime                     @default(now())
-  updatedAt                    DateTime                     @updatedAt
-  job                          FireDoorClientJob            @relation(fields: [fireDoorClientJobId], references: [id], onDelete: Cascade)
+  createdAt                    DateTime                    @default(now())
+  updatedAt                    DateTime                    @updatedAt
+  job                          FireDoorClientJob           @relation(fields: [fireDoorClientJobId], references: [id], onDelete: Cascade)
   qrScans                      FireDoorQRScan[]
   maintenanceRecords           FireDoorMaintenanceRecord[]
 
@@ -3428,22 +3590,22 @@ model FireDoorProcessQRConfig {
 }
 
 model FireDoorQRScan {
-  id           String                    @id @default(cuid())
-  tenantId     String
-  lineItemId   String?
-  clientJobId  String?
-  doorItemId   String?
-  scanType     String
-  processName  String?
-  scannedBy    String?
-  scannedAt    DateTime                  @default(now())
-  deviceInfo   String?
-  notes        String?
-  tenant       Tenant                    @relation("FireDoorQRScans", fields: [tenantId], references: [id], onDelete: Cascade)
-  lineItem     FireDoorLineItem?         @relation(fields: [lineItemId], references: [id], onDelete: SetNull)
-  clientJob    FireDoorClientJob?        @relation(fields: [clientJobId], references: [id], onDelete: SetNull)
-  doorItem     FireDoorClientDoorItem?   @relation(fields: [doorItemId], references: [id], onDelete: SetNull)
-  user         User?                     @relation("FireDoorQRScans", fields: [scannedBy], references: [id], onDelete: SetNull)
+  id          String                  @id @default(cuid())
+  tenantId    String
+  lineItemId  String?
+  clientJobId String?
+  doorItemId  String?
+  scanType    String
+  processName String?
+  scannedBy   String?
+  scannedAt   DateTime                @default(now())
+  deviceInfo  String?
+  notes       String?
+  tenant      Tenant                  @relation("FireDoorQRScans", fields: [tenantId], references: [id], onDelete: Cascade)
+  lineItem    FireDoorLineItem?       @relation(fields: [lineItemId], references: [id], onDelete: SetNull)
+  clientJob   FireDoorClientJob?      @relation(fields: [clientJobId], references: [id], onDelete: SetNull)
+  doorItem    FireDoorClientDoorItem? @relation(fields: [doorItemId], references: [id], onDelete: SetNull)
+  user        User?                   @relation("FireDoorQRScans", fields: [scannedBy], references: [id], onDelete: SetNull)
 
   @@index([lineItemId])
   @@index([clientJobId])
@@ -3453,22 +3615,22 @@ model FireDoorQRScan {
 }
 
 model FireDoorMaintenanceRecord {
-  id              String                  @id @default(cuid())
+  id              String                 @id @default(cuid())
   tenantId        String
   doorItemId      String
   performedBy     String?
   performedByName String?
-  performedAt     DateTime                @default(now())
+  performedAt     DateTime               @default(now())
   maintenanceType String
   status          String
   findings        String?
   actionsTaken    String?
-  photos          Json                    @default("[]")
+  photos          Json                   @default("[]")
   nextDueDate     DateTime?
-  createdAt       DateTime                @default(now())
-  tenant          Tenant                  @relation("FireDoorMaintenanceRecords", fields: [tenantId], references: [id], onDelete: Cascade)
-  doorItem        FireDoorClientDoorItem  @relation(fields: [doorItemId], references: [id], onDelete: Cascade)
-  user            User?                   @relation("FireDoorMaintenanceRecords", fields: [performedBy], references: [id], onDelete: SetNull)
+  createdAt       DateTime               @default(now())
+  tenant          Tenant                 @relation("FireDoorMaintenanceRecords", fields: [tenantId], references: [id], onDelete: Cascade)
+  doorItem        FireDoorClientDoorItem @relation(fields: [doorItemId], references: [id], onDelete: Cascade)
+  user            User?                  @relation("FireDoorMaintenanceRecords", fields: [performedBy], references: [id], onDelete: SetNull)
 
   @@index([doorItemId])
   @@index([performedAt])
@@ -3656,7 +3818,7 @@ enum RelatedType {
   EMAIL
   QUESTIONNAIRE
   WORKSHOP
-   OPPORTUNITY
+  OPPORTUNITY
   OTHER
 }
 
@@ -3727,10 +3889,10 @@ enum NotificationType {
   MENTION
   STREAK
   SUMMARY
-   LEAD_SUGGESTION
-   QUOTE_FOLLOWUP_SCHEDULED
-   QUESTIONNAIRE_FOLLOWUP_SCHEDULED
-   FOLLOW_UP_REPLY
+  LEAD_SUGGESTION
+  QUOTE_FOLLOWUP_SCHEDULED
+  QUESTIONNAIRE_FOLLOWUP_SCHEDULED
+  FOLLOW_UP_REPLY
 }
 
 enum ActivityEntity {
@@ -3865,11 +4027,11 @@ enum PurchaseOrderStatus {
 model TaskFieldLink {
   id                  String   @id @default(cuid())
   tenantId            String
-  model               String   // Prisma model name e.g., "Opportunity", "Lead", "FireDoorScheduleProject"
-  fieldPath           String   // Dot path within model json fields or top-level field name
+  model               String // Prisma model name e.g., "Opportunity", "Lead", "FireDoorScheduleProject"
+  fieldPath           String // Dot path within model json fields or top-level field name
   label               String?
-  completionCondition Json?    // e.g., { kind: "NON_NULL" } | { kind: "EQUALS", value: "Printed in Office" } | { kind: "DATE_SET" }
-  onTaskComplete      Json?    // e.g., { kind: "SET_NOW" } | { kind: "SET_VALUE", value: "Printed in Office" } | { kind: "SET_TRUE" }
+  completionCondition Json? // e.g., { kind: "NON_NULL" } | { kind: "EQUALS", value: "Printed in Office" } | { kind: "DATE_SET" }
+  onTaskComplete      Json? // e.g., { kind: "SET_NOW" } | { kind: "SET_VALUE", value: "Printed in Office" } | { kind: "SET_TRUE" }
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
   tenant              Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -3879,15 +4041,15 @@ model TaskFieldLink {
 
 /// Marketing analytics for public estimator funnel
 model AnalyticsEvent {
-  id         String   @id @default(cuid())
-  tenantId   String
-  type       String   // ad_impression | landing | estimator_start | estimator_step | estimator_complete
-  source     String?  // facebook | instagram | other
-  utm        Json?
-  stepIndex  Int?
-  timestamp  DateTime @default(now())
-  createdAt  DateTime @default(now())
-  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  tenantId  String
+  type      String // ad_impression | landing | estimator_start | estimator_step | estimator_complete
+  source    String? // facebook | instagram | other
+  utm       Json?
+  stepIndex Int?
+  timestamp DateTime @default(now())
+  createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, type, timestamp])
 }
@@ -4024,10 +4186,10 @@ model MonthlyPnl {
 }
 
 model FinancialTarget {
-  id              String                 @id @default(cuid())
-  financialPlanId String
-  horizon         FinancialTargetHorizon
-  year            Int?
+  id                 String                 @id @default(cuid())
+  financialPlanId    String
+  horizon            FinancialTargetHorizon
+  year               Int?
   revenueTarget      Float?
   grossProfitTarget  Float?
   netProfitTarget    Float?
@@ -4037,8 +4199,8 @@ model FinancialTarget {
   materialsPctTarget Float?
   marketingPctTarget Float?
   overheadsPctTarget Float?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
 
   plan FinancialPlan @relation(fields: [financialPlanId], references: [id], onDelete: Cascade)
 
