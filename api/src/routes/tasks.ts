@@ -327,6 +327,58 @@ router.get("/", async (req, res) => {
   }
 });
 
+// GET /tasks/stats – Get task statistics for current user
+router.get("/stats", async (req, res) => {
+  try {
+    const tenantId = resolveTenantId(req);
+    if (!tenantId) return res.status(400).json({ error: "Missing tenantId" });
+
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+
+    const [late, dueToday, completedToday, total] = await Promise.all([
+      prisma.task.count({
+        where: {
+          tenantId,
+          dueAt: { lt: startOfDay },
+          status: { notIn: ["DONE", "CANCELLED"] },
+        },
+      }),
+      prisma.task.count({
+        where: {
+          tenantId,
+          dueAt: { gte: startOfDay, lte: endOfDay },
+          status: { notIn: ["DONE", "CANCELLED"] },
+        },
+      }),
+      prisma.task.count({
+        where: {
+          tenantId,
+          status: "DONE",
+          completedAt: { gte: startOfDay },
+        },
+      }),
+      prisma.task.count({
+        where: {
+          tenantId,
+          status: { notIn: ["DONE", "CANCELLED"] },
+        },
+      }),
+    ]);
+
+    res.json({
+      late,
+      dueToday,
+      completedToday,
+      total,
+    });
+  } catch (e: any) {
+    console.error("[tasks.stats] Error:", e);
+    res.status(500).json({ error: "internal_error", detail: e.message });
+  }
+});
+
 // PATCH /tasks/:id – update fields
 router.patch("/:id", async (req, res) => {
   try {

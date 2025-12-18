@@ -25,6 +25,7 @@ import { useTenantBrand } from "@/lib/use-tenant-brand";
 import { useCurrentUser } from "@/lib/use-current-user";
 import { Button } from "@/components/ui/button";
 import AISearchBar from "@/components/AISearchBar";
+import AIAssistant from "@/components/AIAssistant";
 import { apiFetch } from "@/lib/api";
 
 const BASE_NAV: Array<{ href: string; label: string; description: string; icon: any }> = [
@@ -174,8 +175,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-3">
             <div className="hidden items-center gap-2 text-xs text-slate-500 md:flex">
               <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/80 px-3 py-1 font-medium text-slate-500 shadow-sm">
-                Hey, <span className="text-slate-700">{greetingName}</span>
+                Hey, <span className="text-slate-700">{userFirstName || shortName}</span>
               </span>
+              <AIAssistant />
               {user?.isEarlyAdopter && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 font-medium text-blue-700 shadow-sm">
                   Early access
