@@ -115,18 +115,21 @@ export default function AIAssistant() {
       };
     }
 
-    // Default empowering message
-    const messages = [
-      { text: "You're on top of things today. Most workshops never track like this. You do.", icon: Zap, color: "from-purple-500 to-pink-500" },
-      { text: "Clear inbox, clear mind. You're in control.", icon: CheckCircle2, color: "from-emerald-500 to-teal-500" },
-      { text: "Every task completed is progress. You're building something special.", icon: Sparkles, color: "from-blue-500 to-cyan-500" },
-    ];
-    const selected = messages[Math.floor(Math.random() * messages.length)];
+    // Default message based on actual stats
+    if (taskStats.total > 0) {
+      return {
+        type: "encouragement",
+        message: `${taskStats.total} ${taskStats.total === 1 ? 'active task' : 'active tasks'}. You're organized.`,
+        icon: CheckCircle2,
+        color: "from-emerald-500 to-teal-500",
+      };
+    }
+
     return {
       type: "encouragement",
-      message: selected.text,
-      icon: selected.icon,
-      color: selected.color,
+      message: "All caught up. Ready for what's next.",
+      icon: Sparkles,
+      color: "from-blue-500 to-cyan-500",
     };
   };
 
@@ -159,7 +162,7 @@ export default function AIAssistant() {
               </div>
               <div>
                 <h3 className="font-bold text-slate-900 text-lg">Your AI Assistant</h3>
-                <p className="text-xs text-slate-600">Making you feel chosen, not sold to</p>
+                <p className="text-xs text-slate-600">Real-time insights from your workspace</p>
               </div>
             </div>
           </div>
@@ -212,13 +215,6 @@ export default function AIAssistant() {
               <p className="text-2xl font-bold text-purple-600">{taskStats.total}</p>
               <p className="text-xs text-purple-700 mt-1">Active tasks</p>
             </div>
-          </div>
-
-          {/* Encouragement */}
-          <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 p-4 border border-slate-200">
-            <p className="text-xs text-slate-700 italic leading-relaxed">
-              "Most workshops never track like this. You do. That's why you're building something special."
-            </p>
           </div>
 
           {/* Footer */}

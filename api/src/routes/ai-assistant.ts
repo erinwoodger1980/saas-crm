@@ -82,34 +82,35 @@ router.get("/assistant-insight", requireAuth, async (req, res) => {
     };
 
     // Generate AI insight
-    const prompt = `You are a supportive, empowering virtual assistant for a workshop/joinery business owner. Your role is to create emotional anchors, rituals, and make the user feel special and in control.
+    const prompt = `You are a brief, intelligent assistant for a workshop/joinery business. Analyze the task data and create a concise, actionable insight.
 
-Context:
-- User's name: ${firstName}
-- Day: ${context.dayOfWeek}
-- Time: ${hour}:00
+Current status:
+- User: ${firstName}
+- Day: ${context.dayOfWeek}, ${hour}:00
 - Late tasks: ${lateTasks}
 - Due today: ${dueTodayTasks}
 - Completed today: ${completedTodayTasks}
 - Total active: ${totalTasks}
-- Recent completions: ${context.recentCompletions || "None yet"}
+- Recent: ${context.recentCompletions || "none"}
 
-Create a short, inspiring message (1-2 sentences max, under 80 characters) that:
-1. Makes them feel chosen, not sold to
-2. Creates ritual (Monday morning check-ins, Friday wraps, etc.)
-3. Celebrates achievements
-4. Acknowledges challenges with encouragement
-5. Makes them feel like they have an invisible assistant
-6. Uses phrases like "Most workshops never track like this. You do."
+Create a SHORT message (under 70 characters) that:
+- States the most important fact from the data
+- Is supportive but professional
+- Focuses on actionable information
+- Uses actual numbers, not generic phrases
 
-Examples:
-- "Monday Morning Check-in, ${firstName}. Let's plan a great week."
-- "You've completed ${completedTodayTasks} tasks today. You're on fire!"
-- "${lateTasks} tasks need attention. You've got this, ${firstName}!"
-- "Friday Wrap. You've moved your business forward this week!"
-- "Most workshops never track like this. You do. That's progress."
+Good examples:
+- "${completedTodayTasks} tasks completed. ${dueTodayTasks} more to go today."
+- "${lateTasks} overdue tasks need attention."
+- "Monday morning. ${totalTasks} active tasks this week."
+- "All clear. ${completedTodayTasks} tasks done today."
 
-Respond with ONLY the message text, no explanations or markdown.`;
+Bad examples (avoid these):
+- "You're amazing!" (too generic)
+- "Most workshops never..." (cliché platitude)
+- Anything without specific numbers
+
+Respond with ONLY the message, no quotes or explanations.`;
 
     try {
       const completion = await openai.chat.completions.create({
@@ -152,12 +153,34 @@ Respond with ONLY the message text, no explanations or markdown.`;
       // Fall through to default response
     }
 
-    // Fallback default message
+    // Fallback default message based on actual data
+    let fallbackMessage = "All systems running.";
+    let fallbackIcon = "CheckCircle2";
+    let fallbackColor = "from-emerald-500 to-teal-500";
+    
+    if (lateTasks > 0) {
+      fallbackMessage = `${lateTasks} ${lateTasks === 1 ? 'task' : 'tasks'} overdue.`;
+      fallbackIcon = "Clock";
+      fallbackColor = "from-orange-500 to-red-500";
+    } else if (dueTodayTasks > 0) {
+      fallbackMessage = `${dueTodayTasks} ${dueTodayTasks === 1 ? 'task' : 'tasks'} due today.`;
+      fallbackIcon = "Target";
+      fallbackColor = "from-blue-500 to-indigo-500";
+    } else if (completedTodayTasks > 0) {
+      fallbackMessage = `${completedTodayTasks} tasks completed today.`;
+      fallbackIcon = "TrendingUp";
+      fallbackColor = "from-emerald-500 to-teal-500";
+    } else if (totalTasks > 0) {
+      fallbackMessage = `${totalTasks} active ${totalTasks === 1 ? 'task' : 'tasks'}.`;
+      fallbackIcon = "Zap";
+      fallbackColor = "from-purple-500 to-pink-500";
+    }
+    
     return res.json({
       type: "encouragement",
-      message: `You're on top of things, ${firstName}. Most workshops never track like this.`,
-      icon: "Zap",
-      color: "from-purple-500 to-pink-500",
+      message: fallbackMessage,
+      icon: fallbackIcon,
+      color: fallbackColor,
     });
   } catch (error: any) {
     console.error("[AI Assistant] Error:", error);
