@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { X, Plus, Trash2, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { apiFetch } from "@/lib/api";
 
 interface AttributeOption {
   value: string;
@@ -173,21 +174,12 @@ export default function ComponentAttributeModal({
         payload.calculationUnit = null;
       }
 
+      // Use API client (with auth cookies) and correct base path mounted in api server
       const url = attribute
-        ? `/api/component-attributes/${attribute.id}`
-        : "/api/component-attributes";
+        ? `/component-attributes/${attribute.id}`
+        : "/component-attributes";
       const method = attribute ? "PUT" : "POST";
-
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to save attribute");
-      }
+      await apiFetch(url, { method, json: payload });
 
       onSave();
       onClose();

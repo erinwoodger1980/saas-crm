@@ -81,7 +81,7 @@ export default function AISearchBar() {
   async function loadAIInsights() {
     try {
       // Fetch task statistics - this gets real-time data
-      const tasksData = await apiFetch<any>("/tasks/stats");
+      const tasksData = await apiFetch<any>("/tasks/stats?scope=mine");
       if (tasksData) {
         const newStats = {
           late: tasksData.late ?? 0,

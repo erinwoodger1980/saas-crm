@@ -48,7 +48,7 @@ export default function AIAssistant() {
   async function loadInsights() {
     try {
       // Fetch task statistics
-      const tasksData = await apiFetch<any>("/tasks/stats");
+      const tasksData = await apiFetch<any>("/tasks/stats?scope=mine");
       if (tasksData) {
         setTaskStats({
           late: tasksData.late || 0,

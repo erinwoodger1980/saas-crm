@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Wand2, FileText, Download, Image as ImageIcon, AlertTriangle } from "lucide-react";
+import { Loader2, Wand2, FileText, Download, Image as ImageIcon, AlertTriangle, Edit3 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ParsedLineDto, QuestionnaireField, ParseResponse } from "@/lib/api/quotes";
 
 export type ParsedLinesTableProps = {
@@ -12,7 +15,7 @@ export type ParsedLinesTableProps = {
   questionnaireFields: QuestionnaireField[];
   mapping: Record<string, string | null | undefined>;
   onMappingChange: (_lineId: string, _questionKey: string | null) => void;
-  onLineChange: (_lineId: string, _payload: { qty?: number | null; unitPrice?: number | null }) => Promise<void>;
+  onLineChange: (_lineId: string, _payload: { qty?: number | null; unitPrice?: number | null; lineStandard?: Record<string, any> }) => Promise<void>;
   currency?: string | null;
   isParsing?: boolean;
   parseMeta?: ParseResponse | null;
@@ -41,6 +44,7 @@ export function ParsedLinesTable({
   const [drafts, setDrafts] = useState<Record<string, DraftValues>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [editingLine, setEditingLine] = useState<ParsedLineDto | null>(null);
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   useEffect(() => {
@@ -209,6 +213,7 @@ export function ParsedLinesTable({
                   <th className="px-4 py-3 text-right font-medium">Cost / unit</th>
                   <th className="px-4 py-3 text-right font-medium">Sell / unit</th>
                   <th className="px-4 py-3 text-right font-medium">Sell total</th>
+                  <th className="px-4 py-3 text-center font-medium">Details</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -297,12 +302,24 @@ export function ParsedLinesTable({
                       <td className="w-40 px-4 py-3 text-right align-top font-medium">
                         {sellTotal != null ? formatCurrency(sellTotal, currency) : "—"}
                       </td>
+                      <td className="w-32 px-4 py-3 text-center align-top">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditingLine(line)}
+                          className="h-8 gap-1.5"
+                        >
+                          <Edit3 className="h-3.5 w-3.5" />
+                          Edit
+                        </Button>
+                      </td>
                     </tr>
                   );
                 })}
                 {(lines ?? []).length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                    <td colSpan={7} className="px-4 py-12 text-center text-sm text-muted-foreground">
                       No line items yet. Upload supplier PDFs or generate ML estimates to create lines.
                     </td>
                   </tr>
@@ -341,6 +358,16 @@ export function ParsedLinesTable({
           )}
         </DialogContent>
       </Dialog>
+
+      <LineStandardDialog
+        line={editingLine}
+        onClose={() => setEditingLine(null)}
+        onSave={async (lineStandard) => {
+          if (!editingLine) return;
+          await onLineChange(editingLine.id, { lineStandard });
+          setEditingLine(null);
+        }}
+      />
     </>
   );
 }
@@ -390,5 +417,206 @@ function SavingHint() {
     <div className="mt-1 flex items-center justify-end gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
       <Loader2 className="h-3 w-3 animate-spin" /> Saving…
     </div>
+  );
+}
+
+type LineStandardDialogProps = {
+  line: ParsedLineDto | null;
+  onClose: () => void;
+  onSave: (lineStandard: Record<string, any>) => Promise<void>;
+};
+
+function LineStandardDialog({ line, onClose, onSave }: LineStandardDialogProps) {
+  const [formData, setFormData] = useState<Record<string, any>>({});
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (line) {
+      const existing = (line as any).lineStandard || {};
+      setFormData({
+        widthMm: existing.widthMm || "",
+        heightMm: existing.heightMm || "",
+        timber: existing.timber || "",
+        finish: existing.finish || "",
+        ironmongery: existing.ironmongery || "",
+        glazing: existing.glazing || "",
+        description: existing.description || line.description || "",
+        photoInsideFileId: existing.photoInsideFileId || "",
+        photoOutsideFileId: existing.photoOutsideFileId || "",
+      });
+    }
+  }, [line]);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      // Clean up empty values
+      const cleaned: Record<string, any> = {};
+      Object.entries(formData).forEach(([key, value]) => {
+        if (value !== "" && value != null) {
+          cleaned[key] = value;
+        }
+      });
+      await onSave(cleaned);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (!line) return null;
+
+  return (
+    <Dialog open={!!line} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit Line Details</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="widthMm">Width (mm)</Label>
+              <Input
+                id="widthMm"
+                type="number"
+                inputMode="decimal"
+                placeholder="e.g. 826"
+                value={formData.widthMm}
+                onChange={(e) => setFormData({ ...formData, widthMm: e.target.value ? Number(e.target.value) : "" })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="heightMm">Height (mm)</Label>
+              <Input
+                id="heightMm"
+                type="number"
+                inputMode="decimal"
+                placeholder="e.g. 2040"
+                value={formData.heightMm}
+                onChange={(e) => setFormData({ ...formData, heightMm: e.target.value ? Number(e.target.value) : "" })}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="timber">Timber</Label>
+            <Select value={formData.timber} onValueChange={(value) => setFormData({ ...formData, timber: value })}>
+              <SelectTrigger id="timber">
+                <SelectValue placeholder="Select timber..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="oak">Oak</SelectItem>
+                <SelectItem value="sapele">Sapele</SelectItem>
+                <SelectItem value="accoya">Accoya</SelectItem>
+                <SelectItem value="iroko">Iroko</SelectItem>
+                <SelectItem value="pine">Pine</SelectItem>
+                <SelectItem value="hemlock">Hemlock</SelectItem>
+                <SelectItem value="mdf">MDF</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="finish">Finish</Label>
+            <Select value={formData.finish} onValueChange={(value) => setFormData({ ...formData, finish: value })}>
+              <SelectTrigger id="finish">
+                <SelectValue placeholder="Select finish..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="primed">Primed</SelectItem>
+                <SelectItem value="painted">Painted</SelectItem>
+                <SelectItem value="stained">Stained</SelectItem>
+                <SelectItem value="clear_lacquer">Clear Lacquer</SelectItem>
+                <SelectItem value="wax">Wax</SelectItem>
+                <SelectItem value="oiled">Oiled</SelectItem>
+                <SelectItem value="unfinished">Unfinished</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="ironmongery">Ironmongery</Label>
+            <Select value={formData.ironmongery} onValueChange={(value) => setFormData({ ...formData, ironmongery: value })}>
+              <SelectTrigger id="ironmongery">
+                <SelectValue placeholder="Select ironmongery..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                <SelectItem value="hinges">Hinges</SelectItem>
+                <SelectItem value="handles">Handles</SelectItem>
+                <SelectItem value="locks">Locks</SelectItem>
+                <SelectItem value="full_set">Full Set</SelectItem>
+                <SelectItem value="fire_rated">Fire Rated</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="glazing">Glazing</Label>
+            <Select value={formData.glazing} onValueChange={(value) => setFormData({ ...formData, glazing: value })}>
+              <SelectTrigger id="glazing">
+                <SelectValue placeholder="Select glazing..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                <SelectItem value="clear">Clear Glass</SelectItem>
+                <SelectItem value="obscure">Obscure Glass</SelectItem>
+                <SelectItem value="double_glazed">Double Glazed</SelectItem>
+                <SelectItem value="fire_rated">Fire Rated Glass</SelectItem>
+                <SelectItem value="georgian">Georgian</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="description">Description</Label>
+            <Textarea
+              id="description"
+              placeholder="Additional details..."
+              rows={3}
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="photoInsideFileId">Photo (Inside) File ID</Label>
+              <Input
+                id="photoInsideFileId"
+                placeholder="File ID..."
+                value={formData.photoInsideFileId}
+                onChange={(e) => setFormData({ ...formData, photoInsideFileId: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="photoOutsideFileId">Photo (Outside) File ID</Label>
+              <Input
+                id="photoOutsideFileId"
+                placeholder="File ID..."
+                value={formData.photoOutsideFileId}
+                onChange={(e) => setFormData({ ...formData, photoOutsideFileId: e.target.value })}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={handleSave} disabled={isSaving}>
+            {isSaving ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              "Save"
+            )}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

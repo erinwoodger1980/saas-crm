@@ -25,19 +25,24 @@ router.get("/assistant-insight", requireAuth, async (req, res) => {
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
 
+    // Scope insight to the current user's tasks to match UI expectations
+    const assigneeScope = userId ? { assignees: { some: { userId } } } : {};
+
     const [lateTasks, dueTodayTasks, completedTodayTasks, totalTasks, recentCompletions] = await Promise.all([
       prisma.task.count({
         where: {
           tenantId,
-          dueAt: { lt: startOfDay },
           status: { notIn: ["DONE", "CANCELLED"] },
+          dueAt: { lt: startOfDay },
+          ...assigneeScope,
         },
       }),
       prisma.task.count({
         where: {
           tenantId,
-          dueAt: { gte: startOfDay, lte: endOfDay },
           status: { notIn: ["DONE", "CANCELLED"] },
+          dueAt: { gte: startOfDay, lte: endOfDay },
+          ...assigneeScope,
         },
       }),
       prisma.task.count({
@@ -45,12 +50,14 @@ router.get("/assistant-insight", requireAuth, async (req, res) => {
           tenantId,
           status: "DONE",
           completedAt: { gte: startOfDay },
+          ...(userId ? { assignees: { some: { userId } } } : {}),
         },
       }),
       prisma.task.count({
         where: {
           tenantId,
           status: { notIn: ["DONE", "CANCELLED"] },
+          ...assigneeScope,
         },
       }),
       prisma.task.findMany({
@@ -58,6 +65,7 @@ router.get("/assistant-insight", requireAuth, async (req, res) => {
           tenantId,
           status: "DONE",
           completedAt: { not: null },
+          ...(userId ? { assignees: { some: { userId } } } : {}),
         },
         orderBy: { completedAt: "desc" },
         take: 5,

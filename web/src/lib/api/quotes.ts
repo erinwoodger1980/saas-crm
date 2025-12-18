@@ -317,7 +317,7 @@ export async function saveQuoteMappings(
 export async function updateQuoteLine(
   quoteId: string,
   lineId: string,
-  payload: Partial<{ qty: number | null; unitPrice: number | null; meta: Record<string, any> }>,
+  payload: Partial<{ qty: number | null; unitPrice: number | null; meta: Record<string, any>; lineStandard: Record<string, any> }>,
 ): Promise<ParsedLineDto> {
   if (!quoteId) throw new Error("quoteId required");
   if (!lineId) throw new Error("lineId required");

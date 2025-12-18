@@ -671,7 +671,7 @@ export default function QuoteBuilderPage() {
   );
 
   const handleLineChange = useCallback(
-    async (lineId: string, payload: { qty?: number | null; unitPrice?: number | null }) => {
+    async (lineId: string, payload: { qty?: number | null; unitPrice?: number | null; lineStandard?: Record<string, any> }) => {
       if (!quoteId) return;
       try {
         await updateQuoteLine(quoteId, lineId, payload);

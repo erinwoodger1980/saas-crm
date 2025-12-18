@@ -707,6 +707,7 @@ router.get("/:id/lines", requireAuth, async (req: any, res) => {
       supplier: ln.supplier,
       sku: ln.sku,
       meta: ln.meta as any,
+      lineStandard: (ln as any)?.lineStandard ?? null,
       sellUnit: (ln.meta as any)?.sellUnitGBP ?? null,
       sellTotal: (ln.meta as any)?.sellTotalGBP ?? null,
       lineTotalGBP: Number(ln.lineTotalGBP),
@@ -763,6 +764,11 @@ router.patch("/:id/lines/:lineId", requireAuth, async (req: any, res) => {
     const incomingMeta: any = (req.body?.meta && typeof req.body.meta === "object") ? req.body.meta : {};
     const existingMeta: any = (line.meta as any) || {};
     const mergedMeta: any = { ...existingMeta, ...incomingMeta };
+
+    // Merge lineStandard updates (standardised line-item fields)
+    const incomingStandard: any = (req.body?.lineStandard && typeof req.body.lineStandard === "object") ? req.body.lineStandard : {};
+    const existingStandard: any = (line as any)?.lineStandard || {};
+    const mergedStandard: any = { ...existingStandard, ...incomingStandard };
 
     // Check if user is explicitly setting sellUnitGBP or margin (manual override)
     const explicitSellUnitGBP = req.body?.sellUnitGBP !== undefined ? safeNumber(req.body.sellUnitGBP) : null;
@@ -834,6 +840,7 @@ router.patch("/:id/lines/:lineId", requireAuth, async (req: any, res) => {
         unitPrice: new Prisma.Decimal(unitPrice),
         lineTotalGBP: new Prisma.Decimal(Number.isFinite(lineTotalGBP) ? lineTotalGBP : 0),
         meta: mergedMeta as any,
+        lineStandard: Object.keys(mergedStandard).length ? (mergedStandard as any) : undefined,
       },
     });
 
@@ -846,6 +853,7 @@ router.patch("/:id/lines/:lineId", requireAuth, async (req: any, res) => {
       supplier: saved.supplier,
       sku: saved.sku,
       meta: saved.meta as any,
+      lineStandard: (saved as any)?.lineStandard ?? null,
       sellUnit: (saved.meta as any)?.sellUnitGBP ?? null,
       sellTotal: (saved.meta as any)?.sellTotalGBP ?? null,
       lineTotalGBP: Number(saved.lineTotalGBP),

@@ -327,43 +327,55 @@ router.get("/", async (req, res) => {
   }
 });
 
-// GET /tasks/stats – Get task statistics for current user
+// GET /tasks/stats – Get task statistics
+// Optional query: scope=mine|all (default all). When scope=mine, counts only tasks
+// where the authenticated user is an assignee.
 router.get("/stats", async (req, res) => {
   try {
     const tenantId = resolveTenantId(req);
     if (!tenantId) return res.status(400).json({ error: "Missing tenantId" });
+    const scope = String((req.query as any)?.scope || "all").toLowerCase();
+    const userId = resolveUserId(req);
 
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
 
+    // Common scope filter
+    const assigneeFilter =
+      scope === "mine" && userId
+        ? { assignees: { some: { userId } } }
+        : {};
+
+    const baseActiveFilter: any = {
+      tenantId,
+      status: { notIn: ["DONE", "CANCELLED"] as any },
+      ...assigneeFilter,
+    };
+
     const [late, dueToday, completedToday, total] = await Promise.all([
       prisma.task.count({
         where: {
-          tenantId,
+          ...baseActiveFilter,
           dueAt: { lt: startOfDay },
-          status: { notIn: ["DONE", "CANCELLED"] },
         },
       }),
       prisma.task.count({
         where: {
-          tenantId,
+          ...baseActiveFilter,
           dueAt: { gte: startOfDay, lte: endOfDay },
-          status: { notIn: ["DONE", "CANCELLED"] },
         },
       }),
       prisma.task.count({
         where: {
           tenantId,
-          status: "DONE",
+          status: "DONE" as any,
           completedAt: { gte: startOfDay },
+          ...(scope === "mine" && userId ? { assignees: { some: { userId } } } : {}),
         },
       }),
       prisma.task.count({
-        where: {
-          tenantId,
-          status: { notIn: ["DONE", "CANCELLED"] },
-        },
+        where: baseActiveFilter,
       }),
     ]);
 

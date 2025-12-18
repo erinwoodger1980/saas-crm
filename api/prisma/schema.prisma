@@ -127,6 +127,7 @@ model Tenant {
   questions                  Question[]                  @relation("TenantQuestions")
   questionSets               QuestionSet[]               @relation("TenantQuestionSets")
   legacyQuestionMappings     LegacyQuestionMapping[]     @relation("TenantLegacyMappings")
+  standardFieldMappings      StandardFieldMapping[]      @relation("TenantStandardFieldMappings")
 }
 
 model LippingLookup {
@@ -444,11 +445,12 @@ model ProductType {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  tenant       Tenant        @relation("TenantProductTypes", fields: [tenantId], references: [id], onDelete: Cascade)
-  parent       ProductType?  @relation("ProductTypeTree", fields: [parentId], references: [id])
-  children     ProductType[] @relation("ProductTypeTree")
-  questionSet  QuestionSet?  @relation("ProductTypeQuestionSet", fields: [questionSetId], references: [id])
-  questionSets QuestionSet[] @relation("QuestionSetProductType")
+  tenant               Tenant                   @relation("TenantProductTypes", fields: [tenantId], references: [id], onDelete: Cascade)
+  parent               ProductType?             @relation("ProductTypeTree", fields: [parentId], references: [id])
+  children             ProductType[]            @relation("ProductTypeTree")
+  questionSet          QuestionSet?             @relation("ProductTypeQuestionSet", fields: [questionSetId], references: [id])
+  questionSets         QuestionSet[]            @relation("QuestionSetProductType")
+  standardFieldMaps    StandardFieldMapping[]   @relation("ProductTypeStandardFieldMappings")
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -569,6 +571,29 @@ model LegacyQuestionMapping {
 
   @@index([tenantId])
   @@index([attributeCode])
+}
+
+// StandardFieldMapping: Links product-type questions/attributes to standard line-item fields
+model StandardFieldMapping {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  productTypeId       String
+  standardField       String // "widthMm", "heightMm", "timber", "finish", "ironmongery", "glazing", "description", "photoInsideFileId", "photoOutsideFileId"
+  questionCode        String? // Link to Question.attributeCode for override source
+  attributeCode       String? // Alternative: link to Attribute.code for override source
+  transformExpression String? // Optional JS expression to transform value before applying
+  isActive            Boolean  @default(true)
+  metadata            Json?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant      Tenant      @relation("TenantStandardFieldMappings", fields: [tenantId], references: [id], onDelete: Cascade)
+  productType ProductType @relation("ProductTypeStandardFieldMappings", fields: [productTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, productTypeId, standardField])
+  @@index([tenantId])
+  @@index([productTypeId])
+  @@index([standardField])
 }
 
 // ============================================================================
@@ -1385,6 +1410,12 @@ model QuoteLine {
   deliveryShareGBP  Decimal            @default(0)
   lineTotalGBP      Decimal            @default(0)
   meta              Json?
+  // Standardised per-line fields to reduce day-one setup burden.
+  // Expected keys (optional):
+  // { widthMm?: number, heightMm?: number, timber?: string, finish?: string,
+  //   ironmongery?: string, glazing?: string, description?: string,
+  //   photoInsideFileId?: string, photoOutsideFileId?: string }
+  lineStandard      Json?
   configuredProduct Json? // Canonical product configuration: {productTypeId, selections, derived, provenance}
   quote             Quote              @relation(fields: [quoteId], references: [id])
   shoppingListItems ShoppingListItem[]
