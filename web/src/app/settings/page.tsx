@@ -779,16 +779,36 @@ export default function SettingsPage() {
       return;
     }
 
+    // Check file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Logo must be under 2MB", variant: "destructive" });
+      return;
+    }
+
     try {
-      const form = new FormData();
-      form.append('logo', file, file.name);
+      // Convert to base64
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const base64Data = await base64Promise;
+
+      // Send base64 to API
       const url = `${API_BASE || '/api'}/tenant/settings/upload-logo`;
-      const res = await fetch(url, { method: 'POST', body: form, credentials: 'include' as RequestCredentials });
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ logoBase64: base64Data }),
+        credentials: 'include' as RequestCredentials
+      });
       const data = await res.json();
       
       if (!res.ok) throw new Error(data?.error || 'Upload failed');
 
-      // Update settings with new logo URL
+      // Update settings with new logo (base64 data URL)
       if (data.logoUrl) {
         setS((prev) => prev ? { ...prev, logoUrl: data.logoUrl } : prev);
         // Emit event so AppShell updates logo immediately
@@ -796,7 +816,7 @@ export default function SettingsPage() {
         toast({ title: 'Logo uploaded successfully', description: 'Your logo has been updated' });
       }
     } catch (e: any) {
-      toast({ title: 'Failed to upload logo', description: e?.message || '', variant: 'destructive' });
+      toast({ title: 'Failed to upload logo', description: e?.message || 'Error converting image', variant: 'destructive' });
     } finally {
       // Reset input so same file can be reselected
       e.currentTarget.value = '';
