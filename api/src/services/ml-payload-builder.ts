@@ -5,9 +5,7 @@
  * falls back to legacy questionnaire data for backward compatibility
  */
 
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../prisma';
 
 interface ConfiguredProduct {
   productTypeId?: string;

@@ -5,9 +5,8 @@
  * Evaluates component inclusion rules and quantity formulas
  */
 
-import { PrismaClient, ComponentLookup } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { ComponentLookup } from '@prisma/client';
+import { prisma } from '../prisma';
 
 interface BOMLineItem {
   componentId: string;

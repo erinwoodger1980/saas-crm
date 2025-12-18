@@ -13,9 +13,7 @@
  * This allows incremental migration while preserving all existing functionality.
  */
 
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../prisma';
 
 interface ConfiguredProduct {
   productTypeId?: string;
