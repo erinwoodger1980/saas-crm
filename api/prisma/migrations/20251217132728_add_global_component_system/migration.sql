@@ -126,3 +126,98 @@ CREATE INDEX "BOMLineItem_projectId_idx" ON "BOMLineItem"("projectId");
 CREATE INDEX "BOMLineItem_componentLookupId_idx" ON "BOMLineItem"("componentLookupId");
 CREATE INDEX "BOMLineItem_status_idx" ON "BOMLineItem"("status");
 CREATE INDEX "BOMLineItem_supplierId_idx" ON "BOMLineItem"("supplierId");
+
+-- ComponentAttribute: dynamic attributes per component type (e.g., Timber, Finish)
+CREATE TABLE "ComponentAttribute" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "tenantId" TEXT NOT NULL,
+        "componentType" TEXT NOT NULL,
+        "attributeName" TEXT NOT NULL,
+        "attributeType" TEXT NOT NULL,
+        "displayOrder" INTEGER NOT NULL DEFAULT 0,
+        "isRequired" BOOLEAN NOT NULL DEFAULT false,
+        "options" JSONB,
+        "calculationFormula" TEXT,
+        "calculationUnit" TEXT,
+        "affectsPrice" BOOLEAN NOT NULL DEFAULT false,
+        "affectsBOM" BOOLEAN NOT NULL DEFAULT false,
+        "metadata" JSONB,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL
+);
+
+ALTER TABLE "ComponentAttribute"
+    ADD CONSTRAINT "ComponentAttribute_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE;
+
+CREATE UNIQUE INDEX "ComponentAttribute_tenant_component_attr_unique" ON "ComponentAttribute"("tenantId", "componentType", "attributeName");
+CREATE INDEX "ComponentAttribute_tenant_component_idx" ON "ComponentAttribute"("tenantId", "componentType");
+
+-- ComponentVariant: specific variant/specification with attribute values
+CREATE TABLE "ComponentVariant" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "componentLookupId" TEXT NOT NULL,
+        "tenantId" TEXT NOT NULL,
+        "variantCode" TEXT NOT NULL,
+        "variantName" TEXT NOT NULL,
+        "attributeValues" JSONB NOT NULL,
+        "dimensionFormulas" JSONB,
+        "priceModifier" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "unitPrice" DOUBLE PRECISION,
+        "supplierId" TEXT,
+        "supplierSKU" TEXT,
+        "leadTimeDays" INTEGER,
+        "minimumOrderQty" DOUBLE PRECISION,
+        "specifications" JSONB,
+        "isActive" BOOLEAN NOT NULL DEFAULT true,
+        "isStocked" BOOLEAN NOT NULL DEFAULT false,
+        "stockLevel" DOUBLE PRECISION,
+        "attributeId" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL
+);
+
+ALTER TABLE "ComponentVariant"
+    ADD CONSTRAINT "ComponentVariant_componentLookupId_fkey" FOREIGN KEY ("componentLookupId") REFERENCES "ComponentLookup"("id") ON DELETE CASCADE;
+ALTER TABLE "ComponentVariant"
+    ADD CONSTRAINT "ComponentVariant_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE;
+ALTER TABLE "ComponentVariant"
+    ADD CONSTRAINT "ComponentVariant_supplierId_fkey" FOREIGN KEY ("supplierId") REFERENCES "Supplier"("id") ON DELETE SET NULL;
+ALTER TABLE "ComponentVariant"
+    ADD CONSTRAINT "ComponentVariant_attributeId_fkey" FOREIGN KEY ("attributeId") REFERENCES "ComponentAttribute"("id") ON DELETE SET NULL;
+
+CREATE UNIQUE INDEX "ComponentVariant_tenant_variantCode_unique" ON "ComponentVariant"("tenantId", "variantCode");
+CREATE INDEX "ComponentVariant_componentLookupId_idx" ON "ComponentVariant"("componentLookupId");
+CREATE INDEX "ComponentVariant_tenantId_idx" ON "ComponentVariant"("tenantId");
+CREATE INDEX "ComponentVariant_supplierId_idx" ON "ComponentVariant"("supplierId");
+
+-- BOMVariantLineItem: BOM line items referencing specific variants
+CREATE TABLE "BOMVariantLineItem" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "projectId" TEXT NOT NULL,
+        "componentVariantId" TEXT NOT NULL,
+        "quantity" DOUBLE PRECISION NOT NULL DEFAULT 1,
+        "calculatedDimensions" JSONB,
+        "unitPrice" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "totalPrice" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "laborCost" DOUBLE PRECISION,
+        "materialCost" DOUBLE PRECISION,
+        "supplierId" TEXT,
+        "status" "BOMStatus" NOT NULL DEFAULT 'DRAFT',
+        "dateOrdered" TIMESTAMP(3),
+        "dateReceived" TIMESTAMP(3),
+        "notes" TEXT,
+        "metadata" JSONB,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL
+);
+
+ALTER TABLE "BOMVariantLineItem"
+    ADD CONSTRAINT "BOMVariantLineItem_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE;
+ALTER TABLE "BOMVariantLineItem"
+    ADD CONSTRAINT "BOMVariantLineItem_componentVariantId_fkey" FOREIGN KEY ("componentVariantId") REFERENCES "ComponentVariant"("id") ON DELETE RESTRICT;
+ALTER TABLE "BOMVariantLineItem"
+    ADD CONSTRAINT "BOMVariantLineItem_supplierId_fkey" FOREIGN KEY ("supplierId") REFERENCES "Supplier"("id") ON DELETE SET NULL;
+
+CREATE INDEX "BOMVariantLineItem_projectId_idx" ON "BOMVariantLineItem"("projectId");
+CREATE INDEX "BOMVariantLineItem_componentVariantId_idx" ON "BOMVariantLineItem"("componentVariantId");
+CREATE INDEX "BOMVariantLineItem_status_idx" ON "BOMVariantLineItem"("status");

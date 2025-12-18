@@ -12,7 +12,8 @@ import { LeadDetailsCard } from "@/components/quotes/LeadDetailsCard";
 import { ClientQuoteUploadCard } from "@/components/quotes/ClientQuoteUploadCard";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Sparkles, Printer, ChevronDown, ChevronRight, Download, FileText, Building2, Cpu, Edit3, Eye, FileUp, Mail } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Loader2, Sparkles, Printer, ChevronDown, ChevronRight, Download, FileText, Building2, Cpu, Edit3, Eye, FileUp, Mail, Save } from "lucide-react";
 import {
   fetchQuote,
   fetchParsedLines,
@@ -177,6 +178,12 @@ export default function QuoteBuilderPage() {
   const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
   const [questionnaireOpen, setQuestionnaireOpen] = useState(false);
 
+  // Product Configuration state (Option B unified questions)
+  const [productCategories, setProductCategories] = useState<any[]>([]);
+  const [selectedProductOptionId, setSelectedProductOptionId] = useState<string | null>(null);
+  const [configQuestions, setConfigQuestions] = useState<any[]>([]);
+  const [configAnswers, setConfigAnswers] = useState<Record<string, any>>({});
+
   // (Removed duplicate recent material cost fetch + basic alert derivation)
 
   const questionnaireAnswers = useMemo(() => {
@@ -281,6 +288,71 @@ export default function QuoteBuilderPage() {
   useEffect(() => {
     setError(quoteError?.message || linesError?.message || null);
   }, [quoteError, linesError]);
+
+  // Load product types and derive configQuestions based on selected option
+  const { data: tenantSettings } = useSWR(
+    quote ? ["tenant-settings-product-config", quote.tenantId] : null,
+    async () => {
+      const settings = await apiFetch<{ productTypes?: any[]; questionnaire?: any[] }>("/tenant/settings");
+      return settings;
+    },
+    { revalidateOnFocus: false }
+  );
+
+  useEffect(() => {
+    if (tenantSettings?.productTypes && Array.isArray(tenantSettings.productTypes)) {
+      setProductCategories(tenantSettings.productTypes);
+      // Initialize from quote metadata if available
+      const savedOptionId = (quote?.meta as any)?.selectedProductOptionId;
+      if (savedOptionId) setSelectedProductOptionId(savedOptionId);
+      const savedAnswers = (quote?.meta as any)?.configAnswers || {};
+      setConfigAnswers(savedAnswers);
+    }
+  }, [tenantSettings?.productTypes, quote?.meta]);
+
+  // Derive configQuestions when selected product option changes
+  useEffect(() => {
+    if (!selectedProductOptionId || !productCategories.length) {
+      setConfigQuestions([]);
+      return;
+    }
+    let found: any = null;
+    for (const cat of productCategories) {
+      if (cat.types && Array.isArray(cat.types)) {
+        for (const type of cat.types) {
+          if (type.options && Array.isArray(type.options)) {
+            const opt = type.options.find((o: any) => o.id === selectedProductOptionId);
+            if (opt) {
+              found = opt;
+              break;
+            }
+          }
+        }
+      }
+      if (found) break;
+    }
+    setConfigQuestions(found?.configQuestions || []);
+  }, [selectedProductOptionId, productCategories]);
+
+  // Persist product configuration to quote metadata
+  const saveProductConfiguration = useCallback(async () => {
+    if (!quoteId || !quote) return;
+    try {
+      const nextMeta = {
+        ...((quote?.meta as any) || {}),
+        selectedProductOptionId,
+        configAnswers,
+      };
+      await apiFetch(`/quotes/${encodeURIComponent(quoteId)}`, {
+        method: "PATCH",
+        json: { meta: nextMeta },
+      });
+      await mutateQuote();
+      toast({ title: "Product configuration saved" });
+    } catch (err: any) {
+      toast({ title: "Save failed", description: err?.message || "", variant: "destructive" });
+    }
+  }, [quoteId, quote, selectedProductOptionId, configAnswers, mutateQuote, toast]);
 
   const reestimateNeeded = estimate && estimatedLineRevision !== null && estimatedLineRevision !== lineRevision;
 
@@ -884,10 +956,14 @@ export default function QuoteBuilderPage() {
           </div>
         ) : (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-6 h-auto">
+            <TabsList className="grid w-full grid-cols-7 h-auto">
               <TabsTrigger value="details" className="flex flex-col gap-1 py-3">
                 <FileText className="h-4 w-4" />
                 <span className="text-xs">Details</span>
+              </TabsTrigger>
+              <TabsTrigger value="product-config" className="flex flex-col gap-1 py-3">
+                <Building2 className="h-4 w-4" />
+                <span className="text-xs">Product</span>
               </TabsTrigger>
               <TabsTrigger value="supplier" className="flex flex-col gap-1 py-3">
                 <FileUp className="h-4 w-4" />
@@ -1003,6 +1079,91 @@ export default function QuoteBuilderPage() {
                     </div>
                   )}
                 </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="product-config" className="space-y-6">
+              <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
+                <div>
+                  <h2 className="text-2xl font-semibold text-foreground mb-2">Product Configuration</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Select a product type and answer configuration questions
+                  </p>
+                </div>
+
+                {/* Product option selector */}
+                <div className="space-y-3">
+                  <label className="block text-sm font-medium text-foreground">Select Product Type/Option</label>
+                  <select
+                    className="w-full rounded-lg border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    value={selectedProductOptionId || ""}
+                    onChange={(e) => setSelectedProductOptionId(e.target.value || null)}
+                  >
+                    <option value="">— Select a product —</option>
+                    {productCategories.map((cat: any) => {
+                      if (!cat.types || !Array.isArray(cat.types)) return null;
+                      return cat.types.map((type: any) => {
+                        if (!type.options || !Array.isArray(type.options)) return null;
+                        return type.options.map((opt: any) => (
+                          <option key={opt.id} value={opt.id}>
+                            {cat.label} › {type.label} › {opt.label}
+                          </option>
+                        ));
+                      });
+                    })}
+                  </select>
+                </div>
+
+                {/* Configuration questions */}
+                {selectedProductOptionId && configQuestions.length > 0 && (
+                  <div className="space-y-4">
+                    <div className="text-sm font-medium text-foreground">Configuration Questions</div>
+                    <div className="space-y-3">
+                      {configQuestions.map((q: any, idx: number) => {
+                        const key = q.source === "legacy" ? (q as any).fieldKey : `${(q as any).componentType}:${(q as any).attributeName}`;
+                        const label = q.label || (q.source === "legacy" ? (q as any).fieldKey : (q as any).attributeName);
+                        return (
+                          <div key={idx} className="space-y-1">
+                            <label className="block text-xs font-medium text-foreground">
+                              {label}
+                              {q.required && <span className="text-red-500 ml-1">*</span>}
+                            </label>
+                            <Input
+                              type="text"
+                              value={configAnswers[key] || ""}
+                              onChange={(e) =>
+                                setConfigAnswers((prev) => ({ ...prev, [key]: e.target.value }))
+                              }
+                              placeholder={`Answer for ${label}`}
+                              className="w-full"
+                            />
+                            <div className="text-xs text-muted-foreground">
+                              {q.source === "legacy" ? "From legacy field" : "From component attribute"}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {selectedProductOptionId && configQuestions.length === 0 && (
+                  <div className="rounded-lg bg-muted/50 p-4">
+                    <p className="text-sm text-muted-foreground">No questions configured for this product type.</p>
+                  </div>
+                )}
+
+                {!selectedProductOptionId && (
+                  <div className="rounded-lg bg-muted/50 p-4">
+                    <p className="text-sm text-muted-foreground">Select a product type to view configuration questions.</p>
+                  </div>
+                )}
+
+                {/* Save button */}
+                <Button onClick={saveProductConfiguration} className="gap-2">
+                  <Save className="h-4 w-4" />
+                  Save Configuration
+                </Button>
               </div>
             </TabsContent>
 

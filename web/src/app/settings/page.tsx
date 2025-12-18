@@ -13,6 +13,7 @@ import PdfTemplatesSection from "@/components/settings/PdfTemplatesSection";
 import MaterialCostDebugPanel from "@/components/settings/MaterialCostDebugPanel";
 import AdminQuestionnaireFieldsTable from "@/components/questionnaire/AdminQuestionnaireFieldsTable";
 import ProductTypesSection from "@/components/settings/ProductTypesSection";
+import ProductConfigurationSection from "@/components/settings/ProductConfigurationSection";
 import { DiagramSvgGenerator } from "@/components/settings/DiagramSvgGenerator";
 import {
   DEFAULT_TASK_PLAYBOOK,
@@ -234,7 +235,21 @@ export default function SettingsPage() {
     return 'business';
   })();
   
-  const [currentStage, setCurrentStage] = useState<"business" | "data-fields" | "email-templates" | "marketing" | "automation" | "workshop-processes" | "integrations" | "suppliers" | "software-profiles" | "pdf-templates" | "material-costs" | "products">(initialTab as any);
+  const [currentStage, setCurrentStage] = useState<
+    | "business"
+    | "data-fields"
+    | "email-templates"
+    | "marketing"
+    | "automation"
+    | "workshop-processes"
+    | "integrations"
+    | "suppliers"
+    | "software-profiles"
+    | "pdf-templates"
+    | "material-costs"
+    | "products"
+    | "components"
+  >(initialTab as any);
   const [s, setS] = useState<Settings | null>(null);
   const [inbox, setInbox] = useState<InboxCfg>({ gmail: false, ms365: false, intervalMinutes: 10 });
   const [savingInbox, setSavingInbox] = useState(false);
@@ -2592,6 +2607,9 @@ export default function SettingsPage() {
         <>
           <Section title="Product Types" description="Manage your product catalog with images and ML training">
             <ProductTypesSection />
+          </Section>
+          <Section title="Product Configuration" description="Link product types to questions from legacy fields and component attributes">
+            <ProductConfigurationSection />
           </Section>
           
           <Section title="Diagram SVG Generator" description="Generate coloured elevation-style diagrams from text descriptions">
