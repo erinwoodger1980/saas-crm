@@ -29,12 +29,21 @@ export default function AIAssistant() {
   const [insight, setInsight] = useState<AssistantInsight | null>(null);
   const [taskStats, setTaskStats] = useState<TaskStats>({ late: 0, dueToday: 0, completed: 0, total: 0 });
   const [loading, setLoading] = useState(true);
+  const [isMounted, setIsMounted] = useState(false);
+
+  // Ensure component is mounted before enabling functionality
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   useEffect(() => {
+    // Only load insights if user is authenticated AND component is mounted
+    if (!isMounted || !user) return;
+    
     loadInsights();
     const interval = setInterval(loadInsights, 60000); // Refresh every minute
     return () => clearInterval(interval);
-  }, []);
+  }, [isMounted, user]);
 
   async function loadInsights() {
     try {
