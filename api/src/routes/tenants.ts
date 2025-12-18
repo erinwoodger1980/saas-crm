@@ -1546,4 +1546,161 @@ router.post("/images/import", async (req, res) => {
   }
 });
 
+// ============================================================================
+// CONFIGURED PRODUCT SYSTEM - Phase 2 Endpoints
+// ============================================================================
+
+/**
+ * Seeds the ConfiguredProduct starter library for a tenant
+ * Creates: Attributes, ProductTypes, Questions, QuestionSets, Components
+ */
+router.post("/tenant/configured-product/seed", async (req: any, res) => {
+  try {
+    const tenantId = authTenantId(req);
+    if (!tenantId) return res.status(401).json({ error: 'unauthorized' });
+    
+    const { seedConfiguredProductStarter } = require('../../prisma/seeds/configured-product-starter');
+    const result = await seedConfiguredProductStarter({ tenantId });
+    
+    res.json({
+      success: true,
+      message: 'ConfiguredProduct starter library seeded successfully',
+      ...result
+    });
+  } catch (error: any) {
+    console.error('Failed to seed ConfiguredProduct starter:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Seed failed'
+    });
+  }
+});
+
+/**
+ * Creates LegacyQuestionMapping entries for existing QuestionnaireFields
+ * Bridges legacy questionnaire system to canonical Attributes
+ */
+router.post("/tenant/configured-product/create-mappings", async (req: any, res) => {
+  try {
+    const tenantId = authTenantId(req);
+    if (!tenantId) return res.status(401).json({ error: 'unauthorized' });
+    
+    const { createLegacyMappingsForTenant } = await import('../services/configured-product-sync');
+    const mappingCount = await createLegacyMappingsForTenant(tenantId);
+    
+    res.json({
+      success: true,
+      message: `Created ${mappingCount} legacy mappings`,
+      mappingCount
+    });
+  } catch (error: any) {
+    console.error('Failed to create legacy mappings:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Mapping creation failed'
+    });
+  }
+});
+
+/**
+ * Syncs existing QuestionnaireResponse data to ConfiguredProduct
+ * Retroactively populates configuredProduct.selections from legacy answers
+ */
+router.post("/tenant/configured-product/sync-responses", async (req: any, res) => {
+  try {
+    const tenantId = authTenantId(req);
+    if (!tenantId) return res.status(401).json({ error: 'unauthorized' });
+    const { quoteIds } = req.body; // Optional: sync specific quotes only
+    
+    const { syncResponseToConfiguredProduct } = await import('../services/configured-product-sync');
+    
+    // Get all responses for this tenant
+    const where: any = { tenantId };
+    if (quoteIds && Array.isArray(quoteIds)) {
+      where.quoteId = { in: quoteIds };
+    }
+    
+    const responses = await prisma.questionnaireResponse.findMany({
+      where,
+      select: { id: true, quoteId: true }
+    });
+    
+    let syncedCount = 0;
+    for (const response of responses) {
+      try {
+        await syncResponseToConfiguredProduct(response.id);
+        syncedCount++;
+      } catch (error) {
+        console.error(`Failed to sync response ${response.id}:`, error);
+      }
+    }
+    
+    res.json({
+      success: true,
+      message: `Synced ${syncedCount} of ${responses.length} responses`,
+      syncedCount,
+      totalResponses: responses.length
+    });
+  } catch (error: any) {
+    console.error('Failed to sync responses:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Sync failed'
+    });
+  }
+});
+
+/**
+ * Gets the ConfiguredProduct migration status for a tenant
+ */
+router.get("/tenant/configured-product/status", async (req: any, res) => {
+  try {
+    const tenantId = authTenantId(req);
+    if (!tenantId) return res.status(401).json({ error: 'unauthorized' });
+    
+    const [
+      attributeCount,
+      productTypeCount,
+      questionCount,
+      questionSetCount,
+      mappingCount,
+      quotesWithConfig,
+      totalQuotes
+    ] = await Promise.all([
+      prisma.attribute.count({ where: { tenantId } }),
+      prisma.productType.count({ where: { tenantId } }),
+      prisma.question.count({ where: { tenantId } }),
+      prisma.questionSet.count({ where: { tenantId } }),
+      prisma.legacyQuestionMapping.count({ where: { tenantId } }),
+      prisma.quoteLine.count({
+        where: {
+          quote: { tenantId },
+          configuredProduct: { not: null as any }
+        }
+      }),
+      prisma.quote.count({ where: { tenantId } })
+    ]);
+    
+    res.json({
+      success: true,
+      status: {
+        attributes: attributeCount,
+        productTypes: productTypeCount,
+        questions: questionCount,
+        questionSets: questionSetCount,
+        legacyMappings: mappingCount,
+        quotesWithConfiguredProduct: quotesWithConfig,
+        totalQuotes,
+        migrationProgress: totalQuotes > 0 ? Math.round((quotesWithConfig / totalQuotes) * 100) : 0
+      }
+    });
+  } catch (error: any) {
+    console.error('Failed to get status:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Status check failed'
+    });
+  }
+});
+
 export default router;

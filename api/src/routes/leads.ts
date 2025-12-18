@@ -1723,6 +1723,29 @@ router.post("/:id/submit-questionnaire", async (req, res) => {
       uniqueKey: `manual:questionnaire_followup:${id}`,
     });
 
+    // PHASE 2: Dual-write to ConfiguredProduct if lead has quotes
+    try {
+      const quotes = await prisma.quote.findMany({ where: { leadId: id }, select: { id: true } });
+      if (quotes.length > 0) {
+        const { syncAnswerToConfiguredProduct } = await import('../services/configured-product-sync');
+        // Sync each answer to the canonical configuredProduct for all quotes
+        for (const quote of quotes) {
+          for (const [fieldKey, value] of Object.entries(answers)) {
+            // Find the field by key
+            const field = await prisma.questionnaireField.findFirst({
+              where: { tenantId, key: fieldKey }
+            });
+            if (field) {
+              await syncAnswerToConfiguredProduct(quote.id, field.id, value, tenantId);
+            }
+          }
+        }
+      }
+    } catch (syncError) {
+      console.error('[leads] ConfiguredProduct sync failed (non-fatal):', syncError);
+      // Don't fail the request - dual-write is optional
+    }
+
     return res.json({ ok: true });
   } catch (e: any) {
     console.error("[leads] submit-questionnaire failed:", e);

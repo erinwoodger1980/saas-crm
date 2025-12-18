@@ -493,6 +493,33 @@ router.post("/leads/:id/submit-questionnaire", async (req, res) => {
       return updatedLead;
     });
 
+    // PHASE 2: Dual-write to ConfiguredProduct if lead has quotes
+    try {
+      const quotes = await prisma.quote.findMany({ where: { leadId: id }, select: { id: true } });
+      if (quotes.length > 0) {
+        const { syncAnswerToConfiguredProduct } = await import('../services/configured-product-sync');
+        const answerEntries = { ...answers, ...individualFieldValues };
+        
+        // Sync each answer to the canonical configuredProduct for all quotes
+        for (const quote of quotes) {
+          for (const [fieldKey, value] of Object.entries(answerEntries)) {
+            if (fieldKey === 'items' || fieldKey === 'uploads') continue; // Skip structural fields
+            
+            // Find the field by key
+            const field = await prisma.questionnaireField.findFirst({
+              where: { tenantId: updated.tenantId, key: fieldKey }
+            });
+            if (field) {
+              await syncAnswerToConfiguredProduct(quote.id, field.id, value, updated.tenantId);
+            }
+          }
+        }
+      }
+    } catch (syncError) {
+      console.error('[public] ConfiguredProduct sync failed (non-fatal):', syncError);
+      // Don't fail the request - dual-write is optional
+    }
+
     return res.json({ ok: true, lead: { id: updated.id } });
   } catch (e: any) {
     console.error("[public submit-questionnaire] failed:", e);
