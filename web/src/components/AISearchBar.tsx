@@ -74,21 +74,22 @@ export default function AISearchBar() {
     if (!isMounted) return;
     
     loadAIInsights();
-    const interval = setInterval(loadAIInsights, 60000); // Refresh every minute
+    const interval = setInterval(loadAIInsights, 30000); // Refresh every 30 seconds for live data
     return () => clearInterval(interval);
   }, [isMounted]);
 
   async function loadAIInsights() {
     try {
-      // Fetch task statistics
+      // Fetch task statistics - this gets real-time data
       const tasksData = await apiFetch<any>("/tasks/stats");
       if (tasksData) {
-        setTaskStats({
-          late: tasksData.late || 0,
-          dueToday: tasksData.dueToday || 0,
-          completed: tasksData.completedToday || 0,
-          total: tasksData.total || 0,
-        });
+        const newStats = {
+          late: tasksData.late ?? 0,
+          dueToday: tasksData.dueToday ?? 0,
+          completed: tasksData.completedToday ?? 0,
+          total: tasksData.total ?? 0,
+        };
+        setTaskStats(newStats);
       }
 
       // Generate AI-powered insight
@@ -98,6 +99,8 @@ export default function AISearchBar() {
       }
     } catch (error) {
       console.error("Failed to load AI insights:", error);
+      // Fallback: don't show stale data on error
+      setTaskStats({ late: 0, dueToday: 0, completed: 0, total: 0 });
     }
   }
 
@@ -375,7 +378,7 @@ export default function AISearchBar() {
         </div>
 
         {/* AI Assistant Live Indicator Pill */}
-        {isMounted && (insight || taskStats.total > 0) && (
+        {isMounted && (
           <button
             onClick={(e) => {
               e.preventDefault();
