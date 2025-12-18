@@ -11,6 +11,14 @@ import {
   prepareQuestionnaireForSave,
 } from "../lib/questionnaire";
 import { seedStandardFieldsForTenant } from "../lib/seedStandardFields";
+import {
+  generateBOMForLine,
+  generateBOMForQuote,
+  storeBOMInQuoteLine,
+  getComponentDetails,
+  updateComponentInclusionRules,
+  updateComponentQuantityFormula
+} from "../services/bom-generator";
 
 const DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT = "Questionnaire for your estimate";
 const DEFAULT_QUESTIONNAIRE_EMAIL_BODY =
@@ -1699,6 +1707,207 @@ router.get("/tenant/configured-product/status", async (req: any, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Status check failed'
+    });
+  }
+});
+
+/**
+ * POST /tenant/bom/generate-for-line
+ * Phase 5: Generate BOM for a specific quote line
+ * Body: { quoteId, lineId }
+ */
+router.post("/tenant/bom/generate-for-line", async (req: any, res) => {
+  try {
+    const tenantId = authTenantId(req);
+    if (!tenantId) return res.status(401).json({ error: 'unauthorized' });
+    
+    const { quoteId, lineId } = req.body || {};
+    if (!quoteId || !lineId) {
+      return res.status(400).json({ error: 'quoteId and lineId required' });
+    }
+
+    // Verify ownership
+    const quote = await prisma.quote.findUnique({
+      where: { id: quoteId },
+      select: { tenantId: true }
+    });
+    if (!quote || quote.tenantId !== tenantId) {
+      return res.status(404).json({ error: 'quote_not_found' });
+    }
+
+    // Get line with configured product
+    const line = await prisma.quoteLine.findUnique({
+      where: { id: lineId }
+    });
+    if (!line || line.quoteId !== quoteId) {
+      return res.status(404).json({ error: 'line_not_found' });
+    }
+
+    // Generate BOM
+    const config = line.configuredProduct as any;
+    const selections = config?.selections || {};
+    const productTypeId = config?.productTypeId;
+
+    const bom = await generateBOMForLine(quoteId, lineId, selections, productTypeId);
+
+    // Store in quoteLine.configuredProduct.derived
+    await storeBOMInQuoteLine(lineId, bom);
+
+    res.json({ success: true, bom });
+  } catch (error: any) {
+    console.error('Failed to generate BOM:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'BOM generation failed'
+    });
+  }
+});
+
+/**
+ * POST /tenant/bom/generate-for-quote
+ * Phase 5: Generate BOMs for all lines in a quote
+ * Body: { quoteId }
+ */
+router.post("/tenant/bom/generate-for-quote", async (req: any, res) => {
+  try {
+    const tenantId = authTenantId(req);
+    if (!tenantId) return res.status(401).json({ error: 'unauthorized' });
+    
+    const { quoteId } = req.body || {};
+    if (!quoteId) {
+      return res.status(400).json({ error: 'quoteId required' });
+    }
+
+    // Verify ownership
+    const quote = await prisma.quote.findUnique({
+      where: { id: quoteId },
+      select: { tenantId: true }
+    });
+    if (!quote || quote.tenantId !== tenantId) {
+      return res.status(404).json({ error: 'quote_not_found' });
+    }
+
+    // Generate BOMs for all lines
+    const boms = await generateBOMForQuote(quoteId);
+
+    // Store each BOM
+    for (const bom of boms) {
+      await storeBOMInQuoteLine(bom.lineId, bom);
+    }
+
+    res.json({
+      success: true,
+      bomsGenerated: boms.length,
+      boms
+    });
+  } catch (error: any) {
+    console.error('Failed to generate BOMs:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'BOM generation failed'
+    });
+  }
+});
+
+/**
+ * GET /tenant/bom/component/:componentId
+ * Phase 5: Get component details with evaluation
+ * Query: ?selections=json (optional selections to evaluate rules)
+ */
+router.get("/tenant/bom/component/:componentId", async (req: any, res) => {
+  try {
+    const tenantId = authTenantId(req);
+    if (!tenantId) return res.status(401).json({ error: 'unauthorized' });
+    
+    const { componentId } = req.params;
+    let selections: any = null;
+    
+    if (req.query.selections) {
+      try {
+        selections = typeof req.query.selections === 'string' 
+          ? JSON.parse(req.query.selections)
+          : req.query.selections;
+      } catch (e) {
+        console.warn('Failed to parse selections:', e);
+      }
+    }
+
+    const details = await getComponentDetails(componentId, selections);
+    res.json({ success: true, component: details });
+  } catch (error: any) {
+    if (error.message.includes('not found')) {
+      return res.status(404).json({ success: false, error: error.message });
+    }
+    console.error('Failed to get component details:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get component'
+    });
+  }
+});
+
+/**
+ * POST /tenant/bom/component/:componentId/inclusion-rules
+ * Phase 5: Update component inclusion rules
+ * Body: { inclusionRules: { attributeCode: { operator, value } } | null }
+ */
+router.post("/tenant/bom/component/:componentId/inclusion-rules", async (req: any, res) => {
+  try {
+    const tenantId = authTenantId(req);
+    if (!tenantId) return res.status(401).json({ error: 'unauthorized' });
+    
+    const { componentId } = req.params;
+    const { inclusionRules } = req.body || {};
+
+    // Verify component exists and belongs to tenant (via ComponentLookup -> Tenant relation)
+    const component = await prisma.componentLookup.findUnique({
+      where: { id: componentId },
+      select: { tenantId: true }
+    });
+    if (!component || component.tenantId !== tenantId) {
+      return res.status(404).json({ error: 'component_not_found' });
+    }
+
+    await updateComponentInclusionRules(componentId, inclusionRules);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Failed to update inclusion rules:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Update failed'
+    });
+  }
+});
+
+/**
+ * POST /tenant/bom/component/:componentId/quantity-formula
+ * Phase 5: Update component quantity formula
+ * Body: { quantityFormula: string | null }
+ */
+router.post("/tenant/bom/component/:componentId/quantity-formula", async (req: any, res) => {
+  try {
+    const tenantId = authTenantId(req);
+    if (!tenantId) return res.status(401).json({ error: 'unauthorized' });
+    
+    const { componentId } = req.params;
+    const { quantityFormula } = req.body || {};
+
+    // Verify component exists and belongs to tenant
+    const component = await prisma.componentLookup.findUnique({
+      where: { id: componentId },
+      select: { tenantId: true }
+    });
+    if (!component || component.tenantId !== tenantId) {
+      return res.status(404).json({ error: 'component_not_found' });
+    }
+
+    await updateComponentQuantityFormula(componentId, quantityFormula);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Failed to update quantity formula:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Update failed'
     });
   }
 });
