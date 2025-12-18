@@ -12,6 +12,7 @@ import Link from "next/link";
 type Client = {
   id: string;
   name: string;
+  type?: string | null;
   email?: string | null;
   phone?: string | null;
   companyName?: string | null;
@@ -179,9 +180,22 @@ export default function ClientsPage() {
                       {client.name?.charAt(0).toUpperCase() || "?"}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <h3 className="font-bold text-slate-900 group-hover:text-emerald-600 transition-colors text-lg truncate">
-                        {client.name}
-                      </h3>
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-bold text-slate-900 group-hover:text-emerald-600 transition-colors text-lg truncate">
+                          {client.name}
+                        </h3>
+                        {client.type && (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide shadow-sm flex-shrink-0 ${
+                            client.type === "trade"
+                              ? "bg-gradient-to-br from-amber-400 to-orange-500 text-white"
+                              : client.type === "reseller"
+                              ? "bg-gradient-to-br from-purple-400 to-pink-500 text-white"
+                              : "bg-gradient-to-br from-sky-400 to-blue-500 text-white"
+                          }`}>
+                            {client.type === "trade" ? "Trade" : client.type === "reseller" ? "Reseller" : "Public"}
+                          </span>
+                        )}
+                      </div>
                       {client.companyName && (
                         <p className="text-xs text-slate-600 font-medium truncate">{client.companyName}</p>
                       )}
@@ -242,19 +256,19 @@ export default function ClientsPage() {
                       <div className="text-lg font-bold text-emerald-600">
                         {client._count.leads}
                       </div>
-                      <div className="text-[10px] text-slate-600 font-semibold uppercase tracking-wide">Leads</div>
+                      <div className="text-[10px] text-slate-600 font-semibold uppercase tracking-wide">Enquiries</div>
                     </div>
                     <div className="rounded-xl bg-gradient-to-br from-teal-50 to-sky-50 p-2">
                       <div className="text-lg font-bold text-teal-600">
-                        {client._count.opportunities}
-                      </div>
-                      <div className="text-[10px] text-slate-600 font-semibold uppercase tracking-wide">Orders</div>
-                    </div>
-                    <div className="rounded-xl bg-gradient-to-br from-sky-50 to-blue-50 p-2">
-                      <div className="text-lg font-bold text-sky-600">
                         {client._count.quotes}
                       </div>
                       <div className="text-[10px] text-slate-600 font-semibold uppercase tracking-wide">Quotes</div>
+                    </div>
+                    <div className="rounded-xl bg-gradient-to-br from-sky-50 to-blue-50 p-2">
+                      <div className="text-lg font-bold text-sky-600">
+                        {client._count.opportunities}
+                      </div>
+                      <div className="text-[10px] text-slate-600 font-semibold uppercase tracking-wide">Orders</div>
                     </div>
                   </div>
                 )}
