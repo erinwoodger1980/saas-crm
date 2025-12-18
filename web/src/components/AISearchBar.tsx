@@ -4,7 +4,9 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
+import { useCurrentUser } from "@/lib/use-current-user";
 import OnboardingWizard from "@/components/OnboardingWizard";
+import { CheckCircle2, Clock, Target, TrendingUp, Sparkles, Coffee, Heart } from "lucide-react";
 
 interface SearchResult {
   id: string;
@@ -29,7 +31,22 @@ interface SearchResponse {
   };
 }
 
+interface AssistantInsight {
+  type: "celebration" | "encouragement" | "reminder" | "achievement" | "ritual";
+  message: string;
+  icon: any;
+  color: string;
+}
+
+interface TaskStats {
+  late: number;
+  dueToday: number;
+  completed: number;
+  total: number;
+}
+
 export default function AISearchBar() {
+  const { user } = useCurrentUser();
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -40,6 +57,8 @@ export default function AISearchBar() {
   const [taskData, setTaskData] = useState<any>(null);
   const [showWizard, setShowWizard] = useState(false);
   const [wizardType, setWizardType] = useState<'onboarding' | 'import-data' | 'workshop-setup' | 'automation-setup'>('onboarding');
+  const [insight, setInsight] = useState<AssistantInsight | null>(null);
+  const [taskStats, setTaskStats] = useState<TaskStats>({ late: 0, dueToday: 0, completed: 0, total: 0 });
   
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -49,6 +68,110 @@ export default function AISearchBar() {
   useEffect(() => {
     setIsMounted(true);
   }, []);
+
+  // Load AI assistant insights when component mounts
+  useEffect(() => {
+    if (!isMounted) return;
+    
+    loadAIInsights();
+    const interval = setInterval(loadAIInsights, 60000); // Refresh every minute
+    return () => clearInterval(interval);
+  }, [isMounted]);
+
+  async function loadAIInsights() {
+    try {
+      // Fetch task statistics
+      const tasksData = await apiFetch<any>("/tasks/stats");
+      if (tasksData) {
+        setTaskStats({
+          late: tasksData.late || 0,
+          dueToday: tasksData.dueToday || 0,
+          completed: tasksData.completedToday || 0,
+          total: tasksData.total || 0,
+        });
+      }
+
+      // Generate AI-powered insight
+      const insightData = await apiFetch<AssistantInsight>("/ai/assistant-insight");
+      if (insightData) {
+        setInsight(insightData);
+      }
+    } catch (error) {
+      console.error("Failed to load AI insights:", error);
+    }
+  }
+
+  const getDefaultInsight = (): AssistantInsight => {
+    const hour = new Date().getHours();
+    const firstName = user?.firstName || "there";
+    
+    // Monday morning check-in
+    if (new Date().getDay() === 1 && hour < 12) {
+      return {
+        type: "ritual",
+        message: `Monday Morning Check-in, ${firstName}. Let's plan a great week.`,
+        icon: Coffee,
+        color: "from-amber-500 to-orange-500",
+      };
+    }
+
+    // Friday wrap
+    if (new Date().getDay() === 5 && hour > 15) {
+      return {
+        type: "celebration",
+        message: `Friday Wrap, ${firstName}. You've moved your business forward this week! 🎉`,
+        icon: Heart,
+        color: "from-pink-500 to-rose-500",
+      };
+    }
+
+    // Late tasks warning
+    if (taskStats.late > 0) {
+      return {
+        type: "reminder",
+        message: `${taskStats.late} ${taskStats.late === 1 ? 'task needs' : 'tasks need'} attention. You've got this!`,
+        icon: Clock,
+        color: "from-orange-500 to-red-500",
+      };
+    }
+
+    // Celebrations for completed tasks
+    if (taskStats.completed > 0) {
+      return {
+        type: "achievement",
+        message: `${taskStats.completed} ${taskStats.completed === 1 ? 'task' : 'tasks'} completed today! You're on fire! 🔥`,
+        icon: TrendingUp,
+        color: "from-emerald-500 to-teal-500",
+      };
+    }
+
+    // Today's agenda
+    if (taskStats.dueToday > 0) {
+      return {
+        type: "encouragement",
+        message: `${taskStats.dueToday} ${taskStats.dueToday === 1 ? 'task' : 'tasks'} on your plate today. Let's make it happen!`,
+        icon: Target,
+        color: "from-blue-500 to-indigo-500",
+      };
+    }
+
+    // Default message based on actual stats
+    if (taskStats.total > 0) {
+      return {
+        type: "encouragement",
+        message: `${taskStats.total} ${taskStats.total === 1 ? 'active task' : 'active tasks'}. You're organized.`,
+        icon: CheckCircle2,
+        color: "from-emerald-500 to-teal-500",
+      };
+    }
+
+    return {
+      type: "encouragement",
+      message: "All caught up. Ready for what's next.",
+      icon: Sparkles,
+      color: "from-blue-500 to-cyan-500",
+    };
+  };
 
   // Click outside to close
   useEffect(() => {
@@ -337,15 +460,90 @@ export default function AISearchBar() {
           )}
 
           {!query.trim() && (
-            <div className="p-4 text-sm text-gray-500">
-              <div className="space-y-2">
-                <p className="font-medium">Try searching for:</p>
-                <ul className="space-y-1 text-xs">
-                  <li>• "Erin Woodger" - Find leads or opportunities</li>
-                  <li>• "How do I set my year end?" - Get help with settings</li>
-                  <li>• "Show me my tasks" - Navigate to your tasks</li>
-                  <li>• "What are my sales this month?" - Get analytics</li>
-                </ul>
+            <div className="p-4">
+              {/* AI Assistant Insight */}
+              {insight || taskStats.total > 0 ? (
+                <div className="space-y-4 mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className={`h-8 w-8 rounded-full bg-gradient-to-br ${(insight || getDefaultInsight()).color} flex items-center justify-center shadow-lg`}>
+                      {(() => {
+                        const Icon = (insight || getDefaultInsight()).icon;
+                        return <Icon className="h-4 w-4 text-white" />;
+                      })()}
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-sm text-gray-900">Your AI Assistant</h4>
+                      <p className="text-xs text-gray-500">Real-time insights from your workspace</p>
+                    </div>
+                  </div>
+                  
+                  <div className={`rounded-xl bg-gradient-to-br ${(insight || getDefaultInsight()).color} p-3 text-white shadow-lg`}>
+                    <p className="text-sm font-medium leading-relaxed">{(insight || getDefaultInsight()).message}</p>
+                  </div>
+
+                  {/* Task Statistics */}
+                  <div className="grid grid-cols-2 gap-2">
+                    {taskStats.late > 0 && (
+                      <div className="rounded-lg bg-gradient-to-br from-orange-50 to-red-50 p-3 border border-orange-200">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Clock className="h-3 w-3 text-orange-600" />
+                          <span className="text-xs font-semibold text-orange-900 uppercase tracking-wide">Late</span>
+                        </div>
+                        <p className="text-xl font-bold text-orange-600">{taskStats.late}</p>
+                      </div>
+                    )}
+                    
+                    {taskStats.dueToday > 0 && (
+                      <div className="rounded-lg bg-gradient-to-br from-blue-50 to-indigo-50 p-3 border border-blue-200">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Target className="h-3 w-3 text-blue-600" />
+                          <span className="text-xs font-semibold text-blue-900 uppercase tracking-wide">Today</span>
+                        </div>
+                        <p className="text-xl font-bold text-blue-600">{taskStats.dueToday}</p>
+                      </div>
+                    )}
+
+                    {taskStats.completed > 0 && (
+                      <div className="rounded-lg bg-gradient-to-br from-emerald-50 to-teal-50 p-3 border border-emerald-200">
+                        <div className="flex items-center gap-2 mb-1">
+                          <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                          <span className="text-xs font-semibold text-emerald-900 uppercase tracking-wide">Done</span>
+                        </div>
+                        <p className="text-xl font-bold text-emerald-600">{taskStats.completed}</p>
+                      </div>
+                    )}
+
+                    <div className="rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 p-3 border border-purple-200">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Sparkles className="h-3 w-3 text-purple-600" />
+                        <span className="text-xs font-semibold text-purple-900 uppercase tracking-wide">Total</span>
+                      </div>
+                      <p className="text-xl font-bold text-purple-600">{taskStats.total}</p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setIsOpen(false);
+                      router.push('/tasks/center');
+                    }}
+                    className="w-full rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold py-2 text-sm shadow-lg hover:shadow-xl transition-all"
+                  >
+                    View All Tasks
+                  </button>
+                </div>
+              ) : null}
+
+              <div className="text-sm text-gray-500 border-t border-gray-200 pt-4">
+                <div className="space-y-2">
+                  <p className="font-medium">Try searching for:</p>
+                  <ul className="space-y-1 text-xs">
+                    <li>• "Erin Woodger" - Find leads or opportunities</li>
+                    <li>• "How do I set my year end?" - Get help with settings</li>
+                    <li>• "Show me my tasks" - Navigate to your tasks</li>
+                    <li>• "What are my sales this month?" - Get analytics</li>
+                  </ul>
+                </div>
               </div>
             </div>
           )}
