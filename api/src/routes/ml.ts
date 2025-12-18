@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { prisma } from "../db";
 import { env } from "../env";
 import { recordTrainingOutcome } from "../services/training";
+import { buildMLPayload, normalizeMLPayload, compareMLPayloads } from "../services/ml-payload-builder";
 
 // Small helper to enforce an upper-bound on ML requests
 function withTimeout(signal: AbortSignal | undefined, ms: number) {
@@ -236,6 +237,92 @@ router.get("/health", async (_req, res) => {
     res.json({ ok: r.ok, target: ML_URL });
   } catch {
     res.status(502).json({ ok: false, target: ML_URL });
+  }
+});
+
+/**
+ * POST /ml/build-payload
+ * Phase 4: Build ML payload from canonical ConfiguredProduct selections
+ * Prefers configuredProduct.selections, falls back to legacy questionnaire
+ * Body: { quoteId, includeLineItems?, preferCanonical? }
+ */
+router.post("/build-payload", async (req: any, res) => {
+  try {
+    const { quoteId, includeLineItems = true, preferCanonical = true } = req.body || {};
+    
+    if (!quoteId) {
+      return res.status(400).json({ error: "quoteId_required" });
+    }
+
+    const auth = (req as any).auth || {};
+    const tenantId: string | undefined = auth.tenantId;
+    
+    if (!tenantId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+
+    // Verify quote belongs to tenant
+    const quote = await prisma.quote.findUnique({
+      where: { id: quoteId }
+    });
+
+    if (!quote || quote.tenantId !== tenantId) {
+      return res.status(404).json({ error: "quote_not_found" });
+    }
+
+    // Build payload
+    const payload = await buildMLPayload(quoteId, {
+      includeLineItems,
+      preferCanonical
+    });
+
+    // Normalize for consistency
+    const normalized = normalizeMLPayload(payload);
+
+    return res.json({
+      ok: true,
+      payload: normalized,
+      canonical: preferCanonical,
+      lineItemsIncluded: includeLineItems
+    });
+  } catch (e: any) {
+    console.error("[ml] /build-payload failed:", e?.message || e);
+    return res.status(500).json({
+      error: "build_payload_failed",
+      message: e?.message || String(e)
+    });
+  }
+});
+
+/**
+ * POST /ml/compare-payloads
+ * Phase 4: Compare two ML payloads to detect changes
+ * Body: { oldPayload, newPayload, significanceThreshold? }
+ */
+router.post("/compare-payloads", async (req: any, res) => {
+  try {
+    const { oldPayload, newPayload, significanceThreshold = 0.01 } = req.body || {};
+    
+    if (!oldPayload || !newPayload) {
+      return res.status(400).json({ error: "both_payloads_required" });
+    }
+
+    const comparison = compareMLPayloads(
+      oldPayload,
+      newPayload,
+      significanceThreshold
+    );
+
+    return res.json({
+      ok: true,
+      ...comparison
+    });
+  } catch (e: any) {
+    console.error("[ml] /compare-payloads failed:", e?.message || e);
+    return res.status(500).json({
+      error: "compare_failed",
+      message: e?.message || String(e)
+    });
   }
 });
 
