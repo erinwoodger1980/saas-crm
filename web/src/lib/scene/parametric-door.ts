@@ -1,0 +1,699 @@
+/**
+ * Parametric Door Builder
+ * Generates door component trees from parametric inputs
+ * Supports E01 (2 panels), E02 (4 panels), E03 (glazed top)
+ */
+
+import {
+  ParametricBuilder,
+  ProductParams,
+  BuildResult,
+  ComponentEdit,
+  EditableAttribute,
+} from '@/types/parametric-builder';
+import { ComponentNode, MaterialDefinition } from '@/types/scene-config';
+
+/**
+ * Door-specific defaults
+ */
+const DOOR_DEFAULTS = {
+  thickness: 58, // mm
+  stileWidth: 114, // mm
+  topRail: 114, // mm
+  midRail: 200, // mm
+  bottomRail: 200, // mm
+  panelThickness: 18, // mm
+  glazingThickness: 24, // Double glazed unit
+  beadWidth: 20, // mm
+  mouldingWidth: 25, // mm
+  mouldingProjection: 12, // mm
+};
+
+/**
+ * Build door component tree
+ */
+export function buildDoorComponentTree(params: ProductParams): BuildResult {
+  const { dimensions, construction, productType } = params;
+  const { width, height, depth } = dimensions;
+  
+  // Merge with defaults
+  const config = {
+    ...DOOR_DEFAULTS,
+    thickness: depth || DOOR_DEFAULTS.thickness,
+    ...construction,
+  };
+  
+  // Build components based on option
+  const components: ComponentNode[] = [];
+  const materials: MaterialDefinition[] = createDoorMaterials(config);
+  
+  // Root product node
+  const product: ComponentNode = {
+    id: 'product',
+    name: 'Door Leaf',
+    type: 'group',
+    geometry: {
+      type: 'box',
+      dimensions: [width, height, config.thickness],
+      position: [0, 0, 0],
+    },
+    visible: true,
+    children: [],
+  };
+  
+  // Build frame
+  const frame = buildDoorFrame(width, height, config);
+  product.children!.push(frame);
+  
+  // Build infill based on option
+  const infill = buildDoorInfill(width, height, config, productType.option);
+  product.children!.push(infill);
+  
+  components.push(product);
+  
+  // Calculate lighting bounds
+  const lighting = {
+    boundsX: [-width / 2 * 1.5, width / 2 * 1.5] as [number, number],
+    boundsZ: [-config.thickness / 2 * 1.5, config.thickness / 2 * 1.5] as [number, number],
+    shadowCatcherDiameter: Math.max(width, height) * 2,
+  };
+  
+  return {
+    components,
+    materials,
+    lighting,
+    params,
+    editableAttributes: buildEditableAttributes(params, components),
+  };
+}
+
+/**
+ * Build door frame (stiles and rails)
+ */
+function buildDoorFrame(width: number, height: number, config: any): ComponentNode {
+  const { stileWidth, topRail, bottomRail, thickness } = config;
+  
+  const frame: ComponentNode = {
+    id: 'frame',
+    name: 'Frame',
+    type: 'group',
+    visible: true,
+    children: [],
+  };
+  
+  // Left stile
+  frame.children!.push({
+    id: 'frame_leftStile',
+    name: 'Left Stile',
+    type: 'frame',
+    materialId: 'timber',
+    geometry: {
+      type: 'box',
+      dimensions: [stileWidth, height, thickness],
+      position: [-width / 2 + stileWidth / 2, 0, 0],
+    },
+    visible: true,
+  });
+  
+  // Right stile
+  frame.children!.push({
+    id: 'frame_rightStile',
+    name: 'Right Stile',
+    type: 'frame',
+    materialId: 'timber',
+    geometry: {
+      type: 'box',
+      dimensions: [stileWidth, height, thickness],
+      position: [width / 2 - stileWidth / 2, 0, 0],
+    },
+    visible: true,
+  });
+  
+  // Top rail
+  const topRailWidth = width - 2 * stileWidth;
+  frame.children!.push({
+    id: 'frame_topRail',
+    name: 'Top Rail',
+    type: 'frame',
+    materialId: 'timber',
+    geometry: {
+      type: 'box',
+      dimensions: [topRailWidth, topRail, thickness],
+      position: [0, height / 2 - topRail / 2, 0],
+    },
+    visible: true,
+  });
+  
+  // Bottom rail
+  frame.children!.push({
+    id: 'frame_bottomRail',
+    name: 'Bottom Rail',
+    type: 'frame',
+    materialId: 'timber',
+    geometry: {
+      type: 'box',
+      dimensions: [topRailWidth, bottomRail, thickness],
+      position: [0, -height / 2 + bottomRail / 2, 0],
+    },
+    visible: true,
+  });
+  
+  return frame;
+}
+
+/**
+ * Build door infill (panels/glazing based on option)
+ */
+function buildDoorInfill(width: number, height: number, config: any, option: string): ComponentNode {
+  const infill: ComponentNode = {
+    id: 'infill',
+    name: 'Infill',
+    type: 'group',
+    visible: true,
+    children: [],
+  };
+  
+  switch (option) {
+    case 'E01':
+      // 2 panels (1x2 layout)
+      infill.children = buildPanelLayout(width, height, config, 1, 2);
+      break;
+      
+    case 'E02':
+      // 4 panels (2x2 layout)
+      infill.children = buildPanelLayout(width, height, config, 2, 2);
+      break;
+      
+    case 'E03':
+      // Glazed top 35%, panels bottom 65%
+      infill.children = buildGlazedTopLayout(width, height, config, 35, 65);
+      break;
+      
+    default:
+      // Unknown option - default to 2 panels
+      infill.children = buildPanelLayout(width, height, config, 1, 2);
+  }
+  
+  return infill;
+}
+
+/**
+ * Build panel layout (rows x cols)
+ */
+function buildPanelLayout(
+  width: number,
+  height: number,
+  config: any,
+  cols: number,
+  rows: number
+): ComponentNode[] {
+  const { stileWidth, topRail, bottomRail, midRail, thickness, panelThickness, mouldingWidth, mouldingProjection } = config;
+  
+  const panels: ComponentNode[] = [];
+  
+  // Available area for panels
+  const panelAreaWidth = width - 2 * stileWidth;
+  const panelAreaHeight = height - topRail - bottomRail - (rows - 1) * midRail;
+  
+  // Panel dimensions
+  const panelWidth = panelAreaWidth / cols;
+  const panelHeight = panelAreaHeight / rows;
+  
+  // Actual panel size (subtract moulding clearance)
+  const actualPanelWidth = panelWidth - 2 * mouldingWidth;
+  const actualPanelHeight = panelHeight - 2 * mouldingWidth;
+  
+  // Generate panels
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const panelId = `panel_r${row + 1}c${col + 1}`;
+      
+      // Calculate position
+      const xOffset = -panelAreaWidth / 2 + col * panelWidth + panelWidth / 2;
+      const yOffset = panelAreaHeight / 2 - row * panelHeight - panelHeight / 2;
+      
+      // Panel group
+      const panelGroup: ComponentNode = {
+        id: panelId,
+        name: `Panel R${row + 1}C${col + 1}`,
+        type: 'group',
+        visible: true,
+        children: [],
+      };
+      
+      // Flat timber panel
+      panelGroup.children!.push({
+        id: `${panelId}_timber`,
+        name: 'Timber Panel',
+        type: 'panel',
+        materialId: 'timber',
+        geometry: {
+          type: 'box',
+          dimensions: [actualPanelWidth, actualPanelHeight, panelThickness],
+          position: [xOffset, yOffset, 0],
+        },
+        visible: true,
+      });
+      
+      // Bolection moulding (raised on both sides)
+      panelGroup.children!.push({
+        id: `${panelId}_moulding_front`,
+        name: 'Moulding Front',
+        type: 'panel',
+        materialId: 'timber',
+        geometry: {
+          type: 'box',
+          dimensions: [actualPanelWidth + mouldingWidth, actualPanelHeight + mouldingWidth, mouldingProjection],
+          position: [xOffset, yOffset, thickness / 2 - mouldingProjection / 2],
+        },
+        visible: true,
+      });
+      
+      panelGroup.children!.push({
+        id: `${panelId}_moulding_back`,
+        name: 'Moulding Back',
+        type: 'panel',
+        materialId: 'timber',
+        geometry: {
+          type: 'box',
+          dimensions: [actualPanelWidth + mouldingWidth, actualPanelHeight + mouldingWidth, mouldingProjection],
+          position: [xOffset, yOffset, -thickness / 2 + mouldingProjection / 2],
+        },
+        visible: true,
+      });
+      
+      panels.push(panelGroup);
+    }
+  }
+  
+  // Add mid rails if multiple rows
+  if (rows > 1) {
+    for (let i = 0; i < rows - 1; i++) {
+      const railY = panelAreaHeight / 2 - (i + 1) * panelHeight - i * midRail - midRail / 2;
+      panels.push({
+        id: `midRail_${i + 1}`,
+        name: `Mid Rail ${i + 1}`,
+        type: 'frame',
+        materialId: 'timber',
+        geometry: {
+          type: 'box',
+          dimensions: [panelAreaWidth, midRail, thickness],
+          position: [0, railY, 0],
+        },
+        visible: true,
+      });
+    }
+  }
+  
+  return panels;
+}
+
+/**
+ * Build glazed top + panel bottom layout
+ */
+function buildGlazedTopLayout(
+  width: number,
+  height: number,
+  config: any,
+  glazedPercent: number,
+  panelPercent: number
+): ComponentNode[] {
+  const { stileWidth, topRail, bottomRail, midRail, thickness, glazingThickness, beadWidth, mouldingWidth } = config;
+  
+  const components: ComponentNode[] = [];
+  
+  // Available area
+  const areaWidth = width - 2 * stileWidth;
+  const areaHeight = height - topRail - bottomRail - midRail;
+  
+  // Split heights
+  const glazedHeight = areaHeight * (glazedPercent / 100);
+  const panelHeight = areaHeight * (panelPercent / 100);
+  
+  // Glazed unit (top)
+  const glazingGroup: ComponentNode = {
+    id: 'glazing_top',
+    name: 'Glazing',
+    type: 'group',
+    visible: true,
+    children: [],
+  };
+  
+  // Glass
+  glazingGroup.children!.push({
+    id: 'glass_top',
+    name: 'Glass Unit',
+    type: 'glazing',
+    materialId: 'glass',
+    geometry: {
+      type: 'box',
+      dimensions: [areaWidth - 2 * beadWidth, glazedHeight - 2 * beadWidth, glazingThickness],
+      position: [0, (height - topRail - bottomRail - midRail) / 2 - glazedHeight / 2, 0],
+    },
+    visible: true,
+  });
+  
+  // Timber beads
+  const beadPositions = [
+    { id: 'bead_top_left', pos: [-(areaWidth - beadWidth) / 2, (height - topRail - bottomRail - midRail) / 2 - glazedHeight / 2, 0], dims: [beadWidth, glazedHeight, thickness] },
+    { id: 'bead_top_right', pos: [(areaWidth - beadWidth) / 2, (height - topRail - bottomRail - midRail) / 2 - glazedHeight / 2, 0], dims: [beadWidth, glazedHeight, thickness] },
+    { id: 'bead_top_top', pos: [0, (height - topRail - bottomRail - midRail) / 2 - beadWidth / 2, 0], dims: [areaWidth, beadWidth, thickness] },
+  ];
+  
+  beadPositions.forEach(({ id, pos, dims }) => {
+    glazingGroup.children!.push({
+      id,
+      name: 'Bead',
+      type: 'glazing',
+      materialId: 'timber',
+      geometry: {
+        type: 'box',
+        dimensions: dims as [number, number, number],
+        position: pos as [number, number, number],
+      },
+      visible: true,
+    });
+  });
+  
+  components.push(glazingGroup);
+  
+  // Mid rail between glazing and panels
+  components.push({
+    id: 'midRail_glazing',
+    name: 'Mid Rail',
+    type: 'frame',
+    materialId: 'timber',
+    geometry: {
+      type: 'box',
+      dimensions: [areaWidth, midRail, thickness],
+      position: [0, (height - topRail - bottomRail - midRail) / 2 - glazedHeight - midRail / 2, 0],
+    },
+    visible: true,
+  });
+  
+  // Bottom panels (2 panels side by side)
+  const bottomPanels = buildPanelLayout(width, panelHeight + bottomRail, config, 2, 1);
+  bottomPanels.forEach(panel => {
+    // Shift down
+    if (panel.geometry) {
+      panel.geometry.position[1] -= (height - topRail - bottomRail - midRail) / 2 - glazedHeight - midRail - panelHeight / 2;
+    }
+    components.push(panel);
+  });
+  
+  return components;
+}
+
+/**
+ * Create door materials
+ */
+function createDoorMaterials(config: any): MaterialDefinition[] {
+  return [
+    {
+      id: 'timber',
+      name: config.timber || 'Oak',
+      type: 'wood',
+      baseColor: '#d4a574',
+      roughness: 0.7,
+      metalness: 0.0,
+    },
+    {
+      id: 'glass',
+      name: config.glazingType || 'Clear Double Glazed',
+      type: 'glass',
+      baseColor: '#e0f0ff',
+      roughness: 0.1,
+      metalness: 0.0,
+    },
+    {
+      id: 'paint',
+      name: config.finish || 'White Paint',
+      type: 'painted',
+      baseColor: '#f5f5f5',
+      roughness: 0.3,
+      metalness: 0.0,
+    },
+  ];
+}
+
+/**
+ * Build editable attributes for inspector
+ */
+function buildEditableAttributes(
+  params: ProductParams,
+  components: ComponentNode[]
+): Record<string, EditableAttribute[]> {
+  const attrs: Record<string, EditableAttribute[]> = {};
+  
+  // Frame attributes
+  attrs['frame'] = [
+    {
+      key: 'stileWidth',
+      label: 'Stile Width',
+      type: 'number',
+      value: params.construction.stileWidth || DOOR_DEFAULTS.stileWidth,
+      unit: 'mm',
+      min: 50,
+      max: 200,
+      step: 1,
+    },
+    {
+      key: 'topRail',
+      label: 'Top Rail Height',
+      type: 'number',
+      value: params.construction.topRail || DOOR_DEFAULTS.topRail,
+      unit: 'mm',
+      min: 50,
+      max: 300,
+      step: 1,
+    },
+    {
+      key: 'bottomRail',
+      label: 'Bottom Rail Height',
+      type: 'number',
+      value: params.construction.bottomRail || DOOR_DEFAULTS.bottomRail,
+      unit: 'mm',
+      min: 50,
+      max: 300,
+      step: 1,
+    },
+    {
+      key: 'midRail',
+      label: 'Mid Rail Height',
+      type: 'number',
+      value: params.construction.midRail || DOOR_DEFAULTS.midRail,
+      unit: 'mm',
+      min: 50,
+      max: 300,
+      step: 1,
+    },
+  ];
+  
+  // Material attributes
+  attrs['product'] = [
+    {
+      key: 'timber',
+      label: 'Timber Species',
+      type: 'select',
+      value: params.construction.timber || 'Oak',
+      options: [
+        { value: 'Oak', label: 'Oak' },
+        { value: 'Sapele', label: 'Sapele' },
+        { value: 'Accoya', label: 'Accoya' },
+        { value: 'Iroko', label: 'Iroko' },
+      ],
+    },
+    {
+      key: 'finish',
+      label: 'Finish',
+      type: 'select',
+      value: params.construction.finish || 'Clear Lacquer',
+      options: [
+        { value: 'Clear Lacquer', label: 'Clear Lacquer' },
+        { value: 'White Paint', label: 'White Paint' },
+        { value: 'Stain', label: 'Stain' },
+        { value: 'Oiled', label: 'Oiled' },
+      ],
+    },
+  ];
+  
+  return attrs;
+}
+
+/**
+ * Apply edit to parameters
+ */
+export function applyDoorEdit(params: ProductParams, edit: ComponentEdit): ProductParams {
+  const updated = { ...params };
+  
+  // Update construction values
+  Object.keys(edit.changes).forEach(key => {
+    if (updated.construction) {
+      updated.construction[key] = edit.changes[key];
+    }
+  });
+  
+  return updated;
+}
+
+/**
+ * Validate door parameters
+ */
+export function validateDoorParams(params: ProductParams): string[] | null {
+  const errors: string[] = [];
+  
+  const { width, height, depth } = params.dimensions;
+  
+  if (width < 500) errors.push('Width must be at least 500mm');
+  if (width > 3000) errors.push('Width must not exceed 3000mm');
+  if (height < 1500) errors.push('Height must be at least 1500mm');
+  if (height > 3000) errors.push('Height must not exceed 3000mm');
+  if (depth < 35) errors.push('Thickness must be at least 35mm');
+  if (depth > 100) errors.push('Thickness must not exceed 100mm');
+  
+  return errors.length > 0 ? errors : null;
+}
+
+/**
+ * Get default door parameters
+ */
+export function getDefaultDoorParams(
+  productType: { category: string; type: string; option: string },
+  dimensions: { width: number; height: number; depth: number }
+): ProductParams {
+  return {
+    productType,
+    dimensions,
+    construction: {
+      stileWidth: DOOR_DEFAULTS.stileWidth,
+      topRail: DOOR_DEFAULTS.topRail,
+      midRail: DOOR_DEFAULTS.midRail,
+      bottomRail: DOOR_DEFAULTS.bottomRail,
+      thickness: dimensions.depth || DOOR_DEFAULTS.thickness,
+      panelLayout: productType.option === 'E02' ? { rows: 2, cols: 2 } : { rows: 2, cols: 1 },
+      glazingArea: productType.option === 'E03' ? { topPercent: 35, bottomPercent: 65 } : undefined,
+    },
+    addedParts: [],
+  };
+}
+
+/**
+ * Build arched top rail using curve
+ * Creates panel/glass infill under arch
+ */
+export function buildArchedDoorHead(
+  width: number,
+  height: number,
+  config: any,
+  headCurve: any,
+  option: string
+): ComponentNode {
+  // Import curve utilities dynamically to avoid circular deps
+  const convertCurveToShape = require('@/lib/scene/curve-utils').convertCurveToShape;
+  
+  const archHead: ComponentNode = {
+    id: 'archHead',
+    name: 'Arched Head',
+    type: 'group',
+    visible: true,
+    children: [],
+  };
+  
+  try {
+    const shape = convertCurveToShape(headCurve);
+    
+    // Top rail following arch
+    archHead.children!.push({
+      id: 'arch_topRail',
+      name: 'Arch Top Rail',
+      type: 'frame',
+      materialId: 'timber',
+      geometry: {
+        type: 'shapeExtrude',
+        position: [0, 0, 0],
+        customData: {
+          shape: {
+            points: shape.getPoints(headCurve.resolution || 64).map((p: any) => [p.x, p.y]),
+          },
+          extrudeSettings: {
+            depth: config.thickness,
+            bevelEnabled: false,
+            steps: 1,
+          },
+        },
+      },
+      visible: true,
+    });
+    
+    // Arched panels or glazing under curve
+    if (option === 'E03') {
+      // Glazed top
+      archHead.children!.push({
+        id: 'arch_glazing',
+        name: 'Arched Glazing',
+        type: 'glazing',
+        materialId: 'glass',
+        geometry: {
+          type: 'shapeExtrude',
+          position: [0, 0, config.thickness / 2],
+          customData: {
+            shape: {
+              points: shape.getPoints(headCurve.resolution || 64).map((p: any) => [p.x, p.y]),
+            },
+            extrudeSettings: {
+              depth: config.glazingThickness,
+              bevelEnabled: false,
+              steps: 1,
+            },
+          },
+        },
+        visible: true,
+      });
+      
+      // Glazing beads
+      archHead.children!.push({
+        id: 'arch_glazingBeads',
+        name: 'Glazing Beads',
+        type: 'frame',
+        materialId: 'timber',
+        geometry: {
+          type: 'shapeExtrude',
+          position: [0, 0, config.thickness / 2 + config.glazingThickness + 2],
+          customData: {
+            shape: {
+              points: shape.getPoints(headCurve.resolution || 64).map((p: any) => [p.x, p.y]),
+            },
+            extrudeSettings: {
+              depth: config.beadWidth,
+              bevelEnabled: false,
+              steps: 1,
+            },
+          },
+        },
+        visible: true,
+      });
+    }
+  } catch (error) {
+    console.error('Failed to build arched head:', error);
+  }
+  
+  return archHead;
+}
+
+/**
+ * Detect if product type supports arches
+ */
+export function supportsArches(option: string): boolean {
+  return ['E01', 'E02', 'E03'].includes(option);
+}
+
+/**
+ * Door builder implementation
+ */
+export const doorBuilder: ParametricBuilder = {
+  type: 'door',
+  build: buildDoorComponentTree,
+  applyEdit: applyDoorEdit,
+  validate: validateDoorParams,
+  getDefaults: getDefaultDoorParams,
+};

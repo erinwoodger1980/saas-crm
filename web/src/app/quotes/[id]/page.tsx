@@ -1751,6 +1751,7 @@ export default function QuoteBuilderPage() {
                     onShowRawParse={() => setRawParseOpen(true)}
                     onDownloadCsv={handleDownloadCsv}
                     imageUrlMap={imageUrlMap}
+                    tenantId={quote?.tenantId}
                   />
                 </div>
               ) : (

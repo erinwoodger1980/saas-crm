@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Wand2, FileText, Download, Image as ImageIcon, AlertTriangle, Edit3, ChevronDown } from "lucide-react";
+import { Loader2, Wand2, FileText, Download, Image as ImageIcon, AlertTriangle, Edit3, ChevronDown, Cube } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ParsedLineDto, QuestionnaireField, ParseResponse } from "@/lib/api/quotes";
+import { ProductConfigurator3D } from "@/components/configurator/ProductConfigurator3D";
+import { canConfigure } from "@/lib/scene/builder-registry";
 
 export type ParsedLinesTableProps = {
   lines?: ParsedLineDto[] | null;
@@ -23,6 +25,7 @@ export type ParsedLinesTableProps = {
   onShowRawParse: () => void;
   onDownloadCsv: () => void;
   imageUrlMap?: Record<string, string>;
+  tenantId?: string;
 };
 
 const SAVE_DEBOUNCE_MS = 500;
@@ -40,6 +43,7 @@ export function ParsedLinesTable({
   onShowRawParse,
   onDownloadCsv,
   imageUrlMap = {},
+  tenantId,
 }: ParsedLinesTableProps) {
   const [drafts, setDrafts] = useState<Record<string, DraftValues>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
@@ -47,6 +51,7 @@ export function ParsedLinesTable({
   const [editingLine, setEditingLine] = useState<ParsedLineDto | null>(null);
   const [inlineEditingId, setInlineEditingId] = useState<string | null>(null);
   const [inlineDrafts, setInlineDrafts] = useState<Record<string, Record<string, any>>>({});
+  const [configuringLine, setConfiguringLine] = useState<ParsedLineDto | null>(null);
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   useEffect(() => {
@@ -333,6 +338,19 @@ export function ParsedLinesTable({
                       </td>
                       <td className="w-40 px-4 py-3 text-center align-top">
                         <div className="flex items-center justify-center gap-1.5">
+                          {canConfigure(line) && (
+                            <Button
+                              type="button"
+                              variant="default"
+                              size="sm"
+                              onClick={() => setConfiguringLine(line)}
+                              className="h-8 gap-1.5"
+                              title="3D Configurator"
+                            >
+                              <Cube className="h-3.5 w-3.5" />
+                              3D
+                            </Button>
+                          )}
                           <Button
                             type="button"
                             variant="ghost"
@@ -533,6 +551,12 @@ export function ParsedLinesTable({
           await onLineChange(editingLine.id, { lineStandard });
           setEditingLine(null);
         }}
+      />
+
+      <ConfiguratorModal
+        line={configuringLine}
+        tenantId={tenantId}
+        onClose={() => setConfiguringLine(null)}
       />
     </>
   );
@@ -782,6 +806,37 @@ function LineStandardDialog({ line, onClose, onSave }: LineStandardDialogProps) 
             )}
           </Button>
         </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* 3D Configurator Modal */
+function ConfiguratorModal({
+  line,
+  tenantId,
+  onClose,
+}: {
+  line: ParsedLineDto | null;
+  tenantId?: string;
+  onClose: () => void;
+}) {
+  if (!line || !tenantId) return null;
+
+  return (
+    <Dialog open={!!line} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-[90vw] max-h-[90vh] p-6">
+        <DialogHeader>
+          <DialogTitle>3D Product Configurator</DialogTitle>
+        </DialogHeader>
+        <ProductConfigurator3D
+          tenantId={tenantId}
+          entityType="quoteLineItem"
+          entityId={line.id}
+          lineItem={line}
+          onClose={onClose}
+          height="75vh"
+        />
       </DialogContent>
     </Dialog>
   );

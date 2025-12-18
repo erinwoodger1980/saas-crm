@@ -65,12 +65,64 @@ export interface ComponentNode {
   materialId?: string;
   /** Geometry data */
   geometry?: {
-    type: 'box' | 'extrude' | 'cylinder' | 'custom';
+    type: 'box' | 'extrude' | 'cylinder' | 'custom' | 'shapeExtrude' | 'tube' | 'lathe';
     dimensions?: [number, number, number];
     position: [number, number, number];
     rotation?: [number, number, number];
     /** Custom geometry data for complex shapes */
-    customData?: any;
+    customData?: {
+      // For 'shapeExtrude': Shape profile with optional holes
+      shape?: {
+        points: [number, number][]; // 2D vertices
+      };
+      holes?: Array<{
+        points: [number, number][]; // 2D hole vertices
+      }>;
+      extrudeSettings?: {
+        depth: number;
+        bevelEnabled?: boolean;
+        bevelSize?: number;
+        bevelThickness?: number;
+        steps?: number;
+      };
+      
+      // For 'tube': Path-based tube geometry
+      path?: {
+        type: 'arc' | 'ellipse' | 'bezier' | 'polyline' | 'spline';
+        // Arc params
+        cx?: number;
+        cy?: number;
+        r?: number;
+        startAngle?: number;
+        endAngle?: number;
+        clockwise?: boolean;
+        // Ellipse params
+        rx?: number;
+        ry?: number;
+        rotation?: number;
+        // Bezier params
+        p0?: [number, number];
+        p1?: [number, number];
+        p2?: [number, number];
+        p3?: [number, number];
+        // Polyline/Spline params
+        points?: [number, number][];
+        closed?: boolean;
+        tension?: number;
+      };
+      tubularSegments?: number;
+      radius?: number;
+      radialSegments?: number;
+      
+      // For 'lathe': turned geometry
+      profile?: {
+        points: [number, number][]; // profile curve
+      };
+      latheSegments?: number;
+      
+      // Additional
+      [key: string]: any;
+    };
   };
   /** Child components */
   children?: ComponentNode[];
@@ -105,7 +157,7 @@ export interface SceneConfig {
   /** Product physical dimensions */
   dimensions: ProductDimensions;
   
-  /** Hierarchical component tree */
+  /** Hierarchical component tree (DERIVED from customData) */
   components: ComponentNode[];
   
   /** Material library */
@@ -122,6 +174,12 @@ export interface SceneConfig {
   
   /** UI state toggles */
   ui: UIToggles;
+  
+  /** 
+   * Parametric source of truth
+   * Components are regenerated from this data
+   */
+  customData?: Record<string, any>;
   
   /** Additional metadata */
   metadata?: {
