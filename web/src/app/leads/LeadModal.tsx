@@ -3400,7 +3400,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                 key.includes("location") ||
                                 key === "source" ||
                                 key === "notes" ||
-                                key === "followupnotes" ||
                                 key === "startdate" ||
                                 key === "deliverydate" ||
                                 key === "installationstartdate" ||
@@ -3543,6 +3542,13 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       {quoteDetailsFields
                         .filter((field) => {
+                          // Exclude "What type of client are they?" field
+                          const key = field.key?.toLowerCase() || "";
+                          const label = field.label?.toLowerCase() || "";
+                          if (key.includes("clienttype") || label.includes("what type of client")) {
+                            return false;
+                          }
+                          
                           // Filter by product types if field has productTypes specified
                           if (field.productTypes && field.productTypes.length > 0) {
                             if (selectedProductTypes.length === 0) return false;

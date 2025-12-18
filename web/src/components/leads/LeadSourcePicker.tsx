@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { BarChart3 } from "lucide-react";
 
 type SourceInfo = {
   source: string;
@@ -134,20 +136,28 @@ export default function LeadSourcePicker({
   return (
     <div className={className}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <select
-          className="w-full rounded-lg border border-slate-300 px-3 py-2"
-          value={selectVal}
-          onChange={(e) => onSelectChange(e.target.value)}
-          disabled={saving}
-        >
-          <option value={NONE}>Select source…</option>
-          {sources.map((s) => (
-            <option key={s.source} value={s.source}>
-              {s.source}
-            </option>
-          ))}
-          <option value={CUSTOM}>Custom…</option>
-        </select>
+        <div className="flex gap-2 w-full">
+          <select
+            className="flex-1 rounded-lg border border-slate-300 px-3 py-2"
+            value={selectVal}
+            onChange={(e) => onSelectChange(e.target.value)}
+            disabled={saving}
+          >
+            <option value={NONE}>Select source…</option>
+            {sources.map((s) => (
+              <option key={s.source} value={s.source}>
+                {s.source}
+              </option>
+            ))}
+            <option value={CUSTOM}>Custom…</option>
+          </select>
+
+          <Link href="/dashboard/lead-sources" title="View source performance in dashboard">
+            <Button variant="outline" size="sm" className="shrink-0">
+              <BarChart3 className="h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
 
         {selectVal === CUSTOM && (
           <div className="flex w-full gap-2">

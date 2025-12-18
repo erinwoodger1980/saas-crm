@@ -349,27 +349,58 @@ export default function AISearchBar() {
 
   return (
     <div className="relative flex-1 max-w-2xl" ref={searchRef}>
-      {/* Search Input */}
-      <div className="relative">
-        <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-        </div>
-        <input
-          ref={inputRef}
-          type="text"
-          value={query}
-          onChange={handleInputChange}
-          onFocus={() => isMounted && setIsOpen(true)}
-          placeholder={isMounted ? "Search anything or ask Joinery AI... (⌘K)" : "Search..."}
-          className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-full bg-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          disabled={!isMounted}
-        />
-        {isLoading && isMounted && (
-          <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-            <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent"></div>
+      {/* Search Input with AI Assistant Pill */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
           </div>
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={handleInputChange}
+            onFocus={() => isMounted && setIsOpen(true)}
+            placeholder={isMounted ? "Search anything or ask Joinery AI... (⌘K)" : "Search..."}
+            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-full bg-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={!isMounted}
+          />
+          {isLoading && isMounted && (
+            <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+              <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent"></div>
+            </div>
+          )}
+        </div>
+
+        {/* AI Assistant Live Indicator Pill */}
+        {isMounted && (insight || taskStats.total > 0) && (
+          <button
+            onClick={() => {
+              setQuery("");
+              setIsOpen(true);
+              inputRef.current?.focus();
+            }}
+            className={`flex items-center gap-2 px-3 py-2 rounded-full bg-gradient-to-r ${(insight || getDefaultInsight()).color} text-white shadow-lg hover:shadow-xl transition-all hover:scale-105 cursor-pointer`}
+            title="Click to see your AI assistant insights"
+          >
+            <div className="relative">
+              {(() => {
+                const Icon = (insight || getDefaultInsight()).icon;
+                return <Icon className="h-4 w-4" />;
+              })()}
+              {taskStats.late > 0 && (
+                <span className="absolute -top-1 -right-1 h-2 w-2 bg-red-500 rounded-full border border-white animate-pulse"></span>
+              )}
+            </div>
+            <span className="text-xs font-semibold whitespace-nowrap">
+              {taskStats.late > 0 ? `${taskStats.late} Late` : 
+               taskStats.completed > 0 ? `${taskStats.completed} Done` : 
+               taskStats.dueToday > 0 ? `${taskStats.dueToday} Today` : 
+               'AI Assistant'}
+            </span>
+          </button>
         )}
       </div>
 

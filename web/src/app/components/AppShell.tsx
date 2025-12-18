@@ -25,14 +25,13 @@ import { useTenantBrand } from "@/lib/use-tenant-brand";
 import { useCurrentUser } from "@/lib/use-current-user";
 import { Button } from "@/components/ui/button";
 import AISearchBar from "@/components/AISearchBar";
-import AIAssistant from "@/components/AIAssistant";
 import { apiFetch } from "@/lib/api";
 
 const BASE_NAV: Array<{ href: string; label: string; description: string; icon: any }> = [
+  { href: "/tasks/center", label: "Tasks", description: "Unified activity hub", icon: CheckSquare },
   { href: "/dashboard", label: "Dashboard", description: "Pulse & KPIs", icon: LayoutDashboard },
   { href: "/clients", label: "Clients", description: "Client companies", icon: Users },
   { href: "/leads", label: "Leads", description: "Inbox & replies", icon: Mail },
-  { href: "/tasks/center", label: "Tasks", description: "Unified activity hub", icon: CheckSquare },
   { href: "/opportunities", label: "Quotes", description: "Estimates & quotes", icon: Target },
   { href: "/orders", label: "Orders", description: "Won & completed", icon: ClipboardCheck },
   { href: "/workshop", label: "Workshop", description: "Production board", icon: Wrench },
@@ -177,7 +176,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/80 px-3 py-1 font-medium text-slate-500 shadow-sm">
                 Hey, <span className="text-slate-700">{userFirstName || shortName}</span>
               </span>
-              <AIAssistant />
               {user?.isEarlyAdopter && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 font-medium text-blue-700 shadow-sm">
                   Early access
