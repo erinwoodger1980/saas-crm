@@ -69,14 +69,14 @@ export default function AISearchBar() {
     setIsMounted(true);
   }, []);
 
-  // Load AI assistant insights when component mounts
+  // Load AI assistant insights when component mounts AND user is authenticated
   useEffect(() => {
-    if (!isMounted) return;
+    if (!isMounted || !user) return; // Wait for both mount AND user auth
     
     loadAIInsights();
     const interval = setInterval(loadAIInsights, 30000); // Refresh every 30 seconds for live data
     return () => clearInterval(interval);
-  }, [isMounted]);
+  }, [isMounted, user]);
 
   async function loadAIInsights() {
     try {
