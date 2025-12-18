@@ -230,6 +230,7 @@ export function ParsedLinesTable({
                   const imageUrl = imageFileId ? imageUrlMap[imageFileId] : undefined;
 
                   return (
+                    <>
                     <tr
                       key={line.id}
                       className={`transition-colors ${hasError ? "bg-rose-50/80" : "hover:bg-slate-50/80"}`}
@@ -479,6 +480,7 @@ export function ParsedLinesTable({
                         </td>
                       </tr>
                     )}
+                    </>
                   );
                 })}
                 {(lines ?? []).length === 0 && (
