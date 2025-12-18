@@ -80,6 +80,7 @@ import timesheetsRouter from "./routes/timesheets";
 import questionnaireResponsesRouter from "./routes/questionnaire-responses";
 import questionnairePhotosRouter from "./routes/questionnaire-photos";
 import fieldsRouter from "./routes/fields";
+import questionsRouter from "./routes/questions";
 
 /** ML proxy (→ forwards to FastAPI) */
 import mlProxyRouter from "./routes/ml";
@@ -682,6 +683,7 @@ app.use("/feedback", feedbackRouter);
 app.use("/webhook", webhooksRouter);
 app.use("/files", filesRouter);
 app.use("/tasks", requireAuth, tasksRouter);
+app.use("/questions", requireAuth, questionsRouter);
 app.use("/ai", requireAuth, aiAssistantRouter);
 app.use("/automation-rules", requireAuth, automationRulesRouter);
 app.use("/automation", requireAuth, automationFieldLinksRouter);
