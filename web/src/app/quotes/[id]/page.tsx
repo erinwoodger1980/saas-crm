@@ -857,12 +857,19 @@ export default function QuoteBuilderPage() {
                 )}
               </div>
             </div>
-            <Link href={`/quotes/${quoteId}/print`} target="_blank">
-              <Button variant="outline" size="sm" className="gap-2">
-                <Printer className="h-4 w-4" />
-                Print quote sheet
-              </Button>
-            </Link>
+            <div className="flex gap-2">
+              <Link href="/quotes" className="inline-flex">
+                <Button variant="outline" size="sm" className="gap-2">
+                  + New Quote
+                </Button>
+              </Link>
+              <Link href={`/quotes/${quoteId}/print`} target="_blank">
+                <Button variant="outline" size="sm" className="gap-2">
+                  <Printer className="h-4 w-4" />
+                  Print quote sheet
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
 
