@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Wand2, FileText, Download, Image as ImageIcon, AlertTriangle, Edit3 } from "lucide-react";
+import { Loader2, Wand2, FileText, Download, Image as ImageIcon, AlertTriangle, Edit3, ChevronDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +45,8 @@ export function ParsedLinesTable({
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [editingLine, setEditingLine] = useState<ParsedLineDto | null>(null);
+  const [inlineEditingId, setInlineEditingId] = useState<string | null>(null);
+  const [inlineDrafts, setInlineDrafts] = useState<Record<string, Record<string, any>>>({});
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   useEffect(() => {
@@ -257,6 +259,32 @@ export function ParsedLinesTable({
                         {line.meta?.supplier && (
                           <div className="mt-1 text-xs text-muted-foreground">{line.meta.supplier}</div>
                         )}
+                        {/* Standard fields snapshot */}
+                        {(() => {
+                          const ls: any = (line as any).lineStandard || null;
+                          if (!ls || typeof ls !== 'object') return null;
+                          const width = ls.widthMm != null ? Number(ls.widthMm) : null;
+                          const height = ls.heightMm != null ? Number(ls.heightMm) : null;
+                          const timber = ls.timber || null;
+                          const finish = ls.finish || null;
+                          const ironmongery = ls.ironmongery || null;
+                          const glazing = ls.glazing || null;
+                          const hasAny = width || height || timber || finish || ironmongery || glazing;
+                          if (!hasAny) return null;
+                          return (
+                            <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
+                              {(width || height) && (
+                                <span className="rounded border px-1.5 py-0.5 bg-muted/40 text-foreground">
+                                  {width ? width : '—'}×{height ? height : '—'} mm
+                                </span>
+                              )}
+                              {timber && <span className="rounded border px-1.5 py-0.5 bg-muted/40">{String(timber)}</span>}
+                              {finish && <span className="rounded border px-1.5 py-0.5 bg-muted/40">{String(finish)}</span>}
+                              {ironmongery && <span className="rounded border px-1.5 py-0.5 bg-muted/40">{String(ironmongery)}</span>}
+                              {glazing && <span className="rounded border px-1.5 py-0.5 bg-muted/40">{String(glazing)}</span>}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="w-32 px-4 py-3 text-right align-top">
                         <div className="relative group">
@@ -302,19 +330,155 @@ export function ParsedLinesTable({
                       <td className="w-40 px-4 py-3 text-right align-top font-medium">
                         {sellTotal != null ? formatCurrency(sellTotal, currency) : "—"}
                       </td>
-                      <td className="w-32 px-4 py-3 text-center align-top">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setEditingLine(line)}
-                          className="h-8 gap-1.5"
-                        >
-                          <Edit3 className="h-3.5 w-3.5" />
-                          Edit
-                        </Button>
+                      <td className="w-40 px-4 py-3 text-center align-top">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditingLine(line)}
+                            className="h-8 gap-1.5"
+                          >
+                            <Edit3 className="h-3.5 w-3.5" />
+                            Edit
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const existing = (line as any).lineStandard || {};
+                              setInlineDrafts((prev) => ({ ...prev, [line.id]: {
+                                widthMm: existing.widthMm ?? "",
+                                heightMm: existing.heightMm ?? "",
+                                timber: existing.timber ?? "",
+                                finish: existing.finish ?? "",
+                                ironmongery: existing.ironmongery ?? "",
+                                glazing: existing.glazing ?? "",
+                                description: existing.description ?? line.description ?? "",
+                              }}));
+                              setInlineEditingId((cur) => (cur === line.id ? null : line.id));
+                            }}
+                            className="h-8 gap-1.5"
+                            title="Quick edit"
+                          >
+                            <ChevronDown className="h-3.5 w-3.5" />
+                            Quick
+                          </Button>
+                        </div>
                       </td>
                     </tr>
+                    {inlineEditingId === line.id && (
+                      <tr className="bg-muted/20">
+                        <td colSpan={7} className="px-4 py-3">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div className="space-y-1">
+                              <Label className="text-[11px]">Description</Label>
+                              <Input
+                                value={inlineDrafts[line.id]?.description ?? ""}
+                                onChange={(e) => setInlineDrafts((prev) => ({
+                                  ...prev,
+                                  [line.id]: { ...prev[line.id], description: e.target.value },
+                                }))}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[11px]">Width (mm)</Label>
+                              <Input
+                                type="number"
+                                inputMode="decimal"
+                                value={inlineDrafts[line.id]?.widthMm ?? ""}
+                                onChange={(e) => setInlineDrafts((prev) => ({
+                                  ...prev,
+                                  [line.id]: { ...prev[line.id], widthMm: e.target.value },
+                                }))}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[11px]">Height (mm)</Label>
+                              <Input
+                                type="number"
+                                inputMode="decimal"
+                                value={inlineDrafts[line.id]?.heightMm ?? ""}
+                                onChange={(e) => setInlineDrafts((prev) => ({
+                                  ...prev,
+                                  [line.id]: { ...prev[line.id], heightMm: e.target.value },
+                                }))}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[11px]">Timber</Label>
+                              <Input
+                                value={inlineDrafts[line.id]?.timber ?? ""}
+                                onChange={(e) => setInlineDrafts((prev) => ({
+                                  ...prev,
+                                  [line.id]: { ...prev[line.id], timber: e.target.value },
+                                }))}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[11px]">Finish</Label>
+                              <Input
+                                value={inlineDrafts[line.id]?.finish ?? ""}
+                                onChange={(e) => setInlineDrafts((prev) => ({
+                                  ...prev,
+                                  [line.id]: { ...prev[line.id], finish: e.target.value },
+                                }))}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[11px]">Ironmongery</Label>
+                              <Input
+                                value={inlineDrafts[line.id]?.ironmongery ?? ""}
+                                onChange={(e) => setInlineDrafts((prev) => ({
+                                  ...prev,
+                                  [line.id]: { ...prev[line.id], ironmongery: e.target.value },
+                                }))}
+                              />
+                            </div>
+                            <div className="space-y-1 md:col-span-3">
+                              <Label className="text-[11px]">Glazing</Label>
+                              <Input
+                                value={inlineDrafts[line.id]?.glazing ?? ""}
+                                onChange={(e) => setInlineDrafts((prev) => ({
+                                  ...prev,
+                                  [line.id]: { ...prev[line.id], glazing: e.target.value },
+                                }))}
+                              />
+                            </div>
+                          </div>
+                          <div className="mt-3 flex justify-end gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setInlineEditingId(null)}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={async () => {
+                                const raw = inlineDrafts[line.id] || {};
+                                const cleaned: Record<string, any> = {};
+                                const keys = ['description','widthMm','heightMm','timber','finish','ironmongery','glazing'];
+                                keys.forEach((k) => {
+                                  const v = (raw as any)[k];
+                                  if (v !== undefined && v !== null && String(v) !== '') {
+                                    cleaned[k] = k === 'widthMm' || k === 'heightMm' ? Number(v) : v;
+                                  }
+                                });
+                                await onLineChange(line.id, { lineStandard: cleaned });
+                                setInlineEditingId(null);
+                              }}
+                            >
+                              Save details
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                   );
                 })}
                 {(lines ?? []).length === 0 && (

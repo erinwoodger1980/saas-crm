@@ -48,6 +48,7 @@ interface ComponentFormData {
 
 const UNIT_OPTIONS = ['EA', 'M', 'M2', 'M3', 'KG', 'L', 'SET', 'PAIR', 'BOX'];
 
+// Optional labels for known types; users can add new types dynamically
 const COMPONENT_TYPE_LABELS: Record<string, string> = {
   LIPPING: 'Lipping',
   INTUMESCENT_STRIP: 'Intumescent Strip',
@@ -90,6 +91,8 @@ export default function ComponentsPage() {
   const [filterType, setFilterType] = useState<string>('');
   const [filterActive, setFilterActive] = useState<string>('active');
   const [componentTypes, setComponentTypes] = useState<string[]>([]);
+  const [typeLabels, setTypeLabels] = useState<Record<string, string>>({});
+  const [manageTypesOpen, setManageTypesOpen] = useState(false);
   const [productTypeOptions, setProductTypeOptions] = useState<Array<{ id: string; label: string }>>([]);
   const [productTypesDropdownOpen, setProductTypesDropdownOpen] = useState(false);
   const [modalTab, setModalTab] = useState<'details' | 'variants' | 'attributes' | 'processes'>('details');
@@ -105,6 +108,7 @@ export default function ComponentsPage() {
     loadSuppliers();
     loadComponentTypes();
     loadProductTypes();
+    loadComponentTypeLabels();
   }, []);
 
   const loadComponents = async () => {
@@ -202,6 +206,30 @@ export default function ComponentsPage() {
     } catch (error) {
       console.error('Error loading component types:', error);
       setComponentTypes([]);
+    }
+  };
+
+  const loadComponentTypeLabels = async () => {
+    try {
+      const data = await apiFetch<Record<string, string>>('/components/type-labels');
+      setTypeLabels(data || {});
+    } catch (error) {
+      console.error('Error loading component type labels:', error);
+      setTypeLabels({});
+    }
+  };
+
+  const resolvedTypeLabel = (code: string) => typeLabels[code] || COMPONENT_TYPE_LABELS[code] || code;
+  
+  const persistTypeLabels = async (next: Record<string, string>) => {
+    setTypeLabels(next);
+    try {
+      await apiFetch('/components/type-labels', {
+        method: 'PATCH',
+        json: { labels: next }
+      });
+    } catch (error) {
+      console.error('Error persisting component type labels:', error);
     }
   };
 
@@ -482,7 +510,7 @@ export default function ComponentsPage() {
               <option value="">All Component Types</option>
               {componentTypes.map(type => (
                 <option key={type} value={type}>
-                  {COMPONENT_TYPE_LABELS[type] || type}
+                  {resolvedTypeLabel(type)}
                 </option>
               ))}
             </select>
@@ -504,6 +532,35 @@ export default function ComponentsPage() {
             </div>
           </div>
         </div>
+
+        {/* Manage Types */}
+        <div className="mb-3 flex items-center gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={() => setManageTypesOpen(v => !v)}>
+            {manageTypesOpen ? 'Close Types' : 'Manage Type Labels'}
+          </Button>
+        </div>
+        {manageTypesOpen && (
+          <div className="mb-6 rounded-xl border bg-white p-4 shadow-sm">
+            <h3 className="text-sm font-semibold mb-3">Component Type Labels</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {componentTypes.map((code) => (
+                <div key={code} className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500 w-48">{code}</span>
+                  <input
+                    type="text"
+                    value={typeLabels[code] ?? ''}
+                    onChange={(e) => {
+                      const next = { ...typeLabels, [code]: e.target.value };
+                      persistTypeLabels(next);
+                    }}
+                    placeholder={`Label for ${code}`}
+                    className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Components List */}
         {loading ? (
@@ -738,17 +795,35 @@ export default function ComponentsPage() {
                   <label className="mb-1 block text-sm font-medium text-slate-700">
                     Component Type <span className="text-red-500">*</span>
                   </label>
-                  <select
-                    value={formData.componentType}
-                    onChange={(e) => setFormData({ ...formData, componentType: e.target.value })}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                    required
-                  >
-                    <option value="">Select type...</option>
-                    {Object.entries(COMPONENT_TYPE_LABELS).map(([value, label]) => (
-                      <option key={value} value={value}>{label}</option>
-                    ))}
-                  </select>
+                  <div className="flex gap-2">
+                    <select
+                      value={formData.componentType}
+                      onChange={(e) => setFormData({ ...formData, componentType: e.target.value })}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      required
+                    >
+                      <option value="">Select type...</option>
+                      {componentTypes.map((t) => (
+                        <option key={t} value={t}>{resolvedTypeLabel(t)}</option>
+                      ))}
+                    </select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        const val = window.prompt('Enter new component type code (e.g., HINGE, LOCK, CUSTOM_PART):');
+                        if (!val) return;
+                        const code = val.trim().toUpperCase();
+                        if (!code) return;
+                        if (!componentTypes.includes(code)) {
+                          setComponentTypes((prev) => [...prev, code].sort());
+                        }
+                        setFormData((prev) => ({ ...prev, componentType: code }));
+                      }}
+                    >
+                      Add Type
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Name */}

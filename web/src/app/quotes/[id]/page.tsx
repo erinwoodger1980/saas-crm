@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import useSWR from "swr";
 import { ParsedLinesTable } from "@/components/quotes/ParsedLinesTable";
-import { QuestionnaireForm } from "@/components/quotes/QuestionnaireForm";
 import { SupplierFilesCard } from "@/components/quotes/SupplierFilesCard";
 import { TemplatePickerDialog } from "@/components/quotes/TemplatePickerDialog";
 import { LeadDetailsCard } from "@/components/quotes/LeadDetailsCard";
@@ -23,6 +22,7 @@ import {
   uploadClientQuotePdf,
   saveQuoteMappings,
   updateQuoteLine,
+  createQuoteLine,
   normalizeQuestionnaireFields,
   processQuoteFromFile,
   saveClientQuoteLines,
@@ -50,6 +50,16 @@ export default function QuoteBuilderPage() {
   const quoteId = String(params?.id ?? "");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { toast } = useToast();
+  // Product tab: standard field draft state
+  const [newLineDesc, setNewLineDesc] = useState("");
+  const [newLineQty, setNewLineQty] = useState<number | null>(1);
+  const [newLineUnitPrice, setNewLineUnitPrice] = useState<number | null>(0);
+  const [stdWidthMm, setStdWidthMm] = useState<number | null>(null);
+  const [stdHeightMm, setStdHeightMm] = useState<number | null>(null);
+  const [stdTimber, setStdTimber] = useState<string>("");
+  const [stdFinish, setStdFinish] = useState<string>("");
+  const [stdIronmongery, setStdIronmongery] = useState<string>("");
+  const [stdGlazing, setStdGlazing] = useState<string>("");
 
   const {
     data: quote,
@@ -334,7 +344,7 @@ export default function QuoteBuilderPage() {
     setConfigQuestions(found?.configQuestions || []);
   }, [selectedProductOptionId, productCategories]);
 
-  // Persist product configuration to quote metadata
+  // Persist product configuration to quote metadata and optionally add a line with standard fields
   const saveProductConfiguration = useCallback(async () => {
     if (!quoteId || !quote) return;
     try {
@@ -348,11 +358,48 @@ export default function QuoteBuilderPage() {
         json: { meta: nextMeta },
       });
       await mutateQuote();
-      toast({ title: "Product configuration saved" });
+
+      // If user filled in standard fields, add a line now
+      if (newLineDesc.trim()) {
+        const created = await createQuoteLine(quoteId, {
+          description: newLineDesc.trim(),
+          quantity: newLineQty ?? 1,
+          unitPrice: newLineUnitPrice ?? 0,
+        });
+        const lineId = (created as any)?.line?.id;
+        if (lineId) {
+          const lineStandard: Record<string, any> = {};
+          if (stdWidthMm != null) lineStandard.widthMm = stdWidthMm;
+          if (stdHeightMm != null) lineStandard.heightMm = stdHeightMm;
+          if (stdTimber) lineStandard.timber = stdTimber;
+          if (stdFinish) lineStandard.finish = stdFinish;
+          if (stdIronmongery) lineStandard.ironmongery = stdIronmongery;
+          if (stdGlazing) lineStandard.glazing = stdGlazing;
+          if (selectedProductOptionId) lineStandard.productOptionId = selectedProductOptionId;
+          if (Object.keys(lineStandard).length > 0) {
+            await updateQuoteLine(quoteId, lineId, { lineStandard });
+          }
+          await mutateLines();
+          // Reset drafts
+          setNewLineDesc("");
+          setNewLineQty(1);
+          setNewLineUnitPrice(0);
+          setStdWidthMm(null);
+          setStdHeightMm(null);
+          setStdTimber("");
+          setStdFinish("");
+          setStdIronmongery("");
+          setStdGlazing("");
+          setActiveTab("quote-lines");
+          toast({ title: "Line added", description: "Product line created and saved." });
+        }
+      } else {
+        toast({ title: "Product configuration saved" });
+      }
     } catch (err: any) {
       toast({ title: "Save failed", description: err?.message || "", variant: "destructive" });
     }
-  }, [quoteId, quote, selectedProductOptionId, configAnswers, mutateQuote, toast]);
+  }, [quoteId, quote, selectedProductOptionId, configAnswers, mutateQuote, newLineDesc, newLineQty, newLineUnitPrice, stdWidthMm, stdHeightMm, stdTimber, stdFinish, stdIronmongery, stdGlazing, mutateLines, toast]);
 
   const reestimateNeeded = estimate && estimatedLineRevision !== null && estimatedLineRevision !== lineRevision;
 
@@ -529,6 +576,8 @@ export default function QuoteBuilderPage() {
     },
     [quoteId, mutateQuote, mutateLines, toast],
   );
+
+  
 
   const _handleSaveMappings = useCallback(async () => {
     if (!quoteId) return;
@@ -1050,35 +1099,7 @@ export default function QuoteBuilderPage() {
                   </div>
                 )}
 
-                {/* Full questionnaire (collapsible) */}
-                <div className="space-y-4">
-                  <Button 
-                    variant="outline" 
-                    className="w-full justify-between"
-                    onClick={() => setQuestionnaireOpen(!questionnaireOpen)}
-                  >
-                    <span>Full questionnaire (advanced)</span>
-                    {questionnaireOpen ? (
-                      <ChevronDown className="h-4 w-4" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4" />
-                    )}
-                  </Button>
-                  {questionnaireOpen && (
-                    <div className="mt-4">
-                      <QuestionnaireForm
-                        fields={questionnaireFields}
-                        answers={questionnaireAnswers}
-                        isSaving={questionnaireSaving}
-                        disabled={quoteLoading || !leadId}
-                        onAutoSave={handleQuestionnaireSave}
-                        onEstimateFromAnswers={handleQuestionnaireEstimate}
-                        estimateSupported={Boolean(leadId)}
-                        estimateDisabledReason={leadId ? undefined : "Quote is not linked to a lead."}
-                      />
-                    </div>
-                  )}
-                </div>
+                {/* Full questionnaire removed (no longer used) */}
               </div>
             </TabsContent>
 
@@ -1159,11 +1180,129 @@ export default function QuoteBuilderPage() {
                   </div>
                 )}
 
-                {/* Save button */}
-                <Button onClick={saveProductConfiguration} className="gap-2">
-                  <Save className="h-4 w-4" />
-                  Save Configuration
-                </Button>
+                {/* Standard fields + Add row */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-foreground">Description</label>
+                    <Input
+                      value={newLineDesc}
+                      onChange={(e) => setNewLineDesc(e.target.value)}
+                      placeholder="e.g. Oak door - primed"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-foreground">Qty</label>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      value={newLineQty ?? ''}
+                      min={1}
+                      onChange={(e) => setNewLineQty(e.target.value ? Number(e.target.value) : null)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-foreground">Unit price (£)</label>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      value={newLineUnitPrice ?? ''}
+                      min={0}
+                      onChange={(e) => setNewLineUnitPrice(e.target.value ? Number(e.target.value) : null)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-foreground">Width (mm)</label>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      value={stdWidthMm ?? ''}
+                      onChange={(e) => setStdWidthMm(e.target.value ? Number(e.target.value) : null)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-foreground">Height (mm)</label>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      value={stdHeightMm ?? ''}
+                      onChange={(e) => setStdHeightMm(e.target.value ? Number(e.target.value) : null)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-foreground">Timber</label>
+                    <select
+                      className="w-full rounded-lg border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                      value={stdTimber || ''}
+                      onChange={(e) => setStdTimber(e.target.value || '')}
+                    >
+                      <option value="">— Select —</option>
+                      <option value="oak">Oak</option>
+                      <option value="sapele">Sapele</option>
+                      <option value="accoya">Accoya</option>
+                      <option value="iroko">Iroko</option>
+                      <option value="pine">Pine</option>
+                      <option value="hemlock">Hemlock</option>
+                      <option value="mdf">MDF</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-foreground">Finish</label>
+                    <select
+                      className="w-full rounded-lg border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                      value={stdFinish || ''}
+                      onChange={(e) => setStdFinish(e.target.value || '')}
+                    >
+                      <option value="">— Select —</option>
+                      <option value="primed">Primed</option>
+                      <option value="painted">Painted</option>
+                      <option value="stained">Stained</option>
+                      <option value="clear_lacquer">Clear Lacquer</option>
+                      <option value="wax">Wax</option>
+                      <option value="oiled">Oiled</option>
+                      <option value="unfinished">Unfinished</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-foreground">Ironmongery</label>
+                    <select
+                      className="w-full rounded-lg border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                      value={stdIronmongery || ''}
+                      onChange={(e) => setStdIronmongery(e.target.value || '')}
+                    >
+                      <option value="">— Select —</option>
+                      <option value="none">None</option>
+                      <option value="hinges">Hinges</option>
+                      <option value="handles">Handles</option>
+                      <option value="locks">Locks</option>
+                      <option value="full_set">Full Set</option>
+                      <option value="fire_rated">Fire Rated</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-foreground">Glazing</label>
+                    <select
+                      className="w-full rounded-lg border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                      value={stdGlazing || ''}
+                      onChange={(e) => setStdGlazing(e.target.value || '')}
+                    >
+                      <option value="">— Select —</option>
+                      <option value="none">None</option>
+                      <option value="clear">Clear Glass</option>
+                      <option value="obscure">Obscure Glass</option>
+                      <option value="double_glazed">Double Glazed</option>
+                      <option value="fire_rated">Fire Rated Glass</option>
+                      <option value="georgian">Georgian</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button onClick={saveProductConfiguration} className="gap-2">
+                    <Save className="h-4 w-4" />
+                    Add line from product
+                  </Button>
+                </div>
               </div>
             </TabsContent>
 

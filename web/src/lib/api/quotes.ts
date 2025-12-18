@@ -17,6 +17,7 @@ export type ParsedLineDto = {
   sellTotal?: number | null;
   currency?: string | null;
   meta?: Record<string, any> | null;
+  lineStandard?: Record<string, any> | null;
 };
 
 export type QuoteDto = {
@@ -329,6 +330,25 @@ export async function updateQuoteLine(
     },
   );
   return updated;
+}
+
+/** Create a manual quote line */
+export async function createQuoteLine(
+  quoteId: string,
+  payload: { description: string; quantity?: number; unitPrice?: number; notes?: string | null },
+): Promise<{ ok: boolean; line: ParsedLineDto }>
+{
+  if (!quoteId) throw new Error("quoteId required");
+  const body: any = {
+    description: payload.description,
+    quantity: typeof payload.quantity === 'number' ? payload.quantity : 1,
+    unitPrice: typeof payload.unitPrice === 'number' ? payload.unitPrice : 0,
+  };
+  if (typeof payload.notes === 'string') body.notes = payload.notes;
+  return apiFetch(`/quotes/${encodeURIComponent(quoteId)}/lines`, {
+    method: 'POST',
+    json: body,
+  });
 }
 
 export async function processQuoteFromUrl(params: {

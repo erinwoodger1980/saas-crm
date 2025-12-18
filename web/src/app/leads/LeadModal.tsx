@@ -3,6 +3,7 @@
 
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE, apiFetch } from "@/lib/api";
+import { createQuoteLine, updateQuoteLine } from "@/lib/api/quotes";
 import { getAuthIdsFromJwt } from "@/lib/auth";
 import {
   DEFAULT_TASK_PLAYBOOK,
@@ -506,6 +507,17 @@ export default function LeadModal({
   const [quoteItems, setQuoteItems] = useState<QuoteItem[]>([]);
   const [showColumnConfig, setShowColumnConfig] = useState(false);
   const [columnConfig, setColumnConfig] = useState<ColumnConfig[]>([]);
+
+  // Add Product Line (standard fields) draft state
+  const [newLineDesc, setNewLineDesc] = useState<string>("");
+  const [newLineQty, setNewLineQty] = useState<number>(1);
+  const [newLineUnitPrice, setNewLineUnitPrice] = useState<number>(0);
+  const [stdWidthMm, setStdWidthMm] = useState<number | null>(null);
+  const [stdHeightMm, setStdHeightMm] = useState<number | null>(null);
+  const [stdTimber, setStdTimber] = useState<string>("");
+  const [stdFinish, setStdFinish] = useState<string>("");
+  const [stdIronmongery, setStdIronmongery] = useState<string>("");
+  const [stdGlazing, setStdGlazing] = useState<string>("");
 
   // Material tracking state
   type MaterialDates = {
@@ -2438,6 +2450,78 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     }
   }
 
+  // Create a product line on the underlying Quote and attach standard fields
+  async function saveProductConfiguration() {
+    if (!lead?.id) return;
+    const desc = (newLineDesc || "").trim();
+    if (!desc) {
+      toast("Please enter a line description");
+      return;
+    }
+    setSaving(true);
+    try {
+      // Ensure a draft quote exists
+      let qid: string | null = lead.quoteId || null;
+      if (!qid) {
+        const q = await apiFetch<any>("/quotes", {
+          method: "POST",
+          headers: { ...authHeaders, "Content-Type": "application/json" },
+          json: {
+            leadId: lead.id,
+            title: `Estimate for ${lead.contactName || lead.email || "Lead"}`,
+          },
+        });
+        qid = q?.id || null;
+        if (qid) {
+          setLead((prev) => (prev ? { ...prev, quoteId: qid } : prev));
+        }
+      }
+      if (!qid) {
+        alert("Couldn't create a draft quote.");
+        return;
+      }
+
+      // Create the line
+      const created = await createQuoteLine(qid, {
+        description: desc,
+        quantity: Number.isFinite(newLineQty) ? newLineQty : 1,
+        unitPrice: Number.isFinite(newLineUnitPrice) ? newLineUnitPrice : 0,
+      });
+      const lineId = (created as any)?.line?.id;
+      if (!lineId) throw new Error("Line was not created");
+
+      // Attach standard fields to the line
+      const lineStandard: Record<string, any> = {};
+      if (stdWidthMm != null) lineStandard.widthMm = stdWidthMm;
+      if (stdHeightMm != null) lineStandard.heightMm = stdHeightMm;
+      if (stdTimber) lineStandard.timber = stdTimber;
+      if (stdFinish) lineStandard.finish = stdFinish;
+      if (stdIronmongery) lineStandard.ironmongery = stdIronmongery;
+      if (stdGlazing) lineStandard.glazing = stdGlazing;
+      if (Object.keys(lineStandard).length > 0) {
+        await updateQuoteLine(qid, lineId, { lineStandard });
+      }
+
+      // Reset form
+      setNewLineDesc("");
+      setNewLineQty(1);
+      setNewLineUnitPrice(0);
+      setStdWidthMm(null);
+      setStdHeightMm(null);
+      setStdTimber("");
+      setStdFinish("");
+      setStdIronmongery("");
+      setStdGlazing("");
+
+      toast("Line added to quote");
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || "Failed to add line");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function deleteLead() {
     if (!lead?.id) return;
     
@@ -3517,6 +3601,119 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
           {currentStage === "quote" && (
             <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 min-h-[60vh]">
               <div className="max-w-4xl mx-auto space-y-6">
+                {/* Add Product Line (standard fields) */}
+                <section className="rounded-2xl border border-indigo-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                  <div className="flex items-center justify-between gap-2 mb-4">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                      <span aria-hidden="true">➕</span>
+                      Add Product Line
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label className="text-sm">
+                      <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                        Description
+                      </span>
+                      <input
+                        className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-200"
+                        value={newLineDesc}
+                        onChange={(e) => setNewLineDesc(e.target.value)}
+                        placeholder="e.g., Oak entrance door"
+                      />
+                    </label>
+                    <div className="grid grid-cols-3 gap-3">
+                      <label className="text-sm">
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Qty</span>
+                        <input
+                          type="number"
+                          min={1}
+                          className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-200"
+                          value={newLineQty}
+                          onChange={(e) => setNewLineQty(Number(e.target.value) || 1)}
+                        />
+                      </label>
+                      <label className="text-sm col-span-2">
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Unit price</span>
+                        <input
+                          type="number"
+                          min={0}
+                          className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-200"
+                          value={newLineUnitPrice}
+                          onChange={(e) => setNewLineUnitPrice(Number(e.target.value) || 0)}
+                        />
+                      </label>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 sm:col-span-2">
+                      <label className="text-sm">
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Width (mm)</span>
+                        <input
+                          type="number"
+                          min={0}
+                          className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-200"
+                          value={stdWidthMm ?? ""}
+                          onChange={(e) => {
+                            const v = e.target.value.trim();
+                            setStdWidthMm(v === "" ? null : Number(v));
+                          }}
+                        />
+                      </label>
+                      <label className="text-sm">
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Height (mm)</span>
+                        <input
+                          type="number"
+                          min={0}
+                          className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-200"
+                          value={stdHeightMm ?? ""}
+                          onChange={(e) => {
+                            const v = e.target.value.trim();
+                            setStdHeightMm(v === "" ? null : Number(v));
+                          }}
+                        />
+                      </label>
+                    </div>
+                    <label className="text-sm">
+                      <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Timber</span>
+                      <input
+                        className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-200"
+                        value={stdTimber}
+                        onChange={(e) => setStdTimber(e.target.value)}
+                        placeholder="e.g., Oak"
+                      />
+                    </label>
+                    <label className="text-sm">
+                      <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Finish</span>
+                      <input
+                        className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-200"
+                        value={stdFinish}
+                        onChange={(e) => setStdFinish(e.target.value)}
+                        placeholder="e.g., RAL 7016"
+                      />
+                    </label>
+                    <label className="text-sm">
+                      <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Ironmongery</span>
+                      <input
+                        className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-200"
+                        value={stdIronmongery}
+                        onChange={(e) => setStdIronmongery(e.target.value)}
+                        placeholder="e.g., Satin chrome"
+                      />
+                    </label>
+                    <label className="text-sm">
+                      <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Glazing</span>
+                      <input
+                        className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-200"
+                        value={stdGlazing}
+                        onChange={(e) => setStdGlazing(e.target.value)}
+                        placeholder="e.g., Double glazed"
+                      />
+                    </label>
+                  </div>
+                  <div className="mt-4 flex justify-end">
+                    <Button onClick={saveProductConfiguration} disabled={saving || !newLineDesc.trim()}>
+                      {saving ? "Saving…" : "Add line"}
+                    </Button>
+                  </div>
+                </section>
                 {/* Quote Items Grid - Line items with dimensions, materials, etc */}
                 <section className="rounded-2xl border border-indigo-100 bg-white/85 p-5 shadow-sm backdrop-blur">
                   <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">

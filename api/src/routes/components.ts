@@ -486,6 +486,122 @@ router.get('/types/all', async (req, res) => {
   }
 });
 
+// GET /components/type-labels - Get component type display labels
+router.get('/type-labels', async (req, res) => {
+  try {
+    const tenantId = req.auth?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+
+    const settings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { componentTypeLabels: true }
+    });
+
+    const labels = (settings?.componentTypeLabels as Record<string, string>) || {};
+    res.json(labels);
+  } catch (error) {
+    console.error('Error fetching component type labels:', error);
+    res.status(500).json({ error: 'Failed to fetch component type labels' });
+  }
+});
+
+// PATCH /components/type-labels - Update component type display labels
+router.patch('/type-labels', async (req, res) => {
+  try {
+    const tenantId = req.auth?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+
+    const { labels } = req.body;
+    if (!labels || typeof labels !== 'object') {
+      return res.status(400).json({ error: 'labels object is required' });
+    }
+
+    // Ensure tenant settings exists
+    let settings = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    if (!settings) {
+      // Get tenant to create settings
+      const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+      if (!tenant) {
+        return res.status(404).json({ error: 'Tenant not found' });
+      }
+      settings = await prisma.tenantSettings.create({
+        data: {
+          tenantId,
+          slug: tenant.slug || `tenant-${tenantId}`,
+          brandName: tenant.name || 'Company',
+          componentTypeLabels: labels
+        }
+      });
+    } else {
+      settings = await prisma.tenantSettings.update({
+        where: { tenantId },
+        data: { componentTypeLabels: labels }
+      });
+    }
+
+    res.json({ ok: true, labels: settings.componentTypeLabels });
+  } catch (error) {
+    console.error('Error updating component type labels:', error);
+    res.status(500).json({ error: 'Failed to update component type labels' });
+  }
+});
+
+// GET /components/types/labels - Get component type labels for tenant
+router.get('/types/labels', async (req, res) => {
+  try {
+    const tenantId = req.auth?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+
+    const settings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { componentTypeLabels: true }
+    });
+
+    const labels = (settings?.componentTypeLabels as any) || {};
+    res.json(labels);
+  } catch (error) {
+    console.error('Error fetching component type labels:', error);
+    res.status(500).json({ error: 'Failed to fetch component type labels' });
+  }
+});
+
+// PUT /components/types/labels - Update component type labels for tenant
+router.put('/types/labels', async (req, res) => {
+  try {
+    const tenantId = req.auth?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+
+    const { labels } = req.body;
+    if (!labels || typeof labels !== 'object') {
+      return res.status(400).json({ error: 'labels object is required' });
+    }
+
+    const updated = await prisma.tenantSettings.upsert({
+      where: { tenantId },
+      update: { componentTypeLabels: labels },
+      create: {
+        tenantId,
+        slug: `tenant-${tenantId}`,
+        brandName: 'Default Brand',
+        componentTypeLabels: labels
+      }
+    });
+
+    res.json({ ok: true, labels: updated.componentTypeLabels });
+  } catch (error) {
+    console.error('Error updating component type labels:', error);
+    res.status(500).json({ error: 'Failed to update component type labels' });
+  }
+});
+
 // POST /components/bulk-import - Bulk import components from CSV
 router.post('/bulk-import', async (req, res) => {
   try {

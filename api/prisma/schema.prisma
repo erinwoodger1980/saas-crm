@@ -1083,6 +1083,7 @@ model TenantSettings {
   fireDoorLineItemLayout       Json?
   fireDoorScheduleColumnConfig Json?
   productTypes                 Json?
+  componentTypeLabels          Json?     @default("{}")
 }
 
 model FollowUpLog {
