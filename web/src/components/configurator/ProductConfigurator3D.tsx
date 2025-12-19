@@ -163,6 +163,19 @@ export function ProductConfigurator3D({
           }
           
           console.log('[ProductConfigurator3D] Effective lineItem:', effectiveLineItem);
+          
+          // Check if product type can be detected
+          const { detectProductType } = await import('@/lib/scene/builder-registry');
+          const detectedType = detectProductType(effectiveLineItem);
+          console.log('[ProductConfigurator3D] Detected product type:', detectedType);
+          
+          if (!detectedType) {
+            console.error('[ProductConfigurator3D] Cannot detect product type from lineItem:', effectiveLineItem);
+            toast.error('Please configure the product type before opening 3D preview');
+            setIsLoading(false);
+            return;
+          }
+          
           const params = getOrCreateParams(effectiveLineItem);
           console.log('[ProductConfigurator3D] Generated params:', params);
           
@@ -193,8 +206,8 @@ export function ProductConfigurator3D({
           }
         }
       } else {
-        console.error('Failed to initialize configurator', { lineItem, tenantId, entityType, entityId });
-        toast.error('Failed to initialize configurator - check product type configuration');
+        console.error('[ProductConfigurator3D] Failed to initialize configurator', { lineItem, tenantId, entityType, entityId });
+        toast.error('Failed to load 3D configurator. Please ensure the product has valid dimensions and type.');
       }
       
       setIsLoading(false);
