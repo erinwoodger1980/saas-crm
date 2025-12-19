@@ -128,11 +128,18 @@ export async function apiFetch<T = unknown>(
   const isAuthMeRequest = normalizedForMatch === "/auth/me";
 
   const isAbsolute = /^https?:/i.test(cleanPath);
+  // Special-case Next.js app API routes: when caller passes a path that already
+  // starts with "/api/", prefer same-origin to hit our Next.js route layer
+  // (proxies, edge handlers), regardless of API_BASE. This avoids accidentally
+  // sending "/api/*" to the backend host in production.
+  const isAppApiPath = !isAbsolute && cleanPath.startsWith("/api/");
   // Prefer configured API_BASE; fall back to "/api" which is rewired in next.config.ts during dev
   const base = API_BASE || "/api";
   const url = isAbsolute
     ? cleanPath
-    : `${base}${cleanPath.startsWith("/") ? "" : "/"}${cleanPath}`;
+    : isAppApiPath
+      ? cleanPath
+      : `${base}${cleanPath.startsWith("/") ? "" : "/"}${cleanPath}`;
 
   const headers = new Headers(init.headers);
   if (!headers.has("Accept")) headers.set("Accept", "application/json");
