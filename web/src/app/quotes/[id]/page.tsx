@@ -375,6 +375,24 @@ export default function QuoteBuilderPage() {
     }
   }, [quoteId]);
 
+  // Load saved product configuration from quote metadata
+  useEffect(() => {
+    if (!quote?.meta) return;
+    const meta = quote.meta as any;
+    
+    // Restore selected product option
+    if (meta.selectedProductOptionId) {
+      console.log('[Product Config] Restoring selectedProductOptionId:', meta.selectedProductOptionId);
+      setSelectedProductOptionId(meta.selectedProductOptionId);
+    }
+    
+    // Restore configuration answers
+    if (meta.configAnswers && typeof meta.configAnswers === 'object') {
+      console.log('[Product Config] Restoring configAnswers:', meta.configAnswers);
+      setConfigAnswers(meta.configAnswers);
+    }
+  }, [quote?.meta]); // Only run when quote.meta changes, not on every render
+
   // Persist product configuration to quote metadata and optionally add a line with standard fields
   const saveProductConfiguration = useCallback(async () => {
     if (!quoteId || !quote) {
@@ -387,6 +405,7 @@ export default function QuoteBuilderPage() {
         selectedProductOptionId,
         configAnswers,
       };
+      console.log('[Product Config] Saving to quote.meta:', { selectedProductOptionId, configAnswers });
       await apiFetch(`/quotes/${encodeURIComponent(quoteId)}`, {
         method: "PATCH",
         json: { meta: nextMeta },
