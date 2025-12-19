@@ -119,6 +119,7 @@ export function ProductConfigurator3D({
 }: ProductConfigurator3DProps) {
   const [config, setConfig] = useState<SceneConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [canRender, setCanRender] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
   const [editableAttributes, setEditableAttributes] = useState<Record<string, EditableAttribute[]>>({});
@@ -205,6 +206,8 @@ export function ProductConfigurator3D({
             setEditableAttributes(result.editableAttributes);
           }
         }
+        // Give React time to update state before rendering Canvas
+        setTimeout(() => setCanRender(true), 100);
       } else {
         console.error('[ProductConfigurator3D] Failed to initialize configurator', { lineItem, tenantId, entityType, entityId });
         toast.error('Failed to load 3D configurator. Please ensure the product has valid dimensions and type.');
@@ -382,6 +385,15 @@ export function ProductConfigurator3D({
   }
 
   const selectedAttributes = selectedComponentId ? editableAttributes[selectedComponentId] : null;
+
+  // Wait for canRender flag before showing Canvas
+  if (!canRender) {
+    return (
+      <div className="flex items-center justify-center" style={{ width, height }}>
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   // Safety check: ensure config is valid with all required properties before rendering Canvas
   const isConfigValid = config && 
