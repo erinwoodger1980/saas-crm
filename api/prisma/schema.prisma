@@ -128,6 +128,7 @@ model Tenant {
   questionSets               QuestionSet[]               @relation("TenantQuestionSets")
   legacyQuestionMappings     LegacyQuestionMapping[]     @relation("TenantLegacyMappings")
   standardFieldMappings      StandardFieldMapping[]      @relation("TenantStandardFieldMappings")
+  sceneStates                SceneState[]
 }
 
 model LippingLookup {
@@ -1516,6 +1517,23 @@ model LeadVisionInference {
 
   @@index([tenantId, leadId])
   @@index([leadId, itemNumber])
+}
+
+model SceneState {
+  id          String   @id @default(cuid())
+  tenantId    String
+  entityType  String   // "quoteLineItem", "fireDoorsJob", etc.
+  entityId    String   // ID of the entity this scene config belongs to
+  config      Json     // SceneConfig object with camera, lighting, components, materials
+  modifiedBy  String?  // userId who last modified
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Unique constraint: one scene config per entity
+  @@unique([tenantId, entityType, entityId])
+  @@index([tenantId])
+  @@index([tenantId, entityType])
 }
 
 model Estimate {
