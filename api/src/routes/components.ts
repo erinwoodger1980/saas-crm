@@ -680,4 +680,56 @@ router.post('/bulk-import', async (req, res) => {
   }
 });
 
+// POST /components/batch-create - Create multiple components from AI estimates
+router.post('/batch-create', async (req, res) => {
+  try {
+    const tenantId = req.auth?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+
+    const { components } = req.body;
+
+    if (!Array.isArray(components) || components.length === 0) {
+      return res.status(400).json({ error: 'components must be a non-empty array' });
+    }
+
+    const created = await Promise.all(
+      components.map((comp: any) =>
+        prisma.componentLookup.create({
+          data: {
+            tenantId,
+            code: `AI-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            name: comp.name || 'Generated Component',
+            componentType: comp.type || 'part',
+            productTypes: comp.productTypes || [],
+            unitOfMeasure: 'EA',
+            basePrice: 0,
+            leadTimeDays: 0,
+            isActive: true,
+            description: comp.sourceDescription || '',
+            attributes: {
+              aiGenerated: true,
+              generatedAt: new Date().toISOString(),
+              width: comp.width,
+              height: comp.height,
+              depth: comp.depth,
+              material: comp.material,
+            },
+          },
+        })
+      )
+    );
+
+    res.status(201).json({
+      createdCount: created.length,
+      components: created,
+      success: true,
+    });
+  } catch (error) {
+    console.error('Error batch creating components:', error);
+    res.status(500).json({ error: 'Failed to batch create components' });
+  }
+});
+
 export default router;
