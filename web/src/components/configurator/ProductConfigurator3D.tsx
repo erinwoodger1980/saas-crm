@@ -400,8 +400,8 @@ export function ProductConfigurator3D({
         <Canvas
           shadows
           camera={{
-            position: config.camera.position,
-            fov: config.camera.mode === 'Perspective' ? config.camera.fov : undefined,
+            position: config.camera?.position || [0, 1000, 2000],
+            fov: config.camera?.mode === 'Perspective' ? (config.camera?.fov || 50) : 50,
           }}
           gl={{ antialias: true, alpha: false }}
         >

@@ -1596,11 +1596,13 @@ export default function QuoteBuilderPage() {
                         </button>
                       </div>
                       <div className="flex-1 overflow-hidden">
-                        <ProductConfigurator3D
-                          tenantId={quote?.tenantId || 'preview'}
-                          entityType="quoteLineItem"
-                          entityId={`preview-${modalProductOptionId}`}
-                          lineItem={{
+                        {show3dModal && modalProductOptionId && (
+                          <ProductConfigurator3D
+                            key={`configurator-${modalProductOptionId}`}
+                            tenantId={quote?.tenantId || 'preview'}
+                            entityType="quoteLineItem"
+                            entityId={`preview-${modalProductOptionId}`}
+                            lineItem={{
                             configuredProduct: {
                               productType: (() => {
                                 // Find the selected product option and extract its category/type/option
@@ -1639,6 +1641,7 @@ export default function QuoteBuilderPage() {
                           }}
                           height="calc(95vh - 80px)"
                         />
+                        )}
                       </div>
                     </div>
                   </div>
