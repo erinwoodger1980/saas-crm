@@ -148,6 +148,7 @@ export default function FieldsPage() {
       {showCreateDialog && (
         <FieldManager
           defaultScope={selectedScope}
+          editingField={editingField}
           onSave={handleFieldSaved}
           onClose={() => {
             setShowCreateDialog(false);

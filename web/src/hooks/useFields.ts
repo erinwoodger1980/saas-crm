@@ -61,13 +61,21 @@ export function useFields(options: UseFieldsOptions = {}): UseFieldsReturn {
     setError(null);
 
     try {
+      const auth = getAuthIdsFromJwt();
       const params = new URLSearchParams();
-      if (tenantId) params.append('tenantId', tenantId);
       if (scope) params.append('scope', scope);
       if (context) params.append('context', context);
       if (includeDisplayContexts) params.append('includeDisplayContexts', 'true');
 
-      const response = await fetch(`/api/flexible-fields?${params.toString()}`);
+      const headers: Record<string, string> = {};
+      if (auth) {
+        headers['x-user-id'] = auth.userId;
+        headers['x-tenant-id'] = auth.tenantId;
+      }
+
+      const response = await fetch(`/api/flexible-fields?${params.toString()}`, {
+        headers,
+      });
 
       if (!response.ok) {
         throw new Error(`Failed to fetch fields: ${response.statusText}`);
@@ -86,7 +94,7 @@ export function useFields(options: UseFieldsOptions = {}): UseFieldsReturn {
     } finally {
       setLoading(false);
     }
-  }, [cacheKey, tenantId, scope, context, includeDisplayContexts]);
+  }, [cacheKey, scope, context, includeDisplayContexts]);
 
   useEffect(() => {
     fetchFields();

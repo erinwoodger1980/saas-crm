@@ -28,8 +28,18 @@ import { useToast } from '@/components/ui/use-toast';
 import { getAuthIdsFromJwt } from '@/lib/auth';
 import { apiFetch } from '@/lib/api';
 
+interface QuestionnaireField {
+  id: string;
+  key: string;
+  label: string;
+  type: string;
+  scope: string;
+  helpText?: string | null;
+}
+
 interface FieldManagerProps {
   defaultScope: string;
+  editingField?: QuestionnaireField | null;
   onSave: () => Promise<void>;
   onClose: () => void;
 }
@@ -37,15 +47,27 @@ interface FieldManagerProps {
 const FIELD_TYPES = ['TEXT', 'NUMBER', 'SELECT', 'BOOLEAN', 'TEXTAREA', 'DATE'];
 const SCOPES = ['client', 'lead', 'line_item', 'manufacturing', 'fire_door_project', 'fire_door_line_item'];
 
-export function FieldManager({ defaultScope, onSave, onClose }: FieldManagerProps) {
+export function FieldManager({ defaultScope, editingField, onSave, onClose }: FieldManagerProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    key: '',
-    label: '',
-    type: 'TEXT',
-    scope: defaultScope,
-    helpText: '',
+  const isEditMode = !!editingField;
+  const [formData, setFormData] = useState(() => {
+    if (editingField) {
+      return {
+        key: editingField.key,
+        label: editingField.label,
+        type: editingField.type,
+        scope: editingField.scope,
+        helpText: editingField.helpText || '',
+      };
+    }
+    return {
+      key: '',
+      label: '',
+      type: 'TEXT',
+      scope: defaultScope,
+      helpText: '',
+    };
   });
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -65,32 +87,55 @@ export function FieldManager({ defaultScope, onSave, onClose }: FieldManagerProp
       const auth = getAuthIdsFromJwt();
       if (!auth) throw new Error('Not authenticated');
 
-      await apiFetch('/api/flexible-fields', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': auth.userId,
-          'x-tenant-id': auth.tenantId,
-        },
-        json: {
-          ...formData,
-          isStandard: false,
-          isActive: true,
-        },
-      });
+      if (isEditMode && editingField) {
+        // Edit existing field
+        await apiFetch(`/api/flexible-fields/${editingField.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': auth.userId,
+            'x-tenant-id': auth.tenantId,
+          },
+          json: {
+            label: formData.label,
+            type: formData.type,
+            helpText: formData.helpText,
+          },
+        });
 
-      toast({
-        title: 'Success',
-        description: 'Field created successfully',
-      });
+        toast({
+          title: 'Success',
+          description: 'Field updated successfully',
+        });
+      } else {
+        // Create new field
+        await apiFetch('/api/flexible-fields', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': auth.userId,
+            'x-tenant-id': auth.tenantId,
+          },
+          json: {
+            ...formData,
+            isStandard: false,
+            isActive: true,
+          },
+        });
+
+        toast({
+          title: 'Success',
+          description: 'Field created successfully',
+        });
+      }
 
       await onSave();
       onClose();
     } catch (error) {
-      console.error('Failed to create field:', error);
+      console.error('Failed to save field:', error);
       toast({
         title: 'Error',
-        description: 'Failed to create field',
+        description: isEditMode ? 'Failed to update field' : 'Failed to create field',
         variant: 'destructive',
       });
     } finally {
@@ -102,9 +147,9 @@ export function FieldManager({ defaultScope, onSave, onClose }: FieldManagerProp
     <Dialog open={true} onOpenChange={onClose}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Create New Field</DialogTitle>
+          <DialogTitle>{isEditMode ? 'Edit Field' : 'Create New Field'}</DialogTitle>
           <DialogDescription>
-            Define a new custom field for your workspace
+            {isEditMode ? 'Update the field configuration' : 'Define a new custom field for your workspace'}
           </DialogDescription>
         </DialogHeader>
 
@@ -121,6 +166,7 @@ export function FieldManager({ defaultScope, onSave, onClose }: FieldManagerProp
                 })
               }
               placeholder="e.g., company_name"
+              disabled={isEditMode}
               required
             />
             <p className="text-xs text-slate-500 mt-1">Unique identifier, cannot be changed</p>
@@ -189,7 +235,7 @@ export function FieldManager({ defaultScope, onSave, onClose }: FieldManagerProp
               Cancel
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? 'Creating...' : 'Create Field'}
+              {loading ? (isEditMode ? 'Updating...' : 'Creating...') : (isEditMode ? 'Update Field' : 'Create Field')}
             </Button>
           </div>
         </form>
