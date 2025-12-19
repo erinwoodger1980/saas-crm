@@ -30,40 +30,49 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Load scene state
-    const sceneState = await prisma.sceneState.findUnique({
-      where: {
-        tenantId_entityType_entityId: {
-          tenantId,
-          entityType,
-          entityId,
+    try {
+      // Load scene state
+      const sceneState = await prisma.sceneState.findUnique({
+        where: {
+          tenantId_entityType_entityId: {
+            tenantId,
+            entityType,
+            entityId,
+          },
         },
-      },
-      select: {
-        id: true,
-        config: true,
-        updatedAt: true,
-        modifiedBy: true,
-      },
-    });
+        select: {
+          id: true,
+          config: true,
+          updatedAt: true,
+          modifiedBy: true,
+        },
+      });
 
-    if (!sceneState) {
-      return NextResponse.json({ error: 'Scene state not found' }, { status: 404 });
+      if (!sceneState) {
+        return NextResponse.json({ error: 'Scene state not found' }, { status: 404 });
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          id: sceneState.id,
+          config: sceneState.config as SceneConfig,
+          updatedAt: sceneState.updatedAt,
+          modifiedBy: sceneState.modifiedBy,
+        },
+      });
+    } catch (dbError: any) {
+      // Handle table doesn't exist or other DB errors
+      if (dbError.code === 'P2025' || dbError.message?.includes('does not exist') || dbError.message?.includes('RELATION')) {
+        console.warn('[GET /api/scene-state] Database table or record not found:', dbError.message);
+        return NextResponse.json({ error: 'Scene state not found' }, { status: 404 });
+      }
+      throw dbError;
     }
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        id: sceneState.id,
-        config: sceneState.config as SceneConfig,
-        updatedAt: sceneState.updatedAt,
-        modifiedBy: sceneState.modifiedBy,
-      },
-    });
-  } catch (error) {
-    console.error('Error loading scene state:', error);
+  } catch (error: any) {
+    console.error('Error loading scene state:', error?.message || error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', detail: error?.message },
       { status: 500 }
     );
   }
