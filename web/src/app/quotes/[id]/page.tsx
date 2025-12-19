@@ -207,6 +207,8 @@ export default function QuoteBuilderPage() {
   const [selectedProductOptionId, setSelectedProductOptionId] = useState<string | null>(null);
   const [configQuestions, setConfigQuestions] = useState<any[]>([]);
   const [configAnswers, setConfigAnswers] = useState<Record<string, any>>({});
+  const [show3dModal, setShow3dModal] = useState(false);
+  const [modalProductOptionId, setModalProductOptionId] = useState<string | null>(null);
 
   // (Removed duplicate recent material cost fetch + basic alert derivation)
 
@@ -358,9 +360,26 @@ export default function QuoteBuilderPage() {
     setConfigQuestions(found?.configQuestions || []);
   }, [selectedProductOptionId, productCategories]);
 
+  // Handle 3D modal from query parameter
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const show3d = params.get('show3d');
+      if (show3d) {
+        setModalProductOptionId(show3d);
+        setShow3dModal(true);
+        // Clean up the URL
+        window.history.replaceState({}, '', `/quotes/${quoteId}`);
+      }
+    }
+  }, [quoteId]);
+
   // Persist product configuration to quote metadata and optionally add a line with standard fields
   const saveProductConfiguration = useCallback(async () => {
-    if (!quoteId || !quote) return;
+    if (!quoteId || !quote) {
+      toast({ title: "Error", description: "Quote not loaded", variant: "destructive" });
+      return;
+    }
     try {
       const nextMeta = {
         ...((quote?.meta as any) || {}),
@@ -375,43 +394,51 @@ export default function QuoteBuilderPage() {
 
       // If user filled in standard fields, add a line now
       if (newLineDesc.trim()) {
-        const created = await createQuoteLine(quoteId, {
-          description: newLineDesc.trim(),
-          quantity: newLineQty ?? 1,
-          unitPrice: newLineUnitPrice ?? 0,
-        });
-        const lineId = (created as any)?.line?.id;
-        if (lineId) {
-          const lineStandard: Record<string, any> = {};
-          if (stdWidthMm != null) lineStandard.widthMm = stdWidthMm;
-          if (stdHeightMm != null) lineStandard.heightMm = stdHeightMm;
-          if (stdTimber) lineStandard.timber = stdTimber;
-          if (stdFinish) lineStandard.finish = stdFinish;
-          if (stdIronmongery) lineStandard.ironmongery = stdIronmongery;
-          if (stdGlazing) lineStandard.glazing = stdGlazing;
-          if (selectedProductOptionId) lineStandard.productOptionId = selectedProductOptionId;
-          if (Object.keys(lineStandard).length > 0) {
-            await updateQuoteLine(quoteId, lineId, { lineStandard });
+        try {
+          const created = await createQuoteLine(quoteId, {
+            description: newLineDesc.trim(),
+            quantity: newLineQty ?? 1,
+            unitPrice: newLineUnitPrice ?? 0,
+          });
+          const lineId = (created as any)?.line?.id;
+          if (lineId) {
+            const lineStandard: Record<string, any> = {};
+            if (stdWidthMm != null) lineStandard.widthMm = stdWidthMm;
+            if (stdHeightMm != null) lineStandard.heightMm = stdHeightMm;
+            if (stdTimber) lineStandard.timber = stdTimber;
+            if (stdFinish) lineStandard.finish = stdFinish;
+            if (stdIronmongery) lineStandard.ironmongery = stdIronmongery;
+            if (stdGlazing) lineStandard.glazing = stdGlazing;
+            if (selectedProductOptionId) lineStandard.productOptionId = selectedProductOptionId;
+            if (Object.keys(lineStandard).length > 0) {
+              await updateQuoteLine(quoteId, lineId, { lineStandard });
+            }
+            await mutateLines();
+            // Reset drafts
+            setNewLineDesc("");
+            setNewLineQty(1);
+            setNewLineUnitPrice(0);
+            setStdWidthMm(null);
+            setStdHeightMm(null);
+            setStdTimber("");
+            setStdFinish("");
+            setStdIronmongery("");
+            setStdGlazing("");
+            setActiveTab("quote-lines");
+            toast({ title: "Line added", description: "Product line created and saved." });
+          } else {
+            toast({ title: "Line created but no ID returned", description: "Could not attach specifications", variant: "destructive" });
           }
-          await mutateLines();
-          // Reset drafts
-          setNewLineDesc("");
-          setNewLineQty(1);
-          setNewLineUnitPrice(0);
-          setStdWidthMm(null);
-          setStdHeightMm(null);
-          setStdTimber("");
-          setStdFinish("");
-          setStdIronmongery("");
-          setStdGlazing("");
-          setActiveTab("quote-lines");
-          toast({ title: "Line added", description: "Product line created and saved." });
+        } catch (lineErr: any) {
+          console.error("Failed to create quote line:", lineErr);
+          toast({ title: "Line creation failed", description: lineErr?.message || "Unable to create line item", variant: "destructive" });
         }
       } else {
         toast({ title: "Product configuration saved" });
       }
     } catch (err: any) {
-      toast({ title: "Save failed", description: err?.message || "", variant: "destructive" });
+      console.error("Save product configuration error:", err);
+      toast({ title: "Save failed", description: err?.message || "Unknown error", variant: "destructive" });
     }
   }, [quoteId, quote, selectedProductOptionId, configAnswers, mutateQuote, newLineDesc, newLineQty, newLineUnitPrice, stdWidthMm, stdHeightMm, stdTimber, stdFinish, stdIronmongery, stdGlazing, mutateLines, toast]);
 
@@ -1222,22 +1249,8 @@ export default function QuoteBuilderPage() {
                         variant="outline"
                         className="gap-2"
                         onClick={() => {
-                          // Find the selected product to show in 3D modal
-                          let selectedProduct = null;
-                          for (const cat of productCategories) {
-                            for (const type of cat.types) {
-                              for (const opt of type.options) {
-                                if (opt.id === selectedProductOptionId) {
-                                  selectedProduct = { cat, type, opt };
-                                  break;
-                                }
-                              }
-                            }
-                          }
-                          if (selectedProduct) {
-                            // Show 3D preview modal here
-                            window.location.href = `/quotes/${quoteId}?show3d=${selectedProductOptionId}`;
-                          }
+                          setModalProductOptionId(selectedProductOptionId);
+                          setShow3dModal(true);
                         }}
                       >
                         <Box className="h-4 w-4" />
@@ -1564,6 +1577,40 @@ export default function QuoteBuilderPage() {
                     </div>
                   )}
                 </div>
+
+                {/* 3D Preview Modal */}
+                {show3dModal && modalProductOptionId && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                    <div className="w-full max-w-4xl bg-white rounded-2xl shadow-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+                      <div className="flex items-center justify-between">
+                        <h2 className="text-2xl font-semibold">3D Preview</h2>
+                        <button
+                          onClick={() => {
+                            setShow3dModal(false);
+                            setModalProductOptionId(null);
+                          }}
+                          className="text-slate-400 hover:text-slate-600 text-2xl leading-none"
+                        >
+                          ×
+                        </button>
+                      </div>
+                      <div className="w-full h-[500px] bg-slate-100 rounded-lg flex items-center justify-center">
+                        <p className="text-slate-500">3D Preview - Product loading...</p>
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setShow3dModal(false);
+                            setModalProductOptionId(null);
+                          }}
+                        >
+                          Close
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </TabsContent>
 
