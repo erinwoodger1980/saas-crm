@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Loader2, Sparkles, Printer, ChevronDown, ChevronRight, Download, FileText, Building2, Cpu, Edit3, Eye, FileUp, Mail, Save, Box, Wand2 } from "lucide-react";
 import { TypeSelectorModal } from "@/components/TypeSelectorModal";
+import { ProductConfigurator3D } from "@/components/configurator/ProductConfigurator3D";
 import {
   fetchQuote,
   fetchParsedLines,
@@ -1581,8 +1582,8 @@ export default function QuoteBuilderPage() {
                 {/* 3D Preview Modal */}
                 {show3dModal && modalProductOptionId && (
                   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-                    <div className="w-full max-w-4xl bg-white rounded-2xl shadow-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-                      <div className="flex items-center justify-between">
+                    <div className="w-full max-w-6xl bg-white rounded-2xl shadow-xl overflow-hidden max-h-[95vh] flex flex-col">
+                      <div className="flex items-center justify-between p-6 border-b">
                         <h2 className="text-2xl font-semibold">3D Preview</h2>
                         <button
                           onClick={() => {
@@ -1594,19 +1595,50 @@ export default function QuoteBuilderPage() {
                           ×
                         </button>
                       </div>
-                      <div className="w-full h-[500px] bg-slate-100 rounded-lg flex items-center justify-center">
-                        <p className="text-slate-500">3D Preview - Product loading...</p>
-                      </div>
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => {
+                      <div className="flex-1 overflow-hidden">
+                        <ProductConfigurator3D
+                          tenantId={quote?.tenantId || 'preview'}
+                          entityType="quoteLineItem"
+                          entityId={`preview-${modalProductOptionId}`}
+                          lineItem={{
+                            configuredProduct: {
+                              productType: (() => {
+                                // Find the selected product option and extract its category/type/option
+                                for (const cat of productCategories) {
+                                  if (!cat.types) continue;
+                                  for (const type of cat.types) {
+                                    if (!type.options) continue;
+                                    const opt = type.options.find((o: any) => o.id === modalProductOptionId);
+                                    if (opt) {
+                                      return {
+                                        category: cat.value || 'doors',
+                                        type: type.value || 'standard',
+                                        option: opt.value || 'E01',
+                                      };
+                                    }
+                                  }
+                                }
+                                return { category: 'doors', type: 'standard', option: 'E01' };
+                              })(),
+                            },
+                            lineStandard: {
+                              widthMm: stdWidthMm || 914,
+                              heightMm: stdHeightMm || 2032,
+                            },
+                            meta: {
+                              depthMm: 45,
+                            },
+                            description: newLineDesc || 'New Product',
+                          }}
+                          onChange={(config) => {
+                            // Optional: handle config changes
+                          }}
+                          onClose={() => {
                             setShow3dModal(false);
                             setModalProductOptionId(null);
                           }}
-                        >
-                          Close
-                        </Button>
+                          height="calc(95vh - 80px)"
+                        />
                       </div>
                     </div>
                   </div>
