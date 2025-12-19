@@ -295,8 +295,11 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
   async function seedStandardFields() {
     setSeeding(true);
     try {
-      console.log('[AdminQuestionnaireFieldsTable] Seeding standard fields...', baseUrl + '/seed-standard');
-      const response = await fetch(baseUrl + '/seed-standard', {
+      const seedUrl = baseUrl + '/seed-standard';
+      console.log('[AdminQuestionnaireFieldsTable] Seeding standard fields...', seedUrl);
+      console.log('[AdminQuestionnaireFieldsTable] Current scope:', scope);
+      
+      const response = await fetch(seedUrl, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -304,18 +307,29 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
         },
       });
       
-      const result = await response.json();
+      console.log('[AdminQuestionnaireFieldsTable] Seed response status:', response.status, response.statusText);
+      
+      let result;
+      try {
+        result = await response.json();
+      } catch (parseError) {
+        console.error('[AdminQuestionnaireFieldsTable] Failed to parse response:', parseError);
+        alert(`❌ Server returned invalid response (status ${response.status})`);
+        setSeeding(false);
+        return;
+      }
+      
       console.log('[AdminQuestionnaireFieldsTable] Seed result:', result);
       
-      if (response.ok) {
-        alert(`✅ Standard fields seeded successfully!\n\nCreated: ${result.fieldsCreated || 0}\nSkipped (already exist): ${result.fieldsSkipped || 0}`);
+      if (response.ok && result.ok) {
+        alert(`✅ Standard fields seeded successfully!\n\nCreated: ${result.fieldsCreated || 0}\nSkipped (already exist): ${result.fieldsSkipped || 0}\n\nQuestionnaire: ${result.questionnaire?.name || 'Unknown'}`);
         await mutate();
       } else {
-        console.error('[AdminQuestionnaireFieldsTable] Seed failed:', result);
-        alert(`❌ Failed to seed standard fields:\n${result.error || result.detail || 'Unknown error'}`);
+        console.error('[AdminQuestionnaireFieldsTable] Seed failed:', { status: response.status, result });
+        alert(`❌ Failed to seed standard fields:\n\nStatus: ${response.status}\nError: ${result.error || result.detail || JSON.stringify(result)}`);
       }
     } catch (e) {
-      console.error('Failed to seed standard fields:', e);
+      console.error('[AdminQuestionnaireFieldsTable] Exception:', e);
       alert(`❌ Error seeding standard fields:\n${(e as Error).message || 'Network error'}`);
     } finally {
       setSeeding(false);
