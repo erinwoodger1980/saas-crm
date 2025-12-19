@@ -979,13 +979,11 @@ export default function LeadModal({
             if (slug) {
               // Conditionally fetch fire door fields only if tenant is fire door manufacturer
               const fetchPromises = [
-                fetchQuestionnaireFields({ tenantSlug: slug, scope: "client" }).catch(() => []),
-                fetchQuestionnaireFields({ tenantSlug: slug, scope: "quote_details" }).catch(() => []),
+                fetchQuestionnaireFields({ tenantSlug: slug, scope: "project_details" }).catch(() => []),
                 // Back-compat: some tenants still store item fields under legacy scope "item"
                 fetchQuestionnaireFields({ tenantSlug: slug, scope: "item" as any }).catch(() => []),
                 fetchQuestionnaireFields({ tenantSlug: slug, scope: "manufacturing" }).catch(() => []),
                 fetchQuestionnaireFields({ tenantSlug: slug, scope: "public" }).catch(() => []),
-                fetchQuestionnaireFields({ tenantSlug: slug, scope: "internal" }).catch(() => []),
               ];
               
               if (isFireDoor) {
@@ -996,10 +994,10 @@ export default function LeadModal({
               }
               
               const results = await Promise.all(fetchPromises);
-              const [client, quoteDetails, itemFields, manuf, pub, internal, fireDoorSched, fireDoorItems] = isFireDoor 
+              const [projectDetails, itemFields, manuf, pub, fireDoorSched, fireDoorItems] = isFireDoor 
                 ? results 
                 : [...results, [], []];
-              const quoteDetailsMerged = [...(quoteDetails || []), ...(itemFields || [])]
+              const projectDetailsMerged = [...(projectDetails || []), ...(itemFields || [])]
                 .filter(Boolean)
                 .reduce((acc: any[], field: any) => {
                   const exists = acc.find((f) => f.id === field.id || f.key === field.key);
@@ -1007,18 +1005,20 @@ export default function LeadModal({
                   return acc;
                 }, []);
 
-              setClientFields((client || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: true, showOnLead: true, sortOrder: f.sortOrder || 0, productTypes: Array.isArray(f.productTypes) ? f.productTypes : undefined })) as NormalizedQuestionnaireField[]);
-              setQuoteDetailsFields((quoteDetailsMerged || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: true, showOnLead: true, sortOrder: f.sortOrder || 0, productTypes: Array.isArray(f.productTypes) ? f.productTypes : undefined })) as NormalizedQuestionnaireField[]);
+              // Client fields are now managed separately via Client table
+              setClientFields([]);
+              // Project details contains all lead/quote-specific fields (was internal + quote_details)
+              setQuoteDetailsFields((projectDetailsMerged || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, internalOnly: true, sortOrder: f.sortOrder || 0, productTypes: Array.isArray(f.productTypes) ? f.productTypes : undefined })) as NormalizedQuestionnaireField[]);
               console.log('[LeadModal] Loaded fields:', {
-                client: client?.length || 0,
-                quoteDetails: quoteDetailsMerged?.length || 0,
-                hasProductTypes: (quoteDetailsMerged || []).some((f: any) => f.productTypes?.length > 0)
+                projectDetails: projectDetailsMerged?.length || 0,
+                hasProductTypes: (projectDetailsMerged || []).some((f: any) => f.productTypes?.length > 0)
               });
               setManufacturingFields((manuf || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, visibleAfterOrder: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
               setFireDoorScheduleFields((fireDoorSched || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
               setFireDoorLineItemsFields((fireDoorItems || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
               setPublicFields((pub || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: true, showOnLead: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
-              setInternalFields((internal || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, internalOnly: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
+              // Internal fields set now references project_details (same data, different name)
+              setInternalFields((projectDetailsMerged || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, internalOnly: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
             }
           } catch (e) {
             console.debug("[LeadModal] failed loading scoped fields", e);

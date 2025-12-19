@@ -18,29 +18,25 @@ export interface QuestionnaireFieldRow {
   order: number;
   options?: string[] | null;
   isStandard?: boolean;
-  scope?: "client" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal";
+  scope?: "project_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public";
   productTypes?: string[];
 }
 
 const FIELD_TYPES: Array<QuestionnaireFieldRow["type"]> = ["text", "number", "select", "boolean"];
 const SCOPE_OPTIONS: Array<NonNullable<QuestionnaireFieldRow["scope"]>> = [
-  "client",
-  "quote_details",
+  "project_details",
   "manufacturing",
   "fire_door_schedule",
   "fire_door_line_items",
   "public",
-  "internal",
 ];
 
 const SCOPE_INFO: Record<string, { title: string; description: string; location: string; icon: string }> = {
-  "client": { title: "Client Details", description: "Customer contact information", location: "Lead Modal → Client Stage", icon: "👤" },
-  "quote_details": { title: "Project Details", description: "Project specifications & timelines", location: "Lead Modal → Client Stage", icon: "🗂️" },
+  "project_details": { title: "Project Details", description: "Lead/quote-specific information & internal tracking", location: "Lead Modal → Project Details Section", icon: "🗂️" },
   "manufacturing": { title: "Manufacturing", description: "Production details (visible after WON)", location: "Lead Modal → Workshop Stage", icon: "🏭" },
   "fire_door_schedule": { title: "Fire Door Schedule", description: "Fire door tracking fields", location: "Fire Door Portal", icon: "🚪" },
   "fire_door_line_items": { title: "Fire Door Line Items", description: "Door specifications & BOM", location: "Fire Door Portal", icon: "📋" },
   "public": { title: "Public Questionnaire", description: "Customer-facing questions", location: "Public Estimator", icon: "🌐" },
-  "internal": { title: "Internal Only", description: "Staff notes & internal data", location: "Lead Modal (Internal Only)", icon: "🔒" },
 };
 
 const fetcher = (url: string) => fetch(url, { credentials: 'include' }).then((r) => r.json());
@@ -431,6 +427,13 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
         </div>
         <div className="flex items-center gap-2">
           {savingOrder && <span className="text-[10px] text-amber-600">Saving order…</span>}
+          <button
+            onClick={seedStandardFields}
+            disabled={seeding}
+            className="rounded bg-emerald-600 text-white text-sm px-4 py-2 hover:bg-emerald-500 disabled:opacity-50 font-medium"
+          >
+            {seeding ? 'Setting up…' : '🌱 Seed Standard Fields'}
+          </button>
           <button
             type="button"
             onClick={() => setCreating(true)}

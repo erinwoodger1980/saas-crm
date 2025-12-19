@@ -18,7 +18,7 @@ export type StandardFieldDefinition = {
   placeholder?: string;
   sortOrder: number;
   group?: string;
-  scope: "client" | "quote_details" | "public" | "internal" | "manufacturing";
+  scope: "project_details" | "public" | "manufacturing";
   isStandard: true;
 };
 
@@ -27,156 +27,7 @@ export type StandardFieldDefinition = {
  * These map directly to ML model features and business processes
  */
 export const STANDARD_FIELDS: StandardFieldDefinition[] = [
-  // ============ CLIENT PROFILE (scope: client) ============
-  {
-    key: "installation_required",
-    label: "Installation Required",
-    type: "BOOLEAN",
-    required: false,
-    costingInputKey: "installation_required",
-    helpText: "Professional installation needed?",
-    sortOrder: 100,
-    group: "Client Profile",
-    scope: "client",
-    isStandard: true,
-  },
-  {
-    key: "contact_name",
-    label: "Your Name",
-    type: "TEXT",
-    required: true,
-    helpText: "Full name for correspondence",
-    placeholder: "John Smith",
-    sortOrder: 101,
-    group: "Client Profile",
-    scope: "client",
-    isStandard: true,
-  },
-  {
-    key: "company",
-    label: "Company",
-    type: "TEXT",
-    required: false,
-    helpText: "Company name if applicable",
-    placeholder: "ABC Builders Ltd",
-    sortOrder: 102,
-    group: "Client Profile",
-    scope: "client",
-    isStandard: true,
-  },
-  {
-    key: "email",
-    label: "Email Address",
-    type: "TEXT",
-    required: true,
-    helpText: "We'll send your quote to this email",
-    placeholder: "john@example.com",
-    sortOrder: 103,
-    group: "Client Profile",
-    scope: "client",
-    isStandard: true,
-  },
-  {
-    key: "phone",
-    label: "Phone Number",
-    type: "TEXT",
-    required: false,
-    helpText: "Optional contact number",
-    placeholder: "07700 900000",
-    sortOrder: 104,
-    group: "Client Profile",
-    scope: "client",
-    isStandard: true,
-  },
-  {
-    key: "lead_source",
-    label: "How did you hear about us?",
-    type: "SELECT",
-    options: ["Website", "Google Search", "Referral", "Social Media", "Advertisement", "Previous Customer", "Other"],
-    required: false,
-    costingInputKey: "lead_source",
-    helpText: "Marketing attribution",
-    sortOrder: 105,
-    group: "Client Profile",
-    scope: "client",
-    isStandard: true,
-  },
-  {
-    key: "region",
-    label: "Project Location",
-    type: "SELECT",
-    options: ["London", "South East", "South West", "Midlands", "North West", "North East", "Yorkshire", "Scotland", "Wales", "Northern Ireland", "Channel Islands", "Other"],
-    required: false,
-    costingInputKey: "region",
-    helpText: "Geographic location affects delivery and installation costs",
-    sortOrder: 106,
-    group: "Client Profile",
-    scope: "client",
-    isStandard: true,
-  },
-  {
-    key: "timeframe",
-    label: "Project Timeframe",
-    type: "SELECT",
-    options: ["ASAP (within 1 month)", "1-2 months", "3-6 months", "6+ months", "Flexible"],
-    required: false,
-    helpText: "When do you need completion?",
-    sortOrder: 107,
-    group: "Client Profile",
-    scope: "client",
-    isStandard: true,
-  },
-  {
-    key: "property_listed",
-    label: "Listed Building",
-    type: "SELECT",
-    options: ["Yes", "No", "Not Sure"],
-    required: false,
-    costingInputKey: "property_listed",
-    helpText: "Special considerations if listed",
-    sortOrder: 108,
-    group: "Client Profile",
-    scope: "client",
-    isStandard: true,
-  },
-  {
-    key: "budget_range",
-    label: "Budget Range",
-    type: "SELECT",
-    options: ["Under £5,000", "£5,000 - £15,000", "£15,000 - £30,000", "£30,000 - £50,000", "Over £50,000", "Not sure yet"],
-    required: false,
-    helpText: "Approximate spend guideline",
-    sortOrder: 109,
-    group: "Client Profile",
-    scope: "client",
-    isStandard: true,
-  },
-  {
-    key: "additional_notes",
-    label: "Additional Details",
-    type: "TEXTAREA",
-    required: false,
-    helpText: "Any other info to help quoting",
-    placeholder: "Specific requirements, existing issues…",
-    sortOrder: 110,
-    group: "Client Profile",
-    scope: "client",
-    isStandard: true,
-  },
-  {
-    key: "new_build_existing",
-    label: "New build/Existing",
-    type: "SELECT",
-    options: ["New Build", "Existing Property", "Renovation"],
-    required: false,
-    helpText: "Type of property",
-    sortOrder: 111,
-    group: "Client Profile",
-    scope: "client",
-    isStandard: true,
-  },
-
-  // ============ QUOTE DETAILS (scope: quote_details - project-specific info) ============
+  // ============ PROJECT DETAILS (scope: project_details - lead/quote specific info) ============
   {
     key: "enquiry_number",
     label: "Enquiry Number",
@@ -185,8 +36,8 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     helpText: "Internal reference number",
     placeholder: "ENQ-2025-001",
     sortOrder: 150,
-    group: "Quote Details",
-    scope: "quote_details",
+    group: "Project Details",
+    scope: "project_details",
     isStandard: true,
   },
   {
@@ -197,8 +48,8 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     helpText: "Delivery location if different from client address",
     placeholder: "123 Project Site, Town, Postcode",
     sortOrder: 151,
-    group: "Quote Details",
-    scope: "quote_details",
+    group: "Project Details",
+    scope: "project_details",
     isStandard: true,
   },
   {
@@ -209,8 +60,8 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     helpText: "Project background, requirements, constraints",
     placeholder: "Describe the project details...",
     sortOrder: 152,
-    group: "Quote Details",
-    scope: "quote_details",
+    group: "Project Details",
+    scope: "project_details",
     isStandard: true,
   },
   {
@@ -221,8 +72,8 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     required: false,
     helpText: "Client category for workflow routing",
     sortOrder: 153,
-    group: "Quote Details",
-    scope: "quote_details",
+    group: "Project Details",
+    scope: "project_details",
     isStandard: true,
   },
   {
@@ -233,8 +84,8 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     helpText: "Job Management System reference",
     placeholder: "JMS-123",
     sortOrder: 154,
-    group: "Quote Details",
-    scope: "quote_details",
+    group: "Project Details",
+    scope: "project_details",
     isStandard: true,
   },
   {
@@ -245,8 +96,8 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     required: false,
     helpText: "Does this project need a site survey?",
     sortOrder: 155,
-    group: "Quote Details",
-    scope: "quote_details",
+    group: "Project Details",
+    scope: "project_details",
     isStandard: true,
   },
   {
@@ -257,8 +108,8 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     helpText: "Internal follow-up reminders and actions",
     placeholder: "Next steps, callbacks, etc.",
     sortOrder: 156,
-    group: "Quote Details",
-    scope: "quote_details",
+    group: "Project Details",
+    scope: "project_details",
     isStandard: true,
   },
   {
@@ -269,8 +120,8 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     helpText: "Team member who prepared the quote",
     placeholder: "Staff name",
     sortOrder: 157,
-    group: "Quote Details",
-    scope: "quote_details",
+    group: "Project Details",
+    scope: "project_details",
     isStandard: true,
   },
   {
@@ -281,8 +132,8 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     helpText: "Specific installation location details",
     placeholder: "Front of house, rear extension, etc.",
     sortOrder: 158,
-    group: "Quote Details",
-    scope: "quote_details",
+    group: "Project Details",
+    scope: "project_details",
     isStandard: true,
   },
 
@@ -463,17 +314,17 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     isStandard: true,
   },
 
-  // ============ INTERNAL (scope: internal - backend only) ============
+  // Additional project details fields merged from old internal scope
   {
     key: "area_m2",
     label: "Project Area (m²)",
     type: "NUMBER",
-    required: true,
+    required: false,
     costingInputKey: "area_m2",
     helpText: "Computed automatically from dimensions",
-    sortOrder: 300,
-    group: "Internal",
-    scope: "internal",
+    sortOrder: 159,
+    group: "Project Details",
+    scope: "project_details",
     isStandard: true,
   },
   {
@@ -481,12 +332,12 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     label: "Project Type",
     type: "SELECT",
     options: ["Windows", "Doors", "French Doors", "Bifold Doors", "Sash Windows", "Staircase", "Kitchen", "Wardrobes", "Alcove Units", "Other"],
-    required: true,
+    required: false,
     costingInputKey: "project_type",
     helpText: "Set by tenant – internal classification",
-    sortOrder: 301,
-    group: "Internal",
-    scope: "internal",
+    sortOrder: 160,
+    group: "Project Details",
+    scope: "project_details",
     isStandard: true,
   },
   {
@@ -495,21 +346,9 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     type: "DATE",
     required: false,
     helpText: "Auto-populated when quote sent",
-    sortOrder: 302,
-    group: "Internal",
-    scope: "internal",
-    isStandard: true,
-  },
-  {
-    key: "quoted_by",
-    label: "Quoted by",
-    type: "SELECT",
-    options: ["Sales Team", "Director", "Workshop Manager", "Admin"],
-    required: false,
-    helpText: "Who prepared the quote",
-    sortOrder: 303,
-    group: "Internal",
-    scope: "internal",
+    sortOrder: 161,
+    group: "Project Details",
+    scope: "project_details",
     isStandard: true,
   },
   {
@@ -518,9 +357,9 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     type: "DATE",
     required: false,
     helpText: "Auto-populated when lead created",
-    sortOrder: 304,
-    group: "Internal",
-    scope: "internal",
+    sortOrder: 162,
+    group: "Project Details",
+    scope: "project_details",
     isStandard: true,
   },
   {
@@ -530,9 +369,9 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     required: false,
     helpText: "Internal reference number",
     placeholder: "e.g., Q-2025-001",
-    sortOrder: 305,
-    group: "Internal",
-    scope: "internal",
+    sortOrder: 163,
+    group: "Project Details",
+    scope: "project_details",
     isStandard: true,
   },
   {
@@ -541,9 +380,9 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     type: "NUMBER",
     required: false,
     helpText: "Total quoted amount",
-    sortOrder: 306,
-    group: "Internal",
-    scope: "internal",
+    sortOrder: 164,
+    group: "Project Details",
+    scope: "project_details",
     isStandard: true,
   },
   {
@@ -553,9 +392,9 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     options: ["Website", "Phone", "Email", "Walk-in", "Referral", "Trade", "Other"],
     required: false,
     helpText: "Lead origin channel",
-    sortOrder: 307,
-    group: "Internal",
-    scope: "internal",
+    sortOrder: 165,
+    group: "Project Details",
+    scope: "project_details",
     isStandard: true,
   },
   {
@@ -565,20 +404,9 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     options: ["Oak", "Accoya", "Iroko", "Sapele", "Pine", "Engineered", "Mixed", "Other"],
     required: false,
     helpText: "Timber specification for internal tracking",
-    sortOrder: 308,
-    group: "Internal",
-    scope: "internal",
-    isStandard: true,
-  },
-  {
-    key: "site_visit_required",
-    label: "Site Visit Required?",
-    type: "BOOLEAN",
-    required: false,
-    helpText: "Needs on-site survey",
-    sortOrder: 309,
-    group: "Internal",
-    scope: "internal",
+    sortOrder: 166,
+    group: "Project Details",
+    scope: "project_details",
     isStandard: true,
   },
   {
@@ -587,9 +415,9 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     type: "DATE",
     required: false,
     helpText: "Auto-populated when opportunity won",
-    sortOrder: 310,
-    group: "Internal",
-    scope: "internal",
+    sortOrder: 167,
+    group: "Project Details",
+    scope: "project_details",
     isStandard: true,
   },
 
@@ -835,14 +663,14 @@ export function getFieldsByGroup(group: string): StandardFieldDefinition[] {
  */
 export function getFieldGroups(): string[] {
   const groups = [...new Set(STANDARD_FIELDS.map((f) => f.group).filter(Boolean))];
-  const order = ["Client Profile", "Quote Details", "Public Questionnaire", "Internal", "Manufacturing"];
+  const order = ["Project Details", "Public Questionnaire", "Manufacturing"];
   return order.filter((g) => groups.includes(g));
 }
 
 /**
  * Get fields by scope for context-specific rendering
  */
-export function getFieldsByScope(scope: "client" | "quote_details" | "public" | "internal" | "manufacturing"): StandardFieldDefinition[] {
+export function getFieldsByScope(scope: "project_details" | "public" | "manufacturing"): StandardFieldDefinition[] {
   return STANDARD_FIELDS.filter((f) => f.scope === scope);
 }
 
