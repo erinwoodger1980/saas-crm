@@ -26,7 +26,7 @@ export const runtime = 'nodejs';
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const url = new URL(apiBase() + '/api/flexible-fields/display-contexts');
+    const url = new URL(apiBase() + '/api/display-contexts');
     
     searchParams.forEach((value, key) => {
       url.searchParams.set(key, value);
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    const res = await fetch(apiBase() + '/api/flexible-fields/display-contexts', {
+    const res = await fetch(apiBase() + '/api/display-contexts', {
       method: 'POST',
       headers: {
         ...forwardHeaders(request),

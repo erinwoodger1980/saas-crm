@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    const res = await fetch(apiBase() + '/api/flexible-fields/evaluate-field', {
+    const res = await fetch(apiBase() + '/api/evaluate-field', {
       method: 'POST',
       headers: {
         ...forwardHeaders(request),

@@ -28,7 +28,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const res = await fetch(apiBase() + `/api/flexible-fields/${params.id}`, {
+    const res = await fetch(apiBase() + `/api/fields/${params.id}`, {
       headers: forwardHeaders(request),
       credentials: 'include',
     });
@@ -55,7 +55,7 @@ export async function PATCH(
   try {
     const body = await request.json();
     
-    const res = await fetch(apiBase() + `/api/flexible-fields/${params.id}`, {
+    const res = await fetch(apiBase() + `/api/fields/${params.id}`, {
       method: 'PATCH',
       headers: {
         ...forwardHeaders(request),
@@ -85,7 +85,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const res = await fetch(apiBase() + `/api/flexible-fields/${params.id}`, {
+    const res = await fetch(apiBase() + `/api/fields/${params.id}`, {
       method: 'DELETE',
       headers: forwardHeaders(request),
       credentials: 'include',
