@@ -12,7 +12,7 @@ import { ClientQuoteUploadCard } from "@/components/quotes/ClientQuoteUploadCard
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
-import { Loader2, Sparkles, Printer, ChevronDown, ChevronRight, Download, FileText, Building2, Cpu, Edit3, Eye, FileUp, Mail, Save } from "lucide-react";
+import { Loader2, Sparkles, Printer, ChevronDown, ChevronRight, Download, FileText, Building2, Cpu, Edit3, Eye, FileUp, Mail, Save, Box } from "lucide-react";
 import {
   fetchQuote,
   fetchParsedLines,
@@ -1112,27 +1112,58 @@ export default function QuoteBuilderPage() {
                   </p>
                 </div>
 
-                {/* Product option selector */}
+                {/* Product option selector with 3D preview button */}
                 <div className="space-y-3">
-                  <label className="block text-sm font-medium text-foreground">Select Product Type/Option</label>
-                  <select
-                    className="w-full rounded-lg border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    value={selectedProductOptionId || ""}
-                    onChange={(e) => setSelectedProductOptionId(e.target.value || null)}
-                  >
-                    <option value="">— Select a product —</option>
-                    {productCategories.map((cat: any) => {
-                      if (!cat.types || !Array.isArray(cat.types)) return null;
-                      return cat.types.map((type: any) => {
-                        if (!type.options || !Array.isArray(type.options)) return null;
-                        return type.options.map((opt: any) => (
-                          <option key={opt.id} value={opt.id}>
-                            {cat.label} › {type.label} › {opt.label}
-                          </option>
-                        ));
-                      });
-                    })}
-                  </select>
+                  <div className="flex items-end gap-3">
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium text-foreground mb-2">Select Product Type/Option</label>
+                      <select
+                        className="w-full rounded-lg border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                        value={selectedProductOptionId || ""}
+                        onChange={(e) => setSelectedProductOptionId(e.target.value || null)}
+                      >
+                        <option value="">— Select a product —</option>
+                        {productCategories.map((cat: any) => {
+                          if (!cat.types || !Array.isArray(cat.types)) return null;
+                          return cat.types.map((type: any) => {
+                            if (!type.options || !Array.isArray(type.options)) return null;
+                            return type.options.map((opt: any) => (
+                              <option key={opt.id} value={opt.id}>
+                                {cat.label} › {type.label} › {opt.label}
+                              </option>
+                            ));
+                          });
+                        })}
+                      </select>
+                    </div>
+                    {selectedProductOptionId && productCategories && (
+                      <Button
+                        variant="outline"
+                        className="gap-2"
+                        onClick={() => {
+                          // Find the selected product to show in 3D modal
+                          let selectedProduct = null;
+                          for (const cat of productCategories) {
+                            for (const type of cat.types) {
+                              for (const opt of type.options) {
+                                if (opt.id === selectedProductOptionId) {
+                                  selectedProduct = { cat, type, opt };
+                                  break;
+                                }
+                              }
+                            }
+                          }
+                          if (selectedProduct) {
+                            // Show 3D preview modal here
+                            window.location.href = `/quotes/${quoteId}?show3d=${selectedProductOptionId}`;
+                          }
+                        }}
+                      >
+                        <Box className="h-4 w-4" />
+                        3D Preview
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Configuration questions - Grid layout */}
@@ -1209,16 +1240,6 @@ export default function QuoteBuilderPage() {
                       value={newLineQty ?? ''}
                       min={1}
                       onChange={(e) => setNewLineQty(e.target.value ? Number(e.target.value) : null)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium text-foreground">Unit price (£)</label>
-                    <Input
-                      type="number"
-                      inputMode="decimal"
-                      value={newLineUnitPrice ?? ''}
-                      min={0}
-                      onChange={(e) => setNewLineUnitPrice(e.target.value ? Number(e.target.value) : null)}
                     />
                   </div>
                   <div className="space-y-2">
