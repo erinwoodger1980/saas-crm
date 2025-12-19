@@ -1504,6 +1504,29 @@ export default function QuoteBuilderPage() {
                             </select>
                           </td>
                         </tr>
+
+                        {/* Existing line items */}
+                        {lines && lines.length > 0 && lines.map((line, idx) => (
+                          <tr key={line.id} className="border-b hover:bg-muted/20">
+                            <td className="px-3 py-2 border-r">{line.description}</td>
+                            <td className="px-3 py-2 border-r text-right">{line.qty || '—'}</td>
+                            <td className="px-3 py-2 border-r text-right">
+                              {line.lineStandard?.widthMm || '—'}
+                            </td>
+                            <td className="px-3 py-2 border-r text-right">
+                              {line.lineStandard?.heightMm || '—'}
+                            </td>
+                            <td className="px-3 py-2 border-r">{line.lineStandard?.timber || '—'}</td>
+                            <td className="px-3 py-2 border-r">{line.lineStandard?.finish || '—'}</td>
+                            <td className="px-3 py-2 border-r">{line.lineStandard?.ironmongery || '—'}</td>
+                            <td className="px-3 py-2 border-r">{line.lineStandard?.glazing || '—'}</td>
+                            <td className="px-3 py-2 text-center">
+                              <Link href={`/quotes/${quoteId}/lines/${line.id}`} className="text-blue-600 hover:text-blue-800 text-sm underline">
+                                Edit
+                              </Link>
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
