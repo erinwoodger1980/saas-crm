@@ -726,6 +726,64 @@ router.get("/:id/lines", requireAuth, async (req: any, res) => {
 });
 
 /**
+ * POST /quotes/:id/lines
+ * Body: { description: string; quantity?: number; unitPrice?: number; notes?: string | null }
+ * Creates a new manual quote line
+ * - Validates ownership (tenant + quote)
+ * - Creates a new quoteLine entry
+ * - Returns the created line
+ */
+router.post("/:id/lines", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = await getTenantId(req);
+    const quoteId = String(req.params.id);
+    const quote = await prisma.quote.findFirst({ where: { id: quoteId, tenantId } });
+    if (!quote) return res.status(404).json({ error: "not_found" });
+
+    const description = String(req.body?.description || "Item");
+    const quantity = Number(req.body?.quantity ?? 1);
+    const unitPrice = Number(req.body?.unitPrice ?? 0);
+    const notes = req.body?.notes ? String(req.body.notes) : null;
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      return res.status(400).json({ error: "invalid_quantity" });
+    }
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+      return res.status(400).json({ error: "invalid_unit_price" });
+    }
+
+    // Create the line
+    const line = await prisma.quoteLine.create({
+      data: {
+        quoteId,
+        description,
+        qty: new Prisma.Decimal(quantity),
+        unitPrice: new Prisma.Decimal(unitPrice),
+        currency: quote.currency || "GBP",
+        meta: notes ? { notes } : {},
+      },
+    });
+
+    // Return in ParsedLineDto format
+    return res.json({
+      ok: true,
+      line: {
+        id: line.id,
+        description: line.description,
+        qty: line.qty.toNumber?.() ?? Number(line.qty),
+        unitPrice: line.unitPrice.toNumber?.() ?? Number(line.unitPrice),
+        lineTotalGBP: (line.qty.toNumber?.() ?? Number(line.qty)) * (line.unitPrice.toNumber?.() ?? Number(line.unitPrice)),
+        currency: line.currency,
+        meta: line.meta as any,
+      },
+    });
+  } catch (e: any) {
+    console.error("[POST /quotes/:id/lines] failed:", e?.message || e);
+    return res.status(500).json({ error: e?.message || "internal_error" });
+  }
+});
+
+/**
  * PATCH /quotes/:id/lines/:lineId
  * Body: { qty?: number | null; unitPrice?: number | null; sellUnitGBP?: number; margin?: number; meta?: Record<string, any> }
  * Updates a single quote line allowing inline editing from the quote builder.
