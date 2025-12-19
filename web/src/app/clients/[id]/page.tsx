@@ -14,28 +14,6 @@ import { ArrowLeft, Save, Mail, Phone, MapPin, Building, Edit, Check, X } from "
 import Link from "next/link";
 import { useToast } from "@/components/ui/use-toast";
 
-type ClientFieldDefinition = {
-  key: string;
-  label: string;
-  source: "db" | "standard" | "custom";
-};
-
-const BASE_CLIENT_FIELDS: ClientFieldDefinition[] = [
-  { key: "name", label: "Name", source: "db" },
-  { key: "companyName", label: "Company", source: "db" },
-  { key: "type", label: "Client Type", source: "db" },
-  { key: "email", label: "Email", source: "db" },
-  { key: "phone", label: "Phone", source: "db" },
-  { key: "mobile", label: "Mobile", source: "db" },
-  { key: "contactPerson", label: "Contact Person", source: "db" },
-  { key: "address", label: "Street Address", source: "db" },
-  { key: "city", label: "City", source: "db" },
-  { key: "postcode", label: "Postcode", source: "db" },
-  { key: "country", label: "Country", source: "db" },
-  { key: "tags", label: "Tags", source: "db" },
-  { key: "notes", label: "Notes", source: "db" },
-];
-
 type ClientContact = {
   id: string;
   name: string;
@@ -111,7 +89,6 @@ export default function ClientDetailPage() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [authHeaders, setAuthHeaders] = useState<Record<string, string>>({});
-  const [clientFields, setClientFields] = useState<ClientFieldDefinition[]>(BASE_CLIENT_FIELDS);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -140,7 +117,6 @@ export default function ClientDetailPage() {
     if (!authHeaders["x-tenant-id"] || !clientId) return;
     loadClient();
     loadRelatedData();
-    loadClientFields();
   }, [authHeaders, clientId]);
 
   async function loadClient() {
@@ -189,37 +165,6 @@ export default function ClientDetailPage() {
     }
   }
 
-  async function loadClientFields() {
-    try {
-      const data = await apiFetch<any[]>("/fields?scope=client", {
-        headers: authHeaders,
-      });
-
-      const apiFields: ClientFieldDefinition[] = Array.isArray(data)
-        ? data.map((field) => ({
-            key: field.key,
-            label: field.label,
-            source: field.isStandard ? "standard" : "custom",
-          }))
-        : [];
-
-      const merged = new Map<string, ClientFieldDefinition>();
-      for (const def of BASE_CLIENT_FIELDS) {
-        merged.set(def.key, def);
-      }
-      for (const def of apiFields) {
-        if (!merged.has(def.key)) {
-          merged.set(def.key, def);
-        }
-      }
-
-      setClientFields(Array.from(merged.values()));
-    } catch (error) {
-      console.error("Failed to load client fields:", error);
-      setClientFields(BASE_CLIENT_FIELDS);
-    }
-  }
-
   async function handleSave() {
     setSaving(true);
     try {
@@ -246,39 +191,6 @@ export default function ClientDetailPage() {
     } finally {
       setSaving(false);
     }
-  }
-
-  function getClientFieldValue(key: string) {
-    if (!client) return null;
-
-    const aliases: Record<string, string> = {
-      contact_name: "name",
-      company: "companyName",
-      postcode: "postcode",
-      city: "city",
-    };
-
-    const mappedKey = aliases[key] || key;
-    const raw = (client as any)[mappedKey];
-    return raw ?? (client as any).custom?.[mappedKey] ?? (client as any).custom?.[key] ?? null;
-  }
-
-  function renderClientFieldValue(key: string, value: any) {
-    if (key === "type") {
-      if (!value) return "—";
-      if (value === "trade") return "Trade";
-      if (value === "reseller") return "Reseller";
-      return "Public";
-    }
-
-    if (key === "tags" && Array.isArray(value)) {
-      if (!value.length) return "—";
-      return value.join(", ");
-    }
-
-    if (typeof value === "boolean") return value ? "Yes" : "No";
-    if (value === null || value === undefined || value === "") return "—";
-    return value;
   }
 
   if (loading) {
@@ -333,6 +245,7 @@ export default function ClientDetailPage() {
                     setEditing(false);
                     setFormData({
                       name: client.name || "",
+                      type: (client as any).type || "public",
                       email: client.email || "",
                       phone: client.phone || "",
                       companyName: client.companyName || "",
@@ -614,42 +527,6 @@ export default function ClientDetailPage() {
               )}
             </div>
           </div>
-        </SectionCard>
-
-        {/* Combined Client Fields */}
-        <SectionCard title="Client Fields (Standard + Custom + DB)">
-          {clientFields.length === 0 ? (
-            <p className="text-sm text-slate-500">No client fields configured</p>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {clientFields.map((field) => {
-                const value = getClientFieldValue(field.key);
-                const sourceLabel =
-                  field.source === "db"
-                    ? "DB"
-                    : field.source === "standard"
-                    ? "Standard"
-                    : "Custom";
-
-                return (
-                  <div
-                    key={field.key}
-                    className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-                  >
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <p className="text-sm font-medium text-slate-700">{field.label}</p>
-                      <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                        {sourceLabel}
-                      </span>
-                    </div>
-                    <p className="text-slate-900 break-words">
-                      {renderClientFieldValue(field.key, value)}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </SectionCard>
 
         {/* Leads */}
