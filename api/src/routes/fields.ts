@@ -544,4 +544,27 @@ router.post("/migrate-standard-fields", requireAuth, async (req: any, res) => {
   }
 });
 
+/**
+ * POST /seed-standard
+ * Seed standard questionnaire fields for the current tenant
+ * This is useful for existing tenants that were created before standard fields were added
+ */
+router.post("/seed-standard", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+    
+    // Import the seed function
+    const { seedStandardFieldsForTenant } = await import("../lib/seedStandardFields");
+    const result = await seedStandardFieldsForTenant(tenantId);
+    
+    return res.json({
+      ok: true,
+      ...result,
+    });
+  } catch (e: any) {
+    console.error("[POST /fields/seed-standard] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error", detail: e?.message });
+  }
+});
+
 export default router;
