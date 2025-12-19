@@ -31,6 +31,7 @@ import { SceneUI } from './SceneUI';
 import { InspectorPanel } from './InspectorPanel';
 import { Loader2, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { updateQuoteLine } from '@/lib/api/quotes';
 import { toast } from 'sonner';
 
 interface ProductConfigurator3DProps {
@@ -286,6 +287,32 @@ export function ProductConfigurator3D({
       
       setIsSaving(true);
       const result = await saveSceneState(tenantId, entityType, entityId, newConfig);
+      
+      // Also persist key fields back to the quote line (width/height/thickness and selections)
+      try {
+        const params = newConfig.customData as ProductParams | undefined;
+        const quoteId = (lineItem?.quoteId || lineItem?.quote_id || lineItem?.quoteID) as string | undefined;
+        const lineId = (lineItem?.id) as string | undefined;
+        if (params && quoteId && lineId) {
+          const lineStandard: Record<string, any> = {
+            widthMm: Number(params.dimensions.width) || undefined,
+            heightMm: Number(params.dimensions.height) || undefined,
+            thicknessMm: Number(params.dimensions.depth) || undefined,
+            timber: params.construction?.timber || undefined,
+            finish: params.construction?.finish || undefined,
+            glazing: params.construction?.glazingType || undefined,
+          };
+          const metaPatch: Record<string, any> = {
+            configuredProductParams: params,
+          };
+          await updateQuoteLine(String(quoteId), String(lineId), {
+            lineStandard,
+            meta: metaPatch,
+          });
+        }
+      } catch (e) {
+        console.warn('[ProductConfigurator3D] Failed to persist line-item fields:', e);
+      }
       setIsSaving(false);
       
       if (result.shouldDisable) {
@@ -498,6 +525,11 @@ export function ProductConfigurator3D({
           camera={{
             position: config.camera?.position || [0, 1000, 2000],
             fov: cameraMode === 'Perspective' ? (config.camera?.fov || 50) : 50,
+            near: 1,
+            far: Math.max(
+              (config.customData as ProductParams)?.dimensions?.width || 2000,
+              (config.customData as ProductParams)?.dimensions?.height || 2000,
+            ) * 10,
           }}
           gl={{ antialias: true, alpha: false }}
         >
