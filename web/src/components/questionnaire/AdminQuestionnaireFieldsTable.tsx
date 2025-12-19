@@ -12,14 +12,14 @@ import { ProductTypeSelector } from "./ProductTypeSelector";
 export interface QuestionnaireFieldRow {
   id: string;
   label: string;
-  type: "text" | "number" | "select" | "boolean" | string; // allow unknown gracefully
+  type: "text" | "number" | "select" | "boolean" | string;
   required: boolean;
   costingInputKey?: string | null;
-  order: number; // local ordering (maps to backend sortOrder or order)
+  order: number;
   options?: string[] | null;
-  isStandard?: boolean; // true for built-in fields
-  scope?: "client" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal"; // where field is used
-  productTypes?: string[]; // Array of product type IDs this question applies to (e.g., ["doors-entrance", "doors-bifold"])
+  isStandard?: boolean;
+  scope?: "client" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal";
+  productTypes?: string[];
 }
 
 const FIELD_TYPES: Array<QuestionnaireFieldRow["type"]> = ["text", "number", "select", "boolean"];
@@ -33,136 +33,235 @@ const SCOPE_OPTIONS: Array<NonNullable<QuestionnaireFieldRow["scope"]>> = [
   "internal",
 ];
 
+const SCOPE_INFO: Record<string, { title: string; description: string; location: string; icon: string }> = {
+  "client": { title: "Client Details", description: "Customer contact information", location: "Lead Modal → Client Stage", icon: "👤" },
+  "quote_details": { title: "Project Details", description: "Project specifications & timelines", location: "Lead Modal → Client Stage", icon: "🗂️" },
+  "manufacturing": { title: "Manufacturing", description: "Production details (visible after WON)", location: "Lead Modal → Workshop Stage", icon: "🏭" },
+  "fire_door_schedule": { title: "Fire Door Schedule", description: "Fire door tracking fields", location: "Fire Door Portal", icon: "🚪" },
+  "fire_door_line_items": { title: "Fire Door Line Items", description: "Door specifications & BOM", location: "Fire Door Portal", icon: "📋" },
+  "public": { title: "Public Questionnaire", description: "Customer-facing questions", location: "Public Estimator", icon: "🌐" },
+  "internal": { title: "Internal Only", description: "Staff notes & internal data", location: "Lead Modal (Internal Only)", icon: "🔒" },
+};
+
 const fetcher = (url: string) => fetch(url, { credentials: 'include' }).then((r) => r.json());
 
-function SortableRow({ field, onChange, onDelete }: { field: QuestionnaireFieldRow; onChange: (f: Partial<QuestionnaireFieldRow>) => void; onDelete: () => void }) {
+function ScopePreviewBadge({ scope }: { scope: string }) {
+  const info = SCOPE_INFO[scope] || { title: scope, description: "", location: "", icon: "❓" };
+  return (
+    <div className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
+      <span className="text-lg">{info.icon}</span>
+      <div>
+        <div className="text-xs font-semibold text-slate-900">{info.title}</div>
+        <div className="text-[10px] text-slate-600">{info.location}</div>
+      </div>
+    </div>
+  );
+}
+
+function EditFieldModal({ field, isOpen, onClose, onSave }: { field: QuestionnaireFieldRow | null; isOpen: boolean; onClose: () => void; onSave: (updates: Partial<QuestionnaireFieldRow>) => void }) {
+  const [edits, setEdits] = useState<Partial<QuestionnaireFieldRow>>({});
+  const [showOptions, setShowOptions] = useState(false);
+  const [showProductTypes, setShowProductTypes] = useState(false);
+
+  useEffect(() => {
+    if (field && isOpen) {
+      setEdits({ ...field });
+    }
+  }, [field, isOpen]);
+
+  if (!field || !isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Edit Field: {field.label}</h2>
+          <p className="text-xs text-slate-500 mt-1">Make changes below. Standard fields cannot be deleted.</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold uppercase text-slate-600 mb-1">Label</label>
+            <input
+              type="text"
+              value={edits.label || ""}
+              onChange={(e) => setEdits({ ...edits, label: e.target.value })}
+              className="w-full px-3 py-2 rounded-lg border border-slate-200"
+              disabled={field.isStandard}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase text-slate-600 mb-1">Type</label>
+            <select
+              value={edits.type || "text"}
+              onChange={(e) => setEdits({ ...edits, type: e.target.value as any })}
+              className="w-full px-3 py-2 rounded-lg border border-slate-200"
+            >
+              {FIELD_TYPES.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase text-slate-600 mb-1">Scope (Where it appears)</label>
+            <select
+              value={edits.scope || "public"}
+              onChange={(e) => setEdits({ ...edits, scope: e.target.value as any })}
+              className="w-full px-3 py-2 rounded-lg border border-slate-200"
+            >
+              {SCOPE_OPTIONS.map((s) => (
+                <option key={s} value={s}>{SCOPE_INFO[s].title}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase text-slate-600 mb-1">Costing Key</label>
+            <input
+              type="text"
+              value={edits.costingInputKey || ""}
+              onChange={(e) => setEdits({ ...edits, costingInputKey: e.target.value || null })}
+              className="w-full px-3 py-2 rounded-lg border border-slate-200"
+              placeholder="For quote calculations"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={edits.required || false}
+              onChange={(e) => setEdits({ ...edits, required: e.target.checked })}
+              className="rounded"
+            />
+            <span className="text-xs font-medium text-slate-700">Required field</span>
+          </label>
+        </div>
+
+        {/* Preview of where this field will appear */}
+        <div className="rounded-lg bg-slate-50 p-3">
+          <p className="text-xs font-semibold text-slate-600 mb-2">This field will appear:</p>
+          <ScopePreviewBadge scope={edits.scope || "public"} />
+        </div>
+
+        {edits.type === "select" && (
+          <div>
+            <button
+              onClick={() => setShowOptions(!showOptions)}
+              className="text-xs font-semibold text-blue-600 hover:text-blue-700 px-2 py-1 rounded hover:bg-blue-50"
+            >
+              {showOptions ? "Hide Options" : "Edit Options"}
+            </button>
+            {showOptions && (
+              <div className="mt-2 p-3 bg-blue-50 rounded-lg">
+                <VisualOptionsEditor
+                  options={edits.options || []}
+                  onChange={(newOptions) => {
+                    setEdits({ ...edits, options: newOptions });
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        <div>
+          <button
+            onClick={() => setShowProductTypes(!showProductTypes)}
+            className="text-xs font-semibold text-purple-600 hover:text-purple-700 px-2 py-1 rounded hover:bg-purple-50"
+          >
+            {showProductTypes ? "Hide Product Type Filter" : "Set Product Type Filter"}
+          </button>
+          {showProductTypes && (
+            <div className="mt-2 p-3 bg-purple-50 rounded-lg">
+              <ProductTypeSelector
+                selectedProductTypes={edits.productTypes || []}
+                onChange={(productTypes) => {
+                  setEdits({ ...edits, productTypes: productTypes.length > 0 ? productTypes : undefined });
+                }}
+                onClose={() => {}}
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-4 border-t">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => {
+              onSave(edits);
+              onClose();
+            }}
+            className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+          >
+            Save Changes
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FieldRow({ field, onEdit, onDelete }: { field: QuestionnaireFieldRow; onEdit: () => void; onDelete: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: field.id });
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.4 : 1,
+    opacity: isDragging ? 0.5 : 1,
     background: isDragging ? "#f8fafc" : undefined,
   };
-  const isStandard = field.isStandard;
-  const [showOptionsEditor, setShowOptionsEditor] = useState(false);
-  const [showProductTypeSelector, setShowProductTypeSelector] = useState(false);
-  
+  const scopeInfo = SCOPE_INFO[field.scope || "public"];
+
   return (
-    <>
-      <tr ref={setNodeRef} style={style} className={`text-xs border-b last:border-b-0 ${isStandard ? 'bg-slate-50/50' : ''}`}>
-        <td className="w-6 text-slate-400 select-none" {...attributes} {...listeners} title="Drag to reorder">
-          ⠿
-        </td>
-        <td className="min-w-[160px]">
-          <InlineEditableCell
-            value={field.label}
-            onSave={async (next) => onChange({ label: next })}
-          />
-        </td>
-        <td className="w-32">
-          <InlineEditableCell
-            value={field.type}
-            type="select"
-            selectOptions={FIELD_TYPES}
-            onSave={async (next) => onChange({ type: next })}
-          />
-        </td>
-        <td className="w-28">
-          <InlineEditableCell
-            value={field.scope || "public"}
-            type="select"
-            selectOptions={SCOPE_OPTIONS}
-            onSave={async (next) => onChange({ scope: next as any })}
-          />
-        </td>
-        <td className="w-20 text-center">
-          <input
-            type="checkbox"
-            className="h-4 w-4"
-            checked={field.required}
-            onChange={(e) => onChange({ required: e.target.checked })}
-            title="Toggle required"
-          />
-        </td>
-        <td className="min-w-[140px]">
-          <InlineEditableCell
-            value={field.costingInputKey || ""}
-            onSave={async (next) => onChange({ costingInputKey: next || null })}
-          />
-        </td>
-        <td className="w-32">
-          {field.type === "select" ? (
-            <button
-              onClick={() => setShowOptionsEditor(!showOptionsEditor)}
-              className="px-3 py-1 rounded text-[11px] bg-blue-50 text-blue-600 hover:bg-blue-100"
-              title="Edit options"
-            >
-              {field.options?.length || 0} options
-            </button>
-          ) : (
-            <span className="text-slate-400">—</span>
-          )}
-        </td>
-        <td className="w-36">
+    <tr ref={setNodeRef} style={style} className="border-b hover:bg-slate-50/50 transition-colors">
+      <td className="w-6 text-slate-400 select-none cursor-grab active:cursor-grabbing px-3 py-3" {...attributes} {...listeners} title="Drag to reorder">
+        ⠿
+      </td>
+      <td className="py-3 px-2">
+        <div>
+          <div className="text-sm font-medium text-slate-900">{field.label}</div>
+          <div className="text-xs text-slate-500">{field.isStandard ? "Standard field" : "Custom field"}</div>
+        </div>
+      </td>
+      <td className="py-3 px-2">
+        <span className="inline-block px-2 py-1 rounded text-xs bg-slate-100 text-slate-700 font-medium">{field.type}</span>
+      </td>
+      <td className="py-3 px-2">
+        <div className="text-xs">
+          <div className="font-medium text-slate-900">{scopeInfo.title}</div>
+          <div className="text-slate-500 text-[10px]">{scopeInfo.location}</div>
+        </div>
+      </td>
+      <td className="py-3 px-2 text-center">
+        {field.required && <span className="inline-block px-2 py-0.5 rounded bg-red-100 text-red-700 text-[10px] font-semibold">Required</span>}
+      </td>
+      <td className="py-3 px-2 text-right">
+        <button
+          onClick={onEdit}
+          className="px-3 py-1 text-xs rounded bg-blue-50 text-blue-600 hover:bg-blue-100 font-medium"
+        >
+          Edit
+        </button>
+        {!field.isStandard && (
           <button
-            onClick={() => setShowProductTypeSelector(!showProductTypeSelector)}
-            className="px-3 py-1 rounded text-[11px] bg-purple-50 text-purple-600 hover:bg-purple-100"
-            title="Link to product types"
+            onClick={onDelete}
+            className="ml-1 px-3 py-1 text-xs rounded bg-red-50 text-red-600 hover:bg-red-100 font-medium"
           >
-            {field.productTypes?.length ? `${field.productTypes.length} products` : 'All products'}
+            Delete
           </button>
-        </td>
-        <td className="w-20 text-right pr-2">
-          {!isStandard ? (
-            <button
-              onClick={onDelete}
-              className="px-2 py-1 rounded text-[11px] bg-red-50 text-red-600 hover:bg-red-100"
-              title="Delete field"
-            >
-              Delete
-            </button>
-          ) : (
-            <span className="text-[10px] text-slate-400">Standard</span>
-          )}
-        </td>
-      </tr>
-      {showOptionsEditor && field.type === "select" && (
-        <tr>
-          <td colSpan={9} className="p-4 bg-slate-50">
-            <div className="max-w-2xl">
-              <h4 className="text-sm font-semibold mb-3 text-slate-700">Edit Options for "{field.label}"</h4>
-              <VisualOptionsEditor
-                options={field.options || []}
-                onChange={(newOptions) => {
-                  onChange({ options: newOptions });
-                  setShowOptionsEditor(false);
-                }}
-              />
-            </div>
-          </td>
-        </tr>
-      )}
-      {showProductTypeSelector && (
-        <tr>
-          <td colSpan={9} className="p-4 bg-purple-50">
-            <div className="max-w-3xl">
-              <h4 className="text-sm font-semibold mb-3 text-slate-700">Link "{field.label}" to Product Types</h4>
-              <ProductTypeSelector
-                selectedProductTypes={field.productTypes || []}
-                onChange={(productTypes) => {
-                  onChange({ productTypes: productTypes.length > 0 ? productTypes : undefined });
-                }}
-                onClose={() => setShowProductTypeSelector(false)}
-              />
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
+        )}
+      </td>
+    </tr>
   );
 }
-
-
 
 export const AdminQuestionnaireFieldsTable: React.FC<{
   apiBase?: string;
@@ -175,11 +274,11 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
   const [creating, setCreating] = useState(false);
   const [savingOrder, setSavingOrder] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  const [editingField, setEditingField] = useState<QuestionnaireFieldRow | null>(null);
+  const [editModalOpen, setEditModalOpen] = useState(false);
 
-  // Sync local rows with fetched data
   useEffect(() => {
     if (Array.isArray(data)) {
-      // Backend might use sortOrder; normalize to order
       const normalized = data.map((f: any) => ({
         id: f.id,
         label: f.label,
@@ -190,13 +289,13 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
         options: f.options || (Array.isArray(f.config?.options) ? f.config.options : null),
         isStandard: f.isStandard || false,
         scope: f.scope === "item" ? "public" : (f.scope || "public"),
+        productTypes: f.productTypes,
       })) as QuestionnaireFieldRow[];
       normalized.sort((a, b) => a.order - b.order);
       setRows(normalized);
     }
   }, [data]);
 
-  // Auto-seed standard fields if none exist
   async function seedStandardFields() {
     setSeeding(true);
     try {
@@ -219,7 +318,6 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
     try {
       const body: any = { ...patch };
       if (body.type) body.type = String(body.type).toLowerCase();
-      // Map local 'order' to expected backend field name
       if (body.order !== undefined) {
         body.sortOrder = body.order;
         delete body.order;
@@ -300,55 +398,84 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
     }
   }
 
-  const content = useMemo(() => {
-    if (isLoading || seeding) return <div className="p-4 text-xs text-slate-500">{seeding ? 'Setting up standard fields…' : 'Loading fields…'}</div>;
-    if (!rows.length) {
-      return (
-        <div className="p-4 text-center">
-          <div className="text-xs text-slate-500 mb-3">No questionnaire fields found.</div>
+  if (isLoading) {
+    return <div className="p-4 text-xs text-slate-500">Loading fields…</div>;
+  }
+
+  if (!rows.length) {
+    return (
+      <div className="p-4 text-center">
+        <div className="text-sm text-slate-500 mb-3">No questionnaire fields found.</div>
+        <button
+          onClick={seedStandardFields}
+          disabled={seeding}
+          className="rounded bg-blue-600 text-white text-sm px-4 py-2 hover:bg-blue-500 disabled:opacity-50"
+        >
+          {seeding ? 'Setting up…' : 'Set Up Standard Fields'}
+        </button>
+      </div>
+    );
+  }
+
+  const filtered = scope ? rows.filter(r => (r.scope || "public") === scope) : rows;
+  const standardFields = filtered.filter(r => r.isStandard);
+  const customFields = filtered.filter(r => !r.isStandard);
+
+  return (
+    <div className="space-y-6">
+      {/* Header with Action Buttons */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900">Fields</h2>
+          {scope && <p className="text-xs text-slate-500 mt-1">{SCOPE_INFO[scope]?.description || scope}</p>}
+        </div>
+        <div className="flex items-center gap-2">
+          {savingOrder && <span className="text-[10px] text-amber-600">Saving order…</span>}
           <button
-            onClick={seedStandardFields}
-            className="rounded bg-blue-600 text-white text-xs px-4 py-2 hover:bg-blue-500"
+            type="button"
+            onClick={() => setCreating(true)}
+            className="rounded bg-blue-600 text-white text-sm px-4 py-2 hover:bg-blue-500 font-medium"
           >
-            Set Up Standard Fields
+            + New Field
           </button>
         </div>
-      );
-    }
-    
-    const filtered = scope ? rows.filter(r => (r.scope || "public") === scope) : rows;
-    const standardFields = filtered.filter(r => r.isStandard);
-    const customFields = filtered.filter(r => !r.isStandard);
-    
-    return (
+      </div>
+
+      {/* Scope Info */}
+      {scope && (
+        <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
+          <ScopePreviewBadge scope={scope} />
+        </div>
+      )}
+
       <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <div className="space-y-6">
-          {/* Standard Fields Section */}
+          {/* Standard Fields */}
           {standardFields.length > 0 && (
             <div>
-              <h3 className="text-xs font-semibold text-slate-700 mb-2 px-1">Standard Fields</h3>
-              <div className="rounded border bg-white shadow-sm overflow-hidden">
+              <h3 className="text-xs font-semibold uppercase text-slate-700 mb-2">Standard Fields</h3>
+              <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
                 <SortableContext items={standardFields.map((r) => r.id)} strategy={verticalListSortingStrategy}>
-                  <table className="w-full text-xs">
-                  <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
-                    <tr>
-                      <th className="w-6"></th>
-                      <th className="text-left font-medium py-2 px-2">Label</th>
-                      <th className="text-left font-medium">Type</th>
-                      <th className="text-left font-medium">Scope</th>
-                      <th className="text-center font-medium">Required</th>
-                      <th className="text-left font-medium">Costing Key</th>
-                      <th className="text-left font-medium">Options</th>
-                      <th className="text-left font-medium">Product Types</th>
-                      <th></th>
-                    </tr>
-                  </thead>
+                  <table className="w-full">
+                    <thead className="bg-slate-50">
+                      <tr className="text-xs font-semibold uppercase text-slate-600">
+                        <th className="w-6 px-3 py-2"></th>
+                        <th className="text-left px-2 py-2">Label</th>
+                        <th className="text-left px-2 py-2">Type</th>
+                        <th className="text-left px-2 py-2">Location</th>
+                        <th className="text-left px-2 py-2 w-20">Flags</th>
+                        <th className="text-right px-2 py-2 w-32">Actions</th>
+                      </tr>
+                    </thead>
                     <tbody>
                       {standardFields.map((r) => (
-                        <SortableRow
+                        <FieldRow
                           key={r.id}
                           field={r}
-                          onChange={(patch) => updateField(r.id, patch)}
+                          onEdit={() => {
+                            setEditingField(r);
+                            setEditModalOpen(true);
+                          }}
                           onDelete={() => deleteField(r.id)}
                         />
                       ))}
@@ -356,40 +483,39 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
                   </table>
                 </SortableContext>
               </div>
-              <p className="text-[10px] text-slate-500 mt-1 px-1">Standard fields can be edited but not deleted. Customize options and settings as needed.</p>
             </div>
           )}
-          
-          {/* Custom Fields Section */}
+
+          {/* Custom Fields */}
           <div>
-            <h3 className="text-xs font-semibold text-slate-700 mb-2 px-1">Custom Fields</h3>
+            <h3 className="text-xs font-semibold uppercase text-slate-700 mb-2">Custom Fields</h3>
             {customFields.length === 0 ? (
-              <div className="rounded border bg-white shadow-sm p-4 text-xs text-slate-500">
-                No custom fields yet. Click "New Field" to create one.
+              <div className="rounded-lg border border-slate-200 bg-white p-6 text-center">
+                <p className="text-sm text-slate-500">No custom fields yet. Click "+ New Field" to create one.</p>
               </div>
             ) : (
-              <div className="rounded border bg-white shadow-sm overflow-hidden">
-                <SortableContext items={standardFields.map((r) => r.id)} strategy={verticalListSortingStrategy}>
-                  <table className="w-full text-xs">
-                    <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
-                      <tr>
-                        <th className="w-6"></th>
-                        <th className="text-left font-medium py-2 px-2">Label</th>
-                        <th className="text-left font-medium">Type</th>
-                        <th className="text-left font-medium">Scope</th>
-                        <th className="text-center font-medium">Required</th>
-                        <th className="text-left font-medium">Costing Key</th>
-                        <th className="text-left font-medium">Options</th>
-                        <th className="text-left font-medium">Product Types</th>
-                        <th></th>
+              <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+                <SortableContext items={customFields.map((r) => r.id)} strategy={verticalListSortingStrategy}>
+                  <table className="w-full">
+                    <thead className="bg-slate-50">
+                      <tr className="text-xs font-semibold uppercase text-slate-600">
+                        <th className="w-6 px-3 py-2"></th>
+                        <th className="text-left px-2 py-2">Label</th>
+                        <th className="text-left px-2 py-2">Type</th>
+                        <th className="text-left px-2 py-2">Location</th>
+                        <th className="text-left px-2 py-2 w-20">Flags</th>
+                        <th className="text-right px-2 py-2 w-32">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {customFields.map((r) => (
-                        <SortableRow
+                        <FieldRow
                           key={r.id}
                           field={r}
-                          onChange={(patch) => updateField(r.id, patch)}
+                          onEdit={() => {
+                            setEditingField(r);
+                            setEditModalOpen(true);
+                          }}
                           onDelete={() => deleteField(r.id)}
                         />
                       ))}
@@ -401,71 +527,27 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
           </div>
         </div>
       </DndContext>
-    );
-  }, [isLoading, rows]);
 
-  const [migrating, setMigrating] = useState(false);
-  const [migrationResult, setMigrationResult] = useState<string | null>(null);
-
-  async function runMigration() {
-    if (!confirm("This will sync all standard fields and remove deprecated ones (door_height_mm, door_width_mm, final_width_mm, final_height_mm, installation_date). Continue?")) {
-      return;
-    }
-    setMigrating(true);
-    setMigrationResult(null);
-    try {
-      const response = await fetch(baseUrl + '/migrate-standard-fields', {
-        method: 'POST',
-        credentials: 'include',
-      });
-      const result = await response.json();
-      if (response.ok) {
-        setMigrationResult(`✅ ${result.message}`);
-        await mutate();
-      } else {
-        setMigrationResult(`❌ Migration failed: ${result.error || 'Unknown error'}`);
-      }
-    } catch (e: any) {
-      console.error('Failed to run migration:', e);
-      setMigrationResult(`❌ Migration error: ${e.message}`);
-    } finally {
-      setMigrating(false);
-    }
-  }
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h1 className="text-sm font-semibold">Questionnaire Fields{scope ? ` — ${scope}` : ''}</h1>
-        <div className="flex items-center gap-2">
-          {savingOrder && <span className="text-[10px] text-slate-400">Saving order…</span>}
-          {migrationResult && <span className="text-[10px] px-2 py-1 rounded bg-slate-100">{migrationResult}</span>}
-          <button
-            type="button"
-            onClick={runMigration}
-            disabled={migrating}
-            className="rounded bg-purple-600 text-white text-xs px-3 py-1 hover:bg-purple-500 disabled:opacity-50"
-            title="Sync latest standard fields and remove deprecated ones"
-          >
-            {migrating ? 'Migrating...' : 'Migrate Fields'}
-          </button>
-          <button
-            type="button"
-            onClick={() => setCreating(true)}
-            className="rounded bg-blue-600 text-white text-xs px-3 py-1 hover:bg-blue-500"
-          >
-            New Field
-          </button>
-        </div>
-      </div>
-      {content}
+      {/* Modals */}
       <CreateQuestionnaireFieldModal
         open={creating}
         onClose={() => setCreating(false)}
         onCreate={async (payload) => {
           await createField(payload);
+          setCreating(false);
         }}
         defaultScope={scope || "public"}
+      />
+
+      <EditFieldModal
+        field={editingField}
+        isOpen={editModalOpen}
+        onClose={() => setEditModalOpen(false)}
+        onSave={(updates) => {
+          if (editingField) {
+            updateField(editingField.id, updates);
+          }
+        }}
       />
     </div>
   );
