@@ -393,7 +393,7 @@ export default function QuoteBuilderPage() {
     }
   }, [quote?.meta]); // Only run when quote.meta changes, not on every render
 
-  // Persist product configuration to quote metadata and optionally add a line with standard fields
+  // Save product configuration to quote metadata only
   const saveProductConfiguration = useCallback(async () => {
     if (!quoteId || !quote) {
       toast({ title: "Error", description: "Quote not loaded", variant: "destructive" });
@@ -411,54 +411,78 @@ export default function QuoteBuilderPage() {
         json: { meta: nextMeta },
       });
       await mutateQuote();
-
-      // If user filled in standard fields, add a line now
-      if (newLineDesc.trim()) {
-        try {
-          const created = await createQuoteLine(quoteId, {
-            description: newLineDesc.trim(),
-            quantity: newLineQty ?? 1,
-            unitPrice: newLineUnitPrice ?? 0,
-          });
-          const lineId = (created as any)?.line?.id;
-          if (lineId) {
-            const lineStandard: Record<string, any> = {};
-            if (stdWidthMm != null) lineStandard.widthMm = stdWidthMm;
-            if (stdHeightMm != null) lineStandard.heightMm = stdHeightMm;
-            if (stdTimber) lineStandard.timber = stdTimber;
-            if (stdFinish) lineStandard.finish = stdFinish;
-            if (stdIronmongery) lineStandard.ironmongery = stdIronmongery;
-            if (stdGlazing) lineStandard.glazing = stdGlazing;
-            if (selectedProductOptionId) lineStandard.productOptionId = selectedProductOptionId;
-            if (Object.keys(lineStandard).length > 0) {
-              await updateQuoteLine(quoteId, lineId, { lineStandard });
-            }
-            await mutateLines();
-            // Reset drafts
-            setNewLineDesc("");
-            setNewLineQty(1);
-            setNewLineUnitPrice(0);
-            setStdWidthMm(null);
-            setStdHeightMm(null);
-            setStdTimber("");
-            setStdFinish("");
-            setStdIronmongery("");
-            setStdGlazing("");
-            setActiveTab("quote-lines");
-            toast({ title: "Line added", description: "Product line created and saved." });
-          } else {
-            toast({ title: "Line created but no ID returned", description: "Could not attach specifications", variant: "destructive" });
-          }
-        } catch (lineErr: any) {
-          console.error("Failed to create quote line:", lineErr);
-          toast({ title: "Line creation failed", description: lineErr?.message || "Unable to create line item", variant: "destructive" });
-        }
-      } else {
-        toast({ title: "Product configuration saved" });
-      }
+      toast({ title: "Configuration saved" });
     } catch (err: any) {
       console.error("Save product configuration error:", err);
       toast({ title: "Save failed", description: err?.message || "Unknown error", variant: "destructive" });
+    }
+  }, [quoteId, quote, selectedProductOptionId, configAnswers, mutateQuote, toast]);
+
+  // Add a new line item with standard fields (and save config first)
+  const handleAddLineItem = useCallback(async () => {
+    if (!quoteId || !quote) {
+      toast({ title: "Error", description: "Quote not loaded", variant: "destructive" });
+      return;
+    }
+    
+    // Validate description is provided
+    if (!newLineDesc.trim()) {
+      toast({ title: "Description required", description: "Please enter a description for the line item", variant: "destructive" });
+      return;
+    }
+
+    try {
+      // First save configuration to quote metadata
+      const nextMeta = {
+        ...((quote?.meta as any) || {}),
+        selectedProductOptionId,
+        configAnswers,
+      };
+      console.log('[Product Config] Saving to quote.meta:', { selectedProductOptionId, configAnswers });
+      await apiFetch(`/quotes/${encodeURIComponent(quoteId)}`, {
+        method: "PATCH",
+        json: { meta: nextMeta },
+      });
+      await mutateQuote();
+
+      // Now create the line item
+      const created = await createQuoteLine(quoteId, {
+        description: newLineDesc.trim(),
+        quantity: newLineQty ?? 1,
+        unitPrice: newLineUnitPrice ?? 0,
+      });
+      const lineId = (created as any)?.line?.id;
+      if (lineId) {
+        const lineStandard: Record<string, any> = {};
+        if (stdWidthMm != null) lineStandard.widthMm = stdWidthMm;
+        if (stdHeightMm != null) lineStandard.heightMm = stdHeightMm;
+        if (stdTimber) lineStandard.timber = stdTimber;
+        if (stdFinish) lineStandard.finish = stdFinish;
+        if (stdIronmongery) lineStandard.ironmongery = stdIronmongery;
+        if (stdGlazing) lineStandard.glazing = stdGlazing;
+        if (selectedProductOptionId) lineStandard.productOptionId = selectedProductOptionId;
+        if (Object.keys(lineStandard).length > 0) {
+          await updateQuoteLine(quoteId, lineId, { lineStandard });
+        }
+        await mutateLines();
+        // Reset drafts
+        setNewLineDesc("");
+        setNewLineQty(1);
+        setNewLineUnitPrice(0);
+        setStdWidthMm(null);
+        setStdHeightMm(null);
+        setStdTimber("");
+        setStdFinish("");
+        setStdIronmongery("");
+        setStdGlazing("");
+        setActiveTab("quote-lines");
+        toast({ title: "Line added", description: "Product line created and saved." });
+      } else {
+        toast({ title: "Line created but no ID returned", description: "Could not attach specifications", variant: "destructive" });
+      }
+    } catch (err: any) {
+      console.error("Failed to add line item:", err);
+      toast({ title: "Line creation failed", description: err?.message || "Unable to create line item", variant: "destructive" });
     }
   }, [quoteId, quote, selectedProductOptionId, configAnswers, mutateQuote, newLineDesc, newLineQty, newLineUnitPrice, stdWidthMm, stdHeightMm, stdTimber, stdFinish, stdIronmongery, stdGlazing, mutateLines, toast]);
 
@@ -1484,10 +1508,14 @@ export default function QuoteBuilderPage() {
                     </table>
                   </div>
 
-                  <div className="flex justify-end">
-                    <Button onClick={saveProductConfiguration} className="gap-2">
+                  <div className="flex justify-end gap-2">
+                    <Button onClick={saveProductConfiguration} variant="outline" className="gap-2">
                       <Save className="h-4 w-4" />
-                      Add line item
+                      Save Configuration
+                    </Button>
+                    <Button onClick={handleAddLineItem} className="gap-2">
+                      <Box className="h-4 w-4" />
+                      Add Line Item
                     </Button>
                   </div>
 
