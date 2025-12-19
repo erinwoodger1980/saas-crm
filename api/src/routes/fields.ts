@@ -26,7 +26,7 @@ const QuestionnaireFieldTypeEnum = z.enum([
 
 // Deprecated: `order` kept for backwards compatibility. Primary field is `sortOrder`.
 const createFieldSchema = z.object({
-  questionnaireId: z.string().min(1, "Questionnaire ID is required"),
+  questionnaireId: z.string().min(1, "Questionnaire ID is required").optional(), // Optional - will auto-find/create
   label: z.string().min(1, "Label is required").max(255),
   type: QuestionnaireFieldTypeEnum,
   options: z.array(z.string()).optional().nullable(),
@@ -35,6 +35,7 @@ const createFieldSchema = z.object({
   order: z.number().int().default(0).optional(),
   sortOrder: z.number().int().default(0).optional(),
   costingInputKey: z.string().max(255).optional().nullable(),
+  scope: z.string().optional(),
 });
 
 const updateFieldSchema = z.object({
@@ -218,16 +219,35 @@ router.post("/", requireAuth, async (req: any, res) => {
   // Resolve unifiedSort: prefer explicit sortOrder, else legacy order, else 0.
   const unifiedSort = (validatedData.sortOrder ?? validatedData.order ?? 0) as number;
 
-    // Validate questionnaire belongs to tenant
-    const questionnaire = await prisma.questionnaire.findFirst({
-      where: {
-        id: validatedData.questionnaireId,
-        tenantId,
-      },
-    });
-
-    if (!questionnaire) {
-      return res.status(404).json({ error: "Questionnaire not found" });
+    // Get or create questionnaire
+    let questionnaire;
+    if (validatedData.questionnaireId) {
+      // Validate questionnaire belongs to tenant
+      questionnaire = await prisma.questionnaire.findFirst({
+        where: {
+          id: validatedData.questionnaireId,
+          tenantId,
+        },
+      });
+      if (!questionnaire) {
+        return res.status(404).json({ error: "Questionnaire not found" });
+      }
+    } else {
+      // Auto-find or create default questionnaire for tenant
+      questionnaire = await prisma.questionnaire.findFirst({
+        where: { tenantId, isActive: true },
+        orderBy: { createdAt: "asc" },
+      });
+      if (!questionnaire) {
+        questionnaire = await prisma.questionnaire.create({
+          data: {
+            tenantId,
+            name: "Default Questionnaire",
+            description: "Auto-created for custom fields",
+            isActive: true,
+          },
+        });
+      }
     }
 
     // Validate SELECT type has options
@@ -245,7 +265,7 @@ router.post("/", requireAuth, async (req: any, res) => {
       await prisma.questionnaireField.findUnique({
         where: {
           questionnaireId_key: {
-            questionnaireId: validatedData.questionnaireId,
+            questionnaireId: questionnaire.id,
             key,
           },
         },
@@ -259,7 +279,7 @@ router.post("/", requireAuth, async (req: any, res) => {
     const field = await prisma.questionnaireField.create({
       data: {
         tenantId,
-        questionnaireId: validatedData.questionnaireId,
+        questionnaireId: questionnaire.id,
         key,
         label: validatedData.label,
         type: validatedData.type,
@@ -268,6 +288,7 @@ router.post("/", requireAuth, async (req: any, res) => {
         order: unifiedSort, // keep legacy column synced
         sortOrder: unifiedSort,
         costingInputKey: validatedData.costingInputKey || null,
+        scope: validatedData.scope || "public", // Default scope
       },
       include: {
         questionnaire: {

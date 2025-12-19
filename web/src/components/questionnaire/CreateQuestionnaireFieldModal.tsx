@@ -72,7 +72,14 @@ export const CreateQuestionnaireFieldModal: React.FC<Props> = ({ open, onClose, 
     }
     setSaving(true);
     try {
-      await onCreate({ label: label.trim(), type, required, costingInputKey: costKey.trim() || undefined, options, scope });
+      await onCreate({ 
+        label: label.trim(), 
+        type: type.toUpperCase() as any, // Convert to uppercase to match Prisma enum
+        required, 
+        costingInputKey: costKey.trim() || undefined, 
+        options, 
+        scope 
+      });
       reset();
       onClose();
     } finally {

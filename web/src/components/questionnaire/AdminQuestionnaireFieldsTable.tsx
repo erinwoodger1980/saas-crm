@@ -228,7 +228,7 @@ function FieldRow({ field, onEdit, onDelete }: { field: QuestionnaireFieldRow; o
         </div>
       </td>
       <td className="py-3 px-2">
-        <span className="inline-block px-2 py-1 rounded text-xs bg-slate-100 text-slate-700 font-medium">{field.type}</span>
+        <span className="inline-block px-2 py-1 rounded text-xs bg-slate-100 text-slate-700 font-medium">{String(field.type).toLowerCase()}</span>
       </td>
       <td className="py-3 px-2">
         <div className="text-xs">
@@ -340,7 +340,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
     try {
       const body: any = { ...patch };
-      if (body.type) body.type = String(body.type).toLowerCase();
+      if (body.type) body.type = String(body.type).toUpperCase(); // Convert to UPPERCASE for Prisma enum
       if (body.order !== undefined) {
         body.sortOrder = body.order;
         delete body.order;
@@ -368,7 +368,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
     const body = {
       key: payload.label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, ""),
       label: payload.label.trim(),
-      type: payload.type,
+      type: payload.type.toUpperCase(), // Convert to UPPERCASE for Prisma enum
       required: payload.required,
       costingInputKey: payload.costingInputKey,
       options: payload.options,
