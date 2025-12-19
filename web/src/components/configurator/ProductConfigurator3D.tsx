@@ -61,34 +61,59 @@ async function loadSceneState(
 ): Promise<SceneConfig | null> {
   try {
     const params = new URLSearchParams({ tenantId, entityType, entityId });
-    const response = await fetch(`/api/scene-state?${params}`);
+    const response = await fetch(`/api/scene-state?${params}`, {
+      credentials: 'include',
+    });
     
+    // Debug logging (controlled by env var)
+    if (process.env.NEXT_PUBLIC_DEBUG_SCENE_STATE === 'true') {
+      console.log('[loadSceneState]', {
+        status: response.status,
+        tenantId,
+        entityType,
+        entityId,
+      });
+    }
+    
+    // Handle expected error cases gracefully
     if (!response.ok) {
-      if (response.status === 404) return null;
-      throw new Error('Failed to load scene state');
+      if (response.status === 404) {
+        // No scene state saved yet - normal for first time
+        return null;
+      }
+      if (response.status === 401 || response.status === 403) {
+        // Auth failure - log but don't throw
+        console.warn('[loadSceneState] Auth error, will use default scene:', response.status);
+        return null;
+      }
+      // Other errors - log and return null
+      console.warn('[loadSceneState] API error, will use default scene:', response.status);
+      return null;
     }
     
     const data = await response.json();
-    return data.data.config;
+    return data.data?.config || null;
   } catch (error) {
-    console.error('Error loading scene state:', error);
+    console.error('[loadSceneState] Fetch error, will use default scene:', error);
     return null;
   }
 }
 
 /**
  * Save scene state to API
+ * Returns { success: boolean, shouldDisable: boolean }
  */
 async function saveSceneState(
   tenantId: string,
   entityType: string,
   entityId: string,
   config: SceneConfig
-): Promise<boolean> {
+): Promise<{ success: boolean; shouldDisable: boolean }> {
   try {
     const response = await fetch('/api/scene-state', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({
         tenantId,
         entityType,
@@ -97,10 +122,26 @@ async function saveSceneState(
       }),
     });
     
-    return response.ok;
+    // Debug logging (controlled by env var)
+    if (process.env.NEXT_PUBLIC_DEBUG_SCENE_STATE === 'true') {
+      console.log('[saveSceneState]', {
+        status: response.status,
+        tenantId,
+        entityType,
+        entityId,
+      });
+    }
+    
+    // If auth fails, disable further saves to prevent retry storm
+    if (response.status === 401 || response.status === 403) {
+      console.warn('[saveSceneState] Auth error, disabling autosave');
+      return { success: false, shouldDisable: true };
+    }
+    
+    return { success: response.ok, shouldDisable: false };
   } catch (error) {
-    console.error('Error saving scene state:', error);
-    return false;
+    console.error('[saveSceneState] Fetch error:', error);
+    return { success: false, shouldDisable: false };
   }
 }
 
@@ -121,8 +162,9 @@ export function ProductConfigurator3D({
   const [isLoading, setIsLoading] = useState(true);
   const [canRender, setCanRender] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveDisabled, setSaveDisabled] = useState(false);
   const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
-  const [editableAttributes, setEditableAttributes] = useState<Record<string, EditableAttribute[]>>({});
+  const [editableAttributes, setEditableAttributes] = useState<Record<string, EditableAttribute[]>>({});;
 
   /**
    * Load or initialize scene configuration
@@ -231,18 +273,26 @@ export function ProductConfigurator3D({
         return;
       }
       
+      // Don't try to save if disabled due to auth failure
+      if (saveDisabled) {
+        return;
+      }
+      
       setIsSaving(true);
-      const success = await saveSceneState(tenantId, entityType, entityId, newConfig);
+      const result = await saveSceneState(tenantId, entityType, entityId, newConfig);
       setIsSaving(false);
       
-      if (!success) {
+      if (result.shouldDisable) {
+        setSaveDisabled(true);
+        toast.error('Scene saving disabled (not authorized)', { duration: 5000 });
+      } else if (!result.success) {
         console.warn('Failed to persist scene configuration');
         toast.error('Failed to save configuration');
       } else {
-        toast.success('Configuration saved');
+        toast.success('Configuration saved', { duration: 2000 });
       }
     },
-    [tenantId, entityType, entityId]
+    [tenantId, entityType, entityId, saveDisabled]
   );
 
   /**
@@ -421,6 +471,9 @@ export function ProductConfigurator3D({
       </div>
     );
   }
+  
+  // Safe camera mode access with default fallback to prevent crashes
+  const cameraMode = config.camera?.mode || 'Perspective';
 
   return (
     <div className="relative flex gap-4" style={{ width, height }}>
@@ -430,7 +483,7 @@ export function ProductConfigurator3D({
           shadows
           camera={{
             position: config.camera?.position || [0, 1000, 2000],
-            fov: config.camera?.mode === 'Perspective' ? (config.camera?.fov || 50) : 50,
+            fov: cameraMode === 'Perspective' ? (config.camera?.fov || 50) : 50,
           }}
           gl={{ antialias: true, alpha: false }}
         >
@@ -462,7 +515,7 @@ export function ProductConfigurator3D({
         <SceneUI
           components={config.components}
           ui={config.ui}
-          cameraMode={config.camera.mode}
+          cameraMode={cameraMode}
           onCameraModeChange={(mode) => {
             updateConfig({
               camera: { ...config.camera, mode },

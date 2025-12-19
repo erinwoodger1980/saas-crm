@@ -32,8 +32,20 @@ export const runtime = 'nodejs';
 export async function GET(request: NextRequest) {
   try {
     const url = new URL(apiBase() + '/api/scene-state' + (new URL(request.url)).search);
-    const res = await fetch(url.toString(), { headers: forwardHeaders(request) });
+    const res = await fetch(url.toString(), { 
+      headers: forwardHeaders(request),
+      credentials: 'include',
+    });
     const data = await res.json();
+    
+    // Debug logging (controlled by env var)
+    if (process.env.DEBUG_SCENE_STATE === 'true') {
+      console.log('[proxy GET /api/scene-state]', {
+        status: res.status,
+        hasAuth: !!request.headers.get('authorization') || !!request.headers.get('cookie'),
+      });
+    }
+    
     return NextResponse.json(data, { status: res.status });
   } catch (error: any) {
     console.error('[proxy GET /api/scene-state] error:', error?.message || error);
@@ -59,9 +71,19 @@ export async function POST(request: NextRequest) {
     const res = await fetch(apiBase() + '/api/scene-state', {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...forwardHeaders(request) },
+      credentials: 'include',
       body,
     });
     const data = await res.json();
+    
+    // Debug logging (controlled by env var)
+    if (process.env.DEBUG_SCENE_STATE === 'true') {
+      console.log('[proxy POST /api/scene-state]', {
+        status: res.status,
+        hasAuth: !!request.headers.get('authorization') || !!request.headers.get('cookie'),
+      });
+    }
+    
     return NextResponse.json(data, { status: res.status });
   } catch (error: any) {
     console.error('[proxy POST /api/scene-state] error:', error?.message || error);
@@ -81,7 +103,11 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const url = new URL(apiBase() + '/api/scene-state' + (new URL(request.url)).search);
-    const res = await fetch(url.toString(), { method: 'DELETE', headers: forwardHeaders(request) });
+    const res = await fetch(url.toString(), { 
+      method: 'DELETE', 
+      headers: forwardHeaders(request),
+      credentials: 'include',
+    });
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   } catch (error: any) {
