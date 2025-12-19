@@ -30,6 +30,7 @@ import { fetchQuestionnaireFields } from "@/lib/questionnaireFields";
 import { QuoteItemsGrid, QuoteItem, ColumnConfig } from "@/components/QuoteItemsGrid";
 import { QuoteItemColumnConfigModal } from "@/components/QuoteItemColumnConfigModal";
 import { ClientSelector } from "@/components/ClientSelector";
+import { CustomFieldsPanel } from "@/components/fields/CustomFieldsPanel";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -3593,6 +3594,24 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                     </div>
                   </section>
                 </div>
+
+                {/* Custom Fields Panel - Flexible Field System */}
+                {lead?.id && tenantId && (
+                  <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
+                      <span aria-hidden="true">⚙️</span>
+                      Custom Fields
+                    </div>
+                    <CustomFieldsPanel
+                      entityType="lead"
+                      entityId={lead.id}
+                      onSave={async () => {
+                        // Refresh lead data after save
+                        if (onUpdated) await onUpdated();
+                      }}
+                    />
+                  </section>
+                )}
               </div>
             </div>
           )}
