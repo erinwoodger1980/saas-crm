@@ -35,7 +35,9 @@ export function CameraController({
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isUserInteractingRef = useRef(false);
   
-  const currentCamera = cameraState.mode === 'Perspective' ? perspCamRef.current : orthoCamRef.current;
+  // Safe access to camera mode with fallback to prevent crashes
+  const cameraMode = cameraState?.mode || 'Perspective';
+  const currentCamera = cameraMode === 'Perspective' ? perspCamRef.current : orthoCamRef.current;
 
   /**
    * Apply camera state to active camera
@@ -54,7 +56,7 @@ export function CameraController({
     controlsRef.current.target.set(tx, ty, tz);
     
     // Apply mode-specific settings
-    if (cameraState.mode === 'Ortho' && orthoCamRef.current) {
+    if (cameraMode === 'Ortho' && orthoCamRef.current) {
       // Calculate auto-fit zoom if zoom is default (1)
       const zoom = cameraState.zoom === 1
         ? calculateOrthoZoom(productWidth, productHeight, size.width, size.height)
@@ -62,7 +64,7 @@ export function CameraController({
       
       orthoCamRef.current.zoom = zoom;
       orthoCamRef.current.updateProjectionMatrix();
-    } else if (cameraState.mode === 'Perspective' && perspCamRef.current) {
+    } else if (cameraMode === 'Perspective' && perspCamRef.current) {
       if (cameraState.fov) {
         perspCamRef.current.fov = cameraState.fov;
         perspCamRef.current.updateProjectionMatrix();
@@ -76,7 +78,7 @@ export function CameraController({
     }
     
     controlsRef.current.update();
-  }, [cameraState.mode, currentCamera]);
+  }, [cameraMode, currentCamera]);
 
   /**
    * Handle camera interaction end
@@ -113,9 +115,9 @@ export function CameraController({
       };
 
       // Add mode-specific state
-      if (cameraState.mode === 'Ortho' && orthoCamRef.current) {
+      if (cameraMode === 'Ortho' && orthoCamRef.current) {
         newState.zoom = orthoCamRef.current.zoom;
-      } else if (cameraState.mode === 'Perspective' && perspCamRef.current) {
+      } else if (cameraMode === 'Perspective' && perspCamRef.current) {
         newState.fov = perspCamRef.current.fov;
       }
 
@@ -153,7 +155,7 @@ export function CameraController({
    * Handle viewport resize for orthographic camera
    */
   useEffect(() => {
-    if (cameraState.mode === 'Ortho' && orthoCamRef.current) {
+    if (cameraMode === 'Ortho' && orthoCamRef.current) {
       const aspect = size.width / size.height;
       const frustumSize = 10;
       
@@ -163,12 +165,12 @@ export function CameraController({
       orthoCamRef.current.bottom = -frustumSize / 2;
       orthoCamRef.current.updateProjectionMatrix();
     }
-  }, [size, cameraState.mode]);
+  }, [size, cameraMode]);
 
   return (
     <>
       {/* Perspective Camera */}
-      {cameraState.mode === 'Perspective' && (
+      {cameraMode === 'Perspective' && (
         <DreiPerspectiveCamera
           ref={perspCamRef}
           makeDefault
@@ -180,7 +182,7 @@ export function CameraController({
       )}
 
       {/* Orthographic Camera */}
-      {cameraState.mode === 'Ortho' && (
+      {cameraMode === 'Ortho' && (
         <DreiOrthographicCamera
           ref={orthoCamRef}
           makeDefault
