@@ -70,7 +70,7 @@ export async function seedStandardFieldsForTenant(tenantId: string): Promise<{
           scope: field.scope,
           isStandard: true,
           isActive: true,
-          isHidden: field.scope === "internal", // Hide internal fields from forms
+          isHidden: false, // All fields visible in forms
           requiredForCosting: !!field.costingInputKey,
         },
       });
