@@ -11,6 +11,59 @@ import { ProductConfigurator3D } from "@/components/configurator/ProductConfigur
 const DEFAULT_SVG_PROMPT =
   "Provide a detailed elevation with correct timber/glass fills, rails, stiles, panels, muntins, and dimension lines (800mm top, 2025mm left).";
 
+/**
+ * Get sensible default dimensions for product types
+ * Returns { widthMm, heightMm } based on product category and type
+ */
+function getDefaultDimensions(category: string, type: string, option: string): { widthMm: number; heightMm: number } {
+  // Doors - standard UK door sizes
+  if (category === 'doors') {
+    if (type === 'entrance') {
+      return option.includes('double') 
+        ? { widthMm: 1800, heightMm: 2100 } // Double entrance door
+        : { widthMm: 900, heightMm: 2100 };  // Single entrance door
+    }
+    if (type === 'bifold') {
+      if (option.includes('2-panel')) return { widthMm: 1800, heightMm: 2100 };
+      if (option.includes('3-panel')) return { widthMm: 2700, heightMm: 2100 };
+      if (option.includes('4-panel')) return { widthMm: 3600, heightMm: 2100 };
+      return { widthMm: 2400, heightMm: 2100 }; // Default bifold
+    }
+    if (type === 'sliding') {
+      return option.includes('double')
+        ? { widthMm: 2400, heightMm: 2100 } // Double slider
+        : { widthMm: 1200, heightMm: 2100 }; // Single slider
+    }
+    if (type === 'french') {
+      return { widthMm: 1800, heightMm: 2100 }; // Standard French doors (pair)
+    }
+    // Default door
+    return { widthMm: 914, heightMm: 2032 };
+  }
+  
+  // Windows - standard UK window sizes
+  if (category === 'windows') {
+    if (type === 'sash-cord' || type === 'sash-spring') {
+      return option.includes('double')
+        ? { widthMm: 1200, heightMm: 1800 } // Double hung sash
+        : { widthMm: 800, heightMm: 1400 };  // Single sash
+    }
+    if (type === 'casement') {
+      return option.includes('double')
+        ? { widthMm: 1500, heightMm: 1200 } // Double casement
+        : { widthMm: 900, heightMm: 1200 };  // Single casement
+    }
+    if (type === 'bay') {
+      return { widthMm: 3000, heightMm: 1500 }; // Bay window
+    }
+    // Default window
+    return { widthMm: 1200, heightMm: 1200 };
+  }
+  
+  // Default fallback for any product type
+  return { widthMm: 1000, heightMm: 2000 };
+}
+
 type ProductOption = {
   id: string;
   label: string;
@@ -845,6 +898,10 @@ export default function ProductTypesSection() {
                       type: configuratorDialog.type,
                       option: configuratorDialog.optionId,
                     },
+                  },
+                  lineStandard: getDefaultDimensions(configuratorDialog.categoryId, configuratorDialog.type, configuratorDialog.optionId),
+                  meta: {
+                    depthMm: configuratorDialog.categoryId === 'doors' ? 45 : 100,
                   },
                 }}
                 onClose={() => setConfiguratorDialog(null)}
