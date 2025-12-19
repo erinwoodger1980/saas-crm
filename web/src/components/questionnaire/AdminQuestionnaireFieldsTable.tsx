@@ -108,7 +108,7 @@ function EditFieldModal({ field, isOpen, onClose, onSave }: { field: Questionnai
               className="w-full px-3 py-2 rounded-lg border border-slate-200"
             >
               {SCOPE_OPTIONS.map((s) => (
-                <option key={s} value={s}>{SCOPE_INFO[s].title}</option>
+                <option key={s} value={s}>{SCOPE_INFO[s]?.title || s}</option>
               ))}
             </select>
           </div>
@@ -214,7 +214,7 @@ function FieldRow({ field, onEdit, onDelete }: { field: QuestionnaireFieldRow; o
     opacity: isDragging ? 0.5 : 1,
     background: isDragging ? "#f8fafc" : undefined,
   };
-  const scopeInfo = SCOPE_INFO[field.scope || "public"];
+  const scopeInfo = SCOPE_INFO[field.scope || "public"] || { title: field.scope || "public", description: "", location: "", icon: "❓" };
 
   return (
     <tr ref={setNodeRef} style={style} className="border-b hover:bg-slate-50/50 transition-colors">
