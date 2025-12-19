@@ -295,15 +295,28 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
   async function seedStandardFields() {
     setSeeding(true);
     try {
+      console.log('[AdminQuestionnaireFieldsTable] Seeding standard fields...', baseUrl + '/seed-standard');
       const response = await fetch(baseUrl + '/seed-standard', {
         method: 'POST',
         credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
+      
+      const result = await response.json();
+      console.log('[AdminQuestionnaireFieldsTable] Seed result:', result);
+      
       if (response.ok) {
+        alert(`✅ Standard fields seeded successfully!\n\nCreated: ${result.fieldsCreated || 0}\nSkipped (already exist): ${result.fieldsSkipped || 0}`);
         await mutate();
+      } else {
+        console.error('[AdminQuestionnaireFieldsTable] Seed failed:', result);
+        alert(`❌ Failed to seed standard fields:\n${result.error || result.detail || 'Unknown error'}`);
       }
     } catch (e) {
       console.error('Failed to seed standard fields:', e);
+      alert(`❌ Error seeding standard fields:\n${(e as Error).message || 'Network error'}`);
     } finally {
       setSeeding(false);
     }
