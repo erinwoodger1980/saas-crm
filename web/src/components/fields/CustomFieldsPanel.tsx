@@ -40,9 +40,19 @@ export function CustomFieldsPanel({
     opportunity: 'lead', // opportunities use lead fields
   };
 
+  // Map entity type to display context
+  const contextMap: Record<string, string> = {
+    lead: 'lead_modal_details',
+    client: 'client_detail',
+    line_item: 'quote_line_editor',
+    opportunity: 'lead_detail',
+  };
+
   const { fields, isLoading: fieldsLoading } = useFields({
     scope: scopeMap[entityType],
-    context: `${entityType}_detail`,
+    // Don't filter by context - show all fields for the scope
+    // This ensures fields show even if display contexts aren't configured yet
+    context: undefined,
   });
 
   // Load entity's custom field values
