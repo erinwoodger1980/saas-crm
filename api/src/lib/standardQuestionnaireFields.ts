@@ -18,7 +18,7 @@ export type StandardFieldDefinition = {
   placeholder?: string;
   sortOrder: number;
   group?: string;
-  scope: "client" | "public" | "internal" | "manufacturing";
+  scope: "client" | "quote_details" | "public" | "internal" | "manufacturing";
   isStandard: true;
 };
 
@@ -173,6 +173,116 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     sortOrder: 111,
     group: "Client Profile",
     scope: "client",
+    isStandard: true,
+  },
+
+  // ============ QUOTE DETAILS (scope: quote_details - project-specific info) ============
+  {
+    key: "enquiry_number",
+    label: "Enquiry Number",
+    type: "TEXT",
+    required: false,
+    helpText: "Internal reference number",
+    placeholder: "ENQ-2025-001",
+    sortOrder: 150,
+    group: "Quote Details",
+    scope: "quote_details",
+    isStandard: true,
+  },
+  {
+    key: "delivery_address",
+    label: "Delivery Address",
+    type: "TEXT",
+    required: false,
+    helpText: "Delivery location if different from client address",
+    placeholder: "123 Project Site, Town, Postcode",
+    sortOrder: 151,
+    group: "Quote Details",
+    scope: "quote_details",
+    isStandard: true,
+  },
+  {
+    key: "project_description",
+    label: "Project Description",
+    type: "TEXTAREA",
+    required: false,
+    helpText: "Project background, requirements, constraints",
+    placeholder: "Describe the project details...",
+    sortOrder: 152,
+    group: "Quote Details",
+    scope: "quote_details",
+    isStandard: true,
+  },
+  {
+    key: "client_type",
+    label: "What type of client are they?",
+    type: "SELECT",
+    options: ["Homeowner", "Trade/Builder", "Architect", "Developer", "Commercial", "Other"],
+    required: false,
+    helpText: "Client category for workflow routing",
+    sortOrder: 153,
+    group: "Quote Details",
+    scope: "quote_details",
+    isStandard: true,
+  },
+  {
+    key: "jms_number",
+    label: "JMS No",
+    type: "TEXT",
+    required: false,
+    helpText: "Job Management System reference",
+    placeholder: "JMS-123",
+    sortOrder: 154,
+    group: "Quote Details",
+    scope: "quote_details",
+    isStandard: true,
+  },
+  {
+    key: "site_visit_required",
+    label: "Site visit req?",
+    type: "SELECT",
+    options: ["Yes", "No", "Not sure"],
+    required: false,
+    helpText: "Does this project need a site survey?",
+    sortOrder: 155,
+    group: "Quote Details",
+    scope: "quote_details",
+    isStandard: true,
+  },
+  {
+    key: "follow_up_notes",
+    label: "Follow up notes",
+    type: "TEXTAREA",
+    required: false,
+    helpText: "Internal follow-up reminders and actions",
+    placeholder: "Next steps, callbacks, etc.",
+    sortOrder: 156,
+    group: "Quote Details",
+    scope: "quote_details",
+    isStandard: true,
+  },
+  {
+    key: "quoted_by",
+    label: "Quoted by",
+    type: "TEXT",
+    required: false,
+    helpText: "Team member who prepared the quote",
+    placeholder: "Staff name",
+    sortOrder: 157,
+    group: "Quote Details",
+    scope: "quote_details",
+    isStandard: true,
+  },
+  {
+    key: "installation_location",
+    label: "Where will this be",
+    type: "TEXT",
+    required: false,
+    helpText: "Specific installation location details",
+    placeholder: "Front of house, rear extension, etc.",
+    sortOrder: 158,
+    group: "Quote Details",
+    scope: "quote_details",
     isStandard: true,
   },
 
@@ -725,14 +835,14 @@ export function getFieldsByGroup(group: string): StandardFieldDefinition[] {
  */
 export function getFieldGroups(): string[] {
   const groups = [...new Set(STANDARD_FIELDS.map((f) => f.group).filter(Boolean))];
-  const order = ["Client Profile", "Public Questionnaire", "Internal", "Manufacturing"];
+  const order = ["Client Profile", "Quote Details", "Public Questionnaire", "Internal", "Manufacturing"];
   return order.filter((g) => groups.includes(g));
 }
 
 /**
  * Get fields by scope for context-specific rendering
  */
-export function getFieldsByScope(scope: "client" | "public" | "internal" | "manufacturing"): StandardFieldDefinition[] {
+export function getFieldsByScope(scope: "client" | "quote_details" | "public" | "internal" | "manufacturing"): StandardFieldDefinition[] {
   return STANDARD_FIELDS.filter((f) => f.scope === scope);
 }
 
