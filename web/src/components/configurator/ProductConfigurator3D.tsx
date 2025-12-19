@@ -502,9 +502,11 @@ export function ProductConfigurator3D({
           gl={{ antialias: true, alpha: false }}
         >
           <Suspense fallback={null}>
-            {/* Camera controller */}
+            {/* Camera controller (ensure correct props to avoid undefined camera state) */}
             <CameraController
-              camera={config.camera}
+              cameraState={config.camera}
+              productWidth={(config.customData as any)?.dimensions?.width || 1000}
+              productHeight={(config.customData as any)?.dimensions?.height || 2000}
               onCameraChange={handleCameraChange}
             />
             
