@@ -12,7 +12,8 @@ import { ClientQuoteUploadCard } from "@/components/quotes/ClientQuoteUploadCard
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
-import { Loader2, Sparkles, Printer, ChevronDown, ChevronRight, Download, FileText, Building2, Cpu, Edit3, Eye, FileUp, Mail, Save, Box } from "lucide-react";
+import { Loader2, Sparkles, Printer, ChevronDown, ChevronRight, Download, FileText, Building2, Cpu, Edit3, Eye, FileUp, Mail, Save, Box, Wand2 } from "lucide-react";
+import { TypeSelectorModal } from "@/components/TypeSelectorModal";
 import {
   fetchQuote,
   fetchParsedLines,
@@ -60,6 +61,19 @@ export default function QuoteBuilderPage() {
   const [stdFinish, setStdFinish] = useState<string>("");
   const [stdIronmongery, setStdIronmongery] = useState<string>("");
   const [stdGlazing, setStdGlazing] = useState<string>("");
+  
+  // Product type picker state
+  const [showTypeSelector, setShowTypeSelector] = useState(false);
+  const [showAiSearch, setShowAiSearch] = useState(false);
+  const [aiSearchQuery, setAiSearchQuery] = useState<string>("");
+  const [aiSearching, setAiSearching] = useState(false);
+  const [aiClarifications, setAiClarifications] = useState<
+    | null
+    | Array<{
+        question: string;
+        options: Array<{ label: string; category: string; type: string; option: string; hint?: string }>;
+      }>
+  >(null);
 
   const {
     data: quote,
@@ -917,6 +931,73 @@ export default function QuoteBuilderPage() {
     [quoteId, toast],
   );
 
+  // Handle product type selection from type selector modal
+  const handleTypeSelection = useCallback((selection: { category: string; type: string; option: string }) => {
+    setNewLineDesc(`${selection.category === "doors" ? "Door" : "Window"} - ${selection.type} - ${selection.option}`);
+    setShowTypeSelector(false);
+    setShowAiSearch(false);
+  }, []);
+
+  // Handle AI search for product type
+  const handleAiSearch = useCallback(async () => {
+    if (!aiSearchQuery.trim()) return;
+
+    setAiSearching(true);
+    try {
+      const response = await apiFetch<
+        | { category: string; type: string; option: string; confidence: number; clarifications?: never }
+        | { clarifications: Array<{ question: string; options: Array<{ label: string; category: string; type: string; option: string; hint?: string }> }>; message?: string }
+      >("/ml/search-product-type", {
+        method: "POST",
+        json: { description: aiSearchQuery },
+      });
+
+      if ((response as any).clarifications) {
+        const data = response as { clarifications: Array<{ question: string; options: any[] }>; message?: string };
+        setAiClarifications(data.clarifications);
+        if (data.message) {
+          toast({ title: "Need more detail", description: data.message });
+        }
+        return;
+      }
+
+      const match = response as { category: string; type: string; option: string; confidence: number };
+      if (match.category && match.type && match.option) {
+        handleTypeSelection({
+          category: match.category,
+          type: match.type,
+          option: match.option,
+        });
+        toast({
+          title: "Product type found",
+          description: `Matched: ${match.category} - ${match.type} - ${match.option}`,
+        });
+      } else {
+        toast({
+          title: "No match found",
+          description: "Try refining your description",
+        });
+      }
+    } catch (err: any) {
+      toast({
+        title: "AI search failed",
+        description: err?.message || "Unable to search product types",
+        variant: "destructive",
+      });
+    } finally {
+      setAiSearching(false);
+    }
+  }, [aiSearchQuery, handleTypeSelection, toast]);
+
+  // Handle clarification selection from AI
+  const handleClarificationSelect = useCallback((opt: { label: string; category: string; type: string; option: string }) => {
+    handleTypeSelection({
+      category: opt.category,
+      type: opt.type,
+      option: opt.option,
+    });
+  }, [handleTypeSelection]);
+
   // UI state for collapsible sections (defined earlier in state section)
 
   const breadcrumbs = (
@@ -1244,12 +1325,32 @@ export default function QuoteBuilderPage() {
                         {/* Add row (new line item input) */}
                         <tr className="border-b hover:bg-muted/20">
                           <td className="px-3 py-2 border-r">
-                            <Input
-                              value={newLineDesc}
-                              onChange={(e) => setNewLineDesc(e.target.value)}
-                              placeholder="e.g. Oak door"
-                              className="h-8 text-sm"
-                            />
+                            <div className="flex gap-2 items-center">
+                              <Input
+                                value={newLineDesc}
+                                onChange={(e) => setNewLineDesc(e.target.value)}
+                                placeholder="e.g. Oak door"
+                                className="h-8 text-sm flex-1"
+                              />
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 px-2"
+                                onClick={() => setShowTypeSelector(true)}
+                                title="Browse product types"
+                              >
+                                📦
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 px-2"
+                                onClick={() => setShowAiSearch(true)}
+                                title="AI search"
+                              >
+                                <Wand2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </td>
                           <td className="px-3 py-2 border-r">
                             <Input
@@ -1356,6 +1457,112 @@ export default function QuoteBuilderPage() {
                       Add line item
                     </Button>
                   </div>
+
+                  {/* Type Selector Modal */}
+                  {showTypeSelector && (
+                    <TypeSelectorModal
+                      isOpen={true}
+                      onClose={() => setShowTypeSelector(false)}
+                      onSelect={(selection) =>
+                        handleTypeSelection(selection)
+                      }
+                    />
+                  )}
+
+                  {/* AI Product Type Search Modal */}
+                  {showAiSearch && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-lg font-semibold">AI Product Type Search</h3>
+                          <button
+                            onClick={() => {
+                              setShowAiSearch(false);
+                              setAiClarifications(null);
+                            }}
+                            className="text-slate-400 hover:text-slate-600 text-2xl leading-none"
+                          >
+                            ×
+                          </button>
+                        </div>
+                        {!aiClarifications && (
+                          <>
+                            <p className="text-sm text-slate-600">
+                              Describe the product in plain English, or paste an AI-generated description from a photo.
+                            </p>
+                            <textarea
+                              value={aiSearchQuery}
+                              onChange={(e) => setAiSearchQuery(e.target.value)}
+                              placeholder="e.g., 'Double casement window with georgian bars' or paste AI description..."
+                              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                              rows={4}
+                              autoFocus
+                            />
+                            <div className="flex gap-2 justify-end">
+                              <Button
+                                variant="outline"
+                                onClick={() => setShowAiSearch(false)}
+                                disabled={aiSearching}
+                              >
+                                Cancel
+                              </Button>
+                              <Button
+                                onClick={handleAiSearch}
+                                disabled={!aiSearchQuery.trim() || aiSearching}
+                              >
+                                {aiSearching ? (
+                                  <>
+                                    <Wand2 className="h-4 w-4 mr-2 animate-spin" />
+                                    Searching...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Wand2 className="h-4 w-4 mr-2" />
+                                    Search
+                                  </>
+                                )}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                onClick={() => {
+                                  setShowAiSearch(false);
+                                  setTimeout(() => setShowTypeSelector(true), 50);
+                                }}
+                                disabled={aiSearching}
+                              >
+                                Browse Manually
+                              </Button>
+                            </div>
+                          </>
+                        )}
+
+                        {aiClarifications && (
+                          <div className="space-y-4">
+                            <p className="text-sm text-slate-600">
+                              We need a bit more detail to pick the right product. Choose an option below.
+                            </p>
+                            {aiClarifications.map((clarification, idx) => (
+                              <div key={idx} className="space-y-2">
+                                <div className="font-medium text-slate-900">{clarification.question}</div>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                  {clarification.options.map((opt) => (
+                                    <button
+                                      key={`${opt.type}-${opt.option}-${opt.label}`}
+                                      onClick={() => handleClarificationSelect(opt)}
+                                      className="border rounded-lg p-3 text-left hover:border-blue-500 hover:bg-blue-50 transition"
+                                    >
+                                      <div className="font-semibold text-slate-900">{opt.label}</div>
+                                      {opt.hint && <div className="text-xs text-slate-600 mt-1">{opt.hint}</div>}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </TabsContent>
