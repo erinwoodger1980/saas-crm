@@ -130,18 +130,31 @@ export function ProductConfigurator3D({
     async function load() {
       setIsLoading(true);
       
-      // Try to load existing scene state
-      let loaded = await loadSceneState(tenantId, entityType, entityId);
+      let loaded: SceneConfig | null = null;
+      
+      // For preview mode (settings, etc.), skip API load
+      const isPreviewMode = tenantId === 'settings' || tenantId === 'preview';
+      
+      if (!isPreviewMode) {
+        // Try to load existing scene state from database
+        loaded = await loadSceneState(tenantId, entityType, entityId);
+      }
       
       if (!loaded) {
         // Initialize from line item
-        const params = getOrCreateParams(lineItem);
-        if (params) {
-          loaded = initializeSceneFromParams(params, tenantId, entityType, entityId);
-          if (loaded) {
-            // Save initial state
-            await saveSceneState(tenantId, entityType, entityId, loaded);
+        try {
+          const params = getOrCreateParams(lineItem);
+          if (params) {
+            loaded = initializeSceneFromParams(params, tenantId, entityType, entityId);
+            if (loaded && !isPreviewMode) {
+              // Save initial state (skip for preview mode)
+              await saveSceneState(tenantId, entityType, entityId, loaded);
+            }
+          } else {
+            console.error('Failed to generate params from lineItem:', lineItem);
           }
+        } catch (error) {
+          console.error('Error initializing scene:', error, { lineItem });
         }
       }
       
@@ -156,7 +169,8 @@ export function ProductConfigurator3D({
           }
         }
       } else {
-        toast.error('Failed to initialize configurator');
+        console.error('Failed to initialize configurator', { lineItem, tenantId, entityType, entityId });
+        toast.error('Failed to initialize configurator - check product type configuration');
       }
       
       setIsLoading(false);
@@ -171,6 +185,12 @@ export function ProductConfigurator3D({
    */
   const persistConfig = useCallback(
     async (newConfig: SceneConfig) => {
+      // Skip persistence in preview mode
+      const isPreviewMode = tenantId === 'settings' || tenantId === 'preview';
+      if (isPreviewMode) {
+        return;
+      }
+      
       setIsSaving(true);
       const success = await saveSceneState(tenantId, entityType, entityId, newConfig);
       setIsSaving(false);
