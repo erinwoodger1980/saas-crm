@@ -383,12 +383,29 @@ export function ProductConfigurator3D({
 
   const selectedAttributes = selectedComponentId ? editableAttributes[selectedComponentId] : null;
 
-  // Safety check: ensure config is not null before rendering
-  if (!config || !config.camera || !config.components) {
+  // Safety check: ensure config is valid with all required properties before rendering Canvas
+  const isConfigValid = config && 
+    config.camera && 
+    config.camera.position && 
+    config.camera.mode && 
+    config.components && 
+    config.lighting && 
+    config.materials;
+
+  if (!isConfigValid) {
+    console.error('[ProductConfigurator3D] Invalid config state:', {
+      hasConfig: !!config,
+      hasCamera: !!config?.camera,
+      hasCameraPosition: !!config?.camera?.position,
+      hasCameraMode: !!config?.camera?.mode,
+      hasComponents: !!config?.components,
+      hasLighting: !!config?.lighting,
+      hasMaterials: !!config?.materials,
+    });
     return (
       <div className="flex flex-col items-center justify-center gap-4" style={{ width, height }}>
-        <p className="text-muted-foreground">Invalid configuration state</p>
-        <Button onClick={() => window.location.reload()}>Reload</Button>
+        <p className="text-muted-foreground">Configuration not ready</p>
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
