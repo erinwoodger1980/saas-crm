@@ -1222,118 +1222,140 @@ export default function QuoteBuilderPage() {
                   </div>
                 )}
 
-                {/* Standard fields + Add row */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium text-foreground">Description</label>
-                    <Input
-                      value={newLineDesc}
-                      onChange={(e) => setNewLineDesc(e.target.value)}
-                      placeholder="e.g. Oak door - primed"
-                    />
+                {/* Product line items - 9 column spreadsheet layout */}
+                <div className="space-y-3">
+                  <div className="text-sm font-medium text-foreground">Line Items</div>
+                  <div className="overflow-x-auto border rounded-lg">
+                    <table className="w-full border-collapse text-sm">
+                      <thead>
+                        <tr className="bg-muted/50 border-b">
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-foreground whitespace-nowrap border-r">Description</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-foreground whitespace-nowrap border-r">Qty</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-foreground whitespace-nowrap border-r">Width (mm)</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-foreground whitespace-nowrap border-r">Height (mm)</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-foreground whitespace-nowrap border-r">Timber</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-foreground whitespace-nowrap border-r">Finish</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-foreground whitespace-nowrap border-r">Ironmongery</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-foreground whitespace-nowrap border-r">Glazing</th>
+                          <th className="px-3 py-2 text-center text-xs font-semibold text-foreground">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {/* Add row (new line item input) */}
+                        <tr className="border-b hover:bg-muted/20">
+                          <td className="px-3 py-2 border-r">
+                            <Input
+                              value={newLineDesc}
+                              onChange={(e) => setNewLineDesc(e.target.value)}
+                              placeholder="e.g. Oak door"
+                              className="h-8 text-sm"
+                            />
+                          </td>
+                          <td className="px-3 py-2 border-r">
+                            <Input
+                              type="number"
+                              inputMode="decimal"
+                              value={newLineQty ?? ''}
+                              min={1}
+                              onChange={(e) => setNewLineQty(e.target.value ? Number(e.target.value) : null)}
+                              placeholder="1"
+                              className="h-8 text-sm"
+                            />
+                          </td>
+                          <td className="px-3 py-2 border-r">
+                            <Input
+                              type="number"
+                              inputMode="decimal"
+                              value={stdWidthMm ?? ''}
+                              onChange={(e) => setStdWidthMm(e.target.value ? Number(e.target.value) : null)}
+                              placeholder="900"
+                              className="h-8 text-sm"
+                            />
+                          </td>
+                          <td className="px-3 py-2 border-r">
+                            <Input
+                              type="number"
+                              inputMode="decimal"
+                              value={stdHeightMm ?? ''}
+                              onChange={(e) => setStdHeightMm(e.target.value ? Number(e.target.value) : null)}
+                              placeholder="2100"
+                              className="h-8 text-sm"
+                            />
+                          </td>
+                          <td className="px-3 py-2 border-r">
+                            <select
+                              className="w-full rounded border border-input bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                              value={stdTimber || ''}
+                              onChange={(e) => setStdTimber(e.target.value || '')}
+                            >
+                              <option value="">—</option>
+                              <option value="oak">Oak</option>
+                              <option value="sapele">Sapele</option>
+                              <option value="accoya">Accoya</option>
+                              <option value="iroko">Iroko</option>
+                              <option value="pine">Pine</option>
+                              <option value="hemlock">Hemlock</option>
+                              <option value="mdf">MDF</option>
+                              <option value="other">Other</option>
+                            </select>
+                          </td>
+                          <td className="px-3 py-2 border-r">
+                            <select
+                              className="w-full rounded border border-input bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                              value={stdFinish || ''}
+                              onChange={(e) => setStdFinish(e.target.value || '')}
+                            >
+                              <option value="">—</option>
+                              <option value="primed">Primed</option>
+                              <option value="painted">Painted</option>
+                              <option value="stained">Stained</option>
+                              <option value="clear_lacquer">Clear Lacquer</option>
+                              <option value="wax">Wax</option>
+                              <option value="oiled">Oiled</option>
+                              <option value="unfinished">Unfinished</option>
+                            </select>
+                          </td>
+                          <td className="px-3 py-2 border-r">
+                            <select
+                              className="w-full rounded border border-input bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                              value={stdIronmongery || ''}
+                              onChange={(e) => setStdIronmongery(e.target.value || '')}
+                            >
+                              <option value="">—</option>
+                              <option value="none">None</option>
+                              <option value="hinges">Hinges</option>
+                              <option value="handles">Handles</option>
+                              <option value="locks">Locks</option>
+                              <option value="full_set">Full Set</option>
+                              <option value="fire_rated">Fire Rated</option>
+                            </select>
+                          </td>
+                          <td className="px-3 py-2">
+                            <select
+                              className="w-full rounded border border-input bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                              value={stdGlazing || ''}
+                              onChange={(e) => setStdGlazing(e.target.value || '')}
+                            >
+                              <option value="">—</option>
+                              <option value="none">None</option>
+                              <option value="clear">Clear</option>
+                              <option value="obscure">Obscure</option>
+                              <option value="double_glazed">Double</option>
+                              <option value="fire_rated">Fire Rated</option>
+                              <option value="georgian">Georgian</option>
+                            </select>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium text-foreground">Qty</label>
-                    <Input
-                      type="number"
-                      inputMode="decimal"
-                      value={newLineQty ?? ''}
-                      min={1}
-                      onChange={(e) => setNewLineQty(e.target.value ? Number(e.target.value) : null)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium text-foreground">Width (mm)</label>
-                    <Input
-                      type="number"
-                      inputMode="decimal"
-                      value={stdWidthMm ?? ''}
-                      onChange={(e) => setStdWidthMm(e.target.value ? Number(e.target.value) : null)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium text-foreground">Height (mm)</label>
-                    <Input
-                      type="number"
-                      inputMode="decimal"
-                      value={stdHeightMm ?? ''}
-                      onChange={(e) => setStdHeightMm(e.target.value ? Number(e.target.value) : null)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium text-foreground">Timber</label>
-                    <select
-                      className="w-full rounded-lg border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                      value={stdTimber || ''}
-                      onChange={(e) => setStdTimber(e.target.value || '')}
-                    >
-                      <option value="">— Select —</option>
-                      <option value="oak">Oak</option>
-                      <option value="sapele">Sapele</option>
-                      <option value="accoya">Accoya</option>
-                      <option value="iroko">Iroko</option>
-                      <option value="pine">Pine</option>
-                      <option value="hemlock">Hemlock</option>
-                      <option value="mdf">MDF</option>
-                      <option value="other">Other</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium text-foreground">Finish</label>
-                    <select
-                      className="w-full rounded-lg border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                      value={stdFinish || ''}
-                      onChange={(e) => setStdFinish(e.target.value || '')}
-                    >
-                      <option value="">— Select —</option>
-                      <option value="primed">Primed</option>
-                      <option value="painted">Painted</option>
-                      <option value="stained">Stained</option>
-                      <option value="clear_lacquer">Clear Lacquer</option>
-                      <option value="wax">Wax</option>
-                      <option value="oiled">Oiled</option>
-                      <option value="unfinished">Unfinished</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium text-foreground">Ironmongery</label>
-                    <select
-                      className="w-full rounded-lg border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                      value={stdIronmongery || ''}
-                      onChange={(e) => setStdIronmongery(e.target.value || '')}
-                    >
-                      <option value="">— Select —</option>
-                      <option value="none">None</option>
-                      <option value="hinges">Hinges</option>
-                      <option value="handles">Handles</option>
-                      <option value="locks">Locks</option>
-                      <option value="full_set">Full Set</option>
-                      <option value="fire_rated">Fire Rated</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium text-foreground">Glazing</label>
-                    <select
-                      className="w-full rounded-lg border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                      value={stdGlazing || ''}
-                      onChange={(e) => setStdGlazing(e.target.value || '')}
-                    >
-                      <option value="">— Select —</option>
-                      <option value="none">None</option>
-                      <option value="clear">Clear Glass</option>
-                      <option value="obscure">Obscure Glass</option>
-                      <option value="double_glazed">Double Glazed</option>
-                      <option value="fire_rated">Fire Rated Glass</option>
-                      <option value="georgian">Georgian</option>
-                    </select>
-                  </div>
-                </div>
 
-                <div className="flex justify-end">
-                  <Button onClick={saveProductConfiguration} className="gap-2">
-                    <Save className="h-4 w-4" />
-                    Add line from product
-                  </Button>
+                  <div className="flex justify-end">
+                    <Button onClick={saveProductConfiguration} className="gap-2">
+                      <Save className="h-4 w-4" />
+                      Add line item
+                    </Button>
+                  </div>
                 </div>
               </div>
             </TabsContent>
