@@ -1135,35 +1135,46 @@ export default function QuoteBuilderPage() {
                   </select>
                 </div>
 
-                {/* Configuration questions */}
+                {/* Configuration questions - Grid layout */}
                 {selectedProductOptionId && configQuestions.length > 0 && (
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     <div className="text-sm font-medium text-foreground">Configuration Questions</div>
-                    <div className="space-y-3">
-                      {configQuestions.map((q: any, idx: number) => {
-                        const key = q.source === "legacy" ? (q as any).fieldKey : `${(q as any).componentType}:${(q as any).attributeName}`;
-                        const label = q.label || (q.source === "legacy" ? (q as any).fieldKey : (q as any).attributeName);
-                        return (
-                          <div key={idx} className="space-y-1">
-                            <label className="block text-xs font-medium text-foreground">
-                              {label}
-                              {q.required && <span className="text-red-500 ml-1">*</span>}
-                            </label>
-                            <Input
-                              type="text"
-                              value={configAnswers[key] || ""}
-                              onChange={(e) =>
-                                setConfigAnswers((prev) => ({ ...prev, [key]: e.target.value }))
-                              }
-                              placeholder={`Answer for ${label}`}
-                              className="w-full"
-                            />
-                            <div className="text-xs text-muted-foreground">
-                              {q.source === "legacy" ? "From legacy field" : "From component attribute"}
-                            </div>
-                          </div>
-                        );
-                      })}
+                    <div className="overflow-x-auto border rounded-lg">
+                      <table className="w-full border-collapse">
+                        <thead>
+                          <tr className="bg-muted/50 border-b">
+                            {configQuestions.map((q: any, idx: number) => {
+                              const label = q.label || (q.source === "legacy" ? (q as any).fieldKey : (q as any).attributeName);
+                              return (
+                                <th key={idx} className="px-4 py-2 text-left text-xs font-semibold text-foreground whitespace-nowrap border-r last:border-r-0">
+                                  {label}
+                                  {q.required && <span className="text-red-500 ml-1">*</span>}
+                                </th>
+                              );
+                            })}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className="border-b last:border-b-0">
+                            {configQuestions.map((q: any, idx: number) => {
+                              const key = q.source === "legacy" ? (q as any).fieldKey : `${(q as any).componentType}:${(q as any).attributeName}`;
+                              return (
+                                <td key={idx} className="px-4 py-2 border-r last:border-r-0">
+                                  <Input
+                                    type="text"
+                                    value={configAnswers[key] || ""}
+                                    onChange={(e) =>
+                                      setConfigAnswers((prev) => ({ ...prev, [key]: e.target.value }))
+                                    }
+                                    placeholder="—"
+                                    className="h-8 text-sm"
+                                  />
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 )}

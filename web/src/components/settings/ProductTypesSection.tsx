@@ -4,8 +4,9 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiFetch } from "@/lib/api";
-import { Upload, Trash2, Plus, Wand2, ChevronRight, ChevronDown, Loader2 } from "lucide-react";
+import { Upload, Trash2, Plus, Wand2, ChevronRight, ChevronDown, Loader2, Box } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { ProductConfigurator3D } from "@/components/configurator/ProductConfigurator3D";
 
 const DEFAULT_SVG_PROMPT =
   "Provide a detailed elevation with correct timber/glass fills, rails, stiles, panels, muntins, and dimension lines (800mm top, 2025mm left).";
@@ -143,6 +144,13 @@ export default function ProductTypesSection() {
   const [svgDescription, setSvgDescription] = useState<string>("");
   const [svgPreview, setSvgPreview] = useState<string | null>(null);
   const [previewGenerating, setPreviewGenerating] = useState(false);
+  const [configuratorDialog, setConfiguratorDialog] = useState<{
+    categoryId: string;
+    typeIdx: number;
+    optionId: string;
+    label: string;
+    type: string;
+  } | null>(null);
 
   useEffect(() => {
     loadProducts();
@@ -660,6 +668,22 @@ export default function ProductTypesSection() {
                                     <Wand2 className="h-3 w-3 mr-1" />
                                     {generatingSvg === option.id ? "Generating..." : "Generate SVG"}
                                   </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setConfiguratorDialog({
+                                        categoryId: category.id,
+                                        typeIdx,
+                                        optionId: option.id,
+                                        label: option.label,
+                                        type: type.type,
+                                      });
+                                    }}
+                                  >
+                                    <Box className="h-3 w-3 mr-1" />
+                                    3D Preview
+                                  </Button>
                                 </div>
                               </div>
 
@@ -790,6 +814,43 @@ export default function ProductTypesSection() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 3D Configurator Modal */}
+      {configuratorDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-y-auto">
+          <div className="w-full max-w-6xl rounded-lg bg-white p-6 shadow-xl my-8">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold">3D Product Preview - {configuratorDialog.label}</h2>
+              <button
+                onClick={() => setConfiguratorDialog(null)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="rounded-lg border bg-muted/30">
+              <ProductConfigurator3D
+                tenantId="settings"
+                entityType="productType"
+                entityId={configuratorDialog.optionId}
+                lineItem={{
+                  id: configuratorDialog.optionId,
+                  description: configuratorDialog.label,
+                  configuredProduct: {
+                    productType: {
+                      category: configuratorDialog.categoryId,
+                      type: configuratorDialog.type,
+                      option: configuratorDialog.optionId,
+                    },
+                  },
+                }}
+                onClose={() => setConfiguratorDialog(null)}
+                height="70vh"
+              />
+            </div>
           </div>
         </div>
       )}
