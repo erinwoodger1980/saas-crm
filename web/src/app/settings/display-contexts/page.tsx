@@ -233,3 +233,7 @@ export function DisplayContextManager() {
     </div>
   );
 }
+
+export default function DisplayContextsPage() {
+  return <DisplayContextManager />;
+}
