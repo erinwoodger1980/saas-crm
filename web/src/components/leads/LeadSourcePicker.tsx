@@ -138,7 +138,7 @@ export default function LeadSourcePicker({
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="flex gap-2 w-full">
           <select
-            className="flex-1 rounded-lg border border-slate-300 px-3 py-2"
+            className="flex-1 border-input rounded-md border bg-transparent px-3 py-1 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:ring-destructive/20 aria-invalid:border-destructive"
             value={selectVal}
             onChange={(e) => onSelectChange(e.target.value)}
             disabled={saving}
@@ -162,7 +162,7 @@ export default function LeadSourcePicker({
         {selectVal === CUSTOM && (
           <div className="flex w-full gap-2">
             <input
-              className="w-full rounded-lg border border-slate-300 px-3 py-2"
+              className="w-full border-input rounded-md border bg-transparent px-3 py-1 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:ring-destructive/20 aria-invalid:border-destructive"
               placeholder="Type source name"
               value={customVal}
               onChange={(e) => setCustomVal(e.target.value)}

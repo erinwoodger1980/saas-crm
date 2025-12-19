@@ -132,9 +132,11 @@ Generate the component breakdown for this product. Provide realistic dimensions 
       sourceDescription: description,
     });
   } catch (error) {
-    console.error('[estimate-components] Error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('[estimate-components] Error:', errorMessage);
+    console.error('[estimate-components] Full error:', error);
     return NextResponse.json(
-      { error: 'Failed to process request' },
+      { error: 'Failed to process request', details: errorMessage },
       { status: 500 }
     );
   }
