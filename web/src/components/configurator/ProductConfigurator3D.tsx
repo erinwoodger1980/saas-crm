@@ -143,10 +143,13 @@ export function ProductConfigurator3D({
       if (!loaded) {
         // Initialize from line item
         try {
+          console.log('[ProductConfigurator3D] Initializing from lineItem:', { lineItem, tenantId, entityType, entityId });
+          
           // In preview mode, ensure lineItem has minimum required structure
           let effectiveLineItem = lineItem;
           if (isPreviewMode && lineItem?.configuredProduct?.productType) {
             const pt = lineItem.configuredProduct.productType;
+            console.log('[ProductConfigurator3D] Using preview mode with productType:', pt);
             effectiveLineItem = {
               ...lineItem,
               lineStandard: {
@@ -159,18 +162,23 @@ export function ProductConfigurator3D({
             };
           }
           
+          console.log('[ProductConfigurator3D] Effective lineItem:', effectiveLineItem);
           const params = getOrCreateParams(effectiveLineItem);
+          console.log('[ProductConfigurator3D] Generated params:', params);
+          
           if (params) {
             loaded = initializeSceneFromParams(params, tenantId, entityType, entityId);
+            console.log('[ProductConfigurator3D] Scene initialized:', loaded ? 'success' : 'null');
+            
             if (loaded && !isPreviewMode) {
               // Save initial state (skip for preview mode)
               await saveSceneState(tenantId, entityType, entityId, loaded);
             }
           } else {
-            console.error('Failed to generate params from lineItem:', effectiveLineItem);
+            console.error('[ProductConfigurator3D] Failed to generate params from lineItem:', effectiveLineItem);
           }
         } catch (error) {
-          console.error('Error initializing scene:', error, { lineItem });
+          console.error('[ProductConfigurator3D] Error initializing scene:', error, { lineItem });
         }
       }
       
@@ -361,6 +369,16 @@ export function ProductConfigurator3D({
   }
 
   const selectedAttributes = selectedComponentId ? editableAttributes[selectedComponentId] : null;
+
+  // Safety check: ensure config is not null before rendering
+  if (!config || !config.camera || !config.components) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4" style={{ width, height }}>
+        <p className="text-muted-foreground">Invalid configuration state</p>
+        <Button onClick={() => window.location.reload()}>Reload</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex gap-4" style={{ width, height }}>
