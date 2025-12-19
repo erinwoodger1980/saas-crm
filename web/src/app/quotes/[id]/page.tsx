@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Loader2, Sparkles, Printer, ChevronDown, ChevronRight, Download, FileText, Building2, Cpu, Edit3, Eye, FileUp, Mail, Save, Box, Wand2 } from "lucide-react";
 import { TypeSelectorModal } from "@/components/TypeSelectorModal";
-import { ProductConfigurator3D } from "@/components/configurator/ProductConfigurator3D";
+import { AIComponentConfigurator } from "@/components/configurator/AIComponentConfigurator";
 import {
   fetchQuote,
   fetchParsedLines,
@@ -1650,29 +1650,13 @@ export default function QuoteBuilderPage() {
                 </div>
 
                 {/* 3D Preview Modal */}
-                {show3dModal && modalProductOptionId && (
+                {show3dModal && (
                   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-                    <div className="w-full max-w-6xl bg-white rounded-2xl shadow-xl overflow-hidden max-h-[95vh] flex flex-col">
-                      <div className="flex items-center justify-between p-6 border-b">
-                        <h2 className="text-2xl font-semibold">3D Preview</h2>
-                        <button
-                          onClick={() => {
-                            setShow3dModal(false);
-                            setModalProductOptionId(null);
-                          }}
-                          className="text-slate-400 hover:text-slate-600 text-2xl leading-none"
-                        >
-                          ×
-                        </button>
-                      </div>
-                      <div className="flex-1 overflow-hidden">
-                        {show3dModal && modalProductOptionId && (
-                          <ProductConfigurator3D
-                            key={`configurator-${modalProductOptionId}`}
-                            tenantId={quote?.tenantId || 'preview'}
-                            entityType="quoteLineItem"
-                            entityId={`preview-${modalProductOptionId}`}
-                            lineItem={{
+                    <div className="w-full max-w-4xl bg-white rounded-2xl shadow-xl overflow-hidden max-h-[95vh] flex flex-col">
+                      {show3dModal && (
+                        <AIComponentConfigurator
+                          tenantId={quote?.tenantId || 'preview'}
+                          lineItem={{
                             configuredProduct: {
                               productType: (() => {
                                 // Find the selected product option and extract its category/type/option
@@ -1682,7 +1666,6 @@ export default function QuoteBuilderPage() {
                                     if (!type.options) continue;
                                     const opt = type.options.find((o: any) => o.id === modalProductOptionId);
                                     if (opt) {
-                                      console.log('[3D Modal] Found product type:', { cat: cat.value, type: type.value, opt: opt.value });
                                       return {
                                         category: cat.value || 'doors',
                                         type: type.value || 'standard',
@@ -1691,7 +1674,6 @@ export default function QuoteBuilderPage() {
                                     }
                                   }
                                 }
-                                console.warn('[3D Modal] Could not find product type, using defaults');
                                 return { category: 'doors', type: 'standard', option: 'E01' };
                               })(),
                             },
@@ -1704,17 +1686,19 @@ export default function QuoteBuilderPage() {
                             },
                             description: newLineDesc || 'New Product',
                           }}
-                          onChange={(config) => {
-                            // Optional: handle config changes
+                          description={newLineDesc}
+                          onGeneratedComponents={(components) => {
+                            // Handle created components - could add them to the line item
+                            console.log('[Quote] Components created:', components);
+                            mutateLines();
                           }}
                           onClose={() => {
                             setShow3dModal(false);
                             setModalProductOptionId(null);
                           }}
-                          height="calc(95vh - 80px)"
+                          height="calc(95vh - 40px)"
                         />
-                        )}
-                      </div>
+                      )}
                     </div>
                   </div>
                 )}
