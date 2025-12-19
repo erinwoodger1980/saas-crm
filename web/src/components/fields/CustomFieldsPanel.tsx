@@ -9,7 +9,6 @@
 import { useState, useEffect } from 'react';
 import { FieldForm } from './FieldRenderer';
 import { useFields } from '@/hooks/useFields';
-import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { apiFetch } from '@/lib/api';
 import { getAuthIdsFromJwt } from '@/lib/auth';
@@ -17,19 +16,16 @@ import { getAuthIdsFromJwt } from '@/lib/auth';
 interface CustomFieldsPanelProps {
   entityType: 'lead' | 'client' | 'line_item' | 'opportunity';
   entityId: string;
-  onSave?: () => void;
   readOnly?: boolean;
 }
 
 export function CustomFieldsPanel({
   entityType,
   entityId,
-  onSave,
   readOnly = false,
 }: CustomFieldsPanelProps) {
   const { toast } = useToast();
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, any>>({});
-  const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // Map entity type to field scope
@@ -86,11 +82,13 @@ export function CustomFieldsPanel({
     }
   }, [entityType, entityId]);
 
-  const handleSave = async () => {
-    setSaving(true);
+  const handleFieldBlur = async (fieldKey: string, value: any) => {
     try {
       const auth = getAuthIdsFromJwt();
       if (!auth) throw new Error('Not authenticated');
+
+      const updatedValues = { ...customFieldValues, [fieldKey]: value };
+      setCustomFieldValues(updatedValues);
 
       await apiFetch(`/${entityType}s/${entityId}`, {
         method: 'PATCH',
@@ -100,25 +98,14 @@ export function CustomFieldsPanel({
           'x-tenant-id': auth.tenantId,
         },
         json: {
-          custom: customFieldValues,
+          custom: updatedValues,
         },
-      });
-
-      toast({
-        title: 'Success',
-        description: 'Custom fields saved',
       });
 
       onSave?.();
     } catch (error) {
-      console.error('Failed to save custom fields:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to save custom fields',
-        variant: 'destructive',
-      });
-    } finally {
-      setSaving(false);
+      console.error('Failed to save custom field:', error);
+      // Silently fail - don't show error toast for auto-save
     }
   };
 
@@ -132,22 +119,13 @@ export function CustomFieldsPanel({
 
   return (
     <div className="space-y-4 border-t border-slate-200 pt-4">
-      <h3 className="font-semibold text-slate-900">Custom Fields</h3>
-
       <FieldForm
         fields={fields as any}
         values={customFieldValues}
         onChange={setCustomFieldValues}
+        onBlur={readOnly ? undefined : handleFieldBlur}
         disabled={readOnly}
       />
-
-      {!readOnly && (
-        <div className="flex gap-2 justify-end">
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving...' : 'Save Custom Fields'}
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

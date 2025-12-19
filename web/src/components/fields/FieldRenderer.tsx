@@ -48,6 +48,7 @@ interface FieldRendererProps {
   field: QuestionnaireField;
   value?: any;
   onChange?: (value: any) => void;
+  onBlur?: (value: any) => void;
   context?: string;
   disabled?: boolean;
   error?: string;
@@ -99,6 +100,7 @@ export function FieldRenderer({
             placeholder={field.placeholder || ''}
             value={value || ''}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange?.(e.target.value)}
+            onBlur={(e: React.FocusEvent<HTMLInputElement>) => onBlur?.(e.target.value)}
             disabled={isReadOnly}
             className={error ? 'border-red-500' : ''}
           />
@@ -112,6 +114,7 @@ export function FieldRenderer({
             placeholder={field.placeholder || ''}
             value={value || ''}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange?.(parseFloat(e.target.value) || null)}
+            onBlur={(e: React.FocusEvent<HTMLInputElement>) => onBlur?.(parseFloat(e.target.value) || null)}
             disabled={isReadOnly}
             className={error ? 'border-red-500' : ''}
           />
@@ -124,6 +127,7 @@ export function FieldRenderer({
             placeholder={field.placeholder || ''}
             value={value || ''}
             onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => onChange?.(e.target.value)}
+            onBlur={(e: React.FocusEvent<HTMLTextAreaElement>) => onBlur?.(e.target.value)}
             disabled={isReadOnly}
             rows={4}
             className={error ? 'border-red-500' : ''}
@@ -163,6 +167,7 @@ export function FieldRenderer({
             type="date"
             value={value || ''}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange?.(e.target.value)}
+            onBlur={(e: React.FocusEvent<HTMLInputElement>) => onBlur?.(e.target.value)}
             disabled={isReadOnly}
             className={error ? 'border-red-500' : ''}
           />
@@ -202,6 +207,7 @@ interface FieldFormProps {
   fields: QuestionnaireField[];
   values: Record<string, any>;
   onChange: (values: Record<string, any>) => void;
+  onBlur?: (fieldKey: string, value: any) => void;
   context?: string;
   disabled?: boolean;
   errors?: Record<string, string>;
@@ -212,6 +218,7 @@ export function FieldForm({
   fields,
   values,
   onChange,
+  onBlur,
   context,
   disabled = false,
   errors = {},
@@ -231,6 +238,10 @@ export function FieldForm({
   const handleFieldChange = (fieldKey: string, newValue: any) => {
     const newValues = { ...values, [fieldKey]: newValue };
     onChange(newValues);
+  };
+
+  const handleFieldBlur = (fieldKey: string, value: any) => {
+    onBlur?.(fieldKey, value);
   };
 
   const gridClass = {
@@ -254,6 +265,7 @@ export function FieldForm({
                 field={field}
                 value={values[field.key]}
                 onChange={(newValue) => handleFieldChange(field.key, newValue)}
+                onBlur={(value) => handleFieldBlur(field.key, value)}
                 context={context}
                 disabled={disabled}
                 error={errors[field.key]}
