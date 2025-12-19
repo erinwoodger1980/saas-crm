@@ -8,6 +8,7 @@ import InlineEditableCell from "./InlineEditableCell";
 import CreateQuestionnaireFieldModal, { NewFieldPayload } from "./CreateQuestionnaireFieldModal";
 import { VisualOptionsEditor } from "./VisualOptionsEditor";
 import { ProductTypeSelector } from "./ProductTypeSelector";
+import { useCurrentUser } from "@/lib/use-current-user";
 
 export interface QuestionnaireFieldRow {
   id: string;
@@ -54,10 +55,11 @@ function ScopePreviewBadge({ scope }: { scope: string }) {
   );
 }
 
-function EditFieldModal({ field, isOpen, onClose, onSave }: { field: QuestionnaireFieldRow | null; isOpen: boolean; onClose: () => void; onSave: (updates: Partial<QuestionnaireFieldRow>) => void }) {
+function EditFieldModal({ field, isOpen, onClose, onSave, onDelete }: { field: QuestionnaireFieldRow | null; isOpen: boolean; onClose: () => void; onSave: (updates: Partial<QuestionnaireFieldRow>) => void; onDelete: (id: string) => void }) {
   const [edits, setEdits] = useState<Partial<QuestionnaireFieldRow>>({});
   const [showOptions, setShowOptions] = useState(false);
   const [showProductTypes, setShowProductTypes] = useState(false);
+  const { user } = useCurrentUser();
 
   useEffect(() => {
     if (field && isOpen) {
@@ -72,7 +74,13 @@ function EditFieldModal({ field, isOpen, onClose, onSave }: { field: Questionnai
       <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto space-y-4">
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Edit Field: {field.label}</h2>
-          <p className="text-xs text-slate-500 mt-1">Make changes below. Standard fields cannot be deleted.</p>
+          <p className="text-xs text-slate-500 mt-1">
+            {field.isStandard
+              ? (user?.isDeveloper
+                  ? "Developer: you can delete standard fields."
+                  : "Standard fields cannot be deleted.")
+              : "Custom fields can be deleted."}
+          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -184,29 +192,50 @@ function EditFieldModal({ field, isOpen, onClose, onSave }: { field: Questionnai
           )}
         </div>
 
-        <div className="flex justify-end gap-2 pt-4 border-t">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => {
-              onSave(edits);
-              onClose();
-            }}
-            className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-          >
-            Save Changes
-          </button>
+        <div className="flex justify-between items-center pt-4 border-t">
+          {/* Delete button on the left - only show if user can delete this field */}
+          <div>
+            {(!field.isStandard || user?.isDeveloper) && (
+              <button
+                onClick={() => {
+                  if (confirm(`Are you sure you want to delete "${field.label}"?${field.isStandard ? ' This is a standard field.' : ''}`))
+                   {
+                    onDelete(field.id);
+                    onClose();
+                  }
+                }}
+                className="px-4 py-2 text-sm rounded-lg bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 font-medium"
+              >
+                Delete Field
+              </button>
+            )}
+          </div>
+          
+          {/* Save/Cancel buttons on the right */}
+          <div className="flex gap-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                onSave(edits);
+                onClose();
+              }}
+              className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+            >
+              Save Changes
+            </button>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function FieldRow({ field, onEdit, onDelete }: { field: QuestionnaireFieldRow; onEdit: () => void; onDelete: () => void }) {
+function FieldRow({ field, onEdit, onDelete, canDelete }: { field: QuestionnaireFieldRow; onEdit: () => void; onDelete: () => void; canDelete: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: field.id });
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -246,7 +275,7 @@ function FieldRow({ field, onEdit, onDelete }: { field: QuestionnaireFieldRow; o
         >
           Edit
         </button>
-        {!field.isStandard && (
+        {canDelete && (
           <button
             onClick={onDelete}
             className="ml-1 px-3 py-1 text-xs rounded bg-red-50 text-red-600 hover:bg-red-100 font-medium"
@@ -263,6 +292,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
   apiBase?: string;
   scope?: "client" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal";
 }> = ({ apiBase = process.env.NEXT_PUBLIC_API_URL || "", scope }) => {
+  const { user } = useCurrentUser();
   const baseUrl = apiBase.replace(/\/$/, "") + "/questionnaire-fields";
   const listUrl = baseUrl + "?includeStandard=true" + (scope ? `&scope=${scope}` : "");
   const { data, mutate, isLoading } = useSWR<QuestionnaireFieldRow[]>(listUrl, fetcher);
@@ -359,8 +389,17 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
 
   async function deleteField(id: string) {
     if (!confirm("Delete this field?")) return;
+    const target = rows.find(r => r.id === id);
+    const isStandard = !!target?.isStandard;
+    const qs = isStandard && user?.isDeveloper ? "?hard=true" : "";
     setRows((prev) => prev.filter((r) => r.id !== id));
-    await fetch(baseUrl + "/" + id, { method: "DELETE", credentials: 'include' });
+    const resp = await fetch(baseUrl + "/" + id + qs, { method: "DELETE", credentials: 'include' });
+    if (!resp.ok) {
+      const txt = await resp.text();
+      alert(`Delete failed (${resp.status}): ${txt}`);
+      // Restore row on failure
+      setRows((prev) => prev);
+    }
     mutate();
   }
 
@@ -507,6 +546,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
                             setEditModalOpen(true);
                           }}
                           onDelete={() => deleteField(r.id)}
+                          canDelete={!!user?.isDeveloper}
                         />
                       ))}
                     </tbody>
@@ -547,6 +587,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
                             setEditModalOpen(true);
                           }}
                           onDelete={() => deleteField(r.id)}
+                          canDelete={true}
                         />
                       ))}
                     </tbody>
@@ -577,6 +618,10 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
           if (editingField) {
             updateField(editingField.id, updates);
           }
+        }}
+        onDelete={(id) => {
+          deleteField(id);
+          setEditModalOpen(false);
         }}
       />
     </div>

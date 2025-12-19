@@ -195,6 +195,7 @@ function ComponentMesh({
             }
             
             case 'bezier': {
+              if (!pathData.p0 || !pathData.p1 || !pathData.p2 || !pathData.p3) return null;
               curve = new THREE.CubicBezierCurve3(
                 new THREE.Vector3(pathData.p0[0], pathData.p0[1], 0),
                 new THREE.Vector3(pathData.p1[0], pathData.p1[1], 0),
@@ -206,6 +207,7 @@ function ComponentMesh({
             
             case 'polyline':
             case 'spline': {
+              if (!Array.isArray(pathData.points)) return null;
               const points = pathData.points.map((p: [number, number]) =>
                 new THREE.Vector3(p[0], p[1], 0)
               );
@@ -232,7 +234,7 @@ function ComponentMesh({
         }
         
         case 'lathe': {
-          if (!customData?.profile) return null;
+          if (!customData?.profile || !Array.isArray(customData.profile.points)) return null;
           
           const points = customData.profile.points.map((p: [number, number]) =>
             new THREE.Vector2(p[0], p[1])
@@ -307,9 +309,12 @@ function ComponentTree({
   onSelect?: (componentId: string | null) => void;
   selectedId?: string | null;
 }) {
+  // Guard against non-array nodes
+  const safeNodes = Array.isArray(nodes) ? nodes : [];
+  
   return (
     <>
-      {nodes.map((node) => {
+      {safeNodes.map((node) => {
         const isVisible = visibility[node.id] ?? node.visible;
         if (!isVisible) return null;
 
@@ -334,7 +339,7 @@ function ComponentTree({
             )}
             
             {/* Render children */}
-            {node.children && node.children.length > 0 && (
+            {Array.isArray(node.children) && node.children.length > 0 && (
               <ComponentTree
                 nodes={node.children}
                 materials={materials}
@@ -361,10 +366,11 @@ export function ProductComponents({
   onSelect,
   selectedId,
 }: ProductComponentsProps) {
-  // Create material map
+  // Create material map with array guard
   const materialMap = useMemo(() => {
     const map = new Map<string, THREE.Material>();
-    materials.forEach((def) => {
+    const safeMaterials = Array.isArray(materials) ? materials : [];
+    safeMaterials.forEach((def) => {
       map.set(def.id, createMaterial(def));
     });
     return map;
@@ -377,12 +383,16 @@ export function ProductComponents({
     }
   };
 
+  // Guard against non-array props
+  const safeComponents = Array.isArray(components) ? components : [];
+  const safeVisibility = visibility || {};
+  
   return (
     <group onClick={handleBackgroundClick}>
       <ComponentTree
-        nodes={components}
+        nodes={safeComponents}
         materials={materials}
-        visibility={visibility}
+        visibility={safeVisibility}
         materialMap={materialMap}
         onSelect={onSelect}
         selectedId={selectedId}

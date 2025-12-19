@@ -108,9 +108,29 @@ export function DoorConfigurator({
   width = '100%',
   height = '600px',
 }: DoorConfiguratorProps) {
-  const [config, setConfig] = useState<SceneConfig | null>(null);
+  // Initialize with safe defaults immediately to prevent null/undefined errors
+  const [config, setConfig] = useState<SceneConfig>(() => {
+    return initialConfig || createDefaultSceneConfig(914, 2032, 45);
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+
+  /**
+   * Debug useEffect - expose scene state to window for inspection
+   */
+  useEffect(() => {
+    console.log('🔥 Scene mounted - DoorConfigurator');
+    console.log('[SceneState]', {
+      components: config.components?.length || 0,
+      materials: config.materials?.length || 0,
+      dimensions: config.dimensions,
+      camera: config.camera,
+      visibility: Object.keys(config.visibility || {}).length,
+      metadata: config.metadata,
+    });
+    // Safely expose to browser DevTools
+    (window as any).__SCENE_STATE__ = config;
+  }, [config]);
 
   /**
    * Load scene configuration on mount
@@ -123,14 +143,43 @@ export function DoorConfigurator({
       const loaded = await loadSceneState(tenantId, entityType, entityId);
       
       if (loaded) {
-        setConfig(loaded);
+        // Merge with defaults to guarantee all required fields
+        const d = createDefaultSceneConfig(
+          loaded?.dimensions?.width ?? 914,
+          loaded?.dimensions?.height ?? 2032,
+          loaded?.dimensions?.depth ?? 45
+        );
+        const safeConfig: SceneConfig = {
+          ...d,
+          ...loaded,
+          components: Array.isArray(loaded.components) ? loaded.components : [],
+          materials: Array.isArray(loaded.materials) ? loaded.materials : [],
+          visibility: loaded.visibility || {},
+          camera: { ...(d.camera), ...(loaded.camera || {}) },
+          ui: { ...(d.ui), ...(loaded.ui || {}) },
+          lighting: { ...(d.lighting), ...(loaded.lighting || {}) },
+        };
+        setConfig(safeConfig);
       } else if (initialConfig) {
-        setConfig(initialConfig);
-      } else {
-        // Create default configuration
-        const defaultConfig = createDefaultSceneConfig(914, 2032, 45);
-        setConfig(defaultConfig);
+        // Merge initialConfig with defaults to guarantee all required fields
+        const d = createDefaultSceneConfig(
+          initialConfig?.dimensions?.width ?? 914,
+          initialConfig?.dimensions?.height ?? 2032,
+          initialConfig?.dimensions?.depth ?? 45
+        );
+        const safeConfig: SceneConfig = {
+          ...d,
+          ...initialConfig,
+          components: Array.isArray(initialConfig.components) ? initialConfig.components : [],
+          materials: Array.isArray(initialConfig.materials) ? initialConfig.materials : [],
+          visibility: initialConfig.visibility || {},
+          camera: { ...(d.camera), ...(initialConfig.camera || {}) },
+          ui: { ...(d.ui), ...(initialConfig.ui || {}) },
+          lighting: { ...(d.lighting), ...(initialConfig.lighting || {}) },
+        };
+        setConfig(safeConfig);
       }
+      // Note: default config already set in useState initializer
       
       setIsLoading(false);
     }
@@ -258,7 +307,7 @@ export function DoorConfigurator({
     [config, updateConfig]
   );
 
-  if (isLoading || !config) {
+  if (isLoading) {
     return (
       <div
         className="flex items-center justify-center bg-gray-100 rounded-lg"
@@ -333,7 +382,7 @@ export function DoorConfigurator({
         <SceneUI
           components={config.components}
           ui={config.ui}
-          cameraMode={config.camera.mode}
+          cameraMode={config.camera?.mode ?? DEFAULT_CAMERA_STATE.mode}
           onCameraModeChange={handleCameraModeChange}
           onUIToggle={handleUIToggle}
           onVisibilityToggle={handleVisibilityToggle}

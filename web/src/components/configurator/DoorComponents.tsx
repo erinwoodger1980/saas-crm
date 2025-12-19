@@ -41,7 +41,7 @@ function ComponentMesh({ node, material }: { node: ComponentNode; material?: THR
         );
       
       case 'extrude':
-        if (!customData?.shape) return null;
+        if (!customData?.shape || !Array.isArray(customData.shape.points)) return null;
         // Custom extrude geometry from shape data
         const shape = new THREE.Shape();
         customData.shape.points.forEach((p: [number, number], i: number) => {
@@ -93,9 +93,12 @@ function ComponentTree({
   visibility: ComponentVisibility;
   materialMap: Map<string, THREE.Material>;
 }) {
+  // Guard against non-array nodes
+  const safeNodes = Array.isArray(nodes) ? nodes : [];
+  
   return (
     <>
-      {nodes.map((node) => {
+      {safeNodes.map((node) => {
         // Check visibility from flat map
         const isVisible = visibility[node.id] ?? node.visible;
         if (!isVisible) return null;
@@ -108,7 +111,7 @@ function ComponentTree({
             <ComponentMesh node={node} material={material} />
 
             {/* Recursively render children */}
-            {node.children && node.children.length > 0 && (
+            {Array.isArray(node.children) && node.children.length > 0 && (
               <ComponentTree
                 nodes={node.children}
                 materials={materials}
@@ -129,7 +132,10 @@ function ComponentTree({
 function createMaterials(definitions: MaterialDefinition[]): Map<string, THREE.Material> {
   const map = new Map<string, THREE.Material>();
 
-  definitions.forEach((def) => {
+  // Guard against non-array definitions
+  const safeDefinitions = Array.isArray(definitions) ? definitions : [];
+  
+  safeDefinitions.forEach((def) => {
     let material: THREE.Material;
 
     switch (def.type) {
@@ -176,14 +182,19 @@ function createMaterials(definitions: MaterialDefinition[]): Map<string, THREE.M
 }
 
 export function DoorComponents({ components, materials, visibility }: DoorComponentsProps) {
-  const materialMap = useMemo(() => createMaterials(materials), [materials]);
+  // Guard against non-array props
+  const safeComponents = Array.isArray(components) ? components : [];
+  const safeMaterials = Array.isArray(materials) ? materials : [];
+  const safeVisibility = visibility || {};
+  
+  const materialMap = useMemo(() => createMaterials(safeMaterials), [safeMaterials]);
 
   return (
     <group>
       <ComponentTree
-        nodes={components}
-        materials={materials}
-        visibility={visibility}
+        nodes={safeComponents}
+        materials={safeMaterials}
+        visibility={safeVisibility}
         materialMap={materialMap}
       />
     </group>

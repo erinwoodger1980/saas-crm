@@ -402,6 +402,11 @@ router.delete("/:id", requireAuth, async (req: any, res) => {
   try {
     const tenantId = req.auth.tenantId as string;
     const fieldId = req.params.id as string;
+    const hard = String(req.query.hard || "").toLowerCase() === "true";
+
+    // Determine developer privilege
+    const user = await prisma.user.findUnique({ where: { id: req.auth.userId } });
+    const isDeveloper = !!user?.isDeveloper;
 
     // Check field exists and belongs to tenant
     const existingField = await prisma.questionnaireField.findFirst({
@@ -415,22 +420,23 @@ router.delete("/:id", requireAuth, async (req: any, res) => {
       return res.status(404).json({ error: "Field not found" });
     }
 
-    // Check if field has any answers (optional safeguard)
-    const answerCount = await prisma.questionnaireAnswer.count({
-      where: { fieldId },
-    });
+    // Check if field has any answers
+    const answerCount = await prisma.questionnaireAnswer.count({ where: { fieldId } });
 
-    if (answerCount > 0) {
+    if (answerCount > 0 && !(hard && isDeveloper)) {
       return res.status(409).json({
         error: "Cannot delete field with existing answers",
         answerCount,
       });
     }
 
-    // Delete field (cascade will handle related data)
-    await prisma.questionnaireField.delete({
-      where: { id: fieldId },
-    });
+    // If hard delete requested by developer, remove answers first
+    if (answerCount > 0 && hard && isDeveloper) {
+      await prisma.questionnaireAnswer.deleteMany({ where: { fieldId } });
+    }
+
+    // Delete field
+    await prisma.questionnaireField.delete({ where: { id: fieldId } });
 
     return res.json({ success: true });
   } catch (error) {

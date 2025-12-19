@@ -139,6 +139,7 @@ import componentsRouter from "./routes/components";
 import componentProcessesRouter from "./routes/component-processes";
 import componentAttributesRouter from "./routes/component-attributes";
 import componentVariantsRouter from "./routes/component-variants";
+import sceneStateRouter from "./routes/scene-state";
 
 type BillingModule = typeof import("./routes/billing");
 type PublicSignupModule = typeof import("./routes/public-signup");
@@ -322,6 +323,7 @@ app.use("/api/landing-tenants", landingTenantsPublicRouter);
 app.use("/api/aggregate-reviews", aggregateReviewsRouter);
 /** Wealden Joinery image uploads */
 app.use("/api/wealden", wealdenRouter);
+app.use("/api/scene-state", sceneStateRouter);
 // Admin editor APIs
 app.use("/api/admin/landing-tenants", adminLandingTenantsRouter);
 app.use("/api/admin/landing-tenants", adminImageUploadRouter);

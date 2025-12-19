@@ -92,7 +92,7 @@ function ComponentTreeItem({
       {/* Render children */}
       {hasChildren && expanded && (
         <div>
-          {node.children!.map((child) => (
+          {(Array.isArray(node.children) ? node.children : []).map((child) => (
             <ComponentTreeItem
               key={child.id}
               node={child}
@@ -215,7 +215,7 @@ export function SceneUI({
           <CardContent className="p-0">
             <div className="h-[400px] overflow-auto">
               <div className="p-2">
-                {components.map((component) => (
+                {(Array.isArray(components) ? components : []).map((component) => (
                   <ComponentTreeItem
                     key={component.id}
                     node={component}
