@@ -79,7 +79,9 @@ export function AIComponentConfigurator({
       });
 
       if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        console.error('API error response:', errorData);
+        throw new Error(`API error: ${response.status} - ${errorData.error || ''} - ${errorData.details || ''}`);
       }
 
       const data = await response.json();
