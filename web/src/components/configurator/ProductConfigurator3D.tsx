@@ -427,9 +427,17 @@ export function ProductConfigurator3D({
 
   if (!config) {
     return (
-      <div className="flex flex-col items-center justify-center gap-4" style={{ width, height }}>
-        <p className="text-muted-foreground">Failed to load configuration</p>
-        <Button onClick={() => window.location.reload()}>Retry</Button>
+      <div className="flex flex-col items-center justify-center gap-4 p-6 text-center" style={{ width, height }}>
+        <p className="text-lg font-semibold text-foreground">Failed to load configuration</p>
+        <div className="text-sm text-muted-foreground space-y-1 max-w-md">
+          <p>The 3D preview could not initialize. This usually means:</p>
+          <ul className="list-disc text-left pl-6 space-y-1">
+            <li>Product dimensions are missing or invalid (width ≥ 500mm, height ≥ 1500mm)</li>
+            <li>Product type/category is not configured</li>
+            <li>Configuration data is corrupted</li>
+          </ul>
+        </div>
+        <Button onClick={() => window.location.reload()} className="mt-2">Retry</Button>
       </div>
     );
   }

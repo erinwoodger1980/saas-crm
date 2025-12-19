@@ -1631,6 +1631,7 @@ export default function QuoteBuilderPage() {
                                     if (!type.options) continue;
                                     const opt = type.options.find((o: any) => o.id === modalProductOptionId);
                                     if (opt) {
+                                      console.log('[3D Modal] Found product type:', { cat: cat.value, type: type.value, opt: opt.value });
                                       return {
                                         category: cat.value || 'doors',
                                         type: type.value || 'standard',
@@ -1639,12 +1640,13 @@ export default function QuoteBuilderPage() {
                                     }
                                   }
                                 }
+                                console.warn('[3D Modal] Could not find product type, using defaults');
                                 return { category: 'doors', type: 'standard', option: 'E01' };
                               })(),
                             },
                             lineStandard: {
-                              widthMm: stdWidthMm || 914,
-                              heightMm: stdHeightMm || 2032,
+                              widthMm: stdWidthMm && stdWidthMm >= 500 ? stdWidthMm : 914,
+                              heightMm: stdHeightMm && stdHeightMm >= 1500 ? stdHeightMm : 2032,
                             },
                             meta: {
                               depthMm: 45,

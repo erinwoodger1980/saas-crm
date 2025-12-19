@@ -42,8 +42,9 @@ export function buildScene(params: ProductParams): BuildResult | null {
   
   // Validate params
   const errors = builder.validate(params);
-  if (errors) {
+  if (errors && errors.length > 0) {
     console.error('Parameter validation failed:', errors);
+    console.error('Failed params:', JSON.stringify(params, null, 2));
     return null;
   }
   
