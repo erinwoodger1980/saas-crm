@@ -143,7 +143,23 @@ export function ProductConfigurator3D({
       if (!loaded) {
         // Initialize from line item
         try {
-          const params = getOrCreateParams(lineItem);
+          // In preview mode, ensure lineItem has minimum required structure
+          let effectiveLineItem = lineItem;
+          if (isPreviewMode && lineItem?.configuredProduct?.productType) {
+            const pt = lineItem.configuredProduct.productType;
+            effectiveLineItem = {
+              ...lineItem,
+              lineStandard: {
+                widthMm: 914,
+                heightMm: 2032,
+              },
+              meta: {
+                depthMm: pt.category === 'doors' ? 45 : 100,
+              },
+            };
+          }
+          
+          const params = getOrCreateParams(effectiveLineItem);
           if (params) {
             loaded = initializeSceneFromParams(params, tenantId, entityType, entityId);
             if (loaded && !isPreviewMode) {
@@ -151,7 +167,7 @@ export function ProductConfigurator3D({
               await saveSceneState(tenantId, entityType, entityId, loaded);
             }
           } else {
-            console.error('Failed to generate params from lineItem:', lineItem);
+            console.error('Failed to generate params from lineItem:', effectiveLineItem);
           }
         } catch (error) {
           console.error('Error initializing scene:', error, { lineItem });
@@ -384,12 +400,31 @@ export function ProductConfigurator3D({
         
         {/* UI Overlay */}
         <SceneUI
-          config={config}
-          onVisibilityToggle={handleVisibilityToggle}
-          onUIToggle={handleUIToggle}
+          components={config.components}
+          ui={config.ui}
+          cameraMode={config.camera.mode}
           onCameraModeChange={(mode) => {
             updateConfig({
               camera: { ...config.camera, mode },
+            });
+          }}
+          onUIToggle={(key, value) => {
+            updateConfig({
+              ui: { ...config.ui, [key]: value },
+            });
+          }}
+          onVisibilityToggle={handleVisibilityToggle}
+          onResetCamera={() => {
+            // Reset camera to default position
+            const params = config.customData as ProductParams;
+            updateConfig({
+              camera: {
+                ...config.camera,
+                position: [0, 0, Math.max(params.dimensions.width, params.dimensions.height) * 2],
+                rotation: [0, 0, 0],
+                target: [0, 0, 0],
+                zoom: 1,
+              },
             });
           }}
         />
