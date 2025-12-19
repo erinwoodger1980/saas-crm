@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Wand2, FileText, Download, Image as ImageIcon, AlertTriangle, Edit3, ChevronDown, Cube } from "lucide-react";
+import { Loader2, Wand2, FileText, Download, Image as ImageIcon, AlertTriangle, Edit3, ChevronDown, Box } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -347,7 +347,7 @@ export function ParsedLinesTable({
                               className="h-8 gap-1.5"
                               title="3D Configurator"
                             >
-                              <Cube className="h-3.5 w-3.5" />
+                              <Box className="h-3.5 w-3.5" />
                               3D
                             </Button>
                           )}
