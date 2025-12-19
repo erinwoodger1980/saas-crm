@@ -26,7 +26,7 @@ export const runtime = 'nodejs';
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const url = new URL(apiBase() + '/api/fields');
+    const url = new URL(apiBase() + '/flexible-fields/fields');
     
     // Forward query parameters (scope, displayContext, etc.)
     searchParams.forEach((value, key) => {
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    const res = await fetch(apiBase() + '/api/fields', {
+    const res = await fetch(apiBase() + '/flexible-fields/fields', {
       method: 'POST',
       headers: {
         ...forwardHeaders(request),

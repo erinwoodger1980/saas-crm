@@ -25,7 +25,7 @@ export const runtime = 'nodejs';
  */
 export async function GET(request: NextRequest) {
   try {
-    const res = await fetch(apiBase() + '/api/lookup-tables', {
+    const res = await fetch(apiBase() + '/flexible-fields/lookup-tables', {
       headers: forwardHeaders(request),
       credentials: 'include',
     });
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    const res = await fetch(apiBase() + '/api/lookup-tables', {
+    const res = await fetch(apiBase() + '/flexible-fields/lookup-tables', {
       method: 'POST',
       headers: {
         ...forwardHeaders(request),

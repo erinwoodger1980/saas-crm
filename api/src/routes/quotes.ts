@@ -1287,6 +1287,62 @@ router.get("/:id", requireAuth, async (req: any, res) => {
   }
 });
 
+/** PATCH /quotes/:id
+ * Lightweight quote update endpoint for meta + basic fields.
+ * Allows front-end product configurator to persist selections into quote.meta.
+ */
+router.patch("/:id", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = await getTenantId(req);
+    const id = String(req.params.id);
+
+    const quote = await prisma.quote.findFirst({ where: { id, tenantId } });
+    if (!quote) return res.status(404).json({ error: "quote_not_found" });
+
+    const data: Prisma.QuoteUpdateInput = {};
+
+    // Merge meta when explicitly provided (preserve existing keys by default)
+    const metaProvided = Object.prototype.hasOwnProperty.call(req.body || {}, "meta");
+    if (metaProvided) {
+      const incoming = req.body?.meta;
+      if (incoming === null) {
+        data.meta = Prisma.JsonNull;
+      } else if (typeof incoming === "object") {
+        const existing = (quote.meta as any) || {};
+        data.meta = { ...existing, ...incoming } as any;
+      }
+    }
+
+    // Optional basic fields (only mutate when keys are present on the body)
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, "title")) {
+      data.title = req.body?.title ? String(req.body.title) : quote.title;
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, "status")) {
+      data.status = req.body?.status || quote.status;
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, "currency")) {
+      data.currency = req.body?.currency ? String(req.body.currency) : quote.currency;
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, "notes")) {
+      const notes = req.body?.notes;
+      data.notes = notes == null ? null : String(notes);
+    }
+
+    if (Object.keys(data).length === 0) {
+      return res.json(mapQuoteSourceForResponse(quote));
+    }
+
+    const updated = await prisma.quote.update({ where: { id, tenantId }, data });
+    return res.json(mapQuoteSourceForResponse(updated));
+  } catch (e: any) {
+    console.error("[/quotes/:id PATCH] failed:", e?.message || e);
+    if (e?.message === "unauthorized") {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    return res.status(500).json({ error: "internal_error", detail: e?.message });
+  }
+});
+
 /** POST /quotes/:id/files  (multipart form-data: files[]) */
 router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: any, res) => {
   const tenantId = await getTenantId(req);

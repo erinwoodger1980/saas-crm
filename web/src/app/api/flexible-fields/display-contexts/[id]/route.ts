@@ -30,7 +30,7 @@ export async function PATCH(
   try {
     const body = await request.json();
     
-    const res = await fetch(apiBase() + `/api/display-contexts/${params.id}`, {
+    const res = await fetch(apiBase() + `/flexible-fields/display-contexts/${params.id}`, {
       method: 'PATCH',
       headers: {
         ...forwardHeaders(request),
@@ -60,7 +60,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const res = await fetch(apiBase() + `/api/display-contexts/${params.id}`, {
+    const res = await fetch(apiBase() + `/flexible-fields/display-contexts/${params.id}`, {
       method: 'DELETE',
       headers: forwardHeaders(request),
       credentials: 'include',

@@ -59,6 +59,8 @@ async function loadSceneState(
   entityType: string,
   entityId: string
 ): Promise<SceneConfig | null> {
+  // Skip remote load for preview entities to avoid auth errors
+  if (entityId.startsWith('preview-')) return null;
   try {
     const params = new URLSearchParams({ tenantId, entityType, entityId });
     const response = await fetch(`/api/scene-state?${params}`, {
@@ -109,6 +111,10 @@ async function saveSceneState(
   entityId: string,
   config: SceneConfig
 ): Promise<{ success: boolean; shouldDisable: boolean }> {
+  // Skip remote save for preview entities to avoid auth errors
+  if (entityId.startsWith('preview-')) {
+    return { success: true, shouldDisable: false };
+  }
   try {
     const response = await fetch('/api/scene-state', {
       method: 'POST',
@@ -176,7 +182,7 @@ export function ProductConfigurator3D({
       let loaded: SceneConfig | null = null;
       
       // For preview mode (settings, etc.), skip API load
-      const isPreviewMode = tenantId === 'settings' || tenantId === 'preview';
+      const isPreviewMode = tenantId === 'settings' || tenantId === 'preview' || entityId.startsWith('preview-');
       
       if (!isPreviewMode) {
         // Try to load existing scene state from database
