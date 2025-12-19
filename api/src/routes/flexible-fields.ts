@@ -8,6 +8,20 @@ import { prisma } from '../prisma';
 
 const router = Router();
 
+/**
+ * Get tenant ID from request auth context
+ * Falls back to query parameter for backward compatibility
+ */
+function getTenantId(req: any): string | null {
+  // First try req.auth (from JWT middleware)
+  if (req.auth?.tenantId) {
+    return req.auth.tenantId;
+  }
+  // Fall back to query parameter
+  const tenantId = req.query.tenantId;
+  return tenantId ? (tenantId as string) : null;
+}
+
 // ============================================================================
 // FIELD ENDPOINTS
 // ============================================================================
@@ -18,13 +32,14 @@ const router = Router();
  */
 router.get('/fields', async (req: Request, res: Response) => {
   try {
-    const { tenantId, scope, context, includeDisplayContexts } = req.query;
+    const { scope, context, includeDisplayContexts } = req.query;
+    const tenantId = getTenantId(req);
 
     if (!tenantId) {
-      return res.status(400).json({ error: 'tenantId is required' });
+      return res.status(400).json({ error: 'tenantId is required for /api/flexible-fields' });
     }
 
-    const where: any = { tenantId: tenantId as string };
+    const where: any = { tenantId };
     if (scope) where.scope = scope as string;
 
     let fields = await prisma.questionnaireField.findMany({
@@ -88,7 +103,7 @@ router.get('/fields/:fieldId', async (req: Request, res: Response) => {
 router.post('/fields', async (req: Request, res: Response) => {
   try {
     const {
-      tenantId,
+      tenantId: bodyTenantId,
       key,
       label,
       type,
@@ -102,9 +117,12 @@ router.post('/fields', async (req: Request, res: Response) => {
       ...otherFields
     } = req.body;
 
+    // Use tenantId from auth context, or from body for backward compatibility
+    const tenantId = getTenantId(req) || bodyTenantId;
+
     if (!tenantId || !key || !label || !type || !scope) {
       return res.status(400).json({
-        error: 'Missing required fields: tenantId, key, label, type, scope',
+        error: 'Missing required fields: tenantId, key, label, type, scope for /api/flexible-fields',
       });
     }
 
@@ -199,13 +217,14 @@ router.delete('/fields/:fieldId', async (req: Request, res: Response) => {
  */
 router.get('/display-contexts', async (req: Request, res: Response) => {
   try {
-    const { tenantId, context } = req.query;
+    const { context } = req.query;
+    const tenantId = getTenantId(req);
 
     if (!tenantId) {
-      return res.status(400).json({ error: 'tenantId is required' });
+      return res.status(400).json({ error: 'tenantId is required for /api/flexible-fields' });
     }
 
-    const where: any = { tenantId: tenantId as string };
+    const where: any = { tenantId };
     if (context) where.context = context as string;
 
     const contexts = await prisma.fieldDisplayContext.findMany({
@@ -227,11 +246,12 @@ router.get('/display-contexts', async (req: Request, res: Response) => {
  */
 router.post('/display-contexts', async (req: Request, res: Response) => {
   try {
-    const { tenantId, fieldId, context, isVisible, sortOrder } = req.body;
+    const { tenantId: bodyTenantId, fieldId, context, isVisible, sortOrder } = req.body;
+    const tenantId = getTenantId(req) || bodyTenantId;
 
     if (!tenantId || !fieldId || !context) {
       return res.status(400).json({
-        error: 'Missing required fields: tenantId, fieldId, context',
+        error: 'Missing required fields: tenantId, fieldId, context for /api/flexible-fields',
       });
     }
 
@@ -317,13 +337,14 @@ router.delete('/display-contexts/:contextId', async (req: Request, res: Response
  */
 router.get('/lookup-tables', async (req: Request, res: Response) => {
   try {
-    const { tenantId, name } = req.query;
+    const { name } = req.query;
+    const tenantId = getTenantId(req);
 
     if (!tenantId) {
-      return res.status(400).json({ error: 'tenantId is required' });
+      return res.status(400).json({ error: 'tenantId is required for /api/flexible-fields' });
     }
 
-    const where: any = { tenantId: tenantId as string };
+    const where: any = { tenantId };
     if (name) where.name = { contains: name as string, mode: 'insensitive' };
 
     const tables = await prisma.lookupTable.findMany({
@@ -344,11 +365,12 @@ router.get('/lookup-tables', async (req: Request, res: Response) => {
  */
 router.post('/lookup-tables', async (req: Request, res: Response) => {
   try {
-    const { tenantId, name, description, columns, rows } = req.body;
+    const { tenantId: bodyTenantId, name, description, columns, rows } = req.body;
+    const tenantId = getTenantId(req) || bodyTenantId;
 
     if (!tenantId || !name || !columns || !rows) {
       return res.status(400).json({
-        error: 'Missing required fields: tenantId, name, columns, rows',
+        error: 'Missing required fields: tenantId, name, columns, rows for /api/flexible-fields',
       });
     }
 
@@ -434,7 +456,7 @@ router.delete('/lookup-tables/:tableId', async (req: Request, res: Response) => 
 router.post('/ml-training-events', async (req: Request, res: Response) => {
   try {
     const {
-      tenantId,
+      tenantId: bodyTenantId,
       eventType,
       leadId,
       quoteId,
@@ -447,9 +469,11 @@ router.post('/ml-training-events', async (req: Request, res: Response) => {
       contextSnapshot,
     } = req.body;
 
+    const tenantId = getTenantId(req) || bodyTenantId;
+
     if (!tenantId || !eventType || !contextSnapshot) {
       return res.status(400).json({
-        error: 'Missing required fields: tenantId, eventType, contextSnapshot',
+        error: 'Missing required fields: tenantId, eventType, contextSnapshot for /api/flexible-fields',
       });
     }
 
@@ -478,17 +502,18 @@ router.post('/ml-training-events', async (req: Request, res: Response) => {
 
 /**
  * GET /api/ml-training-events
- * Get ML training events for analysis
+ * Get ML training events for a tenant
  */
 router.get('/ml-training-events', async (req: Request, res: Response) => {
   try {
-    const { tenantId, eventType, leadId, limit } = req.query;
+    const { fieldId, eventType, leadId, limit } = req.query;
+    const tenantId = getTenantId(req);
 
     if (!tenantId) {
-      return res.status(400).json({ error: 'tenantId is required' });
+      return res.status(400).json({ error: 'tenantId is required for /api/flexible-fields' });
     }
 
-    const where: any = { tenantId: tenantId as string };
+    const where: any = { tenantId };
     if (eventType) where.eventType = eventType as string;
     if (leadId) where.leadId = leadId as string;
 
@@ -515,10 +540,11 @@ router.get('/ml-training-events', async (req: Request, res: Response) => {
  */
 router.post('/evaluate-field', async (req: Request, res: Response) => {
   try {
-    const { tenantId, fieldId, inputs, context } = req.body;
+    const { tenantId: bodyTenantId, fieldId, inputs, context } = req.body;
+    const tenantId = getTenantId(req) || bodyTenantId;
 
     if (!tenantId || !fieldId) {
-      return res.status(400).json({ error: 'Missing required fields: tenantId, fieldId' });
+      return res.status(400).json({ error: 'Missing required fields: tenantId, fieldId for /api/flexible-fields' });
     }
 
     const field = await prisma.questionnaireField.findUnique({
