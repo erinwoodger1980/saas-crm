@@ -12,6 +12,7 @@ import SoftwareProfilesSection from "@/components/settings/SoftwareProfilesSecti
 import PdfTemplatesSection from "@/components/settings/PdfTemplatesSection";
 import MaterialCostDebugPanel from "@/components/settings/MaterialCostDebugPanel";
 import AdminQuestionnaireFieldsTable from "@/components/questionnaire/AdminQuestionnaireFieldsTable";
+import { ClientDatabaseFieldsDisplay } from "@/components/questionnaire/ClientDatabaseFieldsDisplay";
 import ProductTypesSection from "@/components/settings/ProductTypesSection";
 import ProductConfigurationSection from "@/components/settings/ProductConfigurationSection";
 import { DiagramSvgGenerator } from "@/components/settings/DiagramSvgGenerator";
@@ -1844,6 +1845,8 @@ export default function SettingsPage() {
               ))}
             </div>
           </div>
+          
+          {qScopeTab === "client" && <ClientDatabaseFieldsDisplay />}
           
           <AdminQuestionnaireFieldsTable apiBase={API_BASE} scope={qScopeTab} />
         </div>
