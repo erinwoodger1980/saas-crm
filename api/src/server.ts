@@ -82,6 +82,7 @@ import questionnairePhotosRouter from "./routes/questionnaire-photos";
 import fieldsRouter from "./routes/fields";
 import questionsRouter from "./routes/questions";
 import standardFieldMappingsRouter from "./routes/standard-field-mappings";
+import flexibleFieldsRouter from "./routes/flexible-fields";
 
 /** ML proxy (→ forwards to FastAPI) */
 import mlProxyRouter from "./routes/ml";
@@ -662,6 +663,7 @@ app.use("/questionnaire-fields", requireAuth, fieldsRouter);
 app.use("/questionnaire-responses", questionnaireResponsesRouter);
 app.use("/questionnaire-photos", requireAuth, questionnairePhotosRouter);
 app.use("/fields", requireAuth, fieldsRouter);
+app.use("/flexible-fields", requireAuth, flexibleFieldsRouter);
 app.use("/auth/setup", authSetupRouter);
 app.use("/suppliers", requireAuth, suppliersRouter);
 app.use("/software-profiles", requireAuth, softwareProfilesRouter);

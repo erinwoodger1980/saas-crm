@@ -260,12 +260,12 @@ router.post("/", requireAuth, async (req: any, res) => {
     let key = baseKey;
     let suffix = 1;
 
-    // Ensure key uniqueness within questionnaire
+    // Ensure key uniqueness within tenant
     while (
       await prisma.questionnaireField.findUnique({
         where: {
-          questionnaireId_key: {
-            questionnaireId: questionnaire.id,
+          tenantId_key: {
+            tenantId: req.user!.tenantId,
             key,
           },
         },

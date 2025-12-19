@@ -10,6 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { DeskSurface } from "@/components/DeskSurface";
 import SectionCard from "@/components/SectionCard";
 import { ClientContacts } from "@/components/ClientContacts";
+import { FieldForm } from "@/components/fields/FieldRenderer";
+import { useFields } from "@/hooks/useFields";
 import { ArrowLeft, Save, Mail, Phone, MapPin, Building, Edit, Check, X } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/components/ui/use-toast";
@@ -89,6 +91,13 @@ export default function ClientDetailPage() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [authHeaders, setAuthHeaders] = useState<Record<string, string>>({});
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, any>>({});
+  const [savingFields, setSavingFields] = useState(false);
+
+  const { fields, isLoading: fieldsLoading } = useFields({
+    scope: "client",
+    context: "client_detail",
+  });
 
   const [formData, setFormData] = useState({
     name: "",
@@ -138,6 +147,10 @@ export default function ClientDetailPage() {
         notes: data.notes || "",
         tags: data.tags || [],
       });
+      
+      // Load custom field values
+      const customData = (data as any).custom || {};
+      setCustomFieldValues(customData);
     } catch (error) {
       console.error("Failed to load client:", error);
       toast({
@@ -147,6 +160,33 @@ export default function ClientDetailPage() {
       });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleSaveCustomFields() {
+    if (!client) return;
+    setSavingFields(true);
+    try {
+      await apiFetch(`/clients/${clientId}`, {
+        method: "PATCH",
+        headers: authHeaders,
+        json: {
+          custom: customFieldValues,
+        },
+      });
+      toast({
+        title: "Success",
+        description: "Custom fields saved successfully",
+      });
+    } catch (error) {
+      console.error("Failed to save custom fields:", error);
+      toast({
+        title: "Error",
+        description: "Failed to save custom fields",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingFields(false);
     }
   }
 
@@ -528,6 +568,35 @@ export default function ClientDetailPage() {
             </div>
           </div>
         </SectionCard>
+
+        {/* Custom Fields */}
+        {!fieldsLoading && fields.length > 0 && (
+          <SectionCard title="Custom Fields">
+            <FieldForm
+              fields={fields as any}
+              values={customFieldValues}
+              onChange={setCustomFieldValues}
+              disabled={!editing}
+            />
+            {editing && (
+              <div className="mt-4 flex gap-2 justify-end border-t border-slate-200 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setCustomFieldValues((client as any).custom || {})}
+                  disabled={savingFields}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSaveCustomFields}
+                  disabled={savingFields}
+                >
+                  {savingFields ? "Saving..." : "Save Fields"}
+                </Button>
+              </div>
+            )}
+          </SectionCard>
+        )}
 
         {/* Leads */}
         <SectionCard title={`Leads (${leads.length})`}>

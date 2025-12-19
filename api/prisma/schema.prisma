@@ -129,6 +129,9 @@ model Tenant {
   legacyQuestionMappings     LegacyQuestionMapping[]     @relation("TenantLegacyMappings")
   standardFieldMappings      StandardFieldMapping[]      @relation("TenantStandardFieldMappings")
   sceneStates                SceneState[]
+  lookupTables               LookupTable[]               @relation("LookupTables")
+  fieldDisplayContexts       FieldDisplayContext[]       @relation("FieldDisplayContexts")
+  mlTrainingEvents           MLTrainingEvent[]           @relation("MLTrainingEvents")
 }
 
 model LippingLookup {
@@ -183,12 +186,13 @@ model ComponentLookup {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  tenant             Tenant             @relation("ComponentLookups", fields: [tenantId], references: [id], onDelete: Cascade)
-  supplier           Supplier?          @relation("SupplierComponents", fields: [supplierId], references: [id])
-  profile            ComponentProfile?  @relation("ComponentProfile")
-  bomLineItems       BOMLineItem[]      @relation("ComponentBOMItems")
-  componentProcesses ComponentProcess[] @relation("ComponentProcesses")
-  variants           ComponentVariant[] @relation("ComponentVariants")
+  tenant             Tenant                @relation("ComponentLookups", fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier           Supplier?             @relation("SupplierComponents", fields: [supplierId], references: [id])
+  profile            ComponentProfile?     @relation("ComponentProfile")
+  bomLineItems       BOMLineItem[]         @relation("ComponentBOMItems")
+  componentProcesses ComponentProcess[]    @relation("ComponentProcesses")
+  variants           ComponentVariant[]    @relation("ComponentVariants")
+  fields             QuestionnaireField[]  @relation("FieldComponentLookup")
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -754,6 +758,7 @@ model Client {
   isActive      Boolean         @default(true)
   notes         String?
   tags          String[]        @default([])
+  custom        Json?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -2490,40 +2495,88 @@ model Questionnaire {
 }
 
 model QuestionnaireField {
-  id                  String                    @id @default(cuid())
-  tenantId            String
-  questionnaireId     String
-  key                 String
-  label               String
-  type                QuestionnaireFieldType
-  options             Json?
-  required            Boolean                   @default(false)
-  order               Int                       @default(0)
-  sortOrder           Int                       @default(0)
-  isActive            Boolean                   @default(true)
-  placeholder         String?
-  helpText            String?
-  config              Json?
-  requiredForCosting  Boolean                   @default(false)
-  costingInputKey     String?
-  createdAt           DateTime                  @default(now())
-  updatedAt           DateTime                  @updatedAt
-  scope               String?                   @default("item")
-  isHidden            Boolean                   @default(false)
-  isStandard          Boolean                   @default(false)
-  productTypes        String[]                  @default([])
-  examplePhotoAnswers ExamplePhotoFieldAnswer[]
-  answers             QuestionnaireAnswer[]
-  questionnaire       Questionnaire             @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
-  tenant              Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  legacyMapping       LegacyQuestionMapping?    @relation("LegacyFieldMapping")
+  id                    String                    @id @default(cuid())
+  tenantId              String
+  questionnaireId       String?
+  key                   String
+  label                 String
+  type                  QuestionnaireFieldType
+  options               Json?
+  required              Boolean                   @default(false)
+  order                 Int                       @default(0)
+  sortOrder             Int                       @default(0)
+  isActive              Boolean                   @default(true)
+  placeholder           String?
+  helpText              String?
+  config                Json?
+  requiredForCosting    Boolean                   @default(false)
+  costingInputKey       String?
+  scope                 String?                   @default("item")
+  isHidden              Boolean                   @default(false)
+  isStandard            Boolean                   @default(false)
+  isEditable            Boolean                   @default(true)
+  productTypes          String[]                  @default([])
+  
+  // Display flags
+  showInPublicForm      Boolean                   @default(false)
+  showInQuote           Boolean                   @default(true)
+  isReadOnly            Boolean                   @default(false)
+  
+  // Line item specific
+  isGlobalLineItem      Boolean                   @default(false)
+  componentLookupId     String?
+  replacesStandardKey   String?
+  
+  // Component attributes
+  isComponentAttribute  Boolean                   @default(false)
+  componentAttributeKey String?
+  
+  // Calculation & Lookup
+  calculationFormula    String?
+  lookupTableId         String?
+  lookupInputFields     String[]                  @default([])
+  lookupOutputField     String?
+  
+  // Data sources
+  canBeSetBy            String[]                  @default([])
+  autoPopulateFrom      String?
+  
+  // Formatting & Validation
+  unit                  String?
+  decimalPlaces         Int?
+  min                   Float?
+  max                   Float?
+  
+  // ML Training
+  usedForMLTraining     Boolean                   @default(false)
+  mlFeatureWeight       Float?                    @default(1.0)
+  mlFeatureName         String?
+  trackChanges          Boolean                   @default(false)
+  
+  // Display contexts
+  defaultContexts       String[]                  @default([])
+  
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+  
+  examplePhotoAnswers   ExamplePhotoFieldAnswer[]
+  answers               QuestionnaireAnswer[]
+  questionnaire         Questionnaire?            @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
+  tenant                Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  componentLookup       ComponentLookup?          @relation("FieldComponentLookup", fields: [componentLookupId], references: [id], onDelete: SetNull)
+  lookupTable           LookupTable?              @relation("FieldLookupTable", fields: [lookupTableId], references: [id], onDelete: SetNull)
+  legacyMapping         LegacyQuestionMapping?    @relation("LegacyFieldMapping")
+  displayContexts       FieldDisplayContext[]
 
-  @@unique([questionnaireId, key])
   @@unique([tenantId, key], name: "tenantId_key")
   @@index([tenantId, questionnaireId])
+  @@index([tenantId, scope])
+  @@index([tenantId, showInPublicForm])
   @@index([tenantId, costingInputKey])
   @@index([isStandard, isActive])
   @@index([tenantId, isStandard])
+  @@index([componentLookupId])
+  @@index([lookupTableId])
 }
 
 model QuestionnaireResponse {
@@ -4275,4 +4328,90 @@ model WealdenImage {
   updatedAt DateTime @updatedAt
 
   @@index([slotId])
+}
+
+// Lookup tables for dynamic dropdowns and pricing
+model LookupTable {
+  id          String               @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  columns     Json
+  rows        Json
+  isStandard  Boolean              @default(false)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  
+  tenant      Tenant               @relation("LookupTables", fields: [tenantId], references: [id], onDelete: Cascade)
+  fields      QuestionnaireField[] @relation("FieldLookupTable")
+  
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+// Field display context configuration
+model FieldDisplayContext {
+  id         String             @id @default(cuid())
+  tenantId   String
+  fieldId    String
+  context    String
+  isVisible  Boolean            @default(true)
+  sortOrder  Int                @default(0)
+  columnWidth Int?
+  isFixed    Boolean            @default(false)
+  showWhen   Json?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+  
+  field      QuestionnaireField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  tenant     Tenant             @relation("FieldDisplayContexts", fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  @@unique([tenantId, fieldId, context])
+  @@index([tenantId, context])
+  @@index([fieldId])
+}
+
+// ML Training event logging
+model MLTrainingEvent {
+  id                String   @id @default(cuid())
+  tenantId          String
+  eventType         String
+  
+  // Context
+  leadId            String?
+  quoteId           String?
+  lineItemId        String?
+  
+  // Field data
+  fieldId           String?
+  fieldKey          String?
+  fieldValue        Json?
+  previousValue     Json?
+  
+  // Pricing data
+  estimatedPrice    Decimal?
+  quotedPrice       Decimal?
+  acceptedPrice     Decimal?
+  marginPercentage  Decimal?
+  estimateAccuracy  Decimal?
+  
+  // Outcome tracking
+  wasAccepted       Boolean?
+  customerFeedback  String?
+  
+  // Full context snapshot
+  contextSnapshot   Json
+  
+  // Metadata
+  source            String?
+  userId            String?
+  createdAt         DateTime @default(now())
+  
+  tenant            Tenant   @relation("MLTrainingEvents", fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  @@index([tenantId, eventType])
+  @@index([tenantId, leadId])
+  @@index([tenantId, quoteId])
+  @@index([tenantId, createdAt])
+  @@index([fieldId])
 }
