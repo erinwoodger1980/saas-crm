@@ -1776,79 +1776,137 @@ export default function SettingsPage() {
       {currentStage === "data-fields" && (
       <Section 
         title="Data Fields" 
-        description="Configure custom fields across all areas of your system. Standard fields are built-in and always available."
+        description="Configure custom fields across all areas of your system. Use the flexible field system to create, organize, and manage fields by scope and context."
       >
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-slate-700">Lead & Quote Management</p>
-            <div className="flex flex-wrap gap-2">
-              {([
-                { key: "client", label: "Client Details", description: "Name, email, phone, address" },
-                { key: "item", label: "Item Details", description: "Per-door/window: dimensions, materials, specs" },
-                { key: "manufacturing", label: "Manufacturing", description: "Installation dates, production notes" },
-              ] as const).map(({ key, label, description }) => (
-                <button
-                  key={key}
-                  onClick={() => setQScopeTab(key)}
-                  className={`px-4 py-2 rounded-lg text-xs border flex flex-col items-start text-left ${qScopeTab === key ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-700 hover:bg-slate-50"}`}
-                  type="button"
-                  title={description}
-                >
-                  <span className="font-semibold">{label}</span>
-                  <span className={`text-[10px] ${qScopeTab === key ? "text-blue-100" : "text-slate-500"}`}>{description}</span>
-                </button>
-              ))}
+        <div className="space-y-6">
+          {/* Modern Field Management */}
+          <div className="rounded-xl border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-white p-6">
+            <h3 className="text-lg font-semibold text-slate-800 mb-2 flex items-center gap-2">
+              🎯 Flexible Field System
+            </h3>
+            <p className="text-sm text-slate-600 mb-4">
+              Manage custom fields with advanced features: conditional visibility, field ordering, display contexts, and more.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <a
+                href="/settings/fields"
+                className="flex flex-col p-4 rounded-lg border-2 border-blue-300 bg-white hover:bg-blue-50 hover:border-blue-400 transition-all"
+              >
+                <div className="text-2xl mb-2">📋</div>
+                <div className="font-semibold text-slate-800 text-sm">Field Manager</div>
+                <div className="text-xs text-slate-600 mt-1">
+                  Create and configure fields by scope (client, lead, line item, etc.)
+                </div>
+              </a>
+              
+              <a
+                href="/settings/display-contexts"
+                className="flex flex-col p-4 rounded-lg border-2 border-purple-300 bg-white hover:bg-purple-50 hover:border-purple-400 transition-all"
+              >
+                <div className="text-2xl mb-2">👁️</div>
+                <div className="font-semibold text-slate-800 text-sm">Display Contexts</div>
+                <div className="text-xs text-slate-600 mt-1">
+                  Control where fields appear (modals, detail pages, lists, etc.)
+                </div>
+              </a>
+              
+              <a
+                href="/settings/field-system-test"
+                className="flex flex-col p-4 rounded-lg border-2 border-green-300 bg-white hover:bg-green-50 hover:border-green-400 transition-all"
+              >
+                <div className="text-2xl mb-2">🧪</div>
+                <div className="font-semibold text-slate-800 text-sm">Test & Validate</div>
+                <div className="text-xs text-slate-600 mt-1">
+                  Test field system, validate configurations, and debug issues
+                </div>
+              </a>
             </div>
           </div>
-          
-          {/* Fire Door System - only show for fire door manufacturers */}
-          {s?.isFireDoorManufacturer && (
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-slate-700">Fire Door System</p>
-              <div className="flex flex-wrap gap-2">
-                {([
-                  { key: "fire_door_schedule", label: "Fire Door Schedule", description: "Project tracking fields" },
-                  { key: "fire_door_line_items", label: "Fire Door Line Items", description: "Door specifications & BOM" },
-                ] as const).map(({ key, label, description }) => (
-                  <button
-                    key={key}
-                    onClick={() => setQScopeTab(key)}
-                    className={`px-4 py-2 rounded-lg text-xs border flex flex-col items-start text-left ${qScopeTab === key ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-700 hover:bg-slate-50"}`}
-                    type="button"
-                    title={description}
-                  >
-                    <span className="font-semibold">{label}</span>
-                    <span className={`text-[10px] ${qScopeTab === key ? "text-blue-100" : "text-slate-500"}`}>{description}</span>
-                  </button>
-                ))}
+
+          {/* Legacy System (Deprecated) */}
+          <details className="rounded-xl border bg-amber-50/50 p-4">
+            <summary className="cursor-pointer text-sm font-semibold text-amber-900 flex items-center gap-2">
+              ⚠️ Legacy Questionnaire Fields (Deprecated)
+              <span className="text-xs font-normal text-amber-700 ml-auto">Click to expand</span>
+            </summary>
+            <div className="mt-4 space-y-4">
+              <div className="bg-amber-100/50 rounded-lg p-3 text-xs text-amber-900">
+                <strong>Note:</strong> This is the legacy field system. New fields should be created using the Flexible Field System above.
+                This interface remains available for viewing and managing existing questionnaire fields.
               </div>
+              
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-700">Lead & Quote Management</p>
+                <div className="flex flex-wrap gap-2">
+                  {([
+                    { key: "client", label: "Client Details", description: "Name, email, phone, address" },
+                    { key: "item", label: "Item Details", description: "Per-door/window: dimensions, materials, specs" },
+                    { key: "manufacturing", label: "Manufacturing", description: "Installation dates, production notes" },
+                  ] as const).map(({ key, label, description }) => (
+                    <button
+                      key={key}
+                      onClick={() => setQScopeTab(key)}
+                      className={`px-4 py-2 rounded-lg text-xs border flex flex-col items-start text-left ${qScopeTab === key ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-700 hover:bg-slate-50"}`}
+                      type="button"
+                      title={description}
+                    >
+                      <span className="font-semibold">{label}</span>
+                      <span className={`text-[10px] ${qScopeTab === key ? "text-blue-100" : "text-slate-500"}`}>{description}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Fire Door System - only show for fire door manufacturers */}
+              {s?.isFireDoorManufacturer && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-slate-700">Fire Door System</p>
+                  <div className="flex flex-wrap gap-2">
+                    {([
+                      { key: "fire_door_schedule", label: "Fire Door Schedule", description: "Project tracking fields" },
+                      { key: "fire_door_line_items", label: "Fire Door Line Items", description: "Door specifications & BOM" },
+                    ] as const).map(({ key, label, description }) => (
+                      <button
+                        key={key}
+                        onClick={() => setQScopeTab(key)}
+                        className={`px-4 py-2 rounded-lg text-xs border flex flex-col items-start text-left ${qScopeTab === key ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-700 hover:bg-slate-50"}`}
+                        type="button"
+                        title={description}
+                      >
+                        <span className="font-semibold">{label}</span>
+                        <span className={`text-[10px] ${qScopeTab === key ? "text-blue-100" : "text-slate-500"}`}>{description}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-700">Other</p>
+                <div className="flex flex-wrap gap-2">
+                  {([
+                    { key: "public", label: "Public Questionnaire", description: "Customer-facing forms" },
+                    { key: "internal", label: "Internal Only", description: "Staff notes & data" },
+                  ] as const).map(({ key, label, description }) => (
+                    <button
+                      key={key}
+                      onClick={() => setQScopeTab(key)}
+                      className={`px-4 py-2 rounded-lg text-xs border flex flex-col items-start text-left ${qScopeTab === key ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-700 hover:bg-slate-50"}`}
+                      type="button"
+                      title={description}
+                    >
+                      <span className="font-semibold">{label}</span>
+                      <span className={`text-[10px] ${qScopeTab === key ? "text-blue-100" : "text-slate-500"}`}>{description}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              {qScopeTab === "client" && <ClientDatabaseFieldsDisplay />}
+              
+              <AdminQuestionnaireFieldsTable apiBase={API_BASE} scope={qScopeTab} />
             </div>
-          )}
-          
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-slate-700">Other</p>
-            <div className="flex flex-wrap gap-2">
-              {([
-                { key: "public", label: "Public Questionnaire", description: "Customer-facing forms" },
-                { key: "internal", label: "Internal Only", description: "Staff notes & data" },
-              ] as const).map(({ key, label, description }) => (
-                <button
-                  key={key}
-                  onClick={() => setQScopeTab(key)}
-                  className={`px-4 py-2 rounded-lg text-xs border flex flex-col items-start text-left ${qScopeTab === key ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-700 hover:bg-slate-50"}`}
-                  type="button"
-                  title={description}
-                >
-                  <span className="font-semibold">{label}</span>
-                  <span className={`text-[10px] ${qScopeTab === key ? "text-blue-100" : "text-slate-500"}`}>{description}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-          
-          {qScopeTab === "client" && <ClientDatabaseFieldsDisplay />}
-          
-          <AdminQuestionnaireFieldsTable apiBase={API_BASE} scope={qScopeTab} />
+          </details>
         </div>
       </Section>
       )}
