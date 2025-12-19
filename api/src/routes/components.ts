@@ -708,7 +708,7 @@ router.post('/batch-create', async (req, res) => {
             leadTimeDays: 0,
             isActive: true,
             description: comp.sourceDescription || '',
-            attributes: {
+            metadata: {
               aiGenerated: true,
               generatedAt: new Date().toISOString(),
               width: comp.width,
