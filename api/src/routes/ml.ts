@@ -65,9 +65,12 @@ router.get("/material-costs/recent", async (req, res) => {
     try { payload = JSON.parse(text); } catch { /* ignore */ }
     if (!r.ok) {
       console.error(`[material-costs/recent] upstream ${r.status} response:`, text.slice(0, 500));
-      // Graceful fallback for 404/501: return empty dataset instead of hard error so UI renders
+      // Graceful fallbacks: always return empty dataset so UI stays functional
       if (r.status === 404 || r.status === 501) {
         return res.json({ ok: true, cached: false, items: [], message: "ml_upstream_missing" });
+      }
+      if (r.status >= 500 || r.status === 429) {
+        return res.json({ ok: true, cached: false, items: [], message: "ml_upstream_unavailable" });
       }
       return res.status(r.status).json({ error: "upstream_error", status: r.status, detail: payload || text });
     }
@@ -76,7 +79,7 @@ router.get("/material-costs/recent", async (req, res) => {
     return res.json({ ok: true, cached: false, ...payload });
   } catch (e: any) {
     console.error("[material-costs/recent] failed:", e?.message || e);
-    return res.status(500).json({ error: "material_costs_failed", message: e?.message || String(e) });
+    return res.json({ ok: true, cached: false, items: [], message: "material_costs_failed" });
   }
 });
 

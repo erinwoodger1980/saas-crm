@@ -59,7 +59,7 @@ router.get("/", requireAuth, async (req: any, res) => {
     });
   } catch (e: any) {
     console.error("[GET /api/scene-state] failed:", e?.message || e);
-    return res.status(500).json({ error: "internal_error" });
+    return res.json({ success: true, data: null, message: "scene_state_unavailable" });
   }
 });
 
@@ -114,7 +114,7 @@ router.post("/", requireAuth, async (req: any, res) => {
     return res.json({ success: true, data: sceneState });
   } catch (e: any) {
     console.error("[POST /api/scene-state] failed:", e?.message || e);
-    return res.status(500).json({ error: "internal_error" });
+    return res.json({ success: false, message: "scene_state_persist_failed" });
   }
 });
 
@@ -150,7 +150,7 @@ router.delete("/", requireAuth, async (req: any, res) => {
     return res.json({ success: true });
   } catch (e: any) {
     console.error("[DELETE /api/scene-state] failed:", e?.message || e);
-    return res.status(500).json({ error: "internal_error" });
+    return res.json({ success: false, message: "scene_state_delete_failed" });
   }
 });
 
