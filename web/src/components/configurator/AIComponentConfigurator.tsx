@@ -322,7 +322,7 @@ export function AIComponentConfigurator({
 
       {/* 3D Canvas - Studio Quality */}
       {config ? (
-        <div className="flex-1 relative" style={{ backgroundColor: '#f2f2f2' }}>
+        <div className="flex-1 relative min-h-[420px]" style={{ backgroundColor: '#f2f2f2' }}>
           <Canvas
             shadows="soft"
             camera={{
@@ -338,6 +338,10 @@ export function AIComponentConfigurator({
               outputColorSpace: 'srgb',
               toneMapping: 2, // ACESFilmicToneMapping
               toneMappingExposure: 1.0,
+            }}
+            // Force clear color to studio off-white so background cannot be black
+            onCreated={({ gl }) => {
+              gl.setClearColor('#f2f2f2');
             }}
             style={{ background: '#f2f2f2' }}
           >
