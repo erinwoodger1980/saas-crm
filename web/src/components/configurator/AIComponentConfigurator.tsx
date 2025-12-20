@@ -110,14 +110,14 @@ export function AIComponentConfigurator({
           maxZ = Math.max(maxZ, z + halfD);
         });
 
-        // Add padding
-        const padX = (maxX - minX) * 0.2;
-        const padY = (maxY - minY) * 0.2;
-        const padZ = (maxZ - minZ) * 0.2;
+        // Add more padding for better framing
+        const padX = (maxX - minX) * 0.3;
+        const padY = (maxY - minY) * 0.5; // More top padding for better view
+        const padZ = (maxZ - minZ) * 0.3;
 
         minX -= padX;
         maxX += padX;
-        minY -= padY;
+        minY -= padY * 0.2; // Less bottom padding
         maxY += padY;
         minZ -= padZ;
         maxZ += padZ;
@@ -132,7 +132,12 @@ export function AIComponentConfigurator({
         const centerX = (minX + maxX) / 2;
         const centerY = (minY + maxY) / 2;
         const centerZ = (minZ + maxZ) / 2;
-        const cameraDistance = maxDim * 1.5;
+        
+        // Better camera positioning - slightly angled for better view
+        const cameraDistance = maxDim * 1.2;
+        const camX = centerX + cameraDistance * 0.3;
+        const camY = centerY + cameraDistance * 0.4;
+        const camZ = centerZ + cameraDistance;
 
         const minimalConfig: SceneConfig = {
           version: 1,
@@ -149,7 +154,7 @@ export function AIComponentConfigurator({
             materialId: comp.material || 'wood',
           })),
           camera: {
-            position: [centerX + cameraDistance * 0.6, centerY + cameraDistance * 0.6, centerZ + cameraDistance * 0.8],
+            position: [camX, camY, camZ],
             rotation: [0, 0, 0],
             target: [centerX, centerY, centerZ],
             zoom: 1,
@@ -316,7 +321,7 @@ export function AIComponentConfigurator({
 
       {/* 3D Canvas */}
       {config ? (
-        <div className="flex-1 relative bg-gradient-to-b from-slate-50 to-slate-100">
+        <div className="flex-1 relative" style={{ backgroundColor: '#f5f5f0' }}>
           <Canvas
             shadows
             camera={{
@@ -325,7 +330,8 @@ export function AIComponentConfigurator({
               near: 1,
               far: 10000,
             }}
-            gl={{ antialias: true, alpha: false }}
+            gl={{ antialias: true, alpha: false, preserveDrawingBuffer: true }}
+            style={{ background: '#f5f5f0' }}
           >
             {/* Simple orbit controls - no UI */}
             <OrbitControls
@@ -372,7 +378,7 @@ export function AIComponentConfigurator({
           )}
         </div>
       ) : (
-        <div className="flex-1 flex items-center justify-center bg-gradient-to-b from-slate-50 to-slate-100">
+        <div className="flex-1 flex items-center justify-center" style={{ backgroundColor: '#f5f5f0' }}>
           <div className="text-center space-y-2">
             <p className="text-muted-foreground">Enter a description and click "Generate Preview"</p>
             <p className="text-xs text-muted-foreground">The 3D model will appear here</p>

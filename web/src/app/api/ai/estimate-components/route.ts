@@ -119,20 +119,16 @@ Generate the component breakdown for this product. Provide realistic dimensions 
 
     // Validate and sanitize components
     const sanitized = components
-      .map((comp: any, idx: number) => {
-        // Spread components across X axis to avoid overlap
-        const xOffset = (idx - (components.length - 1) / 2) * 300;
-        return {
-          id: comp.id || `comp-${idx}`,
-          name: comp.name || `Component ${idx + 1}`,
-          type: comp.type || 'part',
-          width: Math.max(10, Math.min(5000, parseInt(comp.width) || 500)),
-          height: Math.max(10, Math.min(5000, parseInt(comp.height) || 500)),
-          depth: Math.max(10, Math.min(1000, parseInt(comp.depth) || 50)),
-          material: comp.material || 'wood',
-          position: Array.isArray(comp.position) ? comp.position : [xOffset, 0, 0],
-        };
-      })
+      .map((comp: any, idx: number) => ({
+        id: comp.id || `comp-${idx}`,
+        name: comp.name || `Component ${idx + 1}`,
+        type: comp.type || 'part',
+        width: Math.max(10, Math.min(5000, parseInt(comp.width) || 500)),
+        height: Math.max(10, Math.min(5000, parseInt(comp.height) || 500)),
+        depth: Math.max(10, Math.min(1000, parseInt(comp.depth) || 50)),
+        material: comp.material || 'wood',
+        position: Array.isArray(comp.position) ? comp.position : [0, 0, 0],
+      }))
       .filter((comp: any) => comp.width && comp.height && comp.depth);
 
     return NextResponse.json({
