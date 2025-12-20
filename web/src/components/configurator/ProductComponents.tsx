@@ -53,15 +53,18 @@ const ComponentMesh = forwardRef<THREE.Mesh, {
       (ref as React.MutableRefObject<THREE.Mesh | null>).current = value;
     }
   };
-  
-  if (!node.geometry || !node.visible) return null;
+
+  // Guard outside early returns to keep hook order stable even if geometry/visibility toggles
+  const hasRenderableGeometry = !!node.geometry && node.visible;
 
   const geometry = useMemo(() => {
-    const { type, dimensions, customData } = node.geometry!;
+    if (!hasRenderableGeometry || !node.geometry) return null;
+
+    const { type, dimensions, customData } = node.geometry;
 
     try {
       switch (type) {
-        case 'box':
+        case 'box': {
           if (!dimensions) return null;
           // Use beveled box for crisp highlight-catching edges
           const edgeRadius = (customData as any)?.edgeRadius || 2; // Default 2mm bevel
@@ -72,6 +75,7 @@ const ComponentMesh = forwardRef<THREE.Mesh, {
             radius: edgeRadius,
             smoothness: 6,
           });
+        }
         
         case 'cylinder':
           if (!dimensions) return null;
@@ -82,7 +86,7 @@ const ComponentMesh = forwardRef<THREE.Mesh, {
             dimensions[2] || 32
           );
         
-        case 'extrude':
+        case 'extrude': {
           if (!customData?.shape || !Array.isArray(customData.shape.points)) return null;
           const shape = new THREE.Shape();
           customData.shape.points.forEach((p: [number, number], i: number) => {
@@ -90,6 +94,7 @@ const ComponentMesh = forwardRef<THREE.Mesh, {
             else shape.lineTo(p[0], p[1]);
           });
           return new THREE.ExtrudeGeometry(shape, customData.extrudeSettings);
+        }
         
         case 'shapeExtrude': {
           if (!customData?.shape || !Array.isArray(customData.shape.points)) return null;
@@ -237,9 +242,10 @@ const ComponentMesh = forwardRef<THREE.Mesh, {
       console.error(`Failed to create geometry for ${type}:`, error);
       return null;
     }
-  }, [node.geometry]);
+  }, [hasRenderableGeometry, node.geometry]);
 
-  if (!geometry) return null;
+  // No render when geometry missing; hook order stays stable via guards above
+  if (!hasRenderableGeometry || !geometry) return null;
 
   const position = new THREE.Vector3(...node.geometry.position);
   const rotation = node.geometry.rotation
