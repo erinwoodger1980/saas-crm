@@ -29,6 +29,7 @@ import { Lighting } from './Lighting';
 import { ProductComponents } from './ProductComponents';
 import { SceneUI } from './SceneUI';
 import { InspectorPanel } from './InspectorPanel';
+import { HeroUIControl } from './HeroUIControl';
 import { Loader2, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { updateQuoteLine } from '@/lib/api/quotes';
@@ -50,6 +51,8 @@ interface ProductConfigurator3DProps {
   height?: string | number;
   /** Callback when closed */
   onClose?: () => void;
+  /** Hero preview mode - hide UI, show only floating button */
+  heroMode?: boolean;
 }
 
 /**
@@ -164,6 +167,7 @@ export function ProductConfigurator3D({
   width = '100%',
   height = '80vh',
   onClose,
+  heroMode = false,
 }: ProductConfigurator3DProps) {
   const [config, setConfig] = useState<SceneConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -518,9 +522,9 @@ export function ProductConfigurator3D({
   const cameraMode = config.camera?.mode || 'Perspective';
 
   return (
-    <div className="relative flex gap-4 min-h-0" style={{ width, height }}>
+    <div className={`relative ${heroMode ? 'w-full h-full min-h-0' : 'flex gap-4 min-h-0'}`} style={!heroMode ? { width, height } : { width, height }}>
       {/* Main 3D Canvas */}
-      <div className="flex-1 relative bg-gradient-to-b from-slate-50 to-slate-100 rounded-lg overflow-hidden border min-h-0">
+      <div className={`${heroMode ? 'w-full h-full' : 'flex-1 relative'} bg-gradient-to-b from-slate-50 to-slate-100 ${!heroMode ? 'rounded-lg' : ''} overflow-hidden ${!heroMode ? 'border' : ''} min-h-0`}>
         <Canvas
           shadows="soft"
           camera={{
@@ -570,35 +574,64 @@ export function ProductConfigurator3D({
         </Canvas>
         
         {/* UI Overlay */}
-        <SceneUI
-          components={config.components}
-          ui={config.ui}
-          cameraMode={cameraMode}
-          onCameraModeChange={(mode) => {
-            updateConfig({
-              camera: { ...config.camera, mode },
-            });
-          }}
-          onUIToggle={(key, value) => {
-            updateConfig({
-              ui: { ...config.ui, [key]: value },
-            });
-          }}
-          onVisibilityToggle={handleVisibilityToggle}
-          onResetCamera={() => {
-            // Reset camera to default position
-            const params = config.customData as ProductParams;
-            updateConfig({
-              camera: {
-                ...config.camera,
-                position: [0, 0, Math.max(params.dimensions.width, params.dimensions.height) * 2],
-                rotation: [0, 0, 0],
-                target: [0, 0, 0],
-                zoom: 1,
-              },
-            });
-          }}
-        />
+        {heroMode ? (
+          <HeroUIControl
+            cameraMode={cameraMode}
+            onCameraModeChange={(mode) => {
+              updateConfig({
+                camera: { ...config.camera, mode },
+              });
+            }}
+            onResetCamera={() => {
+              const params = config.customData as ProductParams;
+              updateConfig({
+                camera: {
+                  ...config.camera,
+                  position: [0, 0, Math.max(params.dimensions.width, params.dimensions.height) * 2],
+                  rotation: [0, 0, 0],
+                  target: [0, 0, 0],
+                  zoom: 1,
+                },
+              });
+            }}
+            onUIToggle={(key, value) => {
+              updateConfig({
+                ui: { ...config.ui, [key]: value },
+              });
+            }}
+            showGuides={config.ui.guides}
+            showAxis={config.ui.axis}
+          />
+        ) : (
+          <SceneUI
+            components={config.components}
+            ui={config.ui}
+            cameraMode={cameraMode}
+            onCameraModeChange={(mode) => {
+              updateConfig({
+                camera: { ...config.camera, mode },
+              });
+            }}
+            onUIToggle={(key, value) => {
+              updateConfig({
+                ui: { ...config.ui, [key]: value },
+              });
+            }}
+            onVisibilityToggle={handleVisibilityToggle}
+            onResetCamera={() => {
+              const params = config.customData as ProductParams;
+              updateConfig({
+                camera: {
+                  ...config.camera,
+                  position: [0, 0, Math.max(params.dimensions.width, params.dimensions.height) * 2],
+                  rotation: [0, 0, 0],
+                  target: [0, 0, 0],
+                  zoom: 1,
+                },
+              });
+            }}
+          />
+        )}
         
         {/* Save indicator */}
         {isSaving && (
@@ -610,37 +643,39 @@ export function ProductConfigurator3D({
       </div>
       
       {/* Inspector Panel */}
-      <div className="w-80 flex flex-col gap-4 min-h-0 overflow-y-auto">
-        <InspectorPanel
-          selectedComponentId={selectedComponentId}
-          attributes={selectedAttributes}
-          onAttributeChange={(changes) => {
-            if (selectedComponentId) {
-              handleAttributeEdit(selectedComponentId, changes);
-            }
-          }}
-        />
-        
-        {/* Action buttons */}
-        <div className="flex flex-col gap-2">
-          <Button
-            variant="outline"
-            onClick={handleReset}
-            className="w-full"
-          >
-            Reset to Defaults
-          </Button>
+      {!heroMode && (
+        <div className="w-80 flex flex-col gap-4 min-h-0 overflow-y-auto">
+          <InspectorPanel
+            selectedComponentId={selectedComponentId}
+            attributes={selectedAttributes}
+            onAttributeChange={(changes) => {
+              if (selectedComponentId) {
+                handleAttributeEdit(selectedComponentId, changes);
+              }
+            }}
+          />
           
-          {onClose && (
+          {/* Action buttons */}
+          <div className="flex flex-col gap-2">
             <Button
-              onClick={onClose}
+              variant="outline"
+              onClick={handleReset}
               className="w-full"
             >
-              Close Configurator
+              Reset to Defaults
             </Button>
-          )}
+            
+            {onClose && (
+              <Button
+                onClick={onClose}
+                className="w-full"
+              >
+                Close Configurator
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

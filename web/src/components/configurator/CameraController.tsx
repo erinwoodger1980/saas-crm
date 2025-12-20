@@ -11,11 +11,13 @@ import { useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera as DreiPerspectiveCamera, OrthographicCamera as DreiOrthographicCamera } from '@react-three/drei';
 import * as THREE from 'three';
 import { CameraState, calculateOrthoZoom } from '@/types/scene-config';
+import { calculateDistanceLimits, calculateCameraFarPlane } from '@/lib/scene/fit-camera';
 
 interface CameraControllerProps {
   cameraState: CameraState;
   productWidth: number;
   productHeight: number;
+  productDepth?: number;
   onCameraChange: (state: Partial<CameraState>) => void;
   /** Debounce time in ms before persisting camera changes */
   persistDebounce?: number;
@@ -25,6 +27,7 @@ export function CameraController({
   cameraState,
   productWidth,
   productHeight,
+  productDepth = 45,
   onCameraChange,
   persistDebounce = 500,
 }: CameraControllerProps) {
@@ -34,6 +37,10 @@ export function CameraController({
   const orthoCamRef = useRef<THREE.OrthographicCamera>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isUserInteractingRef = useRef(false);
+  
+  // Calculate dynamic distance limits based on product size
+  const { minDistance, maxDistance } = calculateDistanceLimits(productWidth, productHeight, productDepth);
+  const farPlane = calculateCameraFarPlane(productWidth, productHeight, productDepth);
   
   // Safe access to camera mode with fallback to prevent crashes
   const cameraMode = cameraState?.mode || 'Perspective';
@@ -177,7 +184,7 @@ export function CameraController({
           fov={cameraState.fov || 35}
           position={cameraState.position}
           near={0.1}
-          far={10000}
+          far={farPlane}
         />
       )}
 
@@ -189,7 +196,7 @@ export function CameraController({
           position={cameraState.position}
           zoom={cameraState.zoom}
           near={0.1}
-          far={10000}
+          far={farPlane}
         />
       )}
 
@@ -202,8 +209,9 @@ export function CameraController({
         rotateSpeed={0.8}
         panSpeed={0.8}
         zoomSpeed={1.2}
-        minDistance={5}
-        maxDistance={100}
+        enableZoom={true}
+        minDistance={minDistance}
+        maxDistance={maxDistance}
         onEnd={handleInteractionEnd}
         // CAD-like controls
         mouseButtons={{

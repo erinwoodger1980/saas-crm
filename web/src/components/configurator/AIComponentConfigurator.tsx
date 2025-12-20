@@ -267,6 +267,7 @@ export function AIComponentConfigurator({
             onClose={onClose}
             width="100%"
             height="100%"
+            heroMode={true}
           />
         </div>
       ) : (
