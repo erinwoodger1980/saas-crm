@@ -96,15 +96,18 @@ export function AIComponentConfigurator({
           components: components.map((comp: GeneratedComponent) => ({
             id: comp.id,
             name: comp.name,
-            type: comp.type,
+            type: 'component',
             visible: true,
             geometry: {
-              width: comp.width,
-              height: comp.height,
-              depth: comp.depth,
+              type: 'box',
+              dimensions: {
+                width: comp.width,
+                height: comp.height,
+                depth: comp.depth,
+              },
             },
             position: comp.position,
-            material: comp.material,
+            material: comp.material || 'wood',
           })),
           camera: {
             position: [0, 1000, 2000],
