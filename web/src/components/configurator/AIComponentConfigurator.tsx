@@ -139,14 +139,14 @@ export function AIComponentConfigurator({
           components: components.map((comp: GeneratedComponent) => ({
             id: comp.id,
             name: comp.name,
-            type: 'component',
+            type: 'panel' as const,
             visible: true,
             geometry: {
-              type: 'box',
+              type: 'box' as const,
               dimensions: [comp.width, comp.height, comp.depth],
+              position: comp.position,
             },
-            position: comp.position,
-            material: comp.material || 'wood',
+            materialId: comp.material || 'wood',
           })),
           camera: {
             position: [centerX + cameraDistance * 0.6, centerY + cameraDistance * 0.6, centerZ + cameraDistance * 0.8],
