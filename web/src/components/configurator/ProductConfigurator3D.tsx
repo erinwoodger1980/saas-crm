@@ -518,9 +518,9 @@ export function ProductConfigurator3D({
   const cameraMode = config.camera?.mode || 'Perspective';
 
   return (
-    <div className="relative flex gap-4" style={{ width, height }}>
+    <div className="relative flex gap-4 min-h-0" style={{ width, height }}>
       {/* Main 3D Canvas */}
-      <div className="flex-1 relative bg-gradient-to-b from-slate-50 to-slate-100 rounded-lg overflow-hidden border min-h-[420px]">
+      <div className="flex-1 relative bg-gradient-to-b from-slate-50 to-slate-100 rounded-lg overflow-hidden border min-h-0">
         <Canvas
           shadows="soft"
           camera={{
@@ -610,7 +610,7 @@ export function ProductConfigurator3D({
       </div>
       
       {/* Inspector Panel */}
-      <div className="w-80 flex flex-col gap-4">
+      <div className="w-80 flex flex-col gap-4 min-h-0 overflow-y-auto">
         <InspectorPanel
           selectedComponentId={selectedComponentId}
           attributes={selectedAttributes}

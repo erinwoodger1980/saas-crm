@@ -191,9 +191,9 @@ export function AIComponentConfigurator({
   }, [appliedParams, lineItem]);
 
   return (
-    <div className="flex flex-col h-full bg-white rounded-lg overflow-hidden" style={{ height }}>
+    <div className="flex flex-col h-full bg-white rounded-lg overflow-hidden min-h-0" style={{ height }}>
       {/* Header with description + buttons */}
-      <div className="p-4 border-b space-y-3 bg-gradient-to-r from-blue-50 to-indigo-50">
+      <div className="p-4 border-b space-y-3 bg-gradient-to-r from-blue-50 to-indigo-50 shrink-0">
         <h2 className="text-lg font-semibold">AI Product Suggestion</h2>
 
         <div className="space-y-3">
@@ -258,18 +258,19 @@ export function AIComponentConfigurator({
 
       {/* Main configurator - render ProductConfigurator3D with applied params */}
       {appliedParams ? (
-        <div className="flex-1 relative">
+        <div className="flex-1 relative min-h-0">
           <ProductConfigurator3D
             tenantId={tenantId}
             entityType="quoteLineItem"
             entityId={`preview-${lineItem.id}`}
             lineItem={patchedLineItem}
             onClose={onClose}
+            width="100%"
             height="100%"
           />
         </div>
       ) : (
-        <div className="flex-1 flex items-center justify-center bg-gray-50">
+        <div className="flex-1 flex items-center justify-center bg-gray-50 min-h-0">
           <div className="text-center space-y-3">
             <div className="text-5xl">✨</div>
             <p className="text-muted-foreground font-medium">Enter a description and click "Generate AI Suggestion"</p>
@@ -279,7 +280,7 @@ export function AIComponentConfigurator({
       )}
 
       {/* Footer */}
-      <div className="p-3 border-t bg-gray-50 flex gap-2">
+      <div className="p-3 border-t bg-gray-50 flex gap-2 shrink-0">
         {onClose && (
           <Button onClick={onClose} variant="outline" className="flex-1 h-9 text-sm" size="sm">
             Close
