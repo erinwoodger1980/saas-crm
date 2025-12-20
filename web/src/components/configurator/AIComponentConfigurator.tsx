@@ -143,11 +143,7 @@ export function AIComponentConfigurator({
             visible: true,
             geometry: {
               type: 'box',
-              dimensions: {
-                width: comp.width,
-                height: comp.height,
-                depth: comp.depth,
-              },
+              dimensions: [comp.width, comp.height, comp.depth],
             },
             position: comp.position,
             material: comp.material || 'wood',
