@@ -193,10 +193,17 @@ export function ProductConfigurator3D({
     }
   }, [heroMode, selectedComponentId]);
 
+  // Guard to prevent double-loading in strict mode
+  const loadInitiated = useRef(false);
+
   /**
    * Load or initialize scene configuration
    */
   useEffect(() => {
+    // Prevent duplicate loads in React StrictMode
+    if (loadInitiated.current) return;
+    loadInitiated.current = true;
+
     async function load() {
       setIsLoading(true);
       
@@ -541,19 +548,33 @@ export function ProductConfigurator3D({
   const productDepth = (config.customData as any)?.dimensions?.depth || 45;
 
   // Auto-frame once after load using bounding box from dimensions
+  // Guard with a separate effect to avoid infinite loops
   useEffect(() => {
     if (!canRender || initialFrameApplied.current || !controlsRef.current) return;
-    const camera = controlsRef.current.object;
-    if (!camera) return;
+    
+    // Schedule frame fitting to next tick to avoid state loop
+    const timeoutId = setTimeout(() => {
+      const controls = controlsRef.current;
+      if (!controls) return;
+      
+      const camera = controls.object;
+      if (!camera) return;
 
-    const box = new Box3(
-      new Vector3(-productWidth / 2, 0, -productDepth / 2),
-      new Vector3(productWidth / 2, productHeight, productDepth / 2)
-    );
+      const box = new Box3(
+        new Vector3(-productWidth / 2, 0, -productDepth / 2),
+        new Vector3(productWidth / 2, productHeight, productDepth / 2)
+      );
 
-    fitCameraToBox(box, camera, controlsRef.current, 1.05);
-    initialFrameApplied.current = true;
-  }, [canRender, productWidth, productHeight, productDepth]);
+      try {
+        fitCameraToBox(box, camera, controls, 1.05);
+        initialFrameApplied.current = true;
+      } catch (error) {
+        console.warn('[ProductConfigurator3D] Auto-frame error:', error);
+      }
+    }, 100);
+
+    return () => clearTimeout(timeoutId);
+  }, [canRender]);
 
   return (
     <div className={`relative ${heroMode ? 'w-full h-full min-h-0' : 'flex gap-4 min-h-0'}`} style={!heroMode ? { width, height } : { width, height }}>
