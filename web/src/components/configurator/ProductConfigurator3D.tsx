@@ -6,7 +6,7 @@
 
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, Suspense, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Environment } from '@react-three/drei';
 import * as THREE from 'three';
@@ -30,8 +30,10 @@ import { ProductComponents } from './ProductComponents';
 import { SceneUI } from './SceneUI';
 import { InspectorPanel } from './InspectorPanel';
 import { HeroUIControl } from './HeroUIControl';
-import { Loader2, Save } from 'lucide-react';
+import { AutoFrame } from './AutoFrame';
+import { Loader2, Save, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { updateQuoteLine } from '@/lib/api/quotes';
 import { toast } from 'sonner';
 
@@ -175,7 +177,9 @@ export function ProductConfigurator3D({
   const [isSaving, setIsSaving] = useState(false);
   const [saveDisabled, setSaveDisabled] = useState(false);
   const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
-  const [editableAttributes, setEditableAttributes] = useState<Record<string, EditableAttribute[]>>({});;
+  const [editableAttributes, setEditableAttributes] = useState<Record<string, EditableAttribute[]>>({});
+  const [showUIDrawer, setShowUIDrawer] = useState(false);
+  const controlsRef = useRef<any>(null);;
 
   /**
    * Load or initialize scene configuration
@@ -524,9 +528,10 @@ export function ProductConfigurator3D({
   return (
     <div className={`relative ${heroMode ? 'w-full h-full min-h-0' : 'flex gap-4 min-h-0'}`} style={!heroMode ? { width, height } : { width, height }}>
       {/* Main 3D Canvas */}
-      <div className={`${heroMode ? 'w-full h-full' : 'flex-1 relative'} bg-gradient-to-b from-slate-50 to-slate-100 ${!heroMode ? 'rounded-lg' : ''} overflow-hidden ${!heroMode ? 'border' : ''} min-h-0`}>
+      <div className={`${heroMode ? 'w-full h-full' : 'flex-1 relative'} bg-gradient-to-b from-slate-100 to-slate-200 ${!heroMode ? 'rounded-lg' : ''} overflow-hidden ${!heroMode ? 'border' : ''} min-h-0`}>
         <Canvas
           shadows="soft"
+          dpr={[1, 2]}
           camera={{
             position: config.camera?.position || [0, 1000, 2000],
             fov: cameraMode === 'Perspective' ? (config.camera?.fov || 50) : 50,
@@ -539,21 +544,39 @@ export function ProductConfigurator3D({
           gl={{
             antialias: true,
             alpha: false,
-            outputColorSpace: 'srgb',
-            toneMapping: 2, // ACESFilmicToneMapping
+            outputColorSpace: THREE.SRGBColorSpace,
+            toneMapping: THREE.ACESFilmicToneMapping,
             toneMappingExposure: 1.0,
           }}
           onCreated={({ gl }) => {
-            gl.setClearColor('#f2f2f2');
+            // Improved renderer settings for better quality
+            gl.setClearColor('#e8e8e8');
+            gl.shadowMap.enabled = true;
+            gl.shadowMap.type = THREE.PCFSoftShadowMap;
+            gl.outputColorSpace = THREE.SRGBColorSpace;
+            gl.toneMapping = THREE.ACESFilmicToneMapping;
+            gl.toneMappingExposure = 1.0;
+            (gl as any).physicallyCorrectLights = true;
           }}
         >
           <Suspense fallback={null}>
-            {/* Camera controller (ensure correct props to avoid undefined camera state) */}
+            {/* Camera controller with controls ref export */}
             <CameraController
               cameraState={config.camera}
               productWidth={(config.customData as any)?.dimensions?.width || 1000}
               productHeight={(config.customData as any)?.dimensions?.height || 2000}
+              productDepth={(config.customData as any)?.dimensions?.depth || 45}
               onCameraChange={handleCameraChange}
+              onControlsReady={(controls) => {
+                controlsRef.current = controls;
+              }}
+            />
+            
+            {/* Auto-frame component for smooth auto-zoom on load and config changes */}
+            <AutoFrame
+              components={config.components}
+              controls={controlsRef.current}
+              heroMode={heroMode}
             />
             
             {/* Lighting */}
@@ -573,36 +596,110 @@ export function ProductConfigurator3D({
           </Suspense>
         </Canvas>
         
-        {/* UI Overlay */}
-        {heroMode ? (
-          <HeroUIControl
-            cameraMode={cameraMode}
-            onCameraModeChange={(mode) => {
-              updateConfig({
-                camera: { ...config.camera, mode },
-              });
-            }}
-            onResetCamera={() => {
-              const params = config.customData as ProductParams;
-              updateConfig({
-                camera: {
-                  ...config.camera,
-                  position: [0, 0, Math.max(params.dimensions.width, params.dimensions.height) * 2],
-                  rotation: [0, 0, 0],
-                  target: [0, 0, 0],
-                  zoom: 1,
-                },
-              });
-            }}
-            onUIToggle={(key, value) => {
-              updateConfig({
-                ui: { ...config.ui, [key]: value },
-              });
-            }}
-            showGuides={config.ui.guides}
-            showAxis={config.ui.axis}
-          />
-        ) : (
+        {/* UI Overlay - Only small floating button in hero mode */}
+        {heroMode && (
+          <div className="absolute bottom-4 right-4 z-50 pointer-events-auto">
+            <Sheet open={showUIDrawer} onOpenChange={setShowUIDrawer}>
+              <SheetTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-2 bg-white/90 backdrop-blur hover:bg-white shadow-lg"
+                >
+                  <Settings className="h-4 w-4" />
+                  Options
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-80 p-6 space-y-4">
+                <div className="space-y-4">
+                  {/* Camera Controls */}
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold">Camera</h3>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant={cameraMode === 'Perspective' ? 'default' : 'outline'}
+                        onClick={() => {
+                          updateConfig({
+                            camera: { ...config.camera, mode: 'Perspective' },
+                          });
+                        }}
+                        className="flex-1 text-xs"
+                      >
+                        Perspective
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={cameraMode === 'Ortho' ? 'default' : 'outline'}
+                        onClick={() => {
+                          updateConfig({
+                            camera: { ...config.camera, mode: 'Ortho' },
+                          });
+                        }}
+                        className="flex-1 text-xs"
+                      >
+                        Orthographic
+                      </Button>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const params = config.customData as ProductParams;
+                        updateConfig({
+                          camera: {
+                            ...config.camera,
+                            position: [0, 0, Math.max(params.dimensions.width, params.dimensions.height) * 2],
+                            rotation: [0, 0, 0],
+                            target: [0, 0, 0],
+                            zoom: 1,
+                          },
+                        });
+                      }}
+                      className="w-full text-xs"
+                    >
+                      Reset View
+                    </Button>
+                  </div>
+
+                  {/* View Options */}
+                  <div className="space-y-3 border-t pt-4">
+                    <h3 className="text-sm font-semibold">View</h3>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={config.ui.guides}
+                        onChange={(e) => {
+                          updateConfig({
+                            ui: { ...config.ui, guides: e.target.checked },
+                          });
+                        }}
+                        className="rounded"
+                      />
+                      <span>Show Grid</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={config.ui.axis}
+                        onChange={(e) => {
+                          updateConfig({
+                            ui: { ...config.ui, axis: e.target.checked },
+                          });
+                        }}
+                        className="rounded"
+                      />
+                      <span>Show Axis</span>
+                    </label>
+                  </div>
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
+        )}
+
+        {/* UI Overlay - Full scene UI in normal mode */}
+        {!heroMode && (
           <SceneUI
             components={config.components}
             ui={config.ui}

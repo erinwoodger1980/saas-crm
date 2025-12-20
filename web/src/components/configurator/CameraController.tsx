@@ -11,7 +11,7 @@ import { useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera as DreiPerspectiveCamera, OrthographicCamera as DreiOrthographicCamera } from '@react-three/drei';
 import * as THREE from 'three';
 import { CameraState, calculateOrthoZoom } from '@/types/scene-config';
-import { calculateDistanceLimits, calculateCameraFarPlane } from '@/lib/scene/fit-camera';
+import { calculateDistanceLimits, calculateCameraFarPlane, calculateZoomLimits } from '@/lib/scene/fit-camera';
 
 interface CameraControllerProps {
   cameraState: CameraState;
@@ -21,6 +21,8 @@ interface CameraControllerProps {
   onCameraChange: (state: Partial<CameraState>) => void;
   /** Debounce time in ms before persisting camera changes */
   persistDebounce?: number;
+  /** Callback when controls are ready, for external access (e.g., auto-framing) */
+  onControlsReady?: (controls: any) => void;
 }
 
 export function CameraController({
@@ -30,6 +32,7 @@ export function CameraController({
   productDepth = 45,
   onCameraChange,
   persistDebounce = 500,
+  onControlsReady,
 }: CameraControllerProps) {
   const { gl, size } = useThree();
   const controlsRef = useRef<any>(null);
@@ -38,9 +41,13 @@ export function CameraController({
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isUserInteractingRef = useRef(false);
   
-  // Calculate dynamic distance limits based on product size
+  // Calculate dynamic distance limits and far plane based on product size
   const { minDistance, maxDistance } = calculateDistanceLimits(productWidth, productHeight, productDepth);
   const farPlane = calculateCameraFarPlane(productWidth, productHeight, productDepth);
+  
+  // Calculate zoom limits for orthographic mode
+  const fitZoom = calculateOrthoZoom(productWidth, productHeight, size.width, size.height);
+  const { minZoom: minOrthoZoom, maxZoom: maxOrthoZoom } = calculateZoomLimits(fitZoom);
   
   // Safe access to camera mode with fallback to prevent crashes
   const cameraMode = cameraState?.mode || 'Perspective';
@@ -64,10 +71,8 @@ export function CameraController({
     
     // Apply mode-specific settings
     if (cameraMode === 'Ortho' && orthoCamRef.current) {
-      // Calculate auto-fit zoom if zoom is default (1)
-      const zoom = cameraState.zoom === 1
-        ? calculateOrthoZoom(productWidth, productHeight, size.width, size.height)
-        : cameraState.zoom;
+      // Use fit zoom if zoom is default (1), otherwise use persisted zoom
+      const zoom = cameraState.zoom === 1 ? fitZoom : cameraState.zoom;
       
       orthoCamRef.current.zoom = zoom;
       orthoCamRef.current.updateProjectionMatrix();
@@ -85,7 +90,16 @@ export function CameraController({
     }
     
     controlsRef.current.update();
-  }, [cameraMode, currentCamera]);
+  }, [cameraMode, currentCamera, fitZoom]);
+
+  /**
+   * Notify parent when controls are ready for auto-framing
+   */
+  useEffect(() => {
+    if (controlsRef.current && onControlsReady) {
+      onControlsReady(controlsRef.current);
+    }
+  }, [onControlsReady]);
 
   /**
    * Handle camera interaction end
@@ -212,6 +226,8 @@ export function CameraController({
         enableZoom={true}
         minDistance={minDistance}
         maxDistance={maxDistance}
+        minZoom={minOrthoZoom}
+        maxZoom={maxOrthoZoom}
         onEnd={handleInteractionEnd}
         // CAD-like controls
         mouseButtons={{

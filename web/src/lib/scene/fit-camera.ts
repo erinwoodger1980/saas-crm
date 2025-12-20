@@ -42,7 +42,8 @@ export function calculateHeroCamera(params: CameraFrameParams) {
 
 /**
  * Calculate dynamic OrbitControls distance limits
- * Based on product dimensions in millimeters
+ * Based on product dimensions in millimeters with safer clamped values
+ * Ensures sufficient zoom-out capability while maintaining reasonable min distance
  */
 export function calculateDistanceLimits(
   productWidth: number,
@@ -50,16 +51,20 @@ export function calculateDistanceLimits(
   productDepth: number
 ) {
   const maxDim = Math.max(productWidth, productHeight, productDepth);
+  
+  // Safer clamped values: allow zoom-out up to 25x the product dimension
+  const minDistance = Math.max(100, maxDim * 0.35);
+  const maxDistance = Math.max(minDistance * 3, maxDim * 25);
 
   return {
-    minDistance: maxDim * 0.25,
-    maxDistance: maxDim * 6,
+    minDistance,
+    maxDistance,
   };
 }
 
 /**
  * Calculate far plane for camera
- * Ensures all content is visible
+ * Ensures all content is visible with significant margin
  */
 export function calculateCameraFarPlane(
   productWidth: number,
@@ -67,7 +72,24 @@ export function calculateCameraFarPlane(
   productDepth: number
 ) {
   const maxDim = Math.max(productWidth, productHeight, productDepth);
-  return maxDim * 20;
+  // Large far plane to accommodate extreme zoom-outs
+  return Math.max(20000, maxDim * 80);
+}
+
+/**
+ * Calculate orthographic camera zoom limits
+ * Returns { minZoom, maxZoom } for use with <OrbitControls />
+ * baseZoom: the "fit" zoom value (typically from calculateOrthoZoom)
+ */
+export function calculateZoomLimits(baseZoom: number) {
+  // Allow zoom from 0.2x (far out) to 5x (close in) the base fit zoom
+  const minZoom = Math.max(0.1, baseZoom * 0.2);
+  const maxZoom = Math.max(baseZoom * 5, baseZoom * 10);
+
+  return {
+    minZoom,
+    maxZoom,
+  };
 }
 
 /**
