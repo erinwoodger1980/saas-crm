@@ -1,63 +1,92 @@
 /**
- * AI Component Configurator
- * Simplified 3D configurator that generates components from description using OpenAI
- * Hides all camera controls and UI complexity
+ * AI Component Configurator - Parametric Version
+ * Embeds ProductConfigurator3D to render parametric door/window designs from AI suggestions
+ * AI suggests ProductParams + addedParts; builders handle real joinery geometry
  */
 
 'use client';
 
 import { useState, useCallback, useMemo } from 'react';
-import { Canvas } from '@react-three/fiber';
-import { Environment, OrbitControls } from '@react-three/drei';
-import * as THREE from 'three';
-import { Loader2, Wand2, Plus } from 'lucide-react';
+import { Loader2, Wand2, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Lighting } from './Lighting';
-import { ProductComponents } from './ProductComponents';
-import { createCycloramaBackdrop } from '@/lib/scene/geometry';
-import { SceneConfig } from '@/types/scene-config';
-import { ProductParams } from '@/types/parametric-builder';
-import { initializeSceneFromParams } from '@/lib/scene/builder-registry';
+import { ProductParams, AddedPart } from '@/types/parametric-builder';
+import { getOrCreateParams } from '@/lib/scene/builder-registry';
+import { ProductConfigurator3D } from './ProductConfigurator3D';
+import { updateQuoteLine } from '@/lib/api/quotes';
 
 interface AIComponentConfiguratorProps {
   tenantId: string;
   lineItem: any;
   description?: string;
-  onGeneratedComponents?: (components: any[]) => void;
   onClose?: () => void;
   height?: string | number;
 }
 
-interface GeneratedComponent {
-  id: string;
-  name: string;
-  type: string;
-  width: number;
-  height: number;
-  depth: number;
-  material: string;
-  position: [number, number, number];
+interface AIResponse {
+  suggestedParamsPatch: Partial<ProductParams>;
+  suggestedAddedParts: AddedPart[];
+  rationale: string;
 }
 
 export function AIComponentConfigurator({
   tenantId,
   lineItem,
   description: initialDescription = '',
-  onGeneratedComponents,
   onClose,
   height = '80vh',
 }: AIComponentConfiguratorProps) {
   const [description, setDescription] = useState(initialDescription);
-  const [generatedComponents, setGeneratedComponents] = useState<GeneratedComponent[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
-  const [config, setConfig] = useState<SceneConfig | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState<AIResponse | null>(null);
+  const [appliedParams, setAppliedParams] = useState<ProductParams | null>(null);
 
   /**
-   * Call OpenAI to generate components based on description
+   * Get initial params from line item
+   */
+  const baseParams = useMemo(() => {
+    return getOrCreateParams(lineItem);
+  }, [lineItem]);
+
+  /**
+   * Merge AI suggestions into current params
+   */
+  const mergeParams = useCallback((base: ProductParams | null, suggestion: AIResponse): ProductParams => {
+    if (!base) {
+      // Start fresh from suggestion
+      return {
+        productType: suggestion.suggestedParamsPatch.productType || {
+          category: 'doors',
+          type: 'entrance',
+          option: 'E01',
+        },
+        dimensions: base?.dimensions || { width: 914, height: 2032, depth: 45 },
+        construction: {
+          ...base?.construction,
+          ...suggestion.suggestedParamsPatch.construction,
+        },
+        addedParts: [...(base?.addedParts || []), ...suggestion.suggestedAddedParts],
+        curves: base?.curves,
+        curveSlots: base?.curveSlots,
+      };
+    }
+
+    // Deep merge construction fields
+    return {
+      ...base,
+      productType: suggestion.suggestedParamsPatch.productType || base.productType,
+      construction: {
+        ...base.construction,
+        ...suggestion.suggestedParamsPatch.construction,
+      },
+      addedParts: [...(base.addedParts || []), ...suggestion.suggestedAddedParts],
+    };
+  }, []);
+
+  /**
+   * Call OpenAI to generate parametric suggestions
    */
   const handleGeneratePreview = useCallback(async () => {
     if (!description.trim()) {
@@ -82,332 +111,177 @@ export function AIComponentConfigurator({
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         console.error('API error response:', errorData);
-        throw new Error(`API error: ${response.status} - ${errorData.error || ''} - ${errorData.details || ''}`);
+        throw new Error(`API error: ${response.status} - ${errorData.error || ''}`);
       }
 
-      const data = await response.json();
-      const components = data.components || [];
+      const data: AIResponse = await response.json();
+      setAiSuggestion(data);
 
-      setGeneratedComponents(components);
+      // Merge suggestions into params and apply
+      const merged = mergeParams(baseParams, data);
+      setAppliedParams(merged);
 
-      // Create a minimal scene config to render the components
-      if (components.length > 0) {
-        // Calculate bounds from all components
-        let minX = Infinity, maxX = -Infinity;
-        let minY = Infinity, maxY = -Infinity;
-        let minZ = Infinity, maxZ = -Infinity;
-
-        components.forEach((comp: GeneratedComponent) => {
-          const halfW = comp.width / 2;
-          const halfH = comp.height / 2;
-          const halfD = comp.depth / 2;
-          const [x, y, z] = comp.position;
-
-          minX = Math.min(minX, x - halfW);
-          maxX = Math.max(maxX, x + halfW);
-          minY = Math.min(minY, y - halfH);
-          maxY = Math.max(maxY, y + halfH);
-          minZ = Math.min(minZ, z - halfD);
-          maxZ = Math.max(maxZ, z + halfD);
-        });
-
-        // Add more padding for better framing
-        const padX = (maxX - minX) * 0.3;
-        const padY = (maxY - minY) * 0.5; // More top padding for better view
-        const padZ = (maxZ - minZ) * 0.3;
-
-        minX -= padX;
-        maxX += padX;
-        minY -= padY * 0.2; // Less bottom padding
-        maxY += padY;
-        minZ -= padZ;
-        maxZ += padZ;
-
-        // Calculate camera distance to fit all components in view
-        const width = maxX - minX;
-        const height = maxY - minY;
-        const depth = maxZ - minZ;
-        const maxDim = Math.max(width, height, depth);
-
-        // Position camera to view all components
-        const centerX = (minX + maxX) / 2;
-        const centerY = (minY + maxY) / 2;
-        const centerZ = (minZ + maxZ) / 2;
-        
-        // Professional hero angle - 3/4 perspective for product photography
-        const cameraDistance = maxDim * 1.5;
-        const camX = centerX + width * 0.6; // Right side view
-        const camY = centerY + height * 0.7; // Elevated perspective
-        const camZ = centerZ + depth * 1.5; // Forward distance
-
-        const minimalConfig: SceneConfig = {
-          version: 1,
-          components: components.map((comp: GeneratedComponent) => ({
-            id: comp.id,
-            name: comp.name,
-            type: 'panel' as const,
-            visible: true,
-            geometry: {
-              type: 'box' as const,
-              dimensions: [comp.width, comp.height, comp.depth],
-              position: comp.position,
-            },
-            materialId: comp.material || 'wood',
-          })),
-          camera: {
-            position: [camX, camY, camZ],
-            rotation: [0, 0, 0],
-            target: [centerX, centerY, centerZ],
-            zoom: 1,
-            fov: 50,
-            mode: 'Perspective',
-          },
-          lighting: {
-            boundsX: [minX, maxX],
-            boundsZ: [minZ, maxZ],
-            intensity: 1.2,
-            shadowCatcherDiameter: Math.max(width, depth) * 1.2,
-            ambientIntensity: 0.7,
-            castShadows: true,
-          },
-          materials: {
-            default: {
-              color: '#d4a574',
-              metalness: 0.1,
-              roughness: 0.8,
-            },
-          },
-          visibility: {
-            components: true,
-            grid: false,
-            wireframe: false,
-            bounding: false,
-            normals: false,
-          },
-          ui: {
-            showComponentNames: false,
-            showDimensions: false,
-            showGrid: false,
-          },
-          customData: {
-            components,
-          },
-        };
-
-        setConfig(minimalConfig);
-        toast.success(`Generated ${components.length} components`);
-      } else {
-        toast.info('No components generated. Try a more specific description.');
-      }
+      toast.success('AI suggestions generated');
     } catch (error) {
-      console.error('Error generating components:', error);
+      console.error('Error generating suggestions:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to generate preview');
     } finally {
       setIsGenerating(false);
     }
-  }, [description, tenantId, lineItem]);
+  }, [description, tenantId, lineItem, baseParams, mergeParams]);
 
   /**
-   * Save generated components to component table
+   * Save suggestions to quote line item
    */
-  const handleCreateComponents = useCallback(async () => {
-    if (generatedComponents.length === 0) {
-      toast.error('No components to create. Generate a preview first.');
+  const handleSaveToQuote = useCallback(async () => {
+    if (!appliedParams) {
+      toast.error('No suggestions to save. Generate a preview first.');
       return;
     }
 
-    setIsCreating(true);
+    setIsSaving(true);
     try {
-      const response = await fetch('/api/components/batch-create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          tenantId,
-          components: generatedComponents.map((comp) => ({
-            name: comp.name,
-            type: comp.type,
-            width: comp.width,
-            height: comp.height,
-            depth: comp.depth,
-            material: comp.material,
-            sourceDescription: description,
-            aiGenerated: true,
-          })),
-        }),
+      // Persist to quote line item via API
+      await updateQuoteLine(tenantId, lineItem.id, {
+        meta: {
+          ...lineItem.meta,
+          configuredProductParams: appliedParams,
+        },
+        configuredProduct: {
+          ...lineItem.configuredProduct,
+          productType: appliedParams.productType,
+          customData: appliedParams,
+        },
       });
 
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
+      toast.success('Saved to quote line item');
 
-      const data = await response.json();
-      toast.success(`Created ${data.createdCount} components`);
-
-      // Call callback if provided
-      if (onGeneratedComponents) {
-        onGeneratedComponents(data.components);
-      }
-
-      // Close after successful creation
+      // Close after successful save
       if (onClose) {
-        setTimeout(onClose, 1000);
+        setTimeout(onClose, 500);
       }
     } catch (error) {
-      console.error('Error creating components:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to create components');
+      console.error('Error saving to quote:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to save');
     } finally {
-      setIsCreating(false);
+      setIsSaving(false);
     }
-  }, [generatedComponents, description, tenantId, onGeneratedComponents, onClose]);
+  }, [appliedParams, lineItem, tenantId, onClose]);
+
+  // Patcher function to update appliedParams when ProductConfigurator3D changes
+  const patchedLineItem = useMemo(() => {
+    return {
+      ...lineItem,
+      lineStandard: {
+        ...lineItem.lineStandard,
+        widthMm: appliedParams?.dimensions.width || lineItem.lineStandard?.widthMm || 914,
+        heightMm: appliedParams?.dimensions.height || lineItem.lineStandard?.heightMm || 2032,
+        thicknessMm: appliedParams?.dimensions.depth || lineItem.lineStandard?.thicknessMm || 45,
+      },
+      configuredProduct: {
+        ...lineItem.configuredProduct,
+        productType: appliedParams?.productType || lineItem.configuredProduct?.productType,
+        customData: appliedParams,
+      },
+      meta: {
+        ...lineItem.meta,
+        configuredProductParams: appliedParams,
+      },
+    };
+  }, [appliedParams, lineItem]);
 
   return (
-    <div className="flex flex-col h-full bg-white rounded-lg overflow-hidden">
-      {/* Header with description input */}
-      <div className="p-3 border-b space-y-2">
-        <h2 className="text-lg font-semibold">AI Component Generator</h2>
+    <div className="flex flex-col h-full bg-white rounded-lg overflow-hidden" style={{ height }}>
+      {/* Header with description + buttons */}
+      <div className="p-4 border-b space-y-3 bg-gradient-to-r from-blue-50 to-indigo-50">
+        <h2 className="text-lg font-semibold">AI Product Suggestion</h2>
 
-        <div className="space-y-2">
+        <div className="space-y-3">
           <Textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Describe your product (e.g., 'Oak hardwood door frame with 4 panels')"
-            className="min-h-16 resize-none text-sm"
+            placeholder="Describe your product (e.g., 'Oak entrance door with 4 panels and glazed top')"
+            className="min-h-20 resize-none text-sm font-medium"
           />
 
           <div className="flex gap-2">
             <Button
               onClick={handleGeneratePreview}
               disabled={isGenerating || !description.trim()}
-              className="gap-2 flex-1 h-9 text-sm"
+              className="gap-2 flex-1 h-10 text-sm font-medium"
               size="sm"
             >
               {isGenerating ? (
                 <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
                   Generating...
                 </>
               ) : (
                 <>
-                  <Wand2 className="h-3.5 w-3.5" />
-                  Generate Preview
+                  <Wand2 className="h-4 w-4" />
+                  Generate AI Suggestion
                 </>
               )}
             </Button>
 
-            {generatedComponents.length > 0 && (
+            {appliedParams && (
               <Button
-                onClick={handleCreateComponents}
-                disabled={isCreating}
+                onClick={handleSaveToQuote}
+                disabled={isSaving}
                 variant="default"
-                className="gap-2 flex-1 h-9 text-sm"
+                className="gap-2 flex-1 h-10 text-sm font-medium bg-green-600 hover:bg-green-700"
                 size="sm"
               >
-                {isCreating ? (
+                {isSaving ? (
                   <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Creating...
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Saving...
                   </>
                 ) : (
                   <>
-                    <Plus className="h-3.5 w-3.5" />
-                    Create {generatedComponents.length}
+                    <Check className="h-4 w-4" />
+                    Save to Quote
                   </>
                 )}
               </Button>
             )}
           </div>
-        </div>
-      </div>
 
-      {/* 3D Canvas - Studio Quality */}
-      {config ? (
-        <div className="flex-1 relative min-h-[420px]" style={{ backgroundColor: '#f2f2f2' }}>
-          <Canvas
-            shadows="soft"
-            camera={{
-              position: config.camera.position,
-              fov: 45,
-              near: 1,
-              far: 10000,
-            }}
-            gl={{
-              antialias: true,
-              alpha: false,
-              preserveDrawingBuffer: true,
-              outputColorSpace: 'srgb',
-              toneMapping: 2, // ACESFilmicToneMapping
-              toneMappingExposure: 1.0,
-            }}
-            // Force clear color to studio off-white so background cannot be black
-            onCreated={({ gl }) => {
-              gl.setClearColor('#f2f2f2');
-            }}
-            style={{ background: '#f2f2f2' }}
-          >
-            {/* Studio environment for realistic reflections */}
-            <Environment preset="studio" />
-            
-            {/* Orbit controls - slower rotation for professional presentation */}
-            <OrbitControls
-              autoRotate
-              autoRotateSpeed={0.5}
-              enableZoom
-              enablePan
-              enableRotate
-            />
-
-            {/* Lighting */}
-            <Lighting config={config.lighting} />
-
-            {/* Studio cyclorama backdrop */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
-              <primitive object={createCycloramaBackdrop(5000, 3000, 2000)} />
-              <meshStandardMaterial color="#f2f2f2" roughness={0.9} metalness={0.0} />
-            </mesh>
-
-            {/* Generated components */}
-            <ProductComponents
-              components={config.components}
-              materials={config.materials}
-              visibility={config.visibility}
-              onSelect={() => {}}
-              selectedId={null}
-            />
-          </Canvas>
-
-          {/* Component info overlay */}
-          {generatedComponents.length > 0 && (
-            <div className="absolute bottom-4 right-4 bg-white/95 backdrop-blur rounded-lg p-3 shadow-lg max-w-xs max-h-48 overflow-y-auto">
-              <div className="space-y-1.5">
-                <h3 className="font-semibold text-xs">Components ({generatedComponents.length})</h3>
-                <div className="space-y-0.5 text-xs text-muted-foreground">
-                  {generatedComponents.map((comp) => (
-                    <div key={comp.id} className="flex justify-between gap-2">
-                      <span className="truncate">{comp.name}</span>
-                      <span className="font-mono text-right whitespace-nowrap">
-                        {comp.width}×{comp.height}×{comp.depth}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+          {aiSuggestion && (
+            <div className="bg-blue-50 border border-blue-200 rounded p-2.5 text-xs">
+              <p className="font-semibold text-blue-900 mb-1">AI Rationale:</p>
+              <p className="text-blue-800">{aiSuggestion.rationale}</p>
             </div>
           )}
         </div>
+      </div>
+
+      {/* Main configurator - render ProductConfigurator3D with applied params */}
+      {appliedParams ? (
+        <div className="flex-1 relative">
+          <ProductConfigurator3D
+            tenantId={tenantId}
+            entityType="quoteLineItem"
+            entityId={`preview-${lineItem.id}`}
+            lineItem={patchedLineItem}
+            onClose={onClose}
+            height="100%"
+          />
+        </div>
       ) : (
-        <div className="flex-1 flex items-center justify-center" style={{ backgroundColor: '#f5f5f0' }}>
-          <div className="text-center space-y-2">
-            <p className="text-muted-foreground">Enter a description and click "Generate Preview"</p>
-            <p className="text-xs text-muted-foreground">The 3D model will appear here</p>
+        <div className="flex-1 flex items-center justify-center bg-gray-50">
+          <div className="text-center space-y-3">
+            <div className="text-5xl">✨</div>
+            <p className="text-muted-foreground font-medium">Enter a description and click "Generate AI Suggestion"</p>
+            <p className="text-xs text-muted-foreground">AI will propose parametric design with professional rendering</p>
           </div>
         </div>
       )}
 
-      {/* Footer buttons */}
-      <div className="p-2 border-t flex gap-2">
+      {/* Footer */}
+      <div className="p-3 border-t bg-gray-50 flex gap-2">
         {onClose && (
-          <Button onClick={onClose} variant="outline" className="flex-1 h-8 text-sm" size="sm">
+          <Button onClick={onClose} variant="outline" className="flex-1 h-9 text-sm" size="sm">
             Close
           </Button>
         )}

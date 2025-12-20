@@ -133,6 +133,7 @@ export function buildDoorComponentTree(params: ProductParams): BuildResult {
 
 /**
  * Build door frame (stiles and rails)
+ * Y=0 is at door base, Y=height is at door top
  */
 function buildDoorFrame(width: number, height: number, config: any): ComponentNode {
   const { stileWidth, topRail, bottomRail, thickness } = config;
@@ -145,7 +146,10 @@ function buildDoorFrame(width: number, height: number, config: any): ComponentNo
     children: [],
   };
   
-  // Left stile
+  // Center Y position (halfway up the door)
+  const centerY = height / 2;
+  
+  // Left stile (full height, from Y=0 to Y=height, centered at height/2)
   frame.children!.push({
     id: 'frame_leftStile',
     name: 'Left Stile',
@@ -154,12 +158,12 @@ function buildDoorFrame(width: number, height: number, config: any): ComponentNo
     geometry: {
       type: 'box',
       dimensions: [stileWidth, height, thickness],
-      position: [-width / 2 + stileWidth / 2, 0, 0],
+      position: [-width / 2 + stileWidth / 2, centerY, 0],
     },
     visible: true,
   });
   
-  // Right stile
+  // Right stile (full height)
   frame.children!.push({
     id: 'frame_rightStile',
     name: 'Right Stile',
@@ -168,12 +172,12 @@ function buildDoorFrame(width: number, height: number, config: any): ComponentNo
     geometry: {
       type: 'box',
       dimensions: [stileWidth, height, thickness],
-      position: [width / 2 - stileWidth / 2, 0, 0],
+      position: [width / 2 - stileWidth / 2, centerY, 0],
     },
     visible: true,
   });
   
-  // Top rail
+  // Top rail (at top of door)
   const topRailWidth = width - 2 * stileWidth;
   frame.children!.push({
     id: 'frame_topRail',
@@ -183,12 +187,12 @@ function buildDoorFrame(width: number, height: number, config: any): ComponentNo
     geometry: {
       type: 'box',
       dimensions: [topRailWidth, topRail, thickness],
-      position: [0, height / 2 - topRail / 2, 0],
+      position: [0, height - topRail / 2, 0],
     },
     visible: true,
   });
   
-  // Bottom rail
+  // Bottom rail (at bottom of door, sitting on Y=0)
   frame.children!.push({
     id: 'frame_bottomRail',
     name: 'Bottom Rail',
@@ -197,7 +201,7 @@ function buildDoorFrame(width: number, height: number, config: any): ComponentNo
     geometry: {
       type: 'box',
       dimensions: [topRailWidth, bottomRail, thickness],
-      position: [0, -height / 2 + bottomRail / 2, 0],
+      position: [0, bottomRail / 2, 0],
     },
     visible: true,
   });
@@ -243,6 +247,7 @@ function buildDoorInfill(width: number, height: number, config: any, option: str
 
 /**
  * Build panel layout (rows x cols)
+ * Y=0 is at door base, Y=height is at door top
  */
 function buildPanelLayout(
   width: number,
@@ -255,9 +260,13 @@ function buildPanelLayout(
   
   const panels: ComponentNode[] = [];
   
-  // Available area for panels
+  // Available area for panels (between stiles and between top/bottom rails)
   const panelAreaWidth = width - 2 * stileWidth;
   const panelAreaHeight = height - topRail - bottomRail - (rows - 1) * midRail;
+  
+  // Y range: from bottomRail to (height - topRail)
+  const panelAreaYStart = bottomRail;
+  const panelAreaYEnd = height - topRail;
   
   // Panel dimensions
   const panelWidth = panelAreaWidth / cols;
@@ -272,9 +281,10 @@ function buildPanelLayout(
     for (let col = 0; col < cols; col++) {
       const panelId = `panel_r${row + 1}c${col + 1}`;
       
-      // Calculate position
+      // Calculate position from bottom-left
       const xOffset = -panelAreaWidth / 2 + col * panelWidth + panelWidth / 2;
-      const yOffset = panelAreaHeight / 2 - row * panelHeight - panelHeight / 2;
+      // Y position: start from panelAreaYEnd and go down for each row
+      const yOffset = panelAreaYEnd - row * panelHeight - panelHeight / 2;
       
       // Panel group
       const panelGroup: ComponentNode = {
@@ -333,7 +343,8 @@ function buildPanelLayout(
   // Add mid rails if multiple rows
   if (rows > 1) {
     for (let i = 0; i < rows - 1; i++) {
-      const railY = panelAreaHeight / 2 - (i + 1) * panelHeight - i * midRail - midRail / 2;
+      // Mid rail position: between row i and row i+1
+      const railY = panelAreaYEnd - (i + 1) * panelHeight - i * midRail - midRail / 2;
       panels.push({
         id: `midRail_${i + 1}`,
         name: `Mid Rail ${i + 1}`,
@@ -354,6 +365,7 @@ function buildPanelLayout(
 
 /**
  * Build glazed top + panel bottom layout
+ * Y=0 is at door base, Y=height is at door top
  */
 function buildGlazedTopLayout(
   width: number,
@@ -366,13 +378,17 @@ function buildGlazedTopLayout(
   
   const components: ComponentNode[] = [];
   
-  // Available area
+  // Available area between frame
   const areaWidth = width - 2 * stileWidth;
   const areaHeight = height - topRail - bottomRail - midRail;
   
   // Split heights
   const glazedHeight = areaHeight * (glazedPercent / 100);
   const panelHeight = areaHeight * (panelPercent / 100);
+  
+  // Y range for glazed area: from (height - topRail) down
+  const glazedAreaYStart = height - topRail;
+  const glazedAreaYEnd = glazedAreaYStart - glazedHeight;
   
   // Glazed unit (top)
   const glazingGroup: ComponentNode = {
@@ -383,6 +399,9 @@ function buildGlazedTopLayout(
     children: [],
   };
   
+  // Center Y of glazed area
+  const glazedCenterY = glazedAreaYStart - glazedHeight / 2;
+  
   // Glass
   glazingGroup.children!.push({
     id: 'glass_top',
@@ -392,16 +411,16 @@ function buildGlazedTopLayout(
     geometry: {
       type: 'box',
       dimensions: [areaWidth - 2 * beadWidth, glazedHeight - 2 * beadWidth, glazingThickness],
-      position: [0, (height - topRail - bottomRail - midRail) / 2 - glazedHeight / 2, 0],
+      position: [0, glazedCenterY, 0],
     },
     visible: true,
   });
   
   // Timber beads
   const beadPositions = [
-    { id: 'bead_top_left', pos: [-(areaWidth - beadWidth) / 2, (height - topRail - bottomRail - midRail) / 2 - glazedHeight / 2, 0], dims: [beadWidth, glazedHeight, thickness] },
-    { id: 'bead_top_right', pos: [(areaWidth - beadWidth) / 2, (height - topRail - bottomRail - midRail) / 2 - glazedHeight / 2, 0], dims: [beadWidth, glazedHeight, thickness] },
-    { id: 'bead_top_top', pos: [0, (height - topRail - bottomRail - midRail) / 2 - beadWidth / 2, 0], dims: [areaWidth, beadWidth, thickness] },
+    { id: 'bead_top_left', pos: [-(areaWidth - beadWidth) / 2, glazedCenterY, 0], dims: [beadWidth, glazedHeight, thickness] },
+    { id: 'bead_top_right', pos: [(areaWidth - beadWidth) / 2, glazedCenterY, 0], dims: [beadWidth, glazedHeight, thickness] },
+    { id: 'bead_top_top', pos: [0, glazedAreaYStart - beadWidth / 2, 0], dims: [areaWidth, beadWidth, thickness] },
   ];
   
   beadPositions.forEach(({ id, pos, dims }) => {
@@ -430,20 +449,18 @@ function buildGlazedTopLayout(
     geometry: {
       type: 'box',
       dimensions: [areaWidth, midRail, thickness],
-      position: [0, (height - topRail - bottomRail - midRail) / 2 - glazedHeight - midRail / 2, 0],
+      position: [0, glazedAreaYEnd - midRail / 2, 0],
     },
     visible: true,
   });
   
   // Bottom panels (2 panels side by side)
-  const bottomPanels = buildPanelLayout(width, panelHeight + bottomRail, config, 2, 1);
-  bottomPanels.forEach(panel => {
-    // Shift down
-    if (panel.geometry) {
-      panel.geometry.position[1] -= (height - topRail - bottomRail - midRail) / 2 - glazedHeight - midRail - panelHeight / 2;
-    }
-    components.push(panel);
-  });
+  // Panels span from bottom rail to mid rail
+  const panelAreaHeight = height - topRail - bottomRail - midRail;
+  const bottomPanels = buildPanelLayout(width, panelAreaHeight, config, 2, 1);
+  
+  // Note: buildPanelLayout already positions panels correctly, just add them
+  components.push(...bottomPanels);
   
   return components;
 }

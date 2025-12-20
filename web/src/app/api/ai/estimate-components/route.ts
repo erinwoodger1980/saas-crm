@@ -1,11 +1,20 @@
 /**
- * AI Component Estimator Endpoint
- * Uses OpenAI to estimate components and dimensions from a product description
+ * AI Component Estimator - Parametric Version
+ * Uses OpenAI to suggest parametric ProductParams + addedParts for doors/windows
+ * Instead of raw box components, returns structured parametric data for builders
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { ProductParams, AddedPart } from '@/types/parametric-builder';
 
 export const runtime = 'nodejs';
+
+interface AIEstimateResponse {
+  suggestedParamsPatch: Partial<ProductParams>;
+  suggestedAddedParts: AddedPart[];
+  rationale: string;
+  components?: Array<any>; // Backwards compat
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,43 +32,69 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Call OpenAI to estimate components
+    // Call OpenAI to estimate parametric params
     const openaiApiKey = process.env.OPENAI_API_KEY;
-    console.log('[estimate-components] Checking OPENAI_API_KEY...');
-    console.log('[estimate-components] OPENAI_API_KEY exists:', !!openaiApiKey);
-    console.log('[estimate-components] OPENAI_API_KEY length:', openaiApiKey?.length || 0);
-    console.log('[estimate-components] All env keys:', Object.keys(process.env).filter(k => k.includes('OPENAI') || k.includes('API') || k.includes('KEY')).join(', '));
     
     if (!openaiApiKey) {
       console.error('[estimate-components] OPENAI_API_KEY not configured');
       return NextResponse.json(
-        { error: 'AI service not configured', debug: { keyExists: false, allKeys: Object.keys(process.env).filter(k => k.includes('OPENAI') || k.includes('API')).join(', ') } },
+        { error: 'AI service not configured' },
         { status: 500 }
       );
     }
 
-    const systemPrompt = `You are an expert furniture/joinery component designer. Given a product description, you will estimate the components needed and their dimensions.
+    const systemPrompt = `You are an expert furniture/joinery designer specializing in parametric door and window generation.
 
-Return a JSON object with a "components" array. Each component should have:
-- id: unique string identifier
-- name: descriptive name
-- type: component type (frame, panel, rail, stile, etc.)
-- width: width in mm
-- height: height in mm  
-- depth: depth in mm
-- material: material type (oak, pine, mdf, etc.)
-- position: [x, y, z] position in 3D space
+Given a product description, return a JSON object with:
 
-Base dimensions on standard joinery sizes. For doors, typical sizes are 800-1000mm wide, 1800-2200mm tall. For windows, typically 600-1500mm wide, 600-1500mm tall.
+{
+  "productType": {
+    "category": "doors" | "windows",
+    "type": "entrance" | "french" | "bifold" | "casement" | "sash" | "bay",
+    "option": "E01" | "E02" | "E03" for doors; "NxM" for windows
+  },
+  "construction": {
+    "stileWidth": 50-200,        // mm, vertical frame members
+    "topRail": 50-300,           // mm, top horizontal
+    "midRail": 50-300,           // mm, middle horizontal (if E02)
+    "bottomRail": 50-300,        // mm, bottom horizontal
+    "thickness": 35-100,         // mm, door/window leaf thickness
+    "timber": "oak|sapele|accoya|iroko",
+    "finish": "clear|paint|stain|oiled",
+    "glazingType": "single|double|triple"
+  },
+  "addedParts": [
+    {
+      "componentTypeCode": "MULLION_V|MULLION_H|TRANSOM|GLAZING_BAR",
+      "position": [x, y, z],
+      "params": { "materialId": "timber" }
+    }
+  ],
+  "rationale": "explanation of AI choices"
+}
 
-Return ONLY valid JSON, no markdown or explanations.`;
+For doors:
+- Typical entrance doors: 914mm wide, 2032mm tall, 45mm thick, oak timber, clear finish
+- E01 = 2 panels (1x2 layout)
+- E02 = 4 panels (2x2 layout) - include midRail ~200mm
+- E03 = glazed top 35% + panels 65% - suitable for "glazed" or "glass top" descriptions
+
+For windows:
+- Casement: 600-1500mm wide/tall, 100mm thick
+- Sash: 600-1500mm wide/tall, 100mm thick
+- Bay: 1500-3000mm wide, component windows with mullions
+
+Always return realistic defaults for all construction fields. Dimensions in millimeters.`;
 
     const userPrompt = `Product description: "${description}"
 
-${productType ? `Product type: ${JSON.stringify(productType)}` : ''}
-${existingDimensions ? `Existing dimensions: ${JSON.stringify(existingDimensions)}` : ''}
+${productType ? `Current type: ${JSON.stringify(productType)}` : 'Infer product type from description'}
+${existingDimensions ? `Existing sizes: width=${existingDimensions.widthMm}mm, height=${existingDimensions.heightMm}mm, thickness=${existingDimensions.thicknessMm}mm` : ''}
 
-Generate the component breakdown for this product. Provide realistic dimensions in millimeters.`;
+Generate parametric ProductParams for this joinery product. Include sensible defaults for construction.
+If the description implies added components (mullions, glass bars, transoms), suggest them in addedParts.
+
+Return ONLY valid JSON.`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -88,7 +123,7 @@ Generate the component breakdown for this product. Provide realistic dimensions 
       const error = await response.text();
       console.error('OpenAI API error:', error);
       return NextResponse.json(
-        { error: 'Failed to generate components from OpenAI' },
+        { error: 'Failed to generate suggestions from OpenAI' },
         { status: 500 }
       );
     }
@@ -105,10 +140,9 @@ Generate the component breakdown for this product. Provide realistic dimensions 
     }
 
     // Parse the JSON response
-    let components;
+    let aiSuggestion: any;
     try {
-      const parsed = JSON.parse(content);
-      components = parsed.components || [parsed];
+      aiSuggestion = JSON.parse(content);
     } catch (parseError) {
       console.error('Failed to parse AI response:', content);
       return NextResponse.json(
@@ -117,29 +151,47 @@ Generate the component breakdown for this product. Provide realistic dimensions 
       );
     }
 
-    // Validate and sanitize components
-    const sanitized = components
-      .map((comp: any, idx: number) => ({
-        id: comp.id || `comp-${idx}`,
-        name: comp.name || `Component ${idx + 1}`,
-        type: comp.type || 'part',
-        width: Math.max(10, Math.min(5000, parseInt(comp.width) || 500)),
-        height: Math.max(10, Math.min(5000, parseInt(comp.height) || 500)),
-        depth: Math.max(10, Math.min(1000, parseInt(comp.depth) || 50)),
-        material: comp.material || 'wood',
-        position: Array.isArray(comp.position) ? comp.position : [0, 0, 0],
-      }))
-      .filter((comp: any) => comp.width && comp.height && comp.depth);
+    // Build parametric response
+    const suggestedParamsPatch: Partial<ProductParams> = {
+      productType: aiSuggestion.productType || {
+        category: 'doors',
+        type: 'entrance',
+        option: 'E01',
+      },
+      construction: {
+        stileWidth: Math.max(50, Math.min(200, aiSuggestion.construction?.stileWidth || 114)),
+        topRail: Math.max(50, Math.min(300, aiSuggestion.construction?.topRail || 114)),
+        midRail: Math.max(50, Math.min(300, aiSuggestion.construction?.midRail || 200)),
+        bottomRail: Math.max(50, Math.min(300, aiSuggestion.construction?.bottomRail || 200)),
+        thickness: Math.max(35, Math.min(100, aiSuggestion.construction?.thickness || 58)),
+        timber: aiSuggestion.construction?.timber || 'oak',
+        finish: aiSuggestion.construction?.finish || 'clear',
+        glazingType: aiSuggestion.construction?.glazingType || 'double',
+      },
+    };
 
-    return NextResponse.json({
-      components: sanitized,
-      count: sanitized.length,
-      sourceDescription: description,
-    });
+    const suggestedAddedParts: AddedPart[] = (aiSuggestion.addedParts || [])
+      .map((part: any, idx: number) => ({
+        id: `ai-part-${idx}`,
+        componentTypeCode: part.componentTypeCode,
+        variantCode: part.variantCode,
+        insertionMode: 'parametric' as const,
+        parametricSlot: part.parametricSlot,
+        position: part.position as [number, number, number] | undefined,
+        rotation: part.rotation as [number, number, number] | undefined,
+        params: part.params || {},
+      }));
+
+    const result: AIEstimateResponse = {
+      suggestedParamsPatch,
+      suggestedAddedParts,
+      rationale: aiSuggestion.rationale || 'AI-suggested parameters',
+    };
+
+    return NextResponse.json(result);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('[estimate-components] Error:', errorMessage);
-    console.error('[estimate-components] Full error:', error);
     return NextResponse.json(
       { error: 'Failed to process request', details: errorMessage },
       { status: 500 }

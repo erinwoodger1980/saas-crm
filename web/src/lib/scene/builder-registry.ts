@@ -112,8 +112,8 @@ export function initializeSceneFromParams(
       height: params.dimensions.height,
       depth: params.dimensions.depth,
       bounds: {
-        min: [-params.dimensions.width / 2, -params.dimensions.height / 2, -params.dimensions.depth / 2],
-        max: [params.dimensions.width / 2, params.dimensions.height / 2, params.dimensions.depth / 2],
+        min: [-params.dimensions.width / 2, 0, -params.dimensions.depth / 2],
+        max: [params.dimensions.width / 2, params.dimensions.height, params.dimensions.depth / 2],
       },
     },
     components: result.components,
@@ -122,11 +122,11 @@ export function initializeSceneFromParams(
       mode: 'Perspective',
       position: [
         params.dimensions.width * 0.6,
-        params.dimensions.height * 0.7,
+        params.dimensions.height * 0.35,  // Camera at 35% height (below center for better framing)
         Math.max(params.dimensions.width, params.dimensions.height) * 1.5,
       ],
       rotation: [0, 0, 0],
-      target: [0, 0, 0],
+      target: [0, params.dimensions.height * 0.15, 0],  // Look at 15% height (slightly below center)
       zoom: 1,
       fov: 45,
     },
