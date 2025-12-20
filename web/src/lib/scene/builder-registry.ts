@@ -120,11 +120,15 @@ export function initializeSceneFromParams(
     materials: result.materials,
     camera: {
       mode: 'Perspective',
-      position: [0, 0, Math.max(params.dimensions.width, params.dimensions.height) * 2],
+      position: [
+        params.dimensions.width * 0.6,
+        params.dimensions.height * 0.7,
+        Math.max(params.dimensions.width, params.dimensions.height) * 1.5,
+      ],
       rotation: [0, 0, 0],
       target: [0, 0, 0],
       zoom: 1,
-      fov: 35,
+      fov: 45,
     },
     visibility: buildVisibilityMap(result.components),
     lighting: {

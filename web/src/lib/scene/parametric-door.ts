@@ -33,7 +33,7 @@ const DOOR_DEFAULTS = {
  * Build door component tree
  */
 export function buildDoorComponentTree(params: ProductParams): BuildResult {
-  const { dimensions, construction, productType } = params;
+  const { dimensions, construction, productType, curves, curveSlots } = params;
   const { width, height, depth } = dimensions;
   
   // Merge with defaults
@@ -65,11 +65,55 @@ export function buildDoorComponentTree(params: ProductParams): BuildResult {
   const frame = buildDoorFrame(width, height, config);
   product.children!.push(frame);
   
-  // Build infill based on option
-  const infill = buildDoorInfill(width, height, config, productType.option);
-  product.children!.push(infill);
+  // Check if door has curved head (arch support)
+  const hasArch = curves && curves.length > 0 && curveSlots?.headProfileCurveId;
+  
+  if (hasArch && supportsArches(productType.option)) {
+    // Find the head curve
+    const headCurveId = curveSlots.headProfileCurveId;
+    const headCurve = curves.find(c => c.id === headCurveId);
+    
+    if (headCurve) {
+      // Build arched head instead of regular infill
+      const archHead = buildArchedDoorHead(width, height, config, headCurve, productType.option);
+      product.children!.push(archHead);
+      
+      // For E03 arched, add bottom panels
+      if (productType.option === 'E03') {
+        const bottomPanels = buildPanelLayout(width, height * 0.4, config, 2, 1);
+        product.children!.push(...bottomPanels);
+      }
+    } else {
+      // Curve not found, fall back to regular infill
+      const infill = buildDoorInfill(width, height, config, productType.option);
+      product.children!.push(infill);
+    }
+  } else {
+    // No arch - build standard infill based on option
+    const infill = buildDoorInfill(width, height, config, productType.option);
+    product.children!.push(infill);
+  }
   
   components.push(product);
+  
+  // Process added parts (user-inserted mullions, transoms, glazing bars)
+  if (params.addedParts && params.addedParts.length > 0) {
+    params.addedParts.forEach((part, index) => {
+      const addedPartComponent: ComponentNode = {
+        id: `addedPart_${part.id || index}`,
+        name: `${part.componentTypeCode} ${index + 1}`,
+        type: 'addedPart',
+        materialId: part.params?.materialId || 'timber',
+        geometry: {
+          type: 'box',
+          dimensions: part.params?.dimensions || [50, height * 0.5, depth],
+          position: part.position || [0, 0, 0],
+        },
+        visible: true,
+      };
+      components.push(addedPartComponent);
+    });
+  }
   
   // Calculate lighting bounds
   const lighting = {
