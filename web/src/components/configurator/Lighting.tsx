@@ -1,7 +1,7 @@
 /**
  * Lighting Component
- * Dynamic lighting scaled to product extents
- * Matches FileMaker light positioning logic
+ * Studio-quality 3-point lighting setup
+ * Soft shadows, physically accurate, scaled to product extents
  */
 
 'use client';
@@ -26,7 +26,7 @@ export function Lighting({ config }: LightingProps) {
 
   /**
    * Calculate light positions based on product bounds
-   * Lights scale dynamically - no hard-coded positions
+   * Studio 3-point setup: Key, Fill, Rim
    */
   const lightPositions = useMemo(() => {
     const centerX = (boundsX[0] + boundsX[1]) / 2;
@@ -35,70 +35,75 @@ export function Lighting({ config }: LightingProps) {
     const extentZ = Math.abs(boundsZ[1] - boundsZ[0]);
     const maxExtent = Math.max(extentX, extentZ);
 
-    // Key light position - scales with product size
-    const keyLightY = maxExtent * 0.8;
-    const keyLightDistance = maxExtent * 0.7;
+    // Studio lighting scaled to product size
+    const keyLightY = maxExtent * 1.2; // Higher for softer shadows
+    const keyLightDistance = maxExtent * 1.5; // Further for softer light
 
     return {
-      key: [centerX + keyLightDistance, keyLightY, centerZ + keyLightDistance] as [number, number, number],
-      fill: [centerX - keyLightDistance * 0.6, keyLightY * 0.5, centerZ + keyLightDistance * 0.8] as [number, number, number],
-      rim: [centerX - keyLightDistance * 0.4, keyLightY * 0.6, centerZ - keyLightDistance] as [number, number, number],
+      // Key light - main source (45° from front, elevated)
+      key: [centerX + keyLightDistance * 0.7, keyLightY, centerZ + keyLightDistance * 0.7] as [number, number, number],
+      // Fill light - softer from opposite side (reduces harsh shadows)
+      fill: [centerX - keyLightDistance * 0.5, keyLightY * 0.6, centerZ + keyLightDistance * 0.6] as [number, number, number],
+      // Rim light - back highlight for depth separation
+      rim: [centerX - keyLightDistance * 0.3, keyLightY * 0.8, centerZ - keyLightDistance * 0.9] as [number, number, number],
+      // Shadow camera frustum
       shadowCamera: {
-        left: boundsX[0],
-        right: boundsX[1],
-        top: boundsZ[1],
-        bottom: boundsZ[0],
-        far: maxExtent * 3,
+        left: boundsX[0] - extentX * 0.5,
+        right: boundsX[1] + extentX * 0.5,
+        top: boundsZ[1] + extentZ * 0.5,
+        bottom: boundsZ[0] - extentZ * 0.5,
+        far: maxExtent * 4,
       },
     };
   }, [boundsX, boundsZ]);
 
   return (
     <>
-      {/* Ambient light - soft natural indoor lighting */}
-      <ambientLight intensity={ambientIntensity} color="#faf8f0" />
+      {/* Ambient light - soft studio fill */}
+      <ambientLight intensity={ambientIntensity * 1.2} color="#f8f6f0" />
 
-      {/* Key light - main directional light */}
+      {/* Key light - primary studio light (like large softbox) */}
       <directionalLight
         position={lightPositions.key}
-        intensity={intensity}
-        color="#fffdf5"
+        intensity={intensity * 1.3}
+        color="#fffef8"
         castShadow={castShadows}
-        shadow-mapSize-width={4096}
-        shadow-mapSize-height={4096}
+        shadow-mapSize-width={8192}
+        shadow-mapSize-height={8192}
         shadow-camera-left={lightPositions.shadowCamera.left}
         shadow-camera-right={lightPositions.shadowCamera.right}
         shadow-camera-top={lightPositions.shadowCamera.top}
         shadow-camera-bottom={lightPositions.shadowCamera.bottom}
         shadow-camera-near={0.1}
         shadow-camera-far={lightPositions.shadowCamera.far}
-        shadow-bias={-0.00005}
-        shadow-radius={2}
+        shadow-bias={-0.00001}
+        shadow-radius={6}
+        shadow-normalBias={0.02}
       />
 
-      {/* Fill light - softer from opposite side */}
+      {/* Fill light - reduces contrast, softens shadows */}
       <directionalLight
         position={lightPositions.fill}
-        intensity={intensity * 0.4}
+        intensity={intensity * 0.6}
         color="#fff9ed"
       />
 
-      {/* Rim light - subtle back lighting for depth */}
+      {/* Rim light - back highlight for crisp edges */}
       <directionalLight
         position={lightPositions.rim}
-        intensity={intensity * 0.25}
+        intensity={intensity * 0.4}
         color="#fffef8"
       />
 
-      {/* Shadow catcher plane */}
+      {/* Shadow catcher plane - positioned at product base */}
       {castShadows && (
         <mesh
           rotation={[-Math.PI / 2, 0, 0]}
-          position={[0, -shadowCatcherDiameter / 4, 0]}
+          position={[0, 0, 0]}
           receiveShadow
         >
-          <circleGeometry args={[shadowCatcherDiameter / 2, 64]} />
-          <shadowMaterial opacity={0.2} />
+          <circleGeometry args={[shadowCatcherDiameter, 128]} />
+          <shadowMaterial opacity={0.15} color="#000000" />
         </mesh>
       )}
     </>

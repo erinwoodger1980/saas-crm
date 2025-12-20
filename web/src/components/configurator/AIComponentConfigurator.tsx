@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { Lighting } from './Lighting';
 import { ProductComponents } from './ProductComponents';
+import { createCycloramaBackdrop } from '@/lib/scene/geometry';
 import { SceneConfig } from '@/types/scene-config';
 import { ProductParams } from '@/types/parametric-builder';
 import { initializeSceneFromParams } from '@/lib/scene/builder-registry';
@@ -133,11 +134,11 @@ export function AIComponentConfigurator({
         const centerY = (minY + maxY) / 2;
         const centerZ = (minZ + maxZ) / 2;
         
-        // Better camera positioning - slightly angled for better view
-        const cameraDistance = maxDim * 1.2;
-        const camX = centerX + cameraDistance * 0.3;
-        const camY = centerY + cameraDistance * 0.4;
-        const camZ = centerZ + cameraDistance;
+        // Professional hero angle - 3/4 perspective for product photography
+        const cameraDistance = maxDim * 1.5;
+        const camX = centerX + width * 0.6; // Right side view
+        const camY = centerY + height * 0.7; // Elevated perspective
+        const camZ = centerZ + depth * 1.5; // Forward distance
 
         const minimalConfig: SceneConfig = {
           version: 1,
@@ -319,24 +320,34 @@ export function AIComponentConfigurator({
         </div>
       </div>
 
-      {/* 3D Canvas */}
+      {/* 3D Canvas - Studio Quality */}
       {config ? (
-        <div className="flex-1 relative" style={{ backgroundColor: '#f5f5f0' }}>
+        <div className="flex-1 relative" style={{ backgroundColor: '#f2f2f2' }}>
           <Canvas
-            shadows
+            shadows="soft"
             camera={{
-              position: [0, 1000, 2000],
-              fov: 50,
+              position: config.camera.position,
+              fov: 45,
               near: 1,
               far: 10000,
             }}
-            gl={{ antialias: true, alpha: false, preserveDrawingBuffer: true }}
-            style={{ background: '#f5f5f0' }}
+            gl={{
+              antialias: true,
+              alpha: false,
+              preserveDrawingBuffer: true,
+              outputColorSpace: 'srgb',
+              toneMapping: 2, // ACESFilmicToneMapping
+              toneMappingExposure: 1.0,
+            }}
+            style={{ background: '#f2f2f2' }}
           >
-            {/* Simple orbit controls - no UI */}
+            {/* Studio environment for realistic reflections */}
+            <Environment preset="studio" />
+            
+            {/* Orbit controls - slower rotation for professional presentation */}
             <OrbitControls
               autoRotate
-              autoRotateSpeed={2}
+              autoRotateSpeed={0.5}
               enableZoom
               enablePan
               enableRotate
@@ -344,6 +355,12 @@ export function AIComponentConfigurator({
 
             {/* Lighting */}
             <Lighting config={config.lighting} />
+
+            {/* Studio cyclorama backdrop */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
+              <primitive object={createCycloramaBackdrop(5000, 3000, 2000)} />
+              <meshStandardMaterial color="#f2f2f2" roughness={0.9} metalness={0.0} />
+            </mesh>
 
             {/* Generated components */}
             <ProductComponents
@@ -353,9 +370,6 @@ export function AIComponentConfigurator({
               onSelect={() => {}}
               selectedId={null}
             />
-
-            {/* Environment */}
-            <Environment preset="studio" />
           </Canvas>
 
           {/* Component info overlay */}

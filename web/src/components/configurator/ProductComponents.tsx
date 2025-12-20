@@ -3,6 +3,7 @@
  * Generic renderer for all product types (doors, windows, etc.)
  * Handles raycasting for selection
  * Supports standard geometries plus curve-based (shapeExtrude, tube, lathe)
+ * UPGRADED: Uses PBR materials and beveled geometry for professional rendering
  */
 
 'use client';
@@ -12,6 +13,8 @@ import { useFrame, ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { ComponentNode, MaterialDefinition, ComponentVisibility } from '@/types/scene-config';
 import { convertCurveToShape, convertCurveTo3DPath } from '@/lib/scene/curve-utils';
+import { createPBRMaterial } from '@/lib/scene/materials';
+import { createRoundedBox, createProfileExtrude, createTubeFromCurve } from '@/lib/scene/geometry';
 
 interface ProductComponentsProps {
   components: ComponentNode[];
@@ -23,55 +26,10 @@ interface ProductComponentsProps {
 
 /**
  * Convert material definition to Three.js material
+ * UPGRADED: Uses new PBR material factory
  */
 function createMaterial(def: MaterialDefinition): THREE.Material {
-  const color = new THREE.Color(def.baseColor);
-  
-  switch (def.type) {
-    case 'glass':
-      return new THREE.MeshPhysicalMaterial({
-        color,
-        metalness: def.metalness,
-        roughness: def.roughness,
-        transmission: 0.9,
-        transparent: true,
-        opacity: 0.3,
-        ior: 1.5,
-        thickness: 0.5,
-        envMapIntensity: 1.5,
-      });
-      
-    case 'metal':
-      return new THREE.MeshStandardMaterial({
-        color,
-        metalness: def.metalness,
-        roughness: def.roughness,
-        envMapIntensity: 1.0,
-      });
-      
-    case 'wood':
-      return new THREE.MeshStandardMaterial({
-        color,
-        metalness: def.metalness,
-        roughness: def.roughness,
-        envMapIntensity: 0.8,
-      });
-      
-    case 'painted':
-      return new THREE.MeshStandardMaterial({
-        color,
-        metalness: def.metalness,
-        roughness: def.roughness,
-        envMapIntensity: 0.6,
-      });
-      
-    default:
-      return new THREE.MeshStandardMaterial({
-        color,
-        metalness: def.metalness,
-        roughness: def.roughness,
-      });
-  }
+  return createPBRMaterial(def);
 }
 
 /**
@@ -100,7 +58,15 @@ function ComponentMesh({
       switch (type) {
         case 'box':
           if (!dimensions) return null;
-          return new THREE.BoxGeometry(...dimensions);
+          // Use beveled box for crisp highlight-catching edges
+          const edgeRadius = (customData as any)?.edgeRadius || 2; // Default 2mm bevel
+          return createRoundedBox({
+            width: dimensions[0],
+            height: dimensions[1],
+            depth: dimensions[2],
+            radius: edgeRadius,
+            smoothness: 6,
+          });
         
         case 'cylinder':
           if (!dimensions) return null;
