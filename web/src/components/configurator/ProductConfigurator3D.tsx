@@ -395,10 +395,11 @@ export function ProductConfigurator3D({
    * Camera change handler
    */
   const handleCameraChange = useCallback(
-    (camera: CameraState) => {
-      updateConfig({ camera });
+    (camera: Partial<CameraState>) => {
+      if (!config?.camera) return;
+      updateConfig({ camera: { ...config.camera, ...camera } as CameraState });
     },
-    [updateConfig]
+    [config?.camera, updateConfig]
   );
 
   /**
@@ -519,9 +520,9 @@ export function ProductConfigurator3D({
   return (
     <div className="relative flex gap-4" style={{ width, height }}>
       {/* Main 3D Canvas */}
-      <div className="flex-1 relative bg-gradient-to-b from-slate-50 to-slate-100 rounded-lg overflow-hidden border">
+      <div className="flex-1 relative bg-gradient-to-b from-slate-50 to-slate-100 rounded-lg overflow-hidden border min-h-[420px]">
         <Canvas
-          shadows
+          shadows="soft"
           camera={{
             position: config.camera?.position || [0, 1000, 2000],
             fov: cameraMode === 'Perspective' ? (config.camera?.fov || 50) : 50,
@@ -531,7 +532,16 @@ export function ProductConfigurator3D({
               (config.customData as ProductParams)?.dimensions?.height || 2000,
             ) * 10,
           }}
-          gl={{ antialias: true, alpha: false }}
+          gl={{
+            antialias: true,
+            alpha: false,
+            outputColorSpace: 'srgb',
+            toneMapping: 2, // ACESFilmicToneMapping
+            toneMappingExposure: 1.0,
+          }}
+          onCreated={({ gl }) => {
+            gl.setClearColor('#f2f2f2');
+          }}
         >
           <Suspense fallback={null}>
             {/* Camera controller (ensure correct props to avoid undefined camera state) */}
