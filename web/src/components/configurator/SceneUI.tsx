@@ -32,6 +32,8 @@ interface SceneUIProps {
   onUIToggle: (key: keyof UIToggles, value: boolean) => void;
   onVisibilityToggle: (componentId: string, visible: boolean) => void;
   onResetCamera: () => void;
+  qualityEnabled?: boolean;
+  onQualityToggle?: (enabled: boolean) => void;
 }
 
 /**
@@ -114,6 +116,8 @@ export function SceneUI({
   onUIToggle,
   onVisibilityToggle,
   onResetCamera,
+  qualityEnabled = true,
+  onQualityToggle,
 }: SceneUIProps) {
   return (
     <div className="absolute top-4 right-4 w-80 space-y-3 pointer-events-auto">
@@ -155,6 +159,21 @@ export function SceneUI({
           >
             Reset View
           </Button>
+
+          {/* Quality toggle */}
+          {onQualityToggle && (
+            <div className="flex items-center justify-between pt-1">
+              <Label htmlFor="quality" className="flex items-center gap-2 text-sm">
+                <Camera className="h-4 w-4" />
+                High Quality
+              </Label>
+              <Switch
+                id="quality"
+                checked={qualityEnabled}
+                onCheckedChange={(checked) => onQualityToggle(checked)}
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 

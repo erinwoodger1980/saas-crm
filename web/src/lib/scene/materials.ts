@@ -20,6 +20,28 @@ export interface MaterialConfig {
   attenuationDistance?: number;
 }
 
+// Texture cache to avoid reloading and to keep SSR-safe fallbacks
+const textureCache: Record<string, THREE.Texture | null> = {};
+const textureLoader = typeof window !== 'undefined' ? new THREE.TextureLoader() : null;
+
+function loadTexture(path: string, colorSpace: THREE.ColorSpace | null = null): THREE.Texture | null {
+  if (textureCache[path] !== undefined) return textureCache[path];
+  if (!textureLoader) {
+    textureCache[path] = null;
+    return null; // SSR-safe fallback
+  }
+  try {
+    const tex = textureLoader.load(path);
+    if (colorSpace) tex.colorSpace = colorSpace;
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    textureCache[path] = tex;
+    return tex;
+  } catch (e) {
+    textureCache[path] = null;
+    return null;
+  }
+}
+
 /**
  * Create professional PBR material from definition
  */
@@ -84,7 +106,9 @@ function createMetalMaterial(color: THREE.Color, def: MaterialDefinition): THREE
  * Unpainted timber - natural wood
  */
 function createTimberMaterial(color: THREE.Color, def: MaterialDefinition): THREE.MeshPhysicalMaterial {
-  return new THREE.MeshPhysicalMaterial({
+  const isOak = /oak/i.test(def.name || '') || /oak/i.test(def.id || '');
+
+  const material = new THREE.MeshPhysicalMaterial({
     color,
     metalness: 0,
     roughness: def.roughness ?? 0.7,
@@ -93,13 +117,36 @@ function createTimberMaterial(color: THREE.Color, def: MaterialDefinition): THRE
     sheenRoughness: 0.9,
     sheenColor: new THREE.Color('#ffffff').lerp(color, 0.8),
   });
+
+  if (isOak) {
+    const baseMap = loadTexture('/textures/oak_basecolor.jpg', THREE.SRGBColorSpace);
+    const normalMap = loadTexture('/textures/oak_normal.jpg');
+    const roughnessMap = loadTexture('/textures/oak_roughness.jpg');
+
+    if (baseMap) {
+      baseMap.repeat.set(4, 4);
+      material.map = baseMap;
+    }
+    if (normalMap) {
+      normalMap.repeat.set(4, 4);
+      material.normalMap = normalMap;
+    }
+    if (roughnessMap) {
+      roughnessMap.repeat.set(4, 4);
+      material.roughnessMap = roughnessMap;
+    }
+  }
+
+  return material;
 }
 
 /**
  * Painted timber - subtle clearcoat for highlight catch
  */
 function createPaintedMaterial(color: THREE.Color, def: MaterialDefinition): THREE.MeshPhysicalMaterial {
-  return new THREE.MeshPhysicalMaterial({
+  const isOakPainted = /oak/i.test(def.name || '') || /oak/i.test(def.id || '');
+
+  const material = new THREE.MeshPhysicalMaterial({
     color,
     metalness: 0,
     roughness: def.roughness ?? 0.55,
@@ -107,6 +154,27 @@ function createPaintedMaterial(color: THREE.Color, def: MaterialDefinition): THR
     clearcoat: 0.15,
     clearcoatRoughness: 0.4,
   });
+
+  if (isOakPainted) {
+    const baseMap = loadTexture('/textures/oak_basecolor.jpg', THREE.SRGBColorSpace);
+    const normalMap = loadTexture('/textures/oak_normal.jpg');
+    const roughnessMap = loadTexture('/textures/oak_roughness.jpg');
+
+    if (baseMap) {
+      baseMap.repeat.set(3, 3);
+      material.map = baseMap;
+    }
+    if (normalMap) {
+      normalMap.repeat.set(3, 3);
+      material.normalMap = normalMap;
+    }
+    if (roughnessMap) {
+      roughnessMap.repeat.set(3, 3);
+      material.roughnessMap = roughnessMap;
+    }
+  }
+
+  return material;
 }
 
 /**

@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback, useMemo, Suspense, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { Environment } from '@react-three/drei';
+import { Environment, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
 import {
   SceneConfig,
@@ -29,8 +29,9 @@ import { Lighting } from './Lighting';
 import { ProductComponents } from './ProductComponents';
 import { SceneUI } from './SceneUI';
 import { InspectorPanel } from './InspectorPanel';
-import { HeroUIControl } from './HeroUIControl';
 import { AutoFrame } from './AutoFrame';
+import { Stage } from './Stage';
+import { PostFX } from './PostFX';
 import { Loader2, Save, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -179,6 +180,7 @@ export function ProductConfigurator3D({
   const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
   const [editableAttributes, setEditableAttributes] = useState<Record<string, EditableAttribute[]>>({});
   const [showUIDrawer, setShowUIDrawer] = useState(false);
+  const [highQuality, setHighQuality] = useState(true);
   const controlsRef = useRef<any>(null);;
 
   /**
@@ -524,6 +526,9 @@ export function ProductConfigurator3D({
   
   // Safe camera mode access with default fallback to prevent crashes
   const cameraMode = config.camera?.mode || 'Perspective';
+  const productWidth = (config.customData as any)?.dimensions?.width || 1000;
+  const productHeight = (config.customData as any)?.dimensions?.height || 2000;
+  const productDepth = (config.customData as any)?.dimensions?.depth || 45;
 
   return (
     <div className={`relative ${heroMode ? 'w-full h-full min-h-0' : 'flex gap-4 min-h-0'}`} style={!heroMode ? { width, height } : { width, height }}>
@@ -536,10 +541,7 @@ export function ProductConfigurator3D({
             position: config.camera?.position || [0, 1000, 2000],
             fov: cameraMode === 'Perspective' ? (config.camera?.fov || 50) : 50,
             near: 1,
-            far: Math.max(
-              (config.customData as ProductParams)?.dimensions?.width || 2000,
-              (config.customData as ProductParams)?.dimensions?.height || 2000,
-            ) * 10,
+            far: Math.max(productWidth, productHeight) * 10,
           }}
           gl={{
             antialias: true,
@@ -563,9 +565,9 @@ export function ProductConfigurator3D({
             {/* Camera controller with controls ref export */}
             <CameraController
               cameraState={config.camera}
-              productWidth={(config.customData as any)?.dimensions?.width || 1000}
-              productHeight={(config.customData as any)?.dimensions?.height || 2000}
-              productDepth={(config.customData as any)?.dimensions?.depth || 45}
+              productWidth={productWidth}
+              productHeight={productHeight}
+              productDepth={productDepth}
               onCameraChange={handleCameraChange}
               onControlsReady={(controls) => {
                 controlsRef.current = controls;
@@ -578,9 +580,21 @@ export function ProductConfigurator3D({
               controls={controlsRef.current}
               heroMode={heroMode}
             />
+
+            {/* Stage with cyclorama backdrop and floor */}
+            <Stage productWidth={productWidth} productHeight={productHeight} />
             
             {/* Lighting */}
             <Lighting config={config.lighting} />
+            
+            {/* Contact shadows to anchor product to floor */}
+            <ContactShadows
+              position={[0, 0.5, 0]}
+              opacity={0.35}
+              blur={2.5}
+              far={10}
+              scale={Math.max(productWidth, productHeight) / 800}
+            />
             
             {/* Product components */}
             <ProductComponents
@@ -593,6 +607,9 @@ export function ProductConfigurator3D({
             
             {/* Environment */}
             <Environment preset="studio" />
+
+            {/* Post-processing for subtle polish */}
+            <PostFX enabled={highQuality} heroMode={heroMode} />
           </Suspense>
         </Canvas>
         
@@ -691,6 +708,15 @@ export function ProductConfigurator3D({
                       />
                       <span>Show Axis</span>
                     </label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={highQuality}
+                        onChange={(e) => setHighQuality(e.target.checked)}
+                        className="rounded"
+                      />
+                      <span>High Quality</span>
+                    </label>
                   </div>
                 </div>
               </SheetContent>
@@ -727,6 +753,8 @@ export function ProductConfigurator3D({
                 },
               });
             }}
+            qualityEnabled={highQuality}
+            onQualityToggle={setHighQuality}
           />
         )}
         

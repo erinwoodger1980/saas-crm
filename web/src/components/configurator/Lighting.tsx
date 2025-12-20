@@ -60,38 +60,38 @@ export function Lighting({ config }: LightingProps) {
   return (
     <>
       {/* Ambient light - soft studio fill */}
-      <ambientLight intensity={ambientIntensity * 1.2} color="#f8f6f0" />
+      <ambientLight intensity={ambientIntensity * 0.9} color="#f8f6f0" />
 
       {/* Key light - primary studio light (like large softbox) */}
       <directionalLight
         position={lightPositions.key}
-        intensity={intensity * 1.3}
+        intensity={intensity * 2.6}
         color="#fffef8"
         castShadow={castShadows}
-        shadow-mapSize-width={8192}
-        shadow-mapSize-height={8192}
+        shadow-mapSize-width={4096}
+        shadow-mapSize-height={4096}
         shadow-camera-left={lightPositions.shadowCamera.left}
         shadow-camera-right={lightPositions.shadowCamera.right}
         shadow-camera-top={lightPositions.shadowCamera.top}
         shadow-camera-bottom={lightPositions.shadowCamera.bottom}
         shadow-camera-near={0.1}
         shadow-camera-far={lightPositions.shadowCamera.far}
-        shadow-bias={-0.00001}
-        shadow-radius={6}
-        shadow-normalBias={0.02}
+        shadow-bias={-0.00005}
+        shadow-radius={10}
+        shadow-normalBias={0.01}
       />
 
       {/* Fill light - reduces contrast, softens shadows */}
       <directionalLight
         position={lightPositions.fill}
-        intensity={intensity * 0.6}
+        intensity={intensity * 1.1}
         color="#fff9ed"
       />
 
       {/* Rim light - back highlight for crisp edges */}
       <directionalLight
         position={lightPositions.rim}
-        intensity={intensity * 0.4}
+        intensity={intensity * 0.8}
         color="#fffef8"
       />
 
