@@ -219,34 +219,32 @@ export function AIComponentConfigurator({
   return (
     <div className="flex flex-col h-full bg-white rounded-lg overflow-hidden">
       {/* Header with description input */}
-      <div className="p-6 border-b space-y-4">
-        <h2 className="text-2xl font-semibold">AI Component Generator</h2>
-        <p className="text-sm text-muted-foreground">
-          Describe your product and AI will estimate the components and dimensions
-        </p>
+      <div className="p-3 border-b space-y-2">
+        <h2 className="text-lg font-semibold">AI Component Generator</h2>
 
-        <div className="space-y-3">
+        <div className="space-y-2">
           <Textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="e.g., 'Oak hardwood door frame with 4 panels, beveled edges, natural finish, hinges on left side'"
-            className="min-h-24 resize-none"
+            placeholder="Describe your product (e.g., 'Oak hardwood door frame with 4 panels')"
+            className="min-h-16 resize-none text-sm"
           />
 
           <div className="flex gap-2">
             <Button
               onClick={handleGeneratePreview}
               disabled={isGenerating || !description.trim()}
-              className="gap-2 flex-1"
+              className="gap-2 flex-1 h-9 text-sm"
+              size="sm"
             >
               {isGenerating ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   Generating...
                 </>
               ) : (
                 <>
-                  <Wand2 className="h-4 w-4" />
+                  <Wand2 className="h-3.5 w-3.5" />
                   Generate Preview
                 </>
               )}
@@ -257,17 +255,18 @@ export function AIComponentConfigurator({
                 onClick={handleCreateComponents}
                 disabled={isCreating}
                 variant="default"
-                className="gap-2 flex-1"
+                className="gap-2 flex-1 h-9 text-sm"
+                size="sm"
               >
                 {isCreating ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     Creating...
                   </>
                 ) : (
                   <>
-                    <Plus className="h-4 w-4" />
-                    Create {generatedComponents.length} Components
+                    <Plus className="h-3.5 w-3.5" />
+                    Create {generatedComponents.length}
                   </>
                 )}
               </Button>
@@ -316,15 +315,15 @@ export function AIComponentConfigurator({
 
           {/* Component info overlay */}
           {generatedComponents.length > 0 && (
-            <div className="absolute top-4 left-4 bg-white/90 backdrop-blur rounded-lg p-4 shadow-lg max-w-xs">
-              <div className="space-y-2">
-                <h3 className="font-semibold text-sm">Generated Components</h3>
-                <div className="space-y-1 text-xs text-muted-foreground max-h-32 overflow-y-auto">
+            <div className="absolute bottom-4 right-4 bg-white/95 backdrop-blur rounded-lg p-3 shadow-lg max-w-xs max-h-48 overflow-y-auto">
+              <div className="space-y-1.5">
+                <h3 className="font-semibold text-xs">Components ({generatedComponents.length})</h3>
+                <div className="space-y-0.5 text-xs text-muted-foreground">
                   {generatedComponents.map((comp) => (
-                    <div key={comp.id} className="flex justify-between">
-                      <span>{comp.name}</span>
-                      <span className="font-mono text-right">
-                        {comp.width}×{comp.height}×{comp.depth}mm
+                    <div key={comp.id} className="flex justify-between gap-2">
+                      <span className="truncate">{comp.name}</span>
+                      <span className="font-mono text-right whitespace-nowrap">
+                        {comp.width}×{comp.height}×{comp.depth}
                       </span>
                     </div>
                   ))}
@@ -343,9 +342,9 @@ export function AIComponentConfigurator({
       )}
 
       {/* Footer buttons */}
-      <div className="p-4 border-t flex gap-2">
+      <div className="p-2 border-t flex gap-2">
         {onClose && (
-          <Button onClick={onClose} variant="outline" className="flex-1">
+          <Button onClick={onClose} variant="outline" className="flex-1 h-8 text-sm" size="sm">
             Close
           </Button>
         )}
