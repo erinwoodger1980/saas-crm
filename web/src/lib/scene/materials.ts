@@ -31,7 +31,9 @@ function loadTexture(path: string, colorSpace: THREE.ColorSpace | null = null): 
     return null; // SSR-safe fallback
   }
   try {
-    const tex = textureLoader.load(path);
+    const tex = textureLoader.load(path, undefined, undefined, () => {
+      textureCache[path] = null;
+    });
     if (colorSpace) tex.colorSpace = colorSpace;
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     textureCache[path] = tex;

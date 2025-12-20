@@ -23,7 +23,7 @@ export function PostFX({ enabled, heroMode = false }: PostFXProps) {
   const ssaoIntensity = heroMode ? 0.8 : 0.6;
 
   return (
-    <EffectComposer multisampling={enabled ? 2 : 0}>
+    <EffectComposer multisampling={enabled ? 2 : 0} enableNormalPass={true}>
       <SSAO
         samples={8}
         radius={ssaoRadius}
