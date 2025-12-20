@@ -186,6 +186,32 @@ export interface EditableAttribute {
  * Product parametric inputs
  * Stored in SceneConfig.customData
  */
+export interface ProfileDefinition {
+  id: string;
+  name: string;
+  kind: 'stile' | 'rail' | 'mullion' | 'transom' | 'panelMould' | 'stop' | 'custom';
+  units: 'mm';
+  shape2D: {
+    points: [number, number][];
+    closed: boolean;
+  };
+  metadata?: {
+    source: 'estimated' | 'uploaded';
+    notes?: string;
+  };
+}
+
+// TODO: Persist profiles to DB (profiles table) and link uploaded SVG/DXF -> 2D points
+export interface ProfileStorageRecord {
+  id: string;
+  tenantId: string;
+  name: string;
+  kind: ProfileDefinition['kind'];
+  units: 'mm';
+  shapePoints: [number, number][];
+  metadata?: ProfileDefinition['metadata'];
+}
+
 export interface ProductParams {
   /** Product type identifiers from DB */
   productType: {
@@ -224,6 +250,17 @@ export interface ProductParams {
     timber?: string;
     finish?: string;
     glazingType?: string;
+
+    /** Profile mapping by component type (stile, rails, etc.) */
+    profileIds?: Record<string, string>;
+
+    /** Layout overrides for rail heights (mm from bottom to centerline) */
+    layoutOverrides?: {
+      topRailY?: number;
+      midRailY?: number;
+      bottomRailY?: number;
+      railYById?: Record<string, number>;
+    };
     
     // Additional parametric data
     [key: string]: any;
@@ -231,6 +268,9 @@ export interface ProductParams {
   
   /** Curve definitions (arches, fanlights, glazing bars) */
   curves?: CurveDefinition[];
+
+  /** Profile definitions used by components (stored with params for now) */
+  profiles?: ProfileDefinition[];
   
   /** Slots referencing which curves to use */
   curveSlots?: CurveSlots;

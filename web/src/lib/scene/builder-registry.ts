@@ -12,6 +12,7 @@ import {
 import { doorBuilder } from './parametric-door';
 import { windowBuilder } from './parametric-window';
 import { SceneConfig } from '@/types/scene-config';
+import { calculateHeroCamera } from './fit-camera';
 
 /**
  * Global builder registry
@@ -120,13 +121,12 @@ export function initializeSceneFromParams(
     materials: result.materials,
     camera: {
       mode: 'Perspective',
-      position: [
-        params.dimensions.width * 0.6,
-        params.dimensions.height * 0.35,  // Camera at 35% height (below center for better framing)
-        Math.max(params.dimensions.width, params.dimensions.height) * 1.5,
-      ],
+      ...calculateHeroCamera({
+        productWidth: params.dimensions.width,
+        productHeight: params.dimensions.height,
+        productDepth: params.dimensions.depth,
+      }),
       rotation: [0, 0, 0],
-      target: [0, params.dimensions.height * 0.15, 0],  // Look at 15% height (slightly below center)
       zoom: 1,
       fov: 45,
     },

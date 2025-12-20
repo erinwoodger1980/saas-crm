@@ -17,6 +17,12 @@ export interface ProfileExtrudeParams {
   profile: [number, number][];
   path: [number, number, number][];
   closed?: boolean;
+  /** Optional dimensions for fallback box if profile/path invalid */
+  fallbackBox?: {
+    width: number;
+    height: number;
+    depth: number;
+  };
 }
 
 export interface CurveParams {
@@ -113,27 +119,46 @@ export function createBeadProfile(radius: number, type: 'half' | 'quarter' = 'qu
 export function createProfileExtrude(params: ProfileExtrudeParams): THREE.BufferGeometry {
   const { profile, path, closed = false } = params;
   
-  // Convert profile to Shape
-  const shape = new THREE.Shape();
-  profile.forEach((p, i) => {
-    if (i === 0) {
-      shape.moveTo(p[0], p[1]);
-    } else {
-      shape.lineTo(p[0], p[1]);
-    }
+  if (!Array.isArray(profile) || profile.length < 2 || !Array.isArray(path) || path.length < 2) {
+    return createProfileFallback(params);
+  }
+
+  try {
+    const shape = new THREE.Shape();
+    profile.forEach((p, i) => {
+      if (i === 0) {
+        shape.moveTo(p[0], p[1]);
+      } else {
+        shape.lineTo(p[0], p[1]);
+      }
+    });
+    if (params.closed) shape.closePath();
+    
+    const pathPoints = path.map(p => new THREE.Vector3(p[0], p[1], p[2]));
+    const curve = new THREE.CatmullRomCurve3(pathPoints, closed);
+    
+    const extrudeSettings = {
+      steps: Math.max(20, path.length * 2),
+      bevelEnabled: false,
+      extrudePath: curve,
+    };
+    
+    return new THREE.ExtrudeGeometry(shape, extrudeSettings);
+  } catch (err) {
+    console.warn('[geometry] Failed profile extrude, using fallback box:', err);
+    return createProfileFallback(params);
+  }
+}
+
+function createProfileFallback(params: ProfileExtrudeParams): THREE.BufferGeometry {
+  const fallback = params.fallbackBox || { width: 50, height: 50, depth: 20 };
+  return createRoundedBox({
+    width: fallback.width,
+    height: fallback.height,
+    depth: fallback.depth,
+    radius: Math.min(fallback.width, fallback.height, fallback.depth) * 0.05,
+    smoothness: 4,
   });
-  
-  // Convert path to Curve3
-  const pathPoints = path.map(p => new THREE.Vector3(p[0], p[1], p[2]));
-  const curve = new THREE.CatmullRomCurve3(pathPoints, closed);
-  
-  const extrudeSettings = {
-    steps: Math.max(20, path.length * 2),
-    bevelEnabled: false,
-    extrudePath: curve,
-  };
-  
-  return new THREE.ExtrudeGeometry(shape, extrudeSettings);
 }
 
 /**

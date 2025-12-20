@@ -52,9 +52,9 @@ export function calculateDistanceLimits(
 ) {
   const maxDim = Math.max(productWidth, productHeight, productDepth);
   
-  // Safer clamped values: allow zoom-out up to 25x the product dimension
-  const minDistance = Math.max(100, maxDim * 0.35);
-  const maxDistance = Math.max(minDistance * 3, maxDim * 25);
+  // Looser limits: allow tight zoom-in and generous zoom-out
+  const minDistance = Math.max(50, maxDim * 0.15);
+  const maxDistance = Math.max(minDistance * 6, maxDim * 25);
 
   return {
     minDistance,

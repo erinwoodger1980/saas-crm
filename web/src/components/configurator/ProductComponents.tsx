@@ -8,13 +8,13 @@
 
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
-import { useFrame, ThreeEvent } from '@react-three/fiber';
+import { forwardRef, useMemo, useRef, MutableRefObject } from 'react';
+import { ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { ComponentNode, MaterialDefinition, ComponentVisibility } from '@/types/scene-config';
-import { convertCurveToShape, convertCurveTo3DPath } from '@/lib/scene/curve-utils';
 import { createPBRMaterial } from '@/lib/scene/materials';
-import { createRoundedBox, createProfileExtrude, createTubeFromCurve } from '@/lib/scene/geometry';
+import { createRoundedBox, createProfileExtrude } from '@/lib/scene/geometry';
+import { TransformControls } from '@react-three/drei';
 
 interface ProductComponentsProps {
   components: ComponentNode[];
@@ -22,6 +22,8 @@ interface ProductComponentsProps {
   visibility: ComponentVisibility;
   onSelect?: (componentId: string | null) => void;
   selectedId?: string | null;
+  orbitControlsRef?: MutableRefObject<any>;
+  onTransformEnd?: (componentId: string, newY: number) => void;
 }
 
 /**
@@ -36,18 +38,21 @@ function createMaterial(def: MaterialDefinition): THREE.Material {
  * Render a single component node
  * Supports: box, cylinder, extrude, shapeExtrude, tube, lathe
  */
-function ComponentMesh({
-  node,
-  material,
-  isSelected,
-  onClick,
-}: {
+const ComponentMesh = forwardRef<THREE.Mesh, {
   node: ComponentNode;
   material?: THREE.Material;
   isSelected: boolean;
   onClick: (e: ThreeEvent<MouseEvent>) => void;
-}) {
+}>(function ComponentMesh({ node, material, isSelected, onClick }, ref) {
   const meshRef = useRef<THREE.Mesh>(null);
+  const setRef = (value: THREE.Mesh | null) => {
+    meshRef.current = value;
+    if (typeof ref === 'function') {
+      ref(value);
+    } else if (ref) {
+      (ref as React.MutableRefObject<THREE.Mesh | null>).current = value;
+    }
+  };
   
   if (!node.geometry || !node.visible) return null;
 
@@ -78,7 +83,7 @@ function ComponentMesh({
           );
         
         case 'extrude':
-          if (!customData?.shape) return null;
+          if (!customData?.shape || !Array.isArray(customData.shape.points)) return null;
           const shape = new THREE.Shape();
           customData.shape.points.forEach((p: [number, number], i: number) => {
             if (i === 0) shape.moveTo(p[0], p[1]);
@@ -87,12 +92,12 @@ function ComponentMesh({
           return new THREE.ExtrudeGeometry(shape, customData.extrudeSettings);
         
         case 'shapeExtrude': {
-          if (!customData?.shape) return null;
+          if (!customData?.shape || !Array.isArray(customData.shape.points)) return null;
           
           // Build outer shape
           const outerShape = new THREE.Shape();
           const outerPoints = customData.shape.points;
-          if (outerPoints.length === 0) return null;
+          if (!Array.isArray(outerPoints) || outerPoints.length === 0) return null;
           
           outerShape.moveTo(outerPoints[0][0], outerPoints[0][1]);
           for (let i = 1; i < outerPoints.length; i++) {
@@ -102,6 +107,7 @@ function ComponentMesh({
           // Add holes if present
           if (customData.holes && customData.holes.length > 0) {
             customData.holes.forEach((hole: any) => {
+              if (!hole?.points || !Array.isArray(hole.points)) return;
               const holePath = new THREE.Path();
               hole.points.forEach((p: [number, number], i: number) => {
                 if (i === 0) holePath.moveTo(p[0], p[1]);
@@ -213,6 +219,16 @@ function ComponentMesh({
             Math.PI * 2
           );
         }
+
+        case 'profileExtrude': {
+          if (!customData?.profile || !customData?.path) return null;
+          return createProfileExtrude({
+            profile: customData.profile,
+            path: customData.path,
+            closed: customData.closed ?? false,
+            fallbackBox: customData.fallbackBox,
+          });
+        }
         
         default:
           return null;
@@ -244,7 +260,7 @@ function ComponentMesh({
 
   return (
     <mesh
-      ref={meshRef}
+      ref={setRef}
       position={position}
       rotation={rotation}
       geometry={geometry}
@@ -255,70 +271,93 @@ function ComponentMesh({
       userData={{ componentId: node.id, componentName: node.name }}
     />
   );
-}
+});
 
-/**
- * Recursively render component tree
- */
-function ComponentTree({
-  nodes,
+function NodeRenderer({
+  node,
   materials,
   visibility,
   materialMap,
   onSelect,
   selectedId,
+  orbitControlsRef,
+  onTransformEnd,
 }: {
-  nodes: ComponentNode[];
+  node: ComponentNode;
   materials: MaterialDefinition[];
   visibility: ComponentVisibility;
   materialMap: Map<string, THREE.Material>;
   onSelect?: (componentId: string | null) => void;
   selectedId?: string | null;
+  orbitControlsRef?: MutableRefObject<any>;
+  onTransformEnd?: (componentId: string, newY: number) => void;
 }) {
-  // Guard against non-array nodes
-  const safeNodes = Array.isArray(nodes) ? nodes : [];
-  
+  const meshRef = useRef<THREE.Mesh>(null);
+
+  const isVisible = visibility[node.id] ?? node.visible;
+  if (!isVisible) return null;
+
+  const material = node.materialId ? materialMap.get(node.materialId) : undefined;
+  const isSelected = node.id === selectedId;
+  const isRail = node.type === 'frame' && node.id.includes('Rail');
+  const transformEnabled = isSelected && isRail;
+
+  const handleClick = (e: ThreeEvent<MouseEvent>) => {
+    e.stopPropagation();
+    if (onSelect) {
+      onSelect(node.id);
+    }
+  };
+
+  const mesh = node.geometry ? (
+    <ComponentMesh
+      ref={meshRef}
+      node={node}
+      material={material}
+      isSelected={isSelected}
+      onClick={handleClick}
+    />
+  ) : null;
+
+  const wrappedMesh = transformEnabled ? (
+    <TransformControls
+      mode="translate"
+      showX={false}
+      showZ={false}
+      onMouseDown={() => {
+        if (orbitControlsRef?.current) orbitControlsRef.current.enabled = false;
+      }}
+      onMouseUp={() => {
+        if (orbitControlsRef?.current) orbitControlsRef.current.enabled = true;
+        if (meshRef.current && onTransformEnd) {
+          onTransformEnd(node.id, meshRef.current.position.y);
+        }
+      }}
+    >
+      {mesh}
+    </TransformControls>
+  ) : (
+    mesh
+  );
+
   return (
-    <>
-      {safeNodes.map((node) => {
-        const isVisible = visibility[node.id] ?? node.visible;
-        if (!isVisible) return null;
-
-        const material = node.materialId ? materialMap.get(node.materialId) : undefined;
-        const isSelected = node.id === selectedId;
-
-        return (
-          <group key={node.id}>
-            {/* Render this node's mesh if it has geometry */}
-            {node.geometry && (
-              <ComponentMesh
-                node={node}
-                material={material}
-                isSelected={isSelected}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (onSelect) {
-                    onSelect(node.id);
-                  }
-                }}
-              />
-            )}
-            
-            {/* Render children */}
-            {Array.isArray(node.children) && node.children.length > 0 && (
-              <ComponentTree
-                nodes={node.children}
-                materials={materials}
-                visibility={visibility}
-                materialMap={materialMap}
-                onSelect={onSelect}
-                selectedId={selectedId}
-              />
-            )}
-          </group>
-        );
-      })}
-    </>
+    <group>
+      {wrappedMesh}
+      {Array.isArray(node.children) &&
+        node.children.map((child) => (
+          <NodeRenderer
+            key={child.id}
+            node={child}
+            materials={materials}
+            visibility={visibility}
+            materialMap={materialMap}
+            onSelect={onSelect}
+            selectedId={selectedId}
+            orbitControlsRef={orbitControlsRef}
+            onTransformEnd={onTransformEnd}
+          />
+        ))}
+    </group>
   );
 }
 
@@ -331,6 +370,8 @@ export function ProductComponents({
   visibility,
   onSelect,
   selectedId,
+  orbitControlsRef,
+  onTransformEnd,
 }: ProductComponentsProps) {
   // Create material map with array guard
   const materialMap = useMemo(() => {
@@ -355,14 +396,19 @@ export function ProductComponents({
   
   return (
     <group onClick={handleBackgroundClick}>
-      <ComponentTree
-        nodes={safeComponents}
-        materials={materials}
-        visibility={safeVisibility}
-        materialMap={materialMap}
-        onSelect={onSelect}
-        selectedId={selectedId}
-      />
+      {safeComponents.map((node) => (
+        <NodeRenderer
+          key={node.id}
+          node={node}
+          materials={materials}
+          visibility={safeVisibility}
+          materialMap={materialMap}
+          onSelect={onSelect}
+          selectedId={selectedId}
+          orbitControlsRef={orbitControlsRef}
+          onTransformEnd={onTransformEnd}
+        />
+      ))}
     </group>
   );
 }

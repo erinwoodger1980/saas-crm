@@ -7,7 +7,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { useThree, useFrame } from '@react-three/fiber';
+import { useThree } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera as DreiPerspectiveCamera, OrthographicCamera as DreiOrthographicCamera } from '@react-three/drei';
 import * as THREE from 'three';
 import { CameraState, calculateOrthoZoom } from '@/types/scene-config';
@@ -40,6 +40,7 @@ export function CameraController({
   const orthoCamRef = useRef<THREE.OrthographicCamera>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isUserInteractingRef = useRef(false);
+  const changeRafRef = useRef<number | null>(null);
   
   // Calculate dynamic distance limits and far plane based on product size
   const { minDistance, maxDistance } = calculateDistanceLimits(productWidth, productHeight, productDepth);
@@ -52,6 +53,21 @@ export function CameraController({
   // Safe access to camera mode with fallback to prevent crashes
   const cameraMode = cameraState?.mode || 'Perspective';
   const currentCamera = cameraMode === 'Perspective' ? perspCamRef.current : orthoCamRef.current;
+
+  const captureCameraState = () => {
+    if (!currentCamera || !controlsRef.current) return null;
+    const newState: Partial<CameraState> = {
+      position: [currentCamera.position.x, currentCamera.position.y, currentCamera.position.z],
+      target: [controlsRef.current.target.x, controlsRef.current.target.y, controlsRef.current.target.z],
+      rotation: [currentCamera.rotation.x, currentCamera.rotation.y, currentCamera.rotation.z],
+    };
+    if (cameraMode === 'Ortho' && orthoCamRef.current) {
+      newState.zoom = orthoCamRef.current.zoom;
+    } else if (cameraMode === 'Perspective' && perspCamRef.current) {
+      newState.fov = perspCamRef.current.fov;
+    }
+    return newState;
+  };
 
   /**
    * Apply camera state to active camera
@@ -117,49 +133,27 @@ export function CameraController({
 
     // Debounce persistence
     debounceTimerRef.current = setTimeout(() => {
-      const newState: Partial<CameraState> = {
-        position: [
-          currentCamera.position.x,
-          currentCamera.position.y,
-          currentCamera.position.z,
-        ],
-        target: [
-          controlsRef.current.target.x,
-          controlsRef.current.target.y,
-          controlsRef.current.target.z,
-        ],
-        rotation: [
-          currentCamera.rotation.x,
-          currentCamera.rotation.y,
-          currentCamera.rotation.z,
-        ],
-      };
-
-      // Add mode-specific state
-      if (cameraMode === 'Ortho' && orthoCamRef.current) {
-        newState.zoom = orthoCamRef.current.zoom;
-      } else if (cameraMode === 'Perspective' && perspCamRef.current) {
-        newState.fov = perspCamRef.current.fov;
-      }
-
-      onCameraChange(newState);
+      const state = captureCameraState();
+      if (state) onCameraChange(state);
     }, persistDebounce);
   };
 
-  /**
-   * Monitor controls for interaction
-   */
-  useFrame(() => {
-    if (controlsRef.current) {
-      // Detect if user is currently interacting
-      const isInteracting = controlsRef.current.enabled && 
-        (controlsRef.current as any).object?.userData?.isInteracting;
-      
-      if (isInteracting && !isUserInteractingRef.current) {
-        isUserInteractingRef.current = true;
-      }
+  const handleInteractionStart = () => {
+    isUserInteractingRef.current = true;
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
     }
-  });
+  };
+
+  const handleInteractionChange = () => {
+    if (!controlsRef.current) return;
+    if (changeRafRef.current) return;
+    changeRafRef.current = requestAnimationFrame(() => {
+      changeRafRef.current = null;
+      const state = captureCameraState();
+      if (state) onCameraChange(state);
+    });
+  };
 
   /**
    * Cleanup debounce timer
@@ -168,6 +162,9 @@ export function CameraController({
     return () => {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
+      }
+      if (changeRafRef.current) {
+        cancelAnimationFrame(changeRafRef.current);
       }
     };
   }, []);
@@ -228,7 +225,9 @@ export function CameraController({
         maxDistance={maxDistance}
         minZoom={minOrthoZoom}
         maxZoom={maxOrthoZoom}
+        onStart={handleInteractionStart}
         onEnd={handleInteractionEnd}
+        onChange={handleInteractionChange}
         // CAD-like controls
         mouseButtons={{
           LEFT: THREE.MOUSE.ROTATE,

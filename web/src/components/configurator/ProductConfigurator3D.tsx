@@ -37,6 +37,8 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { updateQuoteLine } from '@/lib/api/quotes';
 import { toast } from 'sonner';
+import { fitCameraToBox } from '@/lib/scene/fit-camera';
+import { Box3, Vector3 } from 'three';
 
 interface ProductConfigurator3DProps {
   /** Tenant ID for multi-tenancy */
@@ -170,7 +172,7 @@ export function ProductConfigurator3D({
   width = '100%',
   height = '80vh',
   onClose,
-  heroMode = false,
+  heroMode = true,
 }: ProductConfigurator3DProps) {
   const [config, setConfig] = useState<SceneConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -180,8 +182,16 @@ export function ProductConfigurator3D({
   const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
   const [editableAttributes, setEditableAttributes] = useState<Record<string, EditableAttribute[]>>({});
   const [showUIDrawer, setShowUIDrawer] = useState(false);
+  const [showInspectorDrawer, setShowInspectorDrawer] = useState(false);
   const [highQuality, setHighQuality] = useState(true);
-  const controlsRef = useRef<any>(null);;
+  const controlsRef = useRef<any>(null);
+  const initialFrameApplied = useRef(false);
+
+  useEffect(() => {
+    if (heroMode && selectedComponentId) {
+      setShowInspectorDrawer(true);
+    }
+  }, [heroMode, selectedComponentId]);
 
   /**
    * Load or initialize scene configuration
@@ -530,6 +540,21 @@ export function ProductConfigurator3D({
   const productHeight = (config.customData as any)?.dimensions?.height || 2000;
   const productDepth = (config.customData as any)?.dimensions?.depth || 45;
 
+  // Auto-frame once after load using bounding box from dimensions
+  useEffect(() => {
+    if (!canRender || initialFrameApplied.current || !controlsRef.current) return;
+    const camera = controlsRef.current.object;
+    if (!camera) return;
+
+    const box = new Box3(
+      new Vector3(-productWidth / 2, 0, -productDepth / 2),
+      new Vector3(productWidth / 2, productHeight, productDepth / 2)
+    );
+
+    fitCameraToBox(box, camera, controlsRef.current, 1.05);
+    initialFrameApplied.current = true;
+  }, [canRender, productWidth, productHeight, productDepth]);
+
   return (
     <div className={`relative ${heroMode ? 'w-full h-full min-h-0' : 'flex gap-4 min-h-0'}`} style={!heroMode ? { width, height } : { width, height }}>
       {/* Main 3D Canvas */}
@@ -603,6 +628,10 @@ export function ProductConfigurator3D({
               visibility={config.visibility}
               onSelect={handleComponentSelect}
               selectedId={selectedComponentId}
+              orbitControlsRef={controlsRef}
+              onTransformEnd={(componentId, newY) => {
+                handleAttributeEdit(componentId, { positionY: newY });
+              }}
             />
             
             {/* Environment */}
@@ -615,7 +644,7 @@ export function ProductConfigurator3D({
         
         {/* UI Overlay - Only small floating button in hero mode */}
         {heroMode && (
-          <div className="absolute bottom-4 right-4 z-50 pointer-events-auto">
+          <div className="absolute bottom-4 right-4 z-50 pointer-events-auto flex gap-2">
             <Sheet open={showUIDrawer} onOpenChange={setShowUIDrawer}>
               <SheetTrigger asChild>
                 <Button
@@ -624,10 +653,10 @@ export function ProductConfigurator3D({
                   className="gap-2 bg-white/90 backdrop-blur hover:bg-white shadow-lg"
                 >
                   <Settings className="h-4 w-4" />
-                  Options
+                  View options
                 </Button>
               </SheetTrigger>
-              <SheetContent side="right" className="w-80 p-6 space-y-4">
+              <SheetContent side="right" className="w-72 p-6 space-y-4">
                 <div className="space-y-4">
                   {/* Camera Controls */}
                   <div className="space-y-3">
@@ -715,12 +744,38 @@ export function ProductConfigurator3D({
                         onChange={(e) => setHighQuality(e.target.checked)}
                         className="rounded"
                       />
-                      <span>High Quality</span>
+                    <span>High Quality</span>
                     </label>
                   </div>
                 </div>
               </SheetContent>
             </Sheet>
+
+            {(selectedComponentId || showInspectorDrawer) && (
+              <Sheet open={showInspectorDrawer} onOpenChange={setShowInspectorDrawer}>
+                <SheetTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-2 bg-white/90 backdrop-blur hover:bg-white shadow-lg"
+                  >
+                    <Save className="h-4 w-4" />
+                    Edit
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="right" className="w-72 p-4 space-y-4">
+                  <InspectorPanel
+                    selectedComponentId={selectedComponentId}
+                    attributes={selectedAttributes}
+                    onAttributeChange={(changes) => {
+                      if (selectedComponentId) {
+                        handleAttributeEdit(selectedComponentId, changes);
+                      }
+                    }}
+                  />
+                </SheetContent>
+              </Sheet>
+            )}
           </div>
         )}
 
