@@ -91,6 +91,49 @@ export function AIComponentConfigurator({
 
       // Create a minimal scene config to render the components
       if (components.length > 0) {
+        // Calculate bounds from all components
+        let minX = Infinity, maxX = -Infinity;
+        let minY = Infinity, maxY = -Infinity;
+        let minZ = Infinity, maxZ = -Infinity;
+
+        components.forEach((comp: GeneratedComponent) => {
+          const halfW = comp.width / 2;
+          const halfH = comp.height / 2;
+          const halfD = comp.depth / 2;
+          const [x, y, z] = comp.position;
+
+          minX = Math.min(minX, x - halfW);
+          maxX = Math.max(maxX, x + halfW);
+          minY = Math.min(minY, y - halfH);
+          maxY = Math.max(maxY, y + halfH);
+          minZ = Math.min(minZ, z - halfD);
+          maxZ = Math.max(maxZ, z + halfD);
+        });
+
+        // Add padding
+        const padX = (maxX - minX) * 0.2;
+        const padY = (maxY - minY) * 0.2;
+        const padZ = (maxZ - minZ) * 0.2;
+
+        minX -= padX;
+        maxX += padX;
+        minY -= padY;
+        maxY += padY;
+        minZ -= padZ;
+        maxZ += padZ;
+
+        // Calculate camera distance to fit all components in view
+        const width = maxX - minX;
+        const height = maxY - minY;
+        const depth = maxZ - minZ;
+        const maxDim = Math.max(width, height, depth);
+
+        // Position camera to view all components
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+        const centerZ = (minZ + maxZ) / 2;
+        const cameraDistance = maxDim * 1.5;
+
         const minimalConfig: SceneConfig = {
           version: 1,
           components: components.map((comp: GeneratedComponent) => ({
@@ -110,19 +153,19 @@ export function AIComponentConfigurator({
             material: comp.material || 'wood',
           })),
           camera: {
-            position: [0, 1000, 2000],
+            position: [centerX + cameraDistance * 0.6, centerY + cameraDistance * 0.6, centerZ + cameraDistance * 0.8],
             rotation: [0, 0, 0],
-            target: [0, 0, 0],
+            target: [centerX, centerY, centerZ],
             zoom: 1,
             fov: 50,
             mode: 'Perspective',
           },
           lighting: {
-            boundsX: [-1500, 1500],
-            boundsZ: [-1500, 1500],
-            intensity: 1,
-            shadowCatcherDiameter: 3000,
-            ambientIntensity: 0.6,
+            boundsX: [minX, maxX],
+            boundsZ: [minZ, maxZ],
+            intensity: 1.2,
+            shadowCatcherDiameter: Math.max(width, depth) * 1.2,
+            ambientIntensity: 0.7,
             castShadows: true,
           },
           materials: {
