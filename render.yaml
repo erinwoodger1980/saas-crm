@@ -44,6 +44,8 @@ services:
         value: https://api.joineryai.app
       - key: NEXT_PUBLIC_WEB_ORIGIN
         value: https://www.joineryai.app
+      - key: OPENAI_API_KEY
+        sync: false  # Set this in Render dashboard
       - key: NEXT_PUBLIC_FOUNDERS_PROMO_CODE
         sync: false  # Set this in Render dashboard (optional)
       - key: NEXT_PUBLIC_DISCOUNT_DEADLINE
@@ -102,6 +104,8 @@ services:
         sync: false  # Set to https://api-staging.joineryai.app in Render dashboard
       - key: NEXT_PUBLIC_WEB_ORIGIN
         sync: false  # Set to https://staging.joineryai.app in Render dashboard
+      - key: OPENAI_API_KEY
+        sync: false  # Set this in Render dashboard
   - type: web
     name: ml
     env: docker
