@@ -25,10 +25,15 @@ export async function POST(request: NextRequest) {
 
     // Call OpenAI to estimate components
     const openaiApiKey = process.env.OPENAI_API_KEY;
+    console.log('[estimate-components] Checking OPENAI_API_KEY...');
+    console.log('[estimate-components] OPENAI_API_KEY exists:', !!openaiApiKey);
+    console.log('[estimate-components] OPENAI_API_KEY length:', openaiApiKey?.length || 0);
+    console.log('[estimate-components] All env keys:', Object.keys(process.env).filter(k => k.includes('OPENAI') || k.includes('API') || k.includes('KEY')).join(', '));
+    
     if (!openaiApiKey) {
-      console.error('OPENAI_API_KEY not configured');
+      console.error('[estimate-components] OPENAI_API_KEY not configured');
       return NextResponse.json(
-        { error: 'AI service not configured' },
+        { error: 'AI service not configured', debug: { keyExists: false, allKeys: Object.keys(process.env).filter(k => k.includes('OPENAI') || k.includes('API')).join(', ') } },
         { status: 500 }
       );
     }
