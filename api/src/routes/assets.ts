@@ -1,6 +1,7 @@
 import { Router } from 'express';
-import type { AuthenticatedRequest } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 import { prisma } from '../prisma';
+import crypto from 'crypto';
 
 const router = Router();
 
@@ -22,7 +23,7 @@ interface AssetRecord {
 }
 
 // GET /assets - List all assets for tenant
-router.get('/', async (req: AuthenticatedRequest, res) => {
+router.get('/', requireAuth, async (req: any, res) => {
   try {
     const tenantId = req.auth?.tenantId;
     if (!tenantId) {
@@ -48,7 +49,7 @@ router.get('/', async (req: AuthenticatedRequest, res) => {
 });
 
 // GET /assets/:id - Get specific asset with full data
-router.get('/:id', async (req: AuthenticatedRequest, res) => {
+router.get('/:id', requireAuth, async (req: any, res) => {
   try {
     const tenantId = req.auth?.tenantId;
     if (!tenantId) {
@@ -78,7 +79,7 @@ router.get('/:id', async (req: AuthenticatedRequest, res) => {
 });
 
 // POST /assets - Create new asset
-router.post('/', async (req: AuthenticatedRequest, res) => {
+router.post('/', requireAuth, async (req: any, res) => {
   try {
     const tenantId = req.auth?.tenantId;
     if (!tenantId) {
@@ -148,7 +149,7 @@ router.post('/', async (req: AuthenticatedRequest, res) => {
     // Update settings
     await prisma.tenantSettings.update({
       where: { tenantId },
-      data: { beta: { ...beta, assets } },
+      data: { beta: { ...beta, assets } as any },
     });
 
     res.status(201).json(newAsset);
@@ -159,7 +160,7 @@ router.post('/', async (req: AuthenticatedRequest, res) => {
 });
 
 // DELETE /assets/:id - Delete asset
-router.delete('/:id', async (req: AuthenticatedRequest, res) => {
+router.delete('/:id', requireAuth, async (req: any, res) => {
   try {
     const tenantId = req.auth?.tenantId;
     if (!tenantId) {
@@ -191,7 +192,7 @@ router.delete('/:id', async (req: AuthenticatedRequest, res) => {
     // Update settings
     await prisma.tenantSettings.update({
       where: { tenantId },
-      data: { beta: { ...beta, assets } },
+      data: { beta: { ...beta, assets } as any },
     });
 
     res.json({ success: true });
