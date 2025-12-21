@@ -257,6 +257,13 @@ const ComponentMesh = forwardRef<THREE.Mesh, {
       emissiveIntensity: 0.3,
       metalness: 0.5,
       roughness: 0.5,
+      transparent: false,
+      opacity: 1,
+      depthWrite: true,
+      depthTest: true,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
     });
   }, [isSelected, material]);
 

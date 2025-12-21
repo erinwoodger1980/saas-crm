@@ -95,12 +95,13 @@ export function Lighting({ config }: LightingProps) {
         color="#fffef8"
       />
 
-      {/* Shadow catcher plane - positioned at product base */}
+      {/* Shadow catcher plane - positioned at product base with stable render order */}
       {castShadows && (
         <mesh
           rotation={[-Math.PI / 2, 0, 0]}
-          position={[0, 0, 0]}
+          position={[0, 0.1, 0]}
           receiveShadow
+          renderOrder={-1}
         >
           <circleGeometry args={[shadowCatcherDiameter, 128]} />
           <shadowMaterial opacity={0.15} color="#000000" />

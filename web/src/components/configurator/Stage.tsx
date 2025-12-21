@@ -37,10 +37,10 @@ export function Stage({ productWidth, productHeight }: StageProps) {
         />
       </mesh>
 
-      {/* Floor plane for subtle gradient and catch lighting */}
+      {/* Floor plane for subtle gradient and catch lighting - offset below to prevent z-fighting */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0, 0]}
+        position={[0, -0.5, 0]}
         receiveShadow
       >
         <planeGeometry args={[width * 1.5, width * 1.5, 1, 1]} />
@@ -49,6 +49,9 @@ export function Stage({ productWidth, productHeight }: StageProps) {
           roughness={0.92}
           metalness={0}
           side={THREE.DoubleSide}
+          polygonOffset
+          polygonOffsetFactor={1}
+          polygonOffsetUnits={1}
         />
       </mesh>
     </group>
