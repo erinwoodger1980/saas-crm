@@ -8,8 +8,9 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { Environment } from '@react-three/drei';
+import { Environment, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
+import { detectZFighting, logZFightingWarnings } from '@/lib/render/renderHints';
 import {
   SceneConfig,
   CameraState,
@@ -25,6 +26,7 @@ import { CameraController } from './CameraController';
 import { Lighting } from './Lighting';
 import { DoorComponents } from './DoorComponents';
 import { SceneUI } from './SceneUI';
+import { PostFX } from './PostFX';
 import { Loader2 } from 'lucide-react';
 
 interface DoorConfiguratorProps {
@@ -114,6 +116,7 @@ export function DoorConfigurator({
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const debugZFight = process.env.NEXT_PUBLIC_DEBUG_ZFIGHT === 'true';
 
   /**
    * Debug useEffect - expose scene state to window for inspection
@@ -326,9 +329,15 @@ export function DoorConfigurator({
         dpr={[1, 2]}
         gl={{
           antialias: true,
+          powerPreference: 'high-performance',
+          outputColorSpace: THREE.SRGBColorSpace,
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.0,
-          shadowMap: { enabled: true, type: THREE.PCFSoftShadowMap },
+          shadowMap: {
+            enabled: true,
+            type: THREE.PCFSoftShadowMap,
+            autoUpdate: true,
+          },
         }}
         style={{
           background: '#e6e6e6',
@@ -336,8 +345,18 @@ export function DoorConfigurator({
           width: '100%',
           height: '100%',
         }}
+        onCreated={(state) => {
+          // Debug z-fighting on demand
+          if (debugZFight) {
+            console.log('🔍 Z-fighting audit enabled');
+            logZFightingWarnings(state.scene);
+          }
+        }}
       >
         <Suspense fallback={null}>
+          {/* Post-processing anti-aliasing layer */}
+          <PostFX enabled={true} heroMode={false} />
+
           {/* Camera Controller */}
           <CameraController
             cameraState={config.camera}

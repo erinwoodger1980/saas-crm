@@ -2,13 +2,21 @@
  * Door Components Renderer
  * Renders hierarchical component tree with visibility control
  * Maps 1:1 with geometry nodes for precise control
+ * Applies render hints to prevent z-fighting and improve transparency sorting
  */
 
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import * as THREE from 'three';
 import { ComponentNode, MaterialDefinition, ComponentVisibility } from '@/types/scene-config';
+import {
+  applyRenderHints,
+  applyGlassHints,
+  applyDecalHints,
+  applyStainedGlassHints,
+  applyPanelFaceHints,
+} from '@/lib/render/renderHints';
 
 interface DoorComponentsProps {
   components: ComponentNode[];
@@ -68,6 +76,21 @@ function ComponentMesh({ node, material }: { node: ComponentNode; material?: THR
 
   return (
     <mesh
+      ref={(mesh) => {
+        if (!mesh) return;
+
+        // Apply render hints based on component type/tags
+        const tags = node.tags || [];
+        if (tags.includes('glass')) {
+          applyGlassHints(mesh);
+        } else if (tags.includes('stainedGlassImagePlane')) {
+          applyStainedGlassHints(mesh);
+        } else if (tags.includes('decal') || tags.includes('overlay')) {
+          applyDecalHints(mesh);
+        } else if (tags.includes('panelFace') || tags.includes('profileOverlay')) {
+          applyPanelFaceHints(mesh);
+        }
+      }}
       position={position}
       rotation={rotation}
       geometry={geometry}
@@ -128,6 +151,7 @@ function ComponentTree({
 
 /**
  * Create Three.js materials from material definitions
+ * Glass materials use MeshPhysicalMaterial with depthWrite=false for proper transparency
  */
 function createMaterials(definitions: MaterialDefinition[]): Map<string, THREE.Material> {
   const map = new Map<string, THREE.Material>();
@@ -143,35 +167,41 @@ function createMaterials(definitions: MaterialDefinition[]): Map<string, THREE.M
       case 'painted':
         material = new THREE.MeshStandardMaterial({
           color: new THREE.Color(def.baseColor),
-          roughness: def.roughness,
-          metalness: def.metalness,
+          roughness: def.roughness ?? 0.7,
+          metalness: def.metalness ?? 0,
         });
         break;
 
       case 'glass':
         material = new THREE.MeshPhysicalMaterial({
           color: new THREE.Color(def.baseColor),
-          roughness: def.roughness,
-          metalness: def.metalness,
-          transmission: 0.9,
+          roughness: def.roughness ?? 0.2,
+          metalness: 0,
+          transmission: 0.95,
           thickness: 4,
           ior: 1.5,
           transparent: true,
-          opacity: 0.7,
+          opacity: 0.85,
+          depthWrite: false, // Prevent z-fighting with underlying geometry
+          side: THREE.DoubleSide,
         });
+        // Apply renderOrder to ensure glass renders after opaque objects
+        (material as any).renderOrder = 10;
         break;
 
       case 'metal':
         material = new THREE.MeshStandardMaterial({
           color: new THREE.Color(def.baseColor),
-          roughness: def.roughness,
-          metalness: def.metalness,
+          roughness: def.roughness ?? 0.3,
+          metalness: def.metalness ?? 0.8,
         });
         break;
 
       default:
         material = new THREE.MeshStandardMaterial({
           color: new THREE.Color(def.baseColor),
+          roughness: 0.7,
+          metalness: 0,
         });
     }
 

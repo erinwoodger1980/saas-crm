@@ -2,13 +2,16 @@
  * Lighting Component
  * Studio-quality 3-point lighting setup
  * Soft shadows, physically accurate, scaled to product extents
+ * Uses ContactShadows to eliminate shadow catching plane z-fighting
  */
 
 'use client';
 
 import { useMemo } from 'react';
+import { ContactShadows } from '@react-three/drei';
 import { LightingConfig } from '@/types/scene-config';
 import * as THREE from 'three';
+import { applyShadowCatcherHints } from '@/lib/render/renderHints';
 
 interface LightingProps {
   config: LightingConfig;
@@ -95,17 +98,17 @@ export function Lighting({ config }: LightingProps) {
         color="#fffef8"
       />
 
-      {/* Shadow catcher plane - positioned at product base with stable render order */}
+      {/* Contact Shadows - physically accurate shadow casting without z-fighting */}
       {castShadows && (
-        <mesh
-          rotation={[-Math.PI / 2, 0, 0]}
-          position={[0, 0.1, 0]}
-          receiveShadow
-          renderOrder={-1}
-        >
-          <circleGeometry args={[shadowCatcherDiameter, 128]} />
-          <shadowMaterial opacity={0.15} color="#000000" />
-        </mesh>
+        <ContactShadows
+          position={[0, 0, 0]}
+          opacity={0.15}
+          scale={shadowCatcherDiameter * 2}
+          blur={8}
+          far={Math.max(...lightPositions.shadowCamera.top, Math.abs(lightPositions.shadowCamera.bottom)) * 2}
+          resolution={1024}
+          color="#000000"
+        />
       )}
     </>
   );
