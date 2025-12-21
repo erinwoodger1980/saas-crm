@@ -47,12 +47,30 @@ export interface MaterialDefinition {
   name: string;
   type: 'wood' | 'glass' | 'metal' | 'painted';
   baseColor: string;
-  roughness: number;
-  metalness: number;
+  roughness?: number;
+  metalness?: number;
   /** Optional texture map URL */
   textureUrl?: string;
   /** Optional normal map URL */
   normalMapUrl?: string;
+  /** Optional clearcoat amount (0-1) */
+  clearcoat?: number;
+  /** Optional clearcoat roughness (0-1) */
+  clearcoatRoughness?: number;
+  /** Optional transmission for glass (0-1) */
+  transmission?: number;
+  /** Optional IOR for glass */
+  ior?: number;
+  /** Optional thickness for glass materials (mm) */
+  thickness?: number;
+  /** Optional attenuation color for glass */
+  attenuationColor?: string;
+  /** Optional attenuation distance for glass */
+  attenuationDistance?: number;
+  /** Optional environment map intensity */
+  envMapIntensity?: number;
+  /** Dimensions for texture repeat calculation (mm) */
+  dimensions?: [number, number, number];
 }
 
 export interface ComponentNode {
