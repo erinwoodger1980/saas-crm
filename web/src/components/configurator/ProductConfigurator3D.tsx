@@ -174,6 +174,7 @@ export function ProductConfigurator3D({
   onClose,
   heroMode = true,
 }: ProductConfigurator3DProps) {
+  // ===== ALL STATE & REFS (MUST BE AT TOP) =====
   const [config, setConfig] = useState<SceneConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [canRender, setCanRender] = useState(false);
@@ -184,27 +185,49 @@ export function ProductConfigurator3D({
   const [showUIDrawer, setShowUIDrawer] = useState(false);
   const [showInspectorDrawer, setShowInspectorDrawer] = useState(false);
   const [highQuality, setHighQuality] = useState(true);
+  
   const controlsRef = useRef<any>(null);
   const initialFrameApplied = useRef(false);
+  const loadInitiated = useRef(false);
+  const mountedRef = useRef(true);
 
+  // ===== COMPUTED VALUES (SAFE TO COMPUTE BEFORE RETURNS) =====
+  const productWidth = (config?.customData as any)?.dimensions?.width || 1000;
+  const productHeight = (config?.customData as any)?.dimensions?.height || 2000;
+  const productDepth = (config?.customData as any)?.dimensions?.depth || 45;
+  const cameraMode = config?.camera?.mode || 'Perspective';
+
+  // ===== ALL EFFECTS (MUST BE AT TOP, BEFORE RETURNS) =====
+
+  // Reset load state when entity changes
+  useEffect(() => {
+    loadInitiated.current = false;
+    initialFrameApplied.current = false;
+    setCanRender(false);
+  }, [tenantId, entityType, entityId]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // Inspector drawer trigger
   useEffect(() => {
     if (heroMode && selectedComponentId) {
       setShowInspectorDrawer(true);
     }
   }, [heroMode, selectedComponentId]);
 
-  // Guard to prevent double-loading in strict mode
-  const loadInitiated = useRef(false);
-
-  /**
-   * Load or initialize scene configuration
-   */
+  // Main scene load/initialize effect
   useEffect(() => {
     // Prevent duplicate loads in React StrictMode
     if (loadInitiated.current) return;
     loadInitiated.current = true;
 
     async function load() {
+      if (!mountedRef.current) return;
       setIsLoading(true);
       
       let loaded: SceneConfig | null = null;
@@ -248,6 +271,7 @@ export function ProductConfigurator3D({
           
           if (!detectedType) {
             console.error('[ProductConfigurator3D] Cannot detect product type from lineItem:', effectiveLineItem);
+            if (!mountedRef.current) return;
             toast.error('Please configure the product type before opening 3D preview');
             setIsLoading(false);
             return;
@@ -272,6 +296,8 @@ export function ProductConfigurator3D({
         }
       }
       
+      if (!mountedRef.current) return;
+      
       if (loaded) {
         setConfig(loaded);
         // Extract editable attributes from customData
@@ -283,17 +309,57 @@ export function ProductConfigurator3D({
           }
         }
         // Give React time to update state before rendering Canvas
-        setTimeout(() => setCanRender(true), 100);
+        setTimeout(() => {
+          if (mountedRef.current) {
+            setCanRender(true);
+          }
+        }, 100);
       } else {
         console.error('[ProductConfigurator3D] Failed to initialize configurator', { lineItem, tenantId, entityType, entityId });
         toast.error('Failed to load 3D configurator. Please ensure the product has valid dimensions and type.');
       }
       
-      setIsLoading(false);
+      if (mountedRef.current) {
+        setIsLoading(false);
+      }
     }
     
     load();
   }, [tenantId, entityType, entityId, lineItem]);
+
+  // Auto-frame once after load using bounding box from dimensions
+  useEffect(() => {
+    if (!canRender || initialFrameApplied.current || !controlsRef.current) return;
+    if (!config) return;
+    
+    // Schedule frame fitting to next tick to avoid state loop
+    const timeoutId = setTimeout(() => {
+      if (!mountedRef.current || !controlsRef.current) return;
+      
+      const controls = controlsRef.current;
+      const camera = controls.object;
+      if (!camera) return;
+
+      // Safely compute dimensions from config
+      const w = (config.customData as any)?.dimensions?.width || 1000;
+      const h = (config.customData as any)?.dimensions?.height || 2000;
+      const d = (config.customData as any)?.dimensions?.depth || 45;
+
+      const box = new Box3(
+        new Vector3(-w / 2, 0, -d / 2),
+        new Vector3(w / 2, h, d / 2)
+      );
+
+      try {
+        fitCameraToBox(box, camera, controls, 1.05);
+        initialFrameApplied.current = true;
+      } catch (error) {
+        console.warn('[ProductConfigurator3D] Auto-frame error:', error);
+      }
+    }, 100);
+
+    return () => clearTimeout(timeoutId);
+  }, [canRender, config]);
 
   /**
    * Persist configuration changes to database
@@ -312,6 +378,7 @@ export function ProductConfigurator3D({
         return;
       }
       
+      if (!mountedRef.current) return;
       setIsSaving(true);
       const result = await saveSceneState(tenantId, entityType, entityId, newConfig);
       
@@ -340,7 +407,9 @@ export function ProductConfigurator3D({
       } catch (e) {
         console.warn('[ProductConfigurator3D] Failed to persist line-item fields:', e);
       }
-      setIsSaving(false);
+      if (mountedRef.current) {
+        setIsSaving(false);
+      }
       
       if (result.shouldDisable) {
         setSaveDisabled(true);
@@ -352,7 +421,7 @@ export function ProductConfigurator3D({
         toast.success('Configuration saved', { duration: 2000 });
       }
     },
-    [tenantId, entityType, entityId, saveDisabled]
+    [tenantId, entityType, entityId, saveDisabled, lineItem]
   );
 
   /**
@@ -540,41 +609,6 @@ export function ProductConfigurator3D({
       </div>
     );
   }
-  
-  // Safe camera mode access with default fallback to prevent crashes
-  const cameraMode = config.camera?.mode || 'Perspective';
-  const productWidth = (config.customData as any)?.dimensions?.width || 1000;
-  const productHeight = (config.customData as any)?.dimensions?.height || 2000;
-  const productDepth = (config.customData as any)?.dimensions?.depth || 45;
-
-  // Auto-frame once after load using bounding box from dimensions
-  // Guard with a separate effect to avoid infinite loops
-  useEffect(() => {
-    if (!canRender || initialFrameApplied.current || !controlsRef.current) return;
-    
-    // Schedule frame fitting to next tick to avoid state loop
-    const timeoutId = setTimeout(() => {
-      const controls = controlsRef.current;
-      if (!controls) return;
-      
-      const camera = controls.object;
-      if (!camera) return;
-
-      const box = new Box3(
-        new Vector3(-productWidth / 2, 0, -productDepth / 2),
-        new Vector3(productWidth / 2, productHeight, productDepth / 2)
-      );
-
-      try {
-        fitCameraToBox(box, camera, controls, 1.05);
-        initialFrameApplied.current = true;
-      } catch (error) {
-        console.warn('[ProductConfigurator3D] Auto-frame error:', error);
-      }
-    }, 100);
-
-    return () => clearTimeout(timeoutId);
-  }, [canRender]);
 
   return (
     <div className={`relative ${heroMode ? 'w-full h-full min-h-0' : 'flex gap-4 min-h-0'}`} style={!heroMode ? { width, height } : { width, height }}>
