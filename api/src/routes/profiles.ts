@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { prisma } from '../prisma';
 import crypto from 'crypto';
+import { validateSvgText } from '../lib/svg-validation';
 
 const router = Router();
 
@@ -16,7 +17,8 @@ interface ProfileRecord {
   name: string;
   mimeType: string;
   sizeBytes: number;
-  dataBase64: string;
+  dataBase64?: string | null;
+  svgText?: string | null; // NEW: for pasted SVG
   hash?: string;
   createdAt: string;
   metadata?: any;
@@ -86,21 +88,40 @@ router.post('/', requireAuth, async (req: any, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { name, mimeType, sizeBytes, dataBase64, hash, metadata } = req.body;
+    const { name, mimeType, sizeBytes, dataBase64, svgText, hash, metadata } = req.body;
 
-    // Validation
-    if (!name || !dataBase64 || !mimeType) {
-      return res.status(400).json({ error: 'name, dataBase64, and mimeType are required' });
+    // Validation - must have either dataBase64 (file upload) or svgText (pasted)
+    if (!name || !mimeType || (!dataBase64 && !svgText)) {
+      return res.status(400).json({ 
+        error: 'name, mimeType, and either dataBase64 (upload) or svgText (paste) are required' 
+      });
     }
 
     // Validate MIME type
-    if (!['image/svg+xml', 'application/vnd.dxf'].includes(mimeType)) {
+    if (!['image/svg+xml', 'application/svg+xml', 'application/vnd.dxf'].includes(mimeType)) {
       return res.status(400).json({ error: 'Only SVG and DXF files are supported' });
     }
 
-    // Validate size (10MB limit)
-    if (sizeBytes > 10 * 1024 * 1024) {
+    // Validate size (10MB limit for uploads, 200KB for pasted text)
+    const dataToCheck = dataBase64 || svgText;
+    if (sizeBytes && sizeBytes > 10 * 1024 * 1024) {
       return res.status(400).json({ error: 'File size exceeds 10MB limit' });
+    }
+    if (svgText && svgText.length > 200_000) {
+      return res.status(400).json({ error: 'SVG text exceeds 200,000 character limit' });
+    }
+
+    // Import validation utility
+    
+    // If pasted SVG, validate it
+    if (svgText && mimeType.includes('svg')) {
+      const validation = validateSvgText(svgText);
+      if (!validation.valid) {
+        return res.status(400).json({ 
+          error: 'Invalid SVG',
+          details: validation.errors
+        });
+      }
     }
 
     const settings = await prisma.tenantSettings.findUnique({
@@ -122,8 +143,9 @@ router.post('/', requireAuth, async (req: any, res) => {
       id: `profile_${crypto.randomUUID()}`,
       name,
       mimeType,
-      sizeBytes,
-      dataBase64,
+      sizeBytes: sizeBytes || (svgText?.length || dataBase64?.length || 0),
+      ...(dataBase64 && { dataBase64 }),
+      ...(svgText && { svgText }),
       hash,
       createdAt: new Date().toISOString(),
       metadata: metadata || {},
