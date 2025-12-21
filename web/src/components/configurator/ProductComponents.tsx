@@ -248,6 +248,18 @@ const ComponentMesh = forwardRef<THREE.Mesh, {
     }
   }, [hasRenderableGeometry, node.geometry]);
 
+  // Selection highlight material - must be called before any returns
+  const highlightMaterial = useMemo(() => {
+    if (!isSelected || !material) return material;
+    return new THREE.MeshStandardMaterial({
+      color: '#4a90e2',
+      emissive: '#4a90e2',
+      emissiveIntensity: 0.3,
+      metalness: 0.5,
+      roughness: 0.5,
+    });
+  }, [isSelected, material]);
+
   // No render when geometry missing; hook order stays stable via guards above
   if (!hasRenderableGeometry) return null;
 
@@ -280,18 +292,6 @@ const ComponentMesh = forwardRef<THREE.Mesh, {
   const rotation = node.geometry.rotation
     ? new THREE.Euler(...node.geometry.rotation)
     : undefined;
-
-  // Selection highlight material
-  const highlightMaterial = useMemo(() => {
-    if (!isSelected) return material;
-    return new THREE.MeshStandardMaterial({
-      color: '#4a90e2',
-      emissive: '#4a90e2',
-      emissiveIntensity: 0.3,
-      metalness: 0.5,
-      roughness: 0.5,
-    });
-  }, [isSelected, material]);
 
   return (
     <mesh
