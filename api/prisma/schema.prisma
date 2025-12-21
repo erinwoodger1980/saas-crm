@@ -132,6 +132,9 @@ model Tenant {
   lookupTables               LookupTable[]               @relation("LookupTables")
   fieldDisplayContexts       FieldDisplayContext[]       @relation("FieldDisplayContexts")
   mlTrainingEvents           MLTrainingEvent[]           @relation("MLTrainingEvents")
+  architectPacks             ArchitectPack[]             @relation("ArchitectPacks")
+  tenantAIUsageEvents        TenantAIUsageEvent[]        @relation("TenantAIUsageEvents")
+  tenantAIUsageMonthly       TenantAIUsageMonthly[]      @relation("TenantAIUsageMonthly")
 }
 
 model LippingLookup {
@@ -1426,6 +1429,7 @@ model QuoteLine {
   configuredProduct Json? // Canonical product configuration: {productTypeId, selections, derived, provenance}
   quote             Quote              @relation(fields: [quoteId], references: [id])
   shoppingListItems ShoppingListItem[]
+  architectOpening  ArchitectOpening?  @relation("ArchitectOpening")
 
   @@index([quoteId])
 }
@@ -4414,4 +4418,123 @@ model MLTrainingEvent {
   @@index([tenantId, quoteId])
   @@index([tenantId, createdAt])
   @@index([fieldId])
+}
+
+// Architect Pack Ingestion System
+
+model ArchitectPack {
+  id          String   @id @default(cuid())
+  tenantId    String
+  filename    String
+  mime        String
+  // Temporary base64 storage (swap to object storage later)
+  base64Data  String?  @db.Text
+  // Future: objectStorageKey String?
+  // Future: objectStorageProvider String? (S3/Azure/etc)
+  fileHash    String?  // SHA256 for caching
+  fileSize    Int?
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  tenant      Tenant   @relation("ArchitectPacks", fields: [tenantId], references: [id], onDelete: Cascade)
+  analyses    ArchitectPackAnalysis[]
+  
+  @@index([tenantId, createdAt])
+  @@index([fileHash])
+}
+
+model ArchitectPackAnalysis {
+  id              String   @id @default(cuid())
+  packId          String
+  // Complete analysis JSON
+  json            Json
+  // AI model version for cache invalidation
+  modelVersion    String   @default("v1")
+  // Processing metadata
+  pagesAnalyzed   Int?
+  totalPages      Int?
+  processingTime  Int?     // milliseconds
+  createdAt       DateTime @default(now())
+  
+  pack            ArchitectPack          @relation(fields: [packId], references: [id], onDelete: Cascade)
+  openings        ArchitectOpening[]
+  
+  @@index([packId])
+  @@index([createdAt])
+}
+
+model ArchitectOpening {
+  id              String   @id @default(cuid())
+  analysisId      String
+  // Opening details
+  type            String   // 'door' | 'window' | 'screen' | 'sliding' | 'bifolding'
+  widthMm         Int
+  heightMm        Int
+  // Location and context
+  locationHint    String?  // e.g. "sunroom", "front entrance"
+  pageNumber      Int?
+  // Technical notes from AI
+  notes           String?  @db.Text
+  sillHeight      Int?
+  glazingType     String?
+  frameType       String?
+  // AI confidence
+  confidence      Float    @default(0.5)
+  // User confirmation
+  userConfirmed   Boolean  @default(false)
+  userModified    Boolean  @default(false)
+  // Link to quote line (once confirmed)
+  quoteLineId     String?  @unique
+  // Metadata
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  analysis        ArchitectPackAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  quoteLine       QuoteLine?            @relation("ArchitectOpening", fields: [quoteLineId], references: [id], onDelete: SetNull)
+  
+  @@index([analysisId])
+  @@index([userConfirmed])
+  @@index([quoteLineId])
+}
+
+model TenantAIUsageEvent {
+  id               String   @id @default(cuid())
+  tenantId         String
+  featureKey       String
+  model            String
+  inputType        String   // text | image | pdf | audio | other
+  inputChars       Int?     // character count for text inputs
+  imageCount       Int?     // number of images
+  pdfPageCount     Int?     // number of pdf pages
+  inputTokens      Int?     // prompt tokens
+  outputTokens     Int?     // completion tokens
+  estimatedCostUsd Float    @default(0)
+  estimatedCostGbp Float    @default(0)
+  currencyRate     Float    @default(0.79) // USD->GBP used for the estimate
+  requestId        String   // correlate server/client logs
+  metadata         Json?
+  createdAt        DateTime @default(now())
+
+  tenant           Tenant   @relation("TenantAIUsageEvents", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, featureKey])
+  @@index([tenantId, createdAt])
+}
+
+model TenantAIUsageMonthly {
+  id               String   @id @default(cuid())
+  tenantId         String
+  month            String   // YYYY-MM
+  totalCostUsd     Float    @default(0)
+  totalCostGbp     Float    @default(0)
+  totalInputTokens Int      @default(0)
+  totalOutputTokens Int     @default(0)
+  updatedAt        DateTime @updatedAt
+  createdAt        DateTime @default(now())
+
+  tenant Tenant @relation("TenantAIUsageMonthly", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, month])
+  @@index([tenantId])
 }
