@@ -16,6 +16,8 @@ import {
   ComponentVisibility,
   UIToggles,
   CameraMode,
+  DEFAULT_UI_TOGGLES,
+  LightingConfig,
 } from '@/types/scene-config';
 import { ProductParams, EditableAttribute, ComponentEdit } from '@/types/parametric-builder';
 import {
@@ -160,6 +162,50 @@ async function saveSceneState(
   }
 }
 
+function buildDefaultLighting(dimensions: SceneConfig['dimensions']): LightingConfig {
+  const width = dimensions?.width ?? 1000;
+  const height = dimensions?.height ?? 2000;
+  const depth = dimensions?.depth ?? 45;
+  const bounds = dimensions?.bounds ?? {
+    min: [-width / 2, -height / 2, -depth / 2] as [number, number, number],
+    max: [width / 2, height / 2, depth / 2] as [number, number, number],
+  };
+  const boundsX: [number, number] = [bounds.min[0] * 1.5, bounds.max[0] * 1.5];
+  const boundsZ: [number, number] = [bounds.min[2] * 1.5, bounds.max[2] * 1.5];
+  const shadowCatcherDiameter = Math.max(width, height) * 2;
+
+  return {
+    boundsX,
+    boundsZ,
+    intensity: 1.6,
+    shadowCatcherDiameter,
+    ambientIntensity: 0.45,
+    castShadows: true,
+  };
+}
+
+function normalizeSceneConfig(config: SceneConfig): SceneConfig {
+  const normalized: SceneConfig = {
+    ...config,
+    components: Array.isArray(config.components) ? config.components : [],
+    materials: Array.isArray(config.materials) ? config.materials : [],
+    visibility: config.visibility || {},
+    ui: config.ui || { ...DEFAULT_UI_TOGGLES },
+    lighting: config.lighting || buildDefaultLighting(config.dimensions),
+  };
+
+  normalized.materials = normalized.materials.map((mat) => {
+    const safeMat: any = { ...mat };
+    safeMat.baseColor = mat.baseColor || '#cccccc';
+    safeMat.roughness = mat.roughness ?? 0.6;
+    safeMat.metalness = mat.metalness ?? 0;
+    safeMat.maps = Array.isArray((mat as any).maps) ? (mat as any).maps : [];
+    return safeMat;
+  });
+
+  return normalized;
+}
+
 /**
  * Main Product Configurator Component
  */
@@ -190,6 +236,7 @@ export function ProductConfigurator3D({
   const initialFrameApplied = useRef(false);
   const loadInitiated = useRef(false);
   const mountedRef = useRef(true);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
 
   // ===== COMPUTED VALUES (SAFE TO COMPUTE BEFORE RETURNS) =====
   const productWidth = (config?.customData as any)?.dimensions?.width || 1000;
@@ -210,6 +257,22 @@ export function ProductConfigurator3D({
   useEffect(() => {
     return () => {
       mountedRef.current = false;
+      if (controlsRef.current?.dispose) {
+        try {
+          controlsRef.current.dispose();
+        } catch (err) {
+          console.warn('[ProductConfigurator3D] Failed to dispose controls:', err);
+        }
+      }
+      if (rendererRef.current) {
+        try {
+          rendererRef.current.dispose();
+          rendererRef.current.forceContextLoss?.();
+          rendererRef.current.domElement?.remove?.();
+        } catch (err) {
+          console.warn('[ProductConfigurator3D] Failed to dispose renderer:', err);
+        }
+      }
     };
   }, []);
 
@@ -299,11 +362,12 @@ export function ProductConfigurator3D({
       if (!mountedRef.current) return;
       
       if (loaded) {
-        setConfig(loaded);
+        const normalized = normalizeSceneConfig(loaded);
+        setConfig(normalized);
         // Extract editable attributes from customData
-        if (loaded.customData) {
+        if (normalized.customData) {
           const builder = await import('@/lib/scene/builder-registry');
-          const result = builder.buildScene(loaded.customData as ProductParams);
+          const result = builder.buildScene(normalized.customData as ProductParams);
           if (result?.editableAttributes) {
             setEditableAttributes(result.editableAttributes);
           }
@@ -541,8 +605,9 @@ export function ProductConfigurator3D({
     
     const fresh = initializeSceneFromParams(params, tenantId, entityType, entityId);
     if (fresh) {
-      setConfig(fresh);
-      await persistConfig(fresh);
+      const normalized = normalizeSceneConfig(fresh);
+      setConfig(normalized);
+      await persistConfig(normalized);
       toast.success('Configuration reset');
     }
   }, [lineItem, tenantId, entityType, entityId, persistConfig]);
@@ -632,6 +697,7 @@ export function ProductConfigurator3D({
           }}
           onCreated={({ gl }) => {
             // Improved renderer settings for better quality
+            rendererRef.current = gl;
             gl.setClearColor('#e8e8e8');
             gl.shadowMap.enabled = true;
             gl.shadowMap.type = THREE.PCFSoftShadowMap;

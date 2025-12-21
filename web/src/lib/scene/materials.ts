@@ -5,6 +5,7 @@
 
 import * as THREE from 'three';
 import { MaterialDefinition } from '@/types/scene-config';
+import { getTextureSafe } from './safe-textures';
 
 export interface MaterialConfig {
   type: 'wood' | 'painted' | 'glass' | 'metal' | 'default';
@@ -20,28 +21,19 @@ export interface MaterialConfig {
   attenuationDistance?: number;
 }
 
-// Texture cache to avoid reloading and to keep SSR-safe fallbacks
+// Oak material fallback constants - used when textures unavailable
+const OAK_FALLBACK_COLOR = '#C19A6B'; // Natural oak tone
+const OAK_FALLBACK_ROUGHNESS = 0.7;
+const OAK_FALLBACK_METALNESS = 0;
+
+// Deprecated - use getTextureSafe from safe-textures.ts instead
+// Kept for backwards compatibility but marked for removal
 const textureCache: Record<string, THREE.Texture | null> = {};
 const textureLoader = typeof window !== 'undefined' ? new THREE.TextureLoader() : null;
 
 function loadTexture(path: string, colorSpace: THREE.ColorSpace | null = null): THREE.Texture | null {
-  if (textureCache[path] !== undefined) return textureCache[path];
-  if (!textureLoader) {
-    textureCache[path] = null;
-    return null; // SSR-safe fallback
-  }
-  try {
-    const tex = textureLoader.load(path, undefined, undefined, () => {
-      textureCache[path] = null;
-    });
-    if (colorSpace) tex.colorSpace = colorSpace;
-    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    textureCache[path] = tex;
-    return tex;
-  } catch (e) {
-    textureCache[path] = null;
-    return null;
-  }
+  console.warn('[materials] loadTexture is deprecated - use getTextureSafe instead');
+  return getTextureSafe(path, colorSpace);
 }
 
 /**
@@ -106,14 +98,15 @@ function createMetalMaterial(color: THREE.Color, def: MaterialDefinition): THREE
 
 /**
  * Unpainted timber - natural wood
+ * SAFE: Falls back to flat color if textures unavailable
  */
 function createTimberMaterial(color: THREE.Color, def: MaterialDefinition): THREE.MeshPhysicalMaterial {
   const isOak = /oak/i.test(def.name || '') || /oak/i.test(def.id || '');
 
   const material = new THREE.MeshPhysicalMaterial({
     color,
-    metalness: 0,
-    roughness: def.roughness ?? 0.7,
+    metalness: OAK_FALLBACK_METALNESS,
+    roughness: def.roughness ?? OAK_FALLBACK_ROUGHNESS,
     envMapIntensity: 0.6,
     sheen: 0.1,
     sheenRoughness: 0.9,
@@ -121,21 +114,35 @@ function createTimberMaterial(color: THREE.Color, def: MaterialDefinition): THRE
   });
 
   if (isOak) {
-    const baseMap = loadTexture('/textures/oak_basecolor.jpg', THREE.SRGBColorSpace);
-    const normalMap = loadTexture('/textures/oak_normal.jpg');
-    const roughnessMap = loadTexture('/textures/oak_roughness.jpg');
+    // Safe texture loading - returns null if not loaded yet or failed
+    const baseMap = getTextureSafe('/textures/oak_basecolor.jpg', THREE.SRGBColorSpace);
+    const normalMap = getTextureSafe('/textures/oak_normal.jpg');
+    const roughnessMap = getTextureSafe('/textures/oak_roughness.jpg');
 
-    if (baseMap) {
+    let texturesApplied = false;
+
+    // Only apply textures if they loaded successfully AND have valid image data
+    if (baseMap?.image && baseMap.image.width > 0) {
       baseMap.repeat.set(4, 4);
       material.map = baseMap;
+      texturesApplied = true;
     }
-    if (normalMap) {
+    if (normalMap?.image && normalMap.image.width > 0) {
       normalMap.repeat.set(4, 4);
       material.normalMap = normalMap;
+      texturesApplied = true;
     }
-    if (roughnessMap) {
+    if (roughnessMap?.image && roughnessMap.image.width > 0) {
       roughnessMap.repeat.set(4, 4);
       material.roughnessMap = roughnessMap;
+      texturesApplied = true;
+    }
+
+    // Debug logging for texture fallback
+    if (!texturesApplied && process.env.NODE_ENV === 'development') {
+      console.log(
+        `[materials] Oak timber using fallback color ${OAK_FALLBACK_COLOR} - textures not loaded`
+      );
     }
   }
 
@@ -144,13 +151,14 @@ function createTimberMaterial(color: THREE.Color, def: MaterialDefinition): THRE
 
 /**
  * Painted timber - subtle clearcoat for highlight catch
+ * SAFE: Falls back to flat color if textures unavailable
  */
 function createPaintedMaterial(color: THREE.Color, def: MaterialDefinition): THREE.MeshPhysicalMaterial {
   const isOakPainted = /oak/i.test(def.name || '') || /oak/i.test(def.id || '');
 
   const material = new THREE.MeshPhysicalMaterial({
     color,
-    metalness: 0,
+    metalness: OAK_FALLBACK_METALNESS,
     roughness: def.roughness ?? 0.55,
     envMapIntensity: 0.8,
     clearcoat: 0.15,
@@ -158,21 +166,35 @@ function createPaintedMaterial(color: THREE.Color, def: MaterialDefinition): THR
   });
 
   if (isOakPainted) {
-    const baseMap = loadTexture('/textures/oak_basecolor.jpg', THREE.SRGBColorSpace);
-    const normalMap = loadTexture('/textures/oak_normal.jpg');
-    const roughnessMap = loadTexture('/textures/oak_roughness.jpg');
+    // Safe texture loading - returns null if not loaded yet or failed
+    const baseMap = getTextureSafe('/textures/oak_basecolor.jpg', THREE.SRGBColorSpace);
+    const normalMap = getTextureSafe('/textures/oak_normal.jpg');
+    const roughnessMap = getTextureSafe('/textures/oak_roughness.jpg');
 
-    if (baseMap) {
+    let texturesApplied = false;
+
+    // Only apply textures if they loaded successfully AND have valid image data
+    if (baseMap?.image && baseMap.image.width > 0) {
       baseMap.repeat.set(3, 3);
       material.map = baseMap;
+      texturesApplied = true;
     }
-    if (normalMap) {
+    if (normalMap?.image && normalMap.image.width > 0) {
       normalMap.repeat.set(3, 3);
       material.normalMap = normalMap;
+      texturesApplied = true;
     }
-    if (roughnessMap) {
+    if (roughnessMap?.image && roughnessMap.image.width > 0) {
       roughnessMap.repeat.set(3, 3);
       material.roughnessMap = roughnessMap;
+      texturesApplied = true;
+    }
+
+    // Debug logging for texture fallback
+    if (!texturesApplied && process.env.NODE_ENV === 'development') {
+      console.log(
+        `[materials] Oak painted using fallback color ${color.getHexString()} - textures not loaded`
+      );
     }
   }
 
