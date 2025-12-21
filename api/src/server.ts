@@ -142,6 +142,7 @@ import componentAttributesRouter from "./routes/component-attributes";
 import componentVariantsRouter from "./routes/component-variants";
 import sceneStateRouter from "./routes/scene-state";
 import assetsRouter from "./routes/assets";
+import profilesRouter from "./routes/profiles";
 
 type BillingModule = typeof import("./routes/billing");
 type PublicSignupModule = typeof import("./routes/public-signup");
@@ -748,6 +749,8 @@ app.use("/component-attributes", requireAuth, componentAttributesRouter); // Com
 app.use("/component-variants", requireAuth, componentVariantsRouter); // Component variants with specific specifications
 // 3D asset storage (GLB/GLTF models for ironmongery, etc.)
 app.use("/assets", requireAuth, assetsRouter);
+// 2D profile storage (SVG/DXF files for component extrusion)
+app.use("/profiles", requireAuth, profilesRouter);
 // Material cost debug routes (internal debugging tool)
 app.use("/material-debug", requireAuth, materialDebugRouter);
 // Developer Console routes

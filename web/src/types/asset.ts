@@ -25,6 +25,32 @@ export interface AssetRecord {
   };
 }
 
+/**
+ * Profile Record Types
+ * For SVG/DXF 2D profiles used for component extrusion
+ */
+export interface ProfileRecord {
+  /** Unique ID (generated client-side or server-side) */
+  id: string;
+  /** Display name for the profile */
+  name: string;
+  /** MIME type: image/svg+xml or application/vnd.dxf */
+  mimeType: string;
+  /** File size in bytes */
+  sizeBytes: number;
+  /** Base64-encoded data (no data URL prefix) */
+  dataBase64: string;
+  /** SHA-256 hash for deduplication (optional) */
+  hash?: string;
+  /** Timestamp of creation */
+  createdAt: string;
+  /** Metadata */
+  metadata?: {
+    originalFilename?: string;
+    uploader?: string;
+  };
+}
+
 export interface AssetTransform {
   /** Position offset [x, y, z] in mm */
   position: [number, number, number];

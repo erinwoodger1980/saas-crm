@@ -9,7 +9,8 @@ import { apiFetch } from '@/lib/api';
 import ComponentAttributeModal from '@/components/ComponentAttributeModal';
 import ComponentVariantModal from '@/components/ComponentVariantModal';
 import { AssetUpload } from '@/components/AssetUpload';
-import type { AssetTransform } from '@/types/asset';
+import { ProfileUpload } from '@/components/ProfileUpload';
+import type { AssetTransform, ProfileRecord } from '@/types/asset';
 
 interface Supplier {
   id: string;
@@ -996,6 +997,29 @@ export default function ComponentsPage() {
                           ...currentMetadata,
                           assetId: assetId || undefined,
                           assetTransform: transform,
+                        },
+                      });
+                    }}
+                  />
+                </div>
+
+                {/* Profile Upload Section */}
+                <div className="col-span-2 border-t border-slate-200 pt-4">
+                  <ProfileUpload
+                    profileId={editingComponent?.metadata?.profileId || null}
+                    profileData={editingComponent?.metadata?.profileData}
+                    currentProfileName={editingComponent?.metadata?.aiAssignedProfileName}
+                    onProfileChange={(profileId, profileData) => {
+                      // Store in formData metadata for persistence on save
+                      const currentMetadata = editingComponent?.metadata || {};
+                      if (!editingComponent) return;
+                      
+                      setEditingComponent({
+                        ...editingComponent,
+                        metadata: {
+                          ...currentMetadata,
+                          profileId: profileId || undefined,
+                          profileData: profileData,
                         },
                       });
                     }}
