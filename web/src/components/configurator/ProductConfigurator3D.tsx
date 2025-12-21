@@ -758,8 +758,8 @@ export function ProductConfigurator3D({
             {/* Environment */}
             <Environment preset="studio" />
 
-            {/* Post-processing for subtle polish */}
-            <PostFX enabled={highQuality} heroMode={heroMode} />
+            {/* Post-processing for subtle polish - DISABLED in hero mode to prevent crashes */}
+            <PostFX enabled={highQuality && !heroMode} heroMode={heroMode} />
           </Suspense>
         </Canvas>
         
