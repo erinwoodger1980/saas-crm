@@ -8,6 +8,8 @@ import { useToast } from '@/components/ui/use-toast';
 import { apiFetch } from '@/lib/api';
 import ComponentAttributeModal from '@/components/ComponentAttributeModal';
 import ComponentVariantModal from '@/components/ComponentVariantModal';
+import { AssetUpload } from '@/components/AssetUpload';
+import type { AssetTransform } from '@/types/asset';
 
 interface Supplier {
   id: string;
@@ -360,7 +362,8 @@ export default function ComponentsPage() {
         basePrice: parseFloat(formData.basePrice) || 0,
         leadTimeDays: parseInt(formData.leadTimeDays) || 0,
         supplierId: formData.supplierId || null,
-        isActive: formData.isActive
+        isActive: formData.isActive,
+        metadata: editingComponent?.metadata || null,
       };
 
       if (editingComponent) {
@@ -975,6 +978,28 @@ export default function ComponentsPage() {
                     />
                     <span className="text-sm font-medium text-slate-700">Active</span>
                   </label>
+                </div>
+
+                {/* 3D Model Upload Section */}
+                <div className="col-span-2 border-t border-slate-200 pt-4">
+                  <AssetUpload
+                    assetId={editingComponent?.metadata?.assetId || null}
+                    transform={editingComponent?.metadata?.assetTransform}
+                    onAssetChange={(assetId, transform) => {
+                      // Store in formData metadata for persistence on save
+                      const currentMetadata = editingComponent?.metadata || {};
+                      if (!editingComponent) return;
+                      
+                      setEditingComponent({
+                        ...editingComponent,
+                        metadata: {
+                          ...currentMetadata,
+                          assetId: assetId || undefined,
+                          assetTransform: transform,
+                        },
+                      });
+                    }}
+                  />
                 </div>
               </div>
 

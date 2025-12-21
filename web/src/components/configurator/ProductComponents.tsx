@@ -2,7 +2,7 @@
  * Product Components Renderer
  * Generic renderer for all product types (doors, windows, etc.)
  * Handles raycasting for selection
- * Supports standard geometries plus curve-based (shapeExtrude, tube, lathe)
+ * Supports standard geometries plus curve-based (shapeExtrude, tube, lathe) and GLTF models
  * UPGRADED: Uses PBR materials and beveled geometry for professional rendering
  */
 
@@ -15,6 +15,7 @@ import { ComponentNode, MaterialDefinition, ComponentVisibility } from '@/types/
 import { createPBRMaterial } from '@/lib/scene/materials';
 import { createRoundedBox, createProfileExtrude } from '@/lib/scene/geometry';
 import { TransformControls } from '@react-three/drei';
+import { GltfModel } from './GltfModel';
 
 interface ProductComponentsProps {
   components: ComponentNode[];
@@ -61,6 +62,9 @@ const ComponentMesh = forwardRef<THREE.Mesh, {
     if (!hasRenderableGeometry || !node.geometry) return null;
 
     const { type, dimensions, customData } = node.geometry;
+
+    // GLTF models handled separately (not returned as geometry)
+    if (type === 'gltf') return null;
 
     try {
       switch (type) {
@@ -245,7 +249,32 @@ const ComponentMesh = forwardRef<THREE.Mesh, {
   }, [hasRenderableGeometry, node.geometry]);
 
   // No render when geometry missing; hook order stays stable via guards above
-  if (!hasRenderableGeometry || !geometry) return null;
+  if (!hasRenderableGeometry) return null;
+
+  // Handle GLTF models separately
+  if (node.geometry?.type === 'gltf') {
+    const assetId = node.geometry.customData?.assetId;
+    if (!assetId) {
+      console.warn('[ComponentMesh] GLTF node missing assetId:', node.id);
+      return null;
+    }
+
+    return (
+      <GltfModel
+        assetId={assetId}
+        position={node.geometry.position}
+        rotation={node.geometry.rotation}
+        transform={node.geometry.customData?.assetTransform}
+        componentId={node.id}
+        componentName={node.name}
+        isSelected={isSelected}
+        onClick={onClick}
+      />
+    );
+  }
+
+  // Standard geometry rendering
+  if (!geometry) return null;
 
   const position = new THREE.Vector3(...node.geometry.position);
   const rotation = node.geometry.rotation

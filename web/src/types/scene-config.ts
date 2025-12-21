@@ -65,12 +65,20 @@ export interface ComponentNode {
   materialId?: string;
   /** Geometry data */
   geometry?: {
-    type: 'box' | 'extrude' | 'cylinder' | 'custom' | 'shapeExtrude' | 'tube' | 'lathe';
+    type: 'box' | 'extrude' | 'cylinder' | 'custom' | 'shapeExtrude' | 'tube' | 'lathe' | 'gltf';
     dimensions?: [number, number, number];
     position: [number, number, number];
     rotation?: [number, number, number];
     /** Custom geometry data for complex shapes */
     customData?: {
+      // For 'gltf': Reference to uploaded asset
+      assetId?: string;
+      assetTransform?: {
+        position: [number, number, number];
+        rotation: [number, number, number];
+        scale: [number, number, number];
+      };
+      
       // For 'shapeExtrude': Shape profile with optional holes
       shape?: {
         points: [number, number][]; // 2D vertices
