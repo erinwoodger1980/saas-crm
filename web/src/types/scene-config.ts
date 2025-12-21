@@ -53,6 +53,8 @@ export interface MaterialDefinition {
   textureUrl?: string;
   /** Optional normal map URL */
   normalMapUrl?: string;
+  /** Optional alpha map URL for stained glass or patterns */
+  alphaMapUrl?: string;
   /** Optional clearcoat amount (0-1) */
   clearcoat?: number;
   /** Optional clearcoat roughness (0-1) */
@@ -73,6 +75,45 @@ export interface MaterialDefinition {
   dimensions?: [number, number, number];
 }
 
+/**
+ * Component role for material and profile assignment
+ */
+export type ComponentRole = 'stile' | 'rail' | 'panel' | 'glass' | 'hardware' | 'seal' | 'other';
+
+/**
+ * Edit constraint for component transformation
+ */
+export interface EditConstraint {
+  /** Axis allowed for movement: 'X' | 'Y' | 'Z' | 'XY' | 'XZ' | 'YZ' */
+  axes?: string;
+  /** Minimum value in mm (per axis) */
+  min?: number;
+  /** Maximum value in mm (per axis) */
+  max?: number;
+  /** Snap increment in mm */
+  snapSize?: number;
+  /** Whether this component can be edited at all */
+  editable?: boolean;
+}
+
+/**
+ * Profile definition with source tracking
+ */
+export interface ComponentProfile {
+  /** Type of profile source */
+  sourceType: 'estimated' | 'svg' | 'dxf' | 'gltf';
+  /** SVG text if sourceType='svg' */
+  svgText?: string;
+  /** DXF text if sourceType='dxf' */
+  dxfText?: string;
+  /** GLTF asset ID if sourceType='gltf' */
+  gltfAssetId?: string;
+  /** Extrusion depth in mm */
+  depthMm: number;
+  /** Scale factor: mm per SVG unit */
+  scale: number;
+}
+
 export interface ComponentNode {
   id: string;
   name: string;
@@ -81,6 +122,32 @@ export interface ComponentNode {
   parentId?: string;
   /** Material assignment */
   materialId?: string;
+  
+  /** Component role for deterministic material/profile assignment */
+  role?: ComponentRole;
+  
+  /** Physical dimensions in mm */
+  dimsMm?: {
+    width: number;
+    height: number;
+    depth: number;
+  };
+  
+  /** Position in 3D space (mm) */
+  position?: [number, number, number];
+  
+  /** Rotation in radians */
+  rotation?: [number, number, number];
+  
+  /** Scale factors (1.0 = 100%) */
+  scale?: [number, number, number];
+  
+  /** Profile definition with source tracking */
+  profile?: ComponentProfile;
+  
+  /** Edit constraints (movement axes, limits, snapping) */
+  constraints?: EditConstraint;
+  
   /** Geometry data */
   geometry?: {
     type: 'box' | 'extrude' | 'cylinder' | 'custom' | 'shapeExtrude' | 'tube' | 'lathe' | 'gltf';

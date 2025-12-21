@@ -66,9 +66,10 @@ export function createPBRMaterial(def: MaterialDefinition): THREE.Material {
 
 /**
  * Glass material - physically accurate transmission
+ * ENHANCED: Improved depth rendering, optional alphaMap for stained glass effect
  */
 function createGlassMaterial(color: THREE.Color, def: MaterialDefinition): THREE.MeshPhysicalMaterial {
-  return new THREE.MeshPhysicalMaterial({
+  const material = new THREE.MeshPhysicalMaterial({
     color,
     metalness: 0,
     roughness: 0.05,
@@ -81,7 +82,21 @@ function createGlassMaterial(color: THREE.Color, def: MaterialDefinition): THREE
     envMapIntensity: 1.5,
     clearcoat: 0.1,
     clearcoatRoughness: 0.05,
+    // Fix z-fighting: allow depth writes for proper ordering
+    depthWrite: true,
+    depthTest: true,
   });
+
+  // Optional: Add alphaMap for stained glass leaded effect
+  if ((def as any).alphaMapUrl) {
+    const alphaMap = getTextureSafe((def as any).alphaMapUrl);
+    if (alphaMap?.image && (alphaMap.image as any).width > 0) {
+      material.alphaMap = alphaMap;
+      material.transparent = true;
+    }
+  }
+
+  return material;
 }
 
 /**

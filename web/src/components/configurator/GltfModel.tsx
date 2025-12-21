@@ -1,6 +1,7 @@
 /**
  * GltfModel Component
- * Renders GLTF/GLB models loaded from asset cache
+ * Renders GLTF/GLB models loaded from asset cache or base64 data
+ * Applies material overrides (e.g., polished chrome for ironmongery)
  */
 
 'use client';
@@ -9,10 +10,14 @@ import { useRef, useEffect, useMemo } from 'react';
 import { useGLTF } from '@react-three/drei';
 import { useAsset } from '@/hooks/useAsset';
 import * as THREE from 'three';
+import { createPBRMaterial } from '@/lib/scene/materials';
+import { MaterialDefinition } from '@/types/scene-config';
 
 interface GltfModelProps {
-  /** Asset ID to load */
-  assetId: string;
+  /** Asset ID to load (from asset cache) */
+  assetId?: string;
+  /** Base64-encoded GLB data (alternative to assetId) */
+  base64Data?: string;
   /** Position override */
   position?: [number, number, number];
   /** Rotation override (in radians) */
@@ -33,6 +38,8 @@ interface GltfModelProps {
   isSelected?: boolean;
   /** Click handler */
   onClick?: (e: any) => void;
+  /** Material override (e.g., polished chrome for ironmongery) */
+  materialOverride?: MaterialDefinition;
 }
 
 /**
@@ -53,6 +60,7 @@ function FallbackBox({ position, isSelected, onClick }: any) {
 
 export function GltfModel({
   assetId,
+  base64Data,
   position = [0, 0, 0],
   rotation = [0, 0, 0],
   scale = [1, 1, 1],
@@ -61,12 +69,32 @@ export function GltfModel({
   componentName,
   isSelected,
   onClick,
+  materialOverride,
 }: GltfModelProps) {
   const groupRef = useRef<THREE.Group>(null);
-  const { objectURL, loading, error } = useAsset(assetId);
+  const { objectURL, loading, error } = useAsset(assetId || '');
 
-  // Use three-gltf-loader via @react-three/drei
-  const gltf = objectURL ? useGLTF(objectURL) : null;
+  // Load from base64 or assetId
+  const urlToLoad = useMemo(() => {
+    if (base64Data) {
+      // Convert base64 to Object URL
+      try {
+        const binaryString = atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const blob = new Blob([bytes], { type: 'model/gltf-binary' });
+        return URL.createObjectURL(blob);
+      } catch {
+        console.error('[GltfModel] Failed to decode base64 data');
+        return null;
+      }
+    }
+    return objectURL;
+  }, [base64Data, objectURL]);
+
+  const gltf = urlToLoad ? useGLTF(urlToLoad) : null;
 
   // Apply transform from asset metadata + node overrides
   const finalPosition = useMemo(() => {
@@ -96,25 +124,36 @@ export function GltfModel({
     ] as [number, number, number];
   }, [scale, transform]);
 
-  // Apply selection highlight
+  // Apply selection highlight and material overrides
   useEffect(() => {
     if (!gltf || !groupRef.current) return;
 
     groupRef.current.traverse((obj: any) => {
       if (obj.isMesh) {
+        // Apply material override (e.g., polished chrome for ironmongery)
+        if (materialOverride) {
+          const overrideMat = createPBRMaterial(materialOverride);
+          obj.material = overrideMat;
+          obj.userData.overrideMaterial = overrideMat;
+        }
+
+        // Apply selection highlight
         if (isSelected) {
-          obj.material = obj.material.clone();
-          obj.material.emissive = new THREE.Color('#4a90e2');
-          obj.material.emissiveIntensity = 0.3;
+          const mat = obj.material.clone();
+          mat.emissive = new THREE.Color('#4a90e2');
+          mat.emissiveIntensity = 0.3;
+          obj.material = mat;
         } else {
-          // Reset to original (stored in userData if needed)
-          if (obj.userData.originalMaterial) {
+          // Reset to original or override
+          if (obj.userData.overrideMaterial) {
+            obj.material = obj.userData.overrideMaterial;
+          } else if (obj.userData.originalMaterial) {
             obj.material = obj.userData.originalMaterial;
           }
         }
       }
     });
-  }, [gltf, isSelected]);
+  }, [gltf, isSelected, materialOverride]);
 
   // Store original materials for reset
   useEffect(() => {
