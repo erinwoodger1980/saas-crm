@@ -5,7 +5,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Upload, X, Loader2, Cube, AlertCircle } from 'lucide-react';
+import { Upload, X, Loader2, Box, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 import type { AssetRecord, AssetTransform, DEFAULT_ASSET_TRANSFORM } from '@/types/asset';
@@ -178,7 +178,7 @@ export function AssetUpload({
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50">
-                  <Cube className="h-5 w-5 text-blue-600" />
+                  <Box className="h-5 w-5 text-blue-600" />
                 </div>
                 <div>
                   <p className="text-sm font-medium text-slate-900">{asset.name}</p>
