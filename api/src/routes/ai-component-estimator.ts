@@ -9,6 +9,7 @@ import openai from '../ai';
 import multer from 'multer';
 import { z } from 'zod';
 import { generateEstimatedProfile } from '../lib/svg-profile-generator';
+import { prisma } from '../prisma';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -32,6 +33,7 @@ interface ComponentEstimate {
   id: string;
   type: 'stile' | 'rail' | 'mullion' | 'transom' | 'panel' | 'glass' | 'glazingBar';
   label: string;
+  componentLookupId?: string; // Reference to reusable component in database
   geometry: {
     width: number;
     height: number;
@@ -48,6 +50,7 @@ interface ComponentEstimate {
     widthMm: number;
     depthMm: number;
     svg?: string; // Generated SVG profile geometry
+    profileId?: string; // Reference to ComponentProfile in database
   };
   confidence: number;
 }
@@ -137,8 +140,13 @@ router.post('/estimate-components', upload.single('image'), async (req, res) => 
     const aiResponse = JSON.parse(responseText);
     console.log('[AI Component Estimator] AI Response:', aiResponse);
 
-    // Transform AI response to our format
-    const result: EstimationResult = transformAIResponse(aiResponse, dimensions);
+    // Transform AI response and match/create reusable components
+    const result: EstimationResult = await transformAndMatchComponents(
+      aiResponse,
+      dimensions,
+      productType,
+      auth.tenantId
+    );
 
     res.json(result);
   } catch (error: any) {
@@ -225,7 +233,163 @@ function buildUserPrompt(description?: string, hasImage?: boolean): string {
 }
 
 /**
- * Transform AI response to our format
+ * Transform AI response and match with existing components or create new ones
+ */
+async function transformAndMatchComponents(
+  aiResponse: any,
+  dimensions: { widthMm: number; heightMm: number; depthMm?: number },
+  productType: { category: string; type?: string; option?: string },
+  tenantId: string
+): Promise<EstimationResult> {
+  const components: ComponentEstimate[] = [];
+
+  for (const c of aiResponse.components || []) {
+    const profileWidth = c.profile?.widthMm || c.geometry?.width || 50;
+    const profileDepth = c.profile?.depthMm || c.geometry?.depth || dimensions.depthMm || 45;
+    
+    // Try to find or create a matching component in the database
+    const matchResult = await findOrCreateComponent(
+      tenantId,
+      c.type || 'panel',
+      c.label || c.type,
+      profileWidth,
+      profileDepth,
+      productType.category
+    );
+
+    // Generate SVG profile if not already exists
+    let profileSvg = matchResult.profile?.geometry?.svg;
+    if (!profileSvg) {
+      const profileDef = generateEstimatedProfile(c.type || 'panel', profileWidth, profileDepth);
+      profileSvg = profileDef.svg;
+    }
+    
+    components.push({
+      id: c.id || `component-${Math.random().toString(36).substr(2, 9)}`,
+      type: c.type || 'panel',
+      label: c.label || c.type,
+      componentLookupId: matchResult.componentId,
+      geometry: {
+        width: c.geometry?.width || 50,
+        height: c.geometry?.height || 50,
+        depth: c.geometry?.depth || dimensions.depthMm || 45,
+      },
+      position: {
+        x: c.position?.x || 0,
+        y: c.position?.y || 0,
+        z: c.position?.z || 0,
+      },
+      material: c.material || 'timber',
+      profile: {
+        suggested: c.profile?.suggested || matchResult.component?.name || `${c.type} profile`,
+        widthMm: profileWidth,
+        depthMm: profileDepth,
+        svg: profileSvg,
+        profileId: matchResult.profileId,
+      },
+      confidence: c.confidence || 0.7,
+    });
+  }
+
+  return {
+    components,
+    reasoning: aiResponse.reasoning || 'AI estimation completed',
+    confidence: aiResponse.confidence || 0.75,
+    suggestions: aiResponse.suggestions || [],
+  };
+}
+
+/**
+ * Find existing component or create new one in database
+ * Returns component ID and profile ID for reuse
+ */
+async function findOrCreateComponent(
+  tenantId: string,
+  componentType: string,
+  label: string,
+  widthMm: number,
+  depthMm: number,
+  productCategory: string
+): Promise<{
+  componentId: string;
+  profileId?: string;
+  component?: any;
+  profile?: any;
+}> {
+  // Normalize component type for matching
+  const normalizedType = componentType.toUpperCase().replace(/[-_]/g, '_');
+  const code = `${normalizedType}_${widthMm}x${depthMm}`;
+
+  // Try to find existing component with same type and dimensions
+  let component = await prisma.componentLookup.findFirst({
+    where: {
+      tenantId,
+      componentType: normalizedType,
+      code,
+    },
+    include: {
+      profile: true,
+    },
+  });
+
+  if (component) {
+    console.log(`[AI Estimator] Reusing existing component: ${component.code}`);
+    return {
+      componentId: component.id,
+      profileId: component.profile?.id,
+      component,
+      profile: component.profile,
+    };
+  }
+
+  // Create new component
+  console.log(`[AI Estimator] Creating new component: ${code}`);
+  
+  // Generate profile SVG
+  const profileDef = generateEstimatedProfile(componentType, widthMm, depthMm);
+  
+  component = await prisma.componentLookup.create({
+    data: {
+      tenantId,
+      componentType: normalizedType,
+      code,
+      name: label || `${componentType} ${widthMm}×${depthMm}mm`,
+      description: `Auto-generated ${componentType} component`,
+      productTypes: [productCategory.toUpperCase()],
+      unitOfMeasure: 'EA',
+      basePrice: 0,
+      metadata: {
+        widthMm,
+        depthMm,
+        autoGenerated: true,
+        generatedAt: new Date().toISOString(),
+      },
+      profile: {
+        create: {
+          profileType: 'CUSTOM',
+          dimensions: { widthMm, depthMm },
+          geometry: {
+            svg: profileDef.svg,
+            type: componentType,
+          },
+        },
+      },
+    },
+    include: {
+      profile: true,
+    },
+  });
+
+  return {
+    componentId: component.id,
+    profileId: component.profile?.id,
+    component,
+    profile: component.profile,
+  };
+}
+
+/**
+ * Transform AI response to our format (legacy, now uses transformAndMatchComponents)
  */
 function transformAIResponse(
   aiResponse: any,

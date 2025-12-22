@@ -16,6 +16,7 @@ import { ClientDatabaseFieldsDisplay } from "@/components/questionnaire/ClientDa
 import ProductTypesSection from "@/components/settings/ProductTypesSection";
 import ProductConfigurationSection from "@/components/settings/ProductConfigurationSection";
 import { DiagramSvgGenerator } from "@/components/settings/DiagramSvgGenerator";
+import { ComponentLibrarySection } from "@/components/settings/ComponentLibrarySection";
 import {
   DEFAULT_TASK_PLAYBOOK,
   MANUAL_TASK_KEYS,
@@ -2668,6 +2669,9 @@ export default function SettingsPage() {
         <>
           <Section title="Product Types" description="Manage your product catalog with images and ML training">
             <ProductTypesSection />
+          </Section>
+          <Section title="Component Library" description="Reusable components shared across products">
+            <ComponentLibrarySection />
           </Section>
           <Section title="Product Configuration" description="Link product types to questions from legacy fields and component attributes">
             <ProductConfigurationSection />
