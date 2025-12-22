@@ -47,6 +47,14 @@ export function PostFX({ enabled, heroMode = false }: PostFXProps) {
     return null;
   }
 
+  // TEMPORARY FIX: Disable PostFX due to EffectComposer crashes
+  // Error: "Cannot read properties of undefined (reading 'length')" in EffectComposer.js:82
+  // TODO: Debug postprocessing library compatibility with current Three.js version
+  if (process.env.NODE_ENV !== 'production') {
+    console.warn('[PostFX] Disabled temporarily due to EffectComposer instability');
+  }
+  return null;
+
   // GUARD 1: Disabled by prop
   if (!enabled) {
     return null;
@@ -73,28 +81,34 @@ export function PostFX({ enabled, heroMode = false }: PostFXProps) {
   const ssaoRadius = heroMode ? 0.1 : 0.08;
   const ssaoIntensity = heroMode ? 0.8 : 0.6;
 
-  return (
-    <EffectComposer 
-      ref={composerRef}
-      multisampling={2} 
-      enableNormalPass={true}
-    >
-      <SSAO
-        samples={8}
-        radius={ssaoRadius}
-        intensity={ssaoIntensity}
-        bias={0.025}
-        color="black"
-        worldDistanceThreshold={0.4}
-        worldDistanceFalloff={0.2}
-        worldProximityThreshold={0.4}
-        worldProximityFalloff={0.1}
-      />
-      <BrightnessContrast
-        brightness={0.01}
-        contrast={0.04}
-        blendFunction={BlendFunction.NORMAL}
-      />
-    </EffectComposer>
-  );
+  // GUARD 4: Wrap in try-catch to prevent crashes from postprocessing library
+  try {
+    return (
+      <EffectComposer 
+        ref={composerRef}
+        multisampling={2} 
+        enableNormalPass={true}
+      >
+        <SSAO
+          samples={8}
+          radius={ssaoRadius}
+          intensity={ssaoIntensity}
+          bias={0.025}
+          color="black"
+          worldDistanceThreshold={0.4}
+          worldDistanceFalloff={0.2}
+          worldProximityThreshold={0.4}
+          worldProximityFalloff={0.1}
+        />
+        <BrightnessContrast
+          brightness={0.01}
+          contrast={0.04}
+          blendFunction={BlendFunction.NORMAL}
+        />
+      </EffectComposer>
+    );
+  } catch (error) {
+    console.error('[PostFX] EffectComposer failed to render:', error);
+    return null;
+  }
 }
