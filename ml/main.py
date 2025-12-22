@@ -197,6 +197,103 @@ def health():
         }
     }
 
+@app.post("/parse")
+async def parse_pdf_legacy(req: Request):
+    """
+    Legacy /parse endpoint for backwards compatibility.
+    Accepts multipart file upload or JSON body with URL.
+    Returns parsed PDF data with line items.
+    """
+    from fastapi import UploadFile, File, Form
+    import io
+    
+    content_type = req.headers.get("content-type", "")
+    
+    # Handle file upload
+    if "multipart/form-data" in content_type:
+        form_data = await req.form()
+        file = form_data.get("file")
+        if not file:
+            raise HTTPException(status_code=422, detail="missing file in form data")
+        
+        pdf_bytes = await file.read()
+        text = extract_text_from_pdf_bytes(pdf_bytes) or ""
+        
+        # Parse the PDF text
+        quote_type = determine_quote_type(text)
+        if quote_type == "supplier" or quote_type == "unknown":
+            parsed = parse_quote_lines_from_text(text)
+        else:
+            parsed = parse_client_quote_from_text(text)
+        
+        return {
+            "ok": True,
+            "text_chars": len(text),
+            "quote_type": quote_type,
+            "parsed": parsed,
+        }
+    
+    # Handle JSON body with URL
+    try:
+        body = await req.json()
+        url = body.get("url")
+        if not url:
+            raise HTTPException(status_code=422, detail="missing url or file")
+        
+        pdf_bytes = _http_get_bytes(url)
+        text = extract_text_from_pdf_bytes(pdf_bytes) or ""
+        
+        quote_type = determine_quote_type(text)
+        if quote_type == "supplier" or quote_type == "unknown":
+            parsed = parse_quote_lines_from_text(text)
+        else:
+            parsed = parse_client_quote_from_text(text)
+        
+        return {
+            "ok": True,
+            "text_chars": len(text),
+            "quote_type": quote_type,
+            "parsed": parsed,
+        }
+    except:
+        raise HTTPException(status_code=422, detail="Request must be multipart/form-data with file or JSON with url")
+
+@app.post("/parse-quote-upload")
+async def parse_quote_upload(req: Request):
+    """
+    Upload endpoint that accepts PDF file uploads.
+    Matches the API's callMlWithUpload() expectations.
+    Returns parsed supplier quote data.
+    """
+    from fastapi import UploadFile
+    
+    form_data = await req.form()
+    file = form_data.get("file")
+    
+    if not file:
+        raise HTTPException(status_code=422, detail="missing file in form data")
+    
+    pdf_bytes = await file.read()
+    filename = file.filename if hasattr(file, 'filename') else "uploaded.pdf"
+    
+    text = extract_text_from_pdf_bytes(pdf_bytes) or ""
+    if not text.strip():
+        return {
+            "ok": False,
+            "message": "No text extracted from PDF",
+            "filename": filename,
+        }
+    
+    # Parse as supplier quote
+    parsed = parse_quote_lines_from_text(text)
+    
+    return {
+        "ok": True,
+        "filename": filename,
+        "text_chars": len(text),
+        "parsed": parsed,
+    }
+
 @app.post("/debug-pdf-text-extraction")
 def debug_pdf_text_extraction():
     """Debug PDF text extraction from the actual email attachment"""
