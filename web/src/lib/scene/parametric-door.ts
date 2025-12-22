@@ -139,7 +139,7 @@ export function buildDoorComponentTree(params: ProductParams): BuildResult {
   const components: ComponentNode[] = [];
   const materials: MaterialDefinition[] = createDoorMaterials(config);
 
-  const railPositions = computeRailPositions(height, config, construction.layoutOverrides);
+  const railPositions = computeRailPositions(height, config, construction?.layoutOverrides);
   const profileLookup = buildProfileLookup(params.profiles);
   
   // Root product node
@@ -157,7 +157,7 @@ export function buildDoorComponentTree(params: ProductParams): BuildResult {
   };
   
   // Build frame
-  const frame = buildDoorFrame(width, height, config, railPositions, profileLookup, construction.profileIds);
+  const frame = buildDoorFrame(width, height, config, railPositions, profileLookup, construction?.profileIds);
   product.children!.push(frame);
   
   // Check if door has curved head (arch support)
@@ -175,17 +175,17 @@ export function buildDoorComponentTree(params: ProductParams): BuildResult {
       
       // For E03 arched, add bottom panels
       if (productType.option === 'E03') {
-        const bottomPanels = buildPanelLayout(width, height * 0.4, config, 2, 1, railPositions, profileLookup, construction.profileIds);
+        const bottomPanels = buildPanelLayout(width, height * 0.4, config, 2, 1, railPositions, profileLookup, construction?.profileIds);
         product.children!.push(...bottomPanels);
       }
     } else {
       // Curve not found, fall back to regular infill
-      const infill = buildDoorInfill(width, height, config, productType.option, railPositions, profileLookup, construction.profileIds);
+      const infill = buildDoorInfill(width, height, config, productType.option, railPositions, profileLookup, construction?.profileIds);
       product.children!.push(infill);
     }
   } else {
     // No arch - build standard infill based on option
-    const infill = buildDoorInfill(width, height, config, productType.option, railPositions, profileLookup, construction.profileIds);
+    const infill = buildDoorInfill(width, height, config, productType.option, railPositions, profileLookup, construction?.profileIds);
     product.children!.push(infill);
   }
   
@@ -648,7 +648,7 @@ function buildEditableAttributes(
   const railPositions = computeRailPositions(
     params.dimensions.height,
     { ...DOOR_DEFAULTS, thickness: params.dimensions.depth, ...params.construction },
-    params.construction.layoutOverrides
+    params.construction?.layoutOverrides
   );
   
   // Frame attributes
