@@ -58,6 +58,8 @@ interface ProductConfigurator3DProps {
     type?: string;
     option?: string;
   };
+  /** Initial scene configuration to load (bypasses database load) */
+  initialConfig?: SceneConfig;
   /** Callback when configuration changes */
   onChange?: (config: SceneConfig) => void;
   /** Canvas dimensions */
@@ -222,6 +224,7 @@ export function ProductConfigurator3D({
   entityId,
   lineItem,
   productType,
+  initialConfig,
   onChange,
   width = '100%',
   height = '80vh',
@@ -308,15 +311,20 @@ export function ProductConfigurator3D({
     async function load() {
       if (!mountedRef.current) return;
       setIsLoading(true);
-      setLoadError(null);
       
       let loaded: SceneConfig | null = null;
       
-      if (!isPreviewMode) {
-        // Try to load existing scene state from database
+      // 1. Try to use provided initialConfig first
+      if (initialConfig) {
+        loaded = initialConfig;
+        console.log('[ProductConfigurator3D] Using provided initialConfig');
+      }
+      // 2. Try to load existing scene state from database
+      else if (!isPreviewMode) {
         loaded = await loadSceneState(tenantId, entityType, safeEntityId);
       }
       
+      if (!loaded) {
       if (!loaded) {
         // Initialize from line item
         try {

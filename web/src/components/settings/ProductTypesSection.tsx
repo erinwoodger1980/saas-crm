@@ -70,6 +70,7 @@ type ProductOption = {
   imagePath?: string;
   imageDataUrl?: string;
   svg?: string;
+  sceneConfig?: any; // Saved 3D configuration with components
 };
 
 type ProductType = {
@@ -204,6 +205,7 @@ export default function ProductTypesSection() {
     label: string;
     type: string;
   } | null>(null);
+  const [configuratorKey, setConfiguratorKey] = useState(0); // Force remount on changes
 
   useEffect(() => {
     loadProducts();
@@ -518,10 +520,22 @@ export default function ProductTypesSection() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <p className="text-sm text-slate-600">
-          Manage your product catalog. Images are used in the type selector modal and feed into ML training for automated quote detection.
-        </p>
+      <div className="flex justify-between items-start gap-4">
+        <div className="flex-1">
+          <p className="text-sm text-slate-600">
+            Manage your product catalog. Images are used in the type selector modal and feed into ML training for automated quote detection.
+          </p>
+          <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm text-blue-800 font-medium mb-1">
+              💡 3D Component Building
+            </p>
+            <p className="text-xs text-blue-700">
+              Click <strong>"Build 3D Components"</strong> on any product option to open the component builder. 
+              Add rails, stiles, panels, glass, and other components, then arrange them in 3D space. 
+              Your configuration will be saved as the default template for this product type.
+            </p>
+          </div>
+        </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={addCategory}>
             <Plus className="h-4 w-4 mr-2" />
@@ -676,14 +690,20 @@ export default function ProductTypesSection() {
 
                               {/* Label */}
                               <div className="flex-1">
-                                <Input
-                                  value={option.label}
-                                  onChange={(e) =>
-                                    updateOptionLabel(category.id, typeIdx, option.id, e.target.value)
-                                  }
-                                  className="mb-2"
-                                  placeholder="Option name"
-                                />
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Input
+                                    value={option.label}
+                                    onChange={(e) =>
+                                      updateOptionLabel(category.id, typeIdx, option.id, e.target.value)
+                                    }
+                                    placeholder="Option name"
+                                  />
+                                  {option.sceneConfig && (
+                                    <div className="flex-shrink-0 px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-700 border border-green-200">
+                                      ✓ 3D Config
+                                    </div>
+                                  )}
+                                </div>
                                 <div className="flex gap-2">
                                   <label className="cursor-pointer">
                                     <input
@@ -732,10 +752,11 @@ export default function ProductTypesSection() {
                                         label: option.label,
                                         type: type.type,
                                       });
+                                      setConfiguratorKey(prev => prev + 1); // Force fresh mount
                                     }}
                                   >
                                     <Box className="h-3 w-3 mr-1" />
-                                    3D Preview
+                                    {option.sceneConfig ? 'Edit 3D Components' : 'Build 3D Components'}
                                   </Button>
                                 </div>
                               </div>
@@ -876,7 +897,12 @@ export default function ProductTypesSection() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-y-auto">
           <div className="w-full max-w-6xl rounded-lg bg-white p-6 shadow-xl my-8">
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">3D Product Preview - {configuratorDialog.label}</h2>
+              <div>
+                <h2 className="text-lg font-semibold">3D Component Builder - {configuratorDialog.label}</h2>
+                <p className="text-sm text-muted-foreground">
+                  Build and arrange components for this product template. Changes are saved automatically.
+                </p>
+              </div>
               <button
                 onClick={() => setConfiguratorDialog(null)}
                 className="text-muted-foreground hover:text-foreground"
@@ -886,9 +912,17 @@ export default function ProductTypesSection() {
             </div>
             <div className="rounded-lg border bg-muted/30">
               <ProductConfigurator3D
+                key={configuratorKey}
                 tenantId="settings"
-                entityType="productType"
-                entityId={configuratorDialog.optionId}
+                entityType="productTemplate"
+                entityId={`${configuratorDialog.categoryId}-${configuratorDialog.type}-${configuratorDialog.optionId}`}
+                initialConfig={
+                  products
+                    .find(c => c.id === configuratorDialog.categoryId)
+                    ?.types[configuratorDialog.typeIdx]
+                    ?.options.find(o => o.id === configuratorDialog.optionId)
+                    ?.sceneConfig
+                }
                 lineItem={{
                   id: configuratorDialog.optionId,
                   description: configuratorDialog.label,
@@ -909,8 +943,36 @@ export default function ProductTypesSection() {
                   type: configuratorDialog.type,
                   option: configuratorDialog.optionId,
                 }}
+                onChange={(sceneConfig) => {
+                  // Update the option's sceneConfig as user makes changes
+                  setProducts((prev) =>
+                    prev.map((cat) =>
+                      cat.id === configuratorDialog.categoryId
+                        ? {
+                            ...cat,
+                            types: cat.types.map((t, idx) =>
+                              idx === configuratorDialog.typeIdx
+                                ? {
+                                    ...t,
+                                    options: t.options.map((opt) =>
+                                      opt.id === configuratorDialog.optionId
+                                        ? { ...opt, sceneConfig }
+                                        : opt
+                                    ),
+                                  }
+                                : t
+                            ),
+                          }
+                        : cat
+                    )
+                  );
+                  
+                  // Auto-save to backend
+                  saveProducts();
+                }}
                 onClose={() => setConfiguratorDialog(null)}
                 height="70vh"
+                heroMode={false}
               />
             </div>
           </div>
