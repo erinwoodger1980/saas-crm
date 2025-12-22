@@ -814,8 +814,10 @@ export function ProductConfigurator3D({
           }}
         >
           <Suspense fallback={null}>
-            {/* Camera controller with controls ref export */}
-            <CameraController
+            {/* TESTING: Disable all components to isolate context loss */}
+            
+            {/* Camera controller with controls ref export - DISABLED FOR TESTING */}
+            {/* <CameraController
               cameraState={config.camera}
               productWidth={productWidth}
               productHeight={productHeight}
@@ -824,20 +826,20 @@ export function ProductConfigurator3D({
               onControlsReady={(controls) => {
                 controlsRef.current = controls;
               }}
-            />
+            /> */}
             
-            {/* Auto-frame component for smooth auto-zoom on load and config changes */}
-            <AutoFrame
+            {/* Auto-frame component for smooth auto-zoom on load and config changes - DISABLED FOR TESTING */}
+            {/* <AutoFrame
               components={config.components}
               controls={controlsRef.current}
               heroMode={heroMode}
-            />
+            /> */}
 
             {/* Stage - DISABLED: testing if it contributes to context loss */}
             {/* <Stage productWidth={productWidth} productHeight={productHeight} /> */}
             
-            {/* Lighting */}
-            <Lighting config={config.lighting} />
+            {/* Lighting - DISABLED FOR TESTING */}
+            {/* <Lighting config={config.lighting} /> */}
             
             {/* Contact shadows - DISABLED: may contribute to WebGL context loss */}
             {/* <ContactShadows
@@ -848,8 +850,8 @@ export function ProductConfigurator3D({
               scale={Math.max(productWidth, productHeight) / 800}
             /> */}
             
-            {/* Product components */}
-            <ProductComponents
+            {/* Product components - DISABLED FOR TESTING */}
+            {/* <ProductComponents
               components={config.components}
               materials={config.materials}
               visibility={config.visibility}
@@ -859,7 +861,13 @@ export function ProductConfigurator3D({
               onTransformEnd={(componentId, newY) => {
                 handleAttributeEdit(componentId, { positionY: newY });
               }}
-            />
+            /> */}
+            
+            {/* Just render a simple mesh to test if Canvas works */}
+            <mesh>
+              <boxGeometry args={[1, 1, 1]} />
+              <meshBasicMaterial color="orange" />
+            </mesh>
             
             {/* Environment - DISABLED: causes WebGL texture errors "texSubImage2D: bad image data" */}
             {/* <Environment preset="studio" /> */}
