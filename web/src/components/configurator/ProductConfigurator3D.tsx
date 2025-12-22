@@ -816,8 +816,8 @@ export function ProductConfigurator3D({
               heroMode={heroMode}
             />
 
-            {/* Stage with cyclorama backdrop and floor */}
-            <Stage productWidth={productWidth} productHeight={productHeight} />
+            {/* Stage - DISABLED: testing if it contributes to context loss */}
+            {/* <Stage productWidth={productWidth} productHeight={productHeight} /> */}
             
             {/* Lighting */}
             <Lighting config={config.lighting} />
