@@ -311,6 +311,7 @@ export function ProductConfigurator3D({
     async function load() {
       if (!mountedRef.current) return;
       setIsLoading(true);
+      setLoadError(null);
       
       let loaded: SceneConfig | null = null;
       
@@ -324,7 +325,6 @@ export function ProductConfigurator3D({
         loaded = await loadSceneState(tenantId, entityType, safeEntityId);
       }
       
-      if (!loaded) {
       if (!loaded) {
         // Initialize from line item
         try {
