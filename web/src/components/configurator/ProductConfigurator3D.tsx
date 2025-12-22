@@ -813,7 +813,8 @@ export function ProductConfigurator3D({
             console.log('[ProductConfigurator3D] WebGL renderer initialized successfully');
           }}
         >
-          <Suspense fallback={null}>
+          {/* REMOVED SUSPENSE - testing if it causes context loss */}
+          {/* <Suspense fallback={null}> */}
             {/* TESTING: Disable all components to isolate context loss */}
             
             {/* Camera controller with controls ref export - DISABLED FOR TESTING */}
@@ -874,7 +875,7 @@ export function ProductConfigurator3D({
 
             {/* Post-processing for subtle polish - DISABLED in hero mode to prevent crashes */}
             <PostFX enabled={highQuality && !heroMode} heroMode={heroMode} />
-          </Suspense>
+          {/* </Suspense> */}
         </Canvas>
         
         {/* UI Overlay - Only small floating button in hero mode */}
