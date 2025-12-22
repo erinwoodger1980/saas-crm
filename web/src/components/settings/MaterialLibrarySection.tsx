@@ -93,9 +93,16 @@ export function MaterialLibrarySection() {
       });
       if (!response.ok) throw new Error('Failed to load materials');
       const data = await response.json();
-      setMaterials(data);
+      // Ensure data is an array
+      if (Array.isArray(data)) {
+        setMaterials(data);
+      } else {
+        console.error('Materials API returned non-array:', data);
+        setMaterials([]);
+      }
     } catch (error) {
       console.error('Failed to load material library:', error);
+      setMaterials([]);
     } finally {
       setLoading(false);
     }
@@ -108,10 +115,17 @@ export function MaterialLibrarySection() {
       });
       if (response.ok) {
         const data = await response.json();
-        setSuppliers(data);
+        // Ensure data is an array
+        if (Array.isArray(data)) {
+          setSuppliers(data);
+        } else {
+          console.error('Suppliers API returned non-array:', data);
+          setSuppliers([]);
+        }
       }
     } catch (error) {
       console.error('Failed to load suppliers:', error);
+      setSuppliers([]);
     }
   };
 
