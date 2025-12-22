@@ -904,6 +904,11 @@ export default function ProductTypesSection() {
                     depthMm: configuratorDialog.categoryId === 'doors' ? 45 : 100,
                   },
                 }}
+                productType={{
+                  category: configuratorDialog.categoryId,
+                  type: configuratorDialog.type,
+                  option: configuratorDialog.optionId,
+                }}
                 onClose={() => setConfiguratorDialog(null)}
                 height="70vh"
               />

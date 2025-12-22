@@ -12,10 +12,10 @@
  */
 
 import { Router } from 'express';
-import { uploadArchitectPack } from './upload';
-import { analyzeArchitectPack } from './analyze';
-import { getArchitectPackOpenings, updateArchitectPackOpenings } from './openings';
-import { buildProductsFromOpenings } from './build';
+import { uploadArchitectPack } from './upload.js';
+import { analyzeArchitectPack } from './analyze.js';
+import { getArchitectPackOpenings, updateArchitectPackOpenings } from './openings.js';
+import { buildProductsFromOpenings } from './build.js';
 import { requireAuth } from '../../middleware/auth';
 
 const router = Router();

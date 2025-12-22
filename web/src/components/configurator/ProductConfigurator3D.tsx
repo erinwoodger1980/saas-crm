@@ -48,9 +48,15 @@ interface ProductConfigurator3DProps {
   /** Entity type being configured (usually 'quoteLineItem') */
   entityType: string;
   /** Entity ID being configured */
-  entityId: string;
+  entityId?: string;
   /** Quote line item data */
-  lineItem: any;
+  lineItem?: any;
+  /** Direct product type when no line item exists (settings preview) */
+  productType?: {
+    category: string;
+    type?: string;
+    option?: string;
+  };
   /** Callback when configuration changes */
   onChange?: (config: SceneConfig) => void;
   /** Canvas dimensions */
@@ -214,6 +220,7 @@ export function ProductConfigurator3D({
   entityType,
   entityId,
   lineItem,
+  productType,
   onChange,
   width = '100%',
   height = '80vh',
@@ -222,6 +229,7 @@ export function ProductConfigurator3D({
 }: ProductConfigurator3DProps) {
   // ===== ALL STATE & REFS (MUST BE AT TOP) =====
   const [config, setConfig] = useState<SceneConfig | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [canRender, setCanRender] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -238,6 +246,12 @@ export function ProductConfigurator3D({
   const mountedRef = useRef(true);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
 
+  const safeEntityId = useMemo(() => String(entityId ?? 'preview-settings'), [entityId]);
+  const isPreviewMode = useMemo(
+    () => tenantId === 'settings' || tenantId === 'preview' || safeEntityId.startsWith('preview-'),
+    [tenantId, safeEntityId]
+  );
+
   // ===== COMPUTED VALUES (SAFE TO COMPUTE BEFORE RETURNS) =====
   const productWidth = (config?.customData as any)?.dimensions?.width || 1000;
   const productHeight = (config?.customData as any)?.dimensions?.height || 2000;
@@ -251,7 +265,8 @@ export function ProductConfigurator3D({
     loadInitiated.current = false;
     initialFrameApplied.current = false;
     setCanRender(false);
-  }, [tenantId, entityType, entityId]);
+    setLoadError(null);
+  }, [tenantId, entityType, safeEntityId, productType]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -292,35 +307,51 @@ export function ProductConfigurator3D({
     async function load() {
       if (!mountedRef.current) return;
       setIsLoading(true);
+      setLoadError(null);
       
       let loaded: SceneConfig | null = null;
       
-      // For preview mode (settings, etc.), skip API load
-      const isPreviewMode = tenantId === 'settings' || tenantId === 'preview' || entityId.startsWith('preview-');
-      
       if (!isPreviewMode) {
         // Try to load existing scene state from database
-        loaded = await loadSceneState(tenantId, entityType, entityId);
+        loaded = await loadSceneState(tenantId, entityType, safeEntityId);
       }
       
       if (!loaded) {
         // Initialize from line item
         try {
-          console.log('[ProductConfigurator3D] Initializing from lineItem:', { lineItem, tenantId, entityType, entityId });
+          console.log('[ProductConfigurator3D] Initializing from lineItem:', { lineItem, tenantId, entityType, entityId: safeEntityId });
           
-          // In preview mode, ensure lineItem has minimum required structure
-          let effectiveLineItem = lineItem;
-          if (isPreviewMode && lineItem?.configuredProduct?.productType) {
-            const pt = lineItem.configuredProduct.productType;
-            console.log('[ProductConfigurator3D] Using preview mode with productType:', pt);
+          const previewProductType = productType || lineItem?.configuredProduct?.productType;
+          let effectiveLineItem = lineItem ?? {};
+          if (isPreviewMode) {
+            if (!previewProductType) {
+              console.warn('[ProductConfigurator3D] Preview mode requires a product type');
+              if (mountedRef.current) {
+                const message = 'Select a product type to preview in 3D.';
+                setLoadError(message);
+                toast.error(message);
+                setIsLoading(false);
+              }
+              return;
+            }
+            const widthMm = Number((lineItem as any)?.lineStandard?.widthMm) || 914;
+            const heightMm = Number((lineItem as any)?.lineStandard?.heightMm) || 2032;
+            const depthMm = Number((lineItem as any)?.meta?.depthMm) || (previewProductType.category === 'doors' ? 45 : 100);
+
+            console.log('[ProductConfigurator3D] Using preview mode with productType:', previewProductType);
             effectiveLineItem = {
-              ...lineItem,
+              ...(lineItem || {}),
+              configuredProduct: {
+                ...(lineItem as any)?.configuredProduct,
+                productType: previewProductType,
+              },
               lineStandard: {
-                widthMm: 914,
-                heightMm: 2032,
+                widthMm,
+                heightMm,
               },
               meta: {
-                depthMm: pt.category === 'doors' ? 45 : 100,
+                ...(lineItem as any)?.meta,
+                depthMm,
               },
             };
           }
@@ -335,7 +366,11 @@ export function ProductConfigurator3D({
           if (!detectedType) {
             console.error('[ProductConfigurator3D] Cannot detect product type from lineItem:', effectiveLineItem);
             if (!mountedRef.current) return;
-            toast.error('Please configure the product type before opening 3D preview');
+            const message = isPreviewMode
+              ? 'Select a product type to preview in 3D.'
+              : 'Please configure the product type before opening 3D preview';
+            setLoadError(message);
+            toast.error(message);
             setIsLoading(false);
             return;
           }
@@ -344,18 +379,20 @@ export function ProductConfigurator3D({
           console.log('[ProductConfigurator3D] Generated params:', params);
           
           if (params) {
-            loaded = initializeSceneFromParams(params, tenantId, entityType, entityId);
+            loaded = initializeSceneFromParams(params, tenantId, entityType, safeEntityId);
             console.log('[ProductConfigurator3D] Scene initialized:', loaded ? 'success' : 'null');
             
             if (loaded && !isPreviewMode) {
               // Save initial state (skip for preview mode)
-              await saveSceneState(tenantId, entityType, entityId, loaded);
+              await saveSceneState(tenantId, entityType, safeEntityId, loaded);
             }
           } else {
             console.error('[ProductConfigurator3D] Failed to generate params from lineItem:', effectiveLineItem);
+            setLoadError('Failed to create a preview. Please check product dimensions and type.');
           }
         } catch (error) {
           console.error('[ProductConfigurator3D] Error initializing scene:', error, { lineItem });
+          setLoadError('Failed to initialize 3D preview. Please try again.');
         }
       }
       
@@ -380,7 +417,11 @@ export function ProductConfigurator3D({
         }, 100);
       } else {
         console.error('[ProductConfigurator3D] Failed to initialize configurator', { lineItem, tenantId, entityType, entityId });
-        toast.error('Failed to load 3D configurator. Please ensure the product has valid dimensions and type.');
+        const message =
+          loadError ||
+          'Failed to load 3D configurator. Please ensure the product has valid dimensions and type.';
+        setLoadError(message);
+        toast.error(message);
       }
       
       if (mountedRef.current) {
@@ -389,7 +430,7 @@ export function ProductConfigurator3D({
     }
     
     load();
-  }, [tenantId, entityType, entityId, lineItem]);
+  }, [tenantId, entityType, safeEntityId, lineItem, productType, isPreviewMode]);
 
   // Auto-frame once after load using bounding box from dimensions
   useEffect(() => {
@@ -432,7 +473,6 @@ export function ProductConfigurator3D({
   const persistConfig = useCallback(
     async (newConfig: SceneConfig) => {
       // Skip persistence in preview mode
-      const isPreviewMode = tenantId === 'settings' || tenantId === 'preview';
       if (isPreviewMode) {
         return;
       }
@@ -444,7 +484,7 @@ export function ProductConfigurator3D({
       
       if (!mountedRef.current) return;
       setIsSaving(true);
-      const result = await saveSceneState(tenantId, entityType, entityId, newConfig);
+      const result = await saveSceneState(tenantId, entityType, safeEntityId, newConfig);
       
       // Also persist key fields back to the quote line (width/height/thickness and selections)
       try {
@@ -485,7 +525,7 @@ export function ProductConfigurator3D({
         toast.success('Configuration saved', { duration: 2000 });
       }
     },
-    [tenantId, entityType, entityId, saveDisabled, lineItem]
+    [tenantId, entityType, safeEntityId, saveDisabled, lineItem, isPreviewMode]
   );
 
   /**
@@ -596,6 +636,10 @@ export function ProductConfigurator3D({
     if (!confirm('Reset to default configuration? This cannot be undone.')) {
       return;
     }
+    if (!lineItem) {
+      toast.error('No product data available to reset.');
+      return;
+    }
     
     const params = getOrCreateParams(lineItem);
     if (!params) {
@@ -603,7 +647,7 @@ export function ProductConfigurator3D({
       return;
     }
     
-    const fresh = initializeSceneFromParams(params, tenantId, entityType, entityId);
+    const fresh = initializeSceneFromParams(params, tenantId, entityType, safeEntityId);
     if (fresh) {
       const normalized = normalizeSceneConfig(fresh);
       setConfig(normalized);
@@ -621,16 +665,21 @@ export function ProductConfigurator3D({
   }
 
   if (!config) {
+    const friendlyMessage = loadError || 'Failed to load configuration';
     return (
       <div className="flex flex-col items-center justify-center gap-4 p-6 text-center" style={{ width, height }}>
-        <p className="text-lg font-semibold text-foreground">Failed to load configuration</p>
+        <p className="text-lg font-semibold text-foreground">{friendlyMessage}</p>
         <div className="text-sm text-muted-foreground space-y-1 max-w-md">
-          <p>The 3D preview could not initialize. This usually means:</p>
-          <ul className="list-disc text-left pl-6 space-y-1">
-            <li>Product dimensions are missing or invalid (width ≥ 500mm, height ≥ 1500mm)</li>
-            <li>Product type/category is not configured</li>
-            <li>Configuration data is corrupted</li>
-          </ul>
+          {!loadError && (
+            <>
+              <p>The 3D preview could not initialize. This usually means:</p>
+              <ul className="list-disc text-left pl-6 space-y-1">
+                <li>Product dimensions are missing or invalid (width ≥ 500mm, height ≥ 1500mm)</li>
+                <li>Product type/category is not configured</li>
+                <li>Configuration data is corrupted</li>
+              </ul>
+            </>
+          )}
         </div>
         <Button onClick={() => window.location.reload()} className="mt-2">Retry</Button>
       </div>
