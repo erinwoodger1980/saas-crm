@@ -772,9 +772,7 @@ export function ProductConfigurator3D({
           gl={{
             antialias: true,
             alpha: false,
-            outputColorSpace: THREE.SRGBColorSpace,
-            toneMapping: THREE.ACESFilmicToneMapping,
-            toneMappingExposure: 1.0,
+            preserveDrawingBuffer: false,
           }}
           onCreated={({ gl }) => {
             // Improved renderer settings for better quality
@@ -786,6 +784,16 @@ export function ProductConfigurator3D({
             gl.toneMapping = THREE.ACESFilmicToneMapping;
             gl.toneMappingExposure = 1.0;
             (gl as any).physicallyCorrectLights = true;
+            
+            // Add context loss/restore handlers
+            const canvas = gl.domElement;
+            canvas.addEventListener('webglcontextlost', (e) => {
+              console.error('[ProductConfigurator3D] WebGL context lost', e);
+              e.preventDefault();
+            });
+            canvas.addEventListener('webglcontextrestored', () => {
+              console.log('[ProductConfigurator3D] WebGL context restored');
+            });
           }}
         >
           <Suspense fallback={null}>
