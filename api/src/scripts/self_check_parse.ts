@@ -10,6 +10,12 @@ import fs from "fs";
     process.exit(0);
   }
 
+  // Skip test if explicitly disabled (e.g., in production until ML service is ready)
+  if (process.env.SKIP_PARSE_SMOKE === "true" || process.env.RENDER === "true") {
+    console.log("[parse-smoke] SKIP - Smoke test disabled in this environment");
+    process.exit(0);
+  }
+
   // Look for test PDF in multiple possible locations
   const smoke = process.env.PARSE_SMOKE_PDF || "fixtures/smoke_supplier_quote.pdf";
   const possiblePaths = [
