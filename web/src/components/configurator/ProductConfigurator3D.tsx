@@ -255,6 +255,22 @@ export function ProductConfigurator3D({
     () => tenantId === 'settings' || tenantId === 'preview' || safeEntityId.startsWith('preview-'),
     [tenantId, safeEntityId]
   );
+  
+  // Create stable keys from object props to prevent infinite re-renders
+  const lineItemKey = useMemo(() => {
+    if (!lineItem) return 'null';
+    return JSON.stringify({
+      id: lineItem.id,
+      widthMm: (lineItem as any)?.lineStandard?.widthMm,
+      heightMm: (lineItem as any)?.lineStandard?.heightMm,
+      productType: lineItem?.configuredProduct?.productType,
+    });
+  }, [lineItem]);
+  
+  const productTypeKey = useMemo(() => {
+    if (!productType) return 'null';
+    return JSON.stringify(productType);
+  }, [productType]);
 
   // ===== COMPUTED VALUES (SAFE TO COMPUTE BEFORE RETURNS) =====
   const productWidth = (config?.customData as any)?.dimensions?.width || 1000;
@@ -304,8 +320,13 @@ export function ProductConfigurator3D({
 
   // Main scene load/initialize effect
   useEffect(() => {
-    // Prevent duplicate loads in React StrictMode
-    if (loadInitiated.current) return;
+    // Prevent duplicate loads in React StrictMode AND re-render loops
+    if (loadInitiated.current) {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('[ProductConfigurator3D] Skipping duplicate load - already initialized');
+      }
+      return;
+    }
     loadInitiated.current = true;
 
     async function load() {
@@ -440,7 +461,8 @@ export function ProductConfigurator3D({
     }
     
     load();
-  }, [tenantId, entityType, safeEntityId, lineItem, productType, isPreviewMode]);
+    // Use stable keys instead of objects to prevent infinite re-renders
+  }, [tenantId, entityType, safeEntityId, lineItemKey, productTypeKey, isPreviewMode]);
 
   // Auto-frame once after load using bounding box from dimensions
   useEffect(() => {
