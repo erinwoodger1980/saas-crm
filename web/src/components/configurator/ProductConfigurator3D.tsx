@@ -836,8 +836,8 @@ export function ProductConfigurator3D({
               }}
             />
             
-            {/* Environment */}
-            <Environment preset="studio" />
+            {/* Environment - DISABLED: causes WebGL texture errors "texSubImage2D: bad image data" */}
+            {/* <Environment preset="studio" /> */}
 
             {/* Post-processing for subtle polish - DISABLED in hero mode to prevent crashes */}
             <PostFX enabled={highQuality && !heroMode} heroMode={heroMode} />
