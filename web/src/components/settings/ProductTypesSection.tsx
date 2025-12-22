@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -210,6 +210,36 @@ export default function ProductTypesSection() {
   const configuratorKey = configuratorDialog 
     ? `${configuratorDialog.categoryId}-${configuratorDialog.type}-${configuratorDialog.optionId}` 
     : '';
+  
+  // Memoize config to prevent Canvas remounts from parent re-renders
+  const memoizedInitialConfig = useMemo(() => {
+    if (!configuratorDialog) return undefined;
+    return products
+      .find(c => c.id === configuratorDialog.categoryId)
+      ?.types[configuratorDialog.typeIdx]
+      ?.options.find(o => o.id === configuratorDialog.optionId)
+      ?.sceneConfig;
+  }, [configuratorDialog?.categoryId, configuratorDialog?.type, configuratorDialog?.optionId, configuratorDialog?.typeIdx, products]);
+  
+  const memoizedLineItem = useMemo(() => {
+    if (!configuratorDialog) return undefined;
+    return {
+      id: configuratorDialog.optionId,
+      description: configuratorDialog.label,
+      configuredProduct: {
+        productType: {
+          category: configuratorDialog.categoryId,
+          type: configuratorDialog.type,
+          option: configuratorDialog.optionId,
+        },
+      },
+      lineStandard: getDefaultDimensions(configuratorDialog.categoryId, configuratorDialog.type, configuratorDialog.optionId),
+      meta: {
+        depthMm: configuratorDialog.categoryId === 'doors' ? 45 : 100,
+      },
+    };
+  }, [configuratorDialog?.categoryId, configuratorDialog?.type, configuratorDialog?.optionId, configuratorDialog?.label, configuratorDialog?.typeIdx]);
+  
   const [aiEstimateDialog, setAiEstimateDialog] = useState<{
     categoryId: string;
     typeIdx: number;
@@ -1094,28 +1124,8 @@ export default function ProductTypesSection() {
                 tenantId="settings"
                 entityType="productTemplate"
                 entityId={`${configuratorDialog.categoryId}-${configuratorDialog.type}-${configuratorDialog.optionId}`}
-                initialConfig={
-                  products
-                    .find(c => c.id === configuratorDialog.categoryId)
-                    ?.types[configuratorDialog.typeIdx]
-                    ?.options.find(o => o.id === configuratorDialog.optionId)
-                    ?.sceneConfig
-                }
-                lineItem={{
-                  id: configuratorDialog.optionId,
-                  description: configuratorDialog.label,
-                  configuredProduct: {
-                    productType: {
-                      category: configuratorDialog.categoryId,
-                      type: configuratorDialog.type,
-                      option: configuratorDialog.optionId,
-                    },
-                  },
-                  lineStandard: getDefaultDimensions(configuratorDialog.categoryId, configuratorDialog.type, configuratorDialog.optionId),
-                  meta: {
-                    depthMm: configuratorDialog.categoryId === 'doors' ? 45 : 100,
-                  },
-                }}
+                initialConfig={memoizedInitialConfig}
+                lineItem={memoizedLineItem}
                 productType={{
                   category: configuratorDialog.categoryId,
                   type: configuratorDialog.type,
