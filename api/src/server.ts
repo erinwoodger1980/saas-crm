@@ -32,6 +32,7 @@ async function generateUniqueSlug(baseName: string): Promise<string> {
 import authRouter from "./routes/auth";
 import aiRouter from "./routes/ai";
 import aiAssistantRouter from "./routes/ai-assistant";
+import aiComponentEstimatorRouter from "./routes/ai-component-estimator";
 import reportsRouter from "./routes/reports";
 import leadsRouter from "./routes/leads";
 import clientsRouter from "./routes/clients";
@@ -637,6 +638,7 @@ app.use("/auth", authRouter);
 app.use("/leads", leadsRouter);
 app.use("/clients", clientsRouter);
 app.use("/ai", aiRouter);
+app.use("/ai", requireAuth, aiComponentEstimatorRouter);
 app.use("/reports", reportsRouter);
 app.use("/mail", mailRouter);
 app.use("/gmail", gmailRouter);

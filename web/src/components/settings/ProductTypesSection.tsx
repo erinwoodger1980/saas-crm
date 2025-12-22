@@ -3,8 +3,9 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
-import { Upload, Trash2, Plus, Wand2, ChevronRight, ChevronDown, Loader2, Box } from "lucide-react";
+import { Upload, Trash2, Plus, Wand2, ChevronRight, ChevronDown, Loader2, Box, Sparkles, Image as ImageIcon } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { ProductConfigurator3D } from "@/components/configurator/ProductConfigurator3D";
 
@@ -206,6 +207,17 @@ export default function ProductTypesSection() {
     type: string;
   } | null>(null);
   const [configuratorKey, setConfiguratorKey] = useState(0); // Force remount on changes
+  const [aiEstimateDialog, setAiEstimateDialog] = useState<{
+    categoryId: string;
+    typeIdx: number;
+    optionId: string;
+    label: string;
+    type: string;
+  } | null>(null);
+  const [aiDescription, setAiDescription] = useState("");
+  const [aiImage, setAiImage] = useState<File | null>(null);
+  const [aiImagePreview, setAiImagePreview] = useState<string | null>(null);
+  const [aiEstimating, setAiEstimating] = useState(false);
 
   useEffect(() => {
     loadProducts();
@@ -510,6 +522,151 @@ export default function ProductTypesSection() {
     );
   };
 
+  const handleAiImageUpload = (file: File) => {
+    setAiImage(file);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setAiImagePreview(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const estimateComponentsWithAI = async () => {
+    if (!aiEstimateDialog) return;
+    if (!aiDescription && !aiImage) {
+      toast({
+        title: "Input required",
+        description: "Please provide a description or upload an image",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setAiEstimating(true);
+    try {
+      const dims = getDefaultDimensions(
+        aiEstimateDialog.categoryId,
+        aiEstimateDialog.type,
+        aiEstimateDialog.optionId
+      );
+
+      const formData = new FormData();
+      formData.append('data', JSON.stringify({
+        productType: {
+          category: aiEstimateDialog.categoryId,
+          type: aiEstimateDialog.type,
+          option: aiEstimateDialog.optionId,
+        },
+        dimensions: {
+          widthMm: dims.widthMm,
+          heightMm: dims.heightMm,
+          depthMm: aiEstimateDialog.categoryId === 'doors' ? 45 : 100,
+        },
+        description: aiDescription || undefined,
+      }));
+
+      if (aiImage) {
+        formData.append('image', aiImage);
+      }
+
+      const result = await apiFetch<{
+        components: any[];
+        reasoning: string;
+        confidence: number;
+        suggestions: string[];
+      }>('/ai/estimate-components', {
+        method: 'POST',
+        body: formData,
+      });
+
+      console.log('[AI Estimation] Result:', result);
+
+      // Convert AI components to scene config format
+      const sceneConfig = convertAIComponentsToSceneConfig(result.components, dims);
+
+      // Update the product option with the estimated scene config
+      setProducts((prev) =>
+        prev.map((cat) =>
+          cat.id === aiEstimateDialog.categoryId
+            ? {
+                ...cat,
+                types: cat.types.map((t, idx) =>
+                  idx === aiEstimateDialog.typeIdx
+                    ? {
+                        ...t,
+                        options: t.options.map((opt) =>
+                          opt.id === aiEstimateDialog.optionId
+                            ? { ...opt, sceneConfig }
+                            : opt
+                        ),
+                      }
+                    : t
+                ),
+              }
+            : cat
+        )
+      );
+
+      toast({
+        title: "Components estimated!",
+        description: `${result.components.length} components detected. Confidence: ${Math.round(result.confidence * 100)}%`,
+      });
+
+      // Close AI dialog and open configurator to refine
+      setAiEstimateDialog(null);
+      setAiDescription("");
+      setAiImage(null);
+      setAiImagePreview(null);
+      
+      setConfiguratorDialog(aiEstimateDialog);
+      setConfiguratorKey(prev => prev + 1);
+    } catch (error: any) {
+      console.error('[AI Estimation] Error:', error);
+      toast({
+        title: "Estimation failed",
+        description: error.message || "Could not estimate components",
+        variant: "destructive",
+      });
+    } finally {
+      setAiEstimating(false);
+    }
+  };
+
+  const convertAIComponentsToSceneConfig = (components: any[], dimensions: { widthMm: number; heightMm: number }) => {
+    // This is a simplified conversion - the actual scene config is more complex
+    // The ProductConfigurator3D will handle the full conversion
+    return {
+      version: '1.0.0',
+      updatedAt: new Date().toISOString(),
+      dimensions: {
+        width: dimensions.widthMm,
+        height: dimensions.heightMm,
+        depth: 45,
+      },
+      components: components.map(c => ({
+        id: c.id,
+        type: 'Box',
+        geometry: c.geometry,
+        transform: {
+          position: [c.position.x, c.position.y, c.position.z],
+          rotation: [0, 0, 0],
+          scale: [1, 1, 1],
+        },
+        material: { materialId: c.material },
+        metadata: {
+          label: c.label,
+          componentType: c.type,
+          confidence: c.confidence,
+        },
+      })),
+      materials: {},
+      camera: {},
+      lighting: {},
+      visibility: {},
+      ui: {},
+    };
+  };
+
   const toggleCategory = (categoryId: string) => {
     setExpandedCategories((prev) => ({ ...prev, [categoryId]: !prev[categoryId] }));
   };
@@ -745,6 +902,26 @@ export default function ProductTypesSection() {
                                     size="sm"
                                     variant="outline"
                                     onClick={() => {
+                                      setAiEstimateDialog({
+                                        categoryId: category.id,
+                                        typeIdx,
+                                        optionId: option.id,
+                                        label: option.label,
+                                        type: type.type,
+                                      });
+                                      setAiDescription("");
+                                      setAiImage(null);
+                                      setAiImagePreview(null);
+                                    }}
+                                    className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200 hover:from-purple-100 hover:to-blue-100"
+                                  >
+                                    <Sparkles className="h-3 w-3 mr-1" />
+                                    AI Estimate
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
                                       setConfiguratorDialog({
                                         categoryId: category.id,
                                         typeIdx,
@@ -974,6 +1151,113 @@ export default function ProductTypesSection() {
                 height="70vh"
                 heroMode={false}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Estimate Dialog */}
+      {aiEstimateDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl">
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+                ✨ AI Component Estimation - {aiEstimateDialog.label}
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Upload an image or describe the product, and AI will estimate components, sizes, profiles, and positions
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              {/* Image Upload */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Upload Image (Optional)</label>
+                {aiImagePreview ? (
+                  <div className="relative">
+                    <img
+                      src={aiImagePreview}
+                      alt="Preview"
+                      className="w-full h-48 object-contain border rounded-lg bg-slate-50"
+                    />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="absolute top-2 right-2 bg-white/90 hover:bg-white"
+                      onClick={() => {
+                        setAiImage(null);
+                        setAiImagePreview(null);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center h-32 border-2 border-dashed rounded-lg cursor-pointer hover:border-purple-300 hover:bg-purple-50/50 transition-colors">
+                    <ImageIcon className="h-8 w-8 text-muted-foreground mb-2" />
+                    <span className="text-sm text-muted-foreground">Click to upload image</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleAiImageUpload(file);
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Description (Optional if image provided)
+                </label>
+                <Textarea
+                  value={aiDescription}
+                  onChange={(e) => setAiDescription(e.target.value)}
+                  placeholder="e.g., Six panel traditional door with raised panels, or Double hung sash window with 2x2 muntins..."
+                  rows={4}
+                  className="resize-none"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Describe the component layout, materials, and any specific details
+                </p>
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setAiEstimateDialog(null);
+                    setAiDescription("");
+                    setAiImage(null);
+                    setAiImagePreview(null);
+                  }}
+                  disabled={aiEstimating}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={estimateComponentsWithAI}
+                  disabled={aiEstimating || (!aiDescription && !aiImage)}
+                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                >
+                  {aiEstimating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Estimate Components
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
