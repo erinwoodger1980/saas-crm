@@ -212,6 +212,20 @@ function normalizeSceneConfig(config: SceneConfig): SceneConfig {
   return normalized;
 }
 
+function getPreviewDefaults(productType?: { category?: string; type?: string; option?: string }) {
+  const category = productType?.category;
+  // Door defaults
+  if (category === 'doors') {
+    return { widthMm: 914, heightMm: 2032, depthMm: 45 };
+  }
+  // Window defaults
+  if (category === 'windows') {
+    return { widthMm: 1200, heightMm: 1200, depthMm: 100 };
+  }
+  // Generic fallback
+  return { widthMm: 1000, heightMm: 2000, depthMm: 100 };
+}
+
 /**
  * Main Product Configurator Component
  */
@@ -334,9 +348,10 @@ export function ProductConfigurator3D({
               }
               return;
             }
-            const widthMm = Number((lineItem as any)?.lineStandard?.widthMm) || 914;
-            const heightMm = Number((lineItem as any)?.lineStandard?.heightMm) || 2032;
-            const depthMm = Number((lineItem as any)?.meta?.depthMm) || (previewProductType.category === 'doors' ? 45 : 100);
+            const defaults = getPreviewDefaults(previewProductType);
+            const widthMm = Number((lineItem as any)?.lineStandard?.widthMm) || defaults.widthMm;
+            const heightMm = Number((lineItem as any)?.lineStandard?.heightMm) || defaults.heightMm;
+            const depthMm = Number((lineItem as any)?.meta?.depthMm) || defaults.depthMm;
 
             console.log('[ProductConfigurator3D] Using preview mode with productType:', previewProductType);
             effectiveLineItem = {
