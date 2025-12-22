@@ -361,7 +361,7 @@ function buildDoorInfill(
       
     default:
       // Unknown option - default to 2 panels
-      infill.children = buildPanelLayout(width, height, config, 1, 2);
+      infill.children = buildPanelLayout(width, height, config, 1, 2, railPositions, profileLookup, profileIds);
   }
   
   return infill;
