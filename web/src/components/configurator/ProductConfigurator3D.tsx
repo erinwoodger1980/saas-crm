@@ -813,69 +813,49 @@ export function ProductConfigurator3D({
             console.log('[ProductConfigurator3D] WebGL renderer initialized successfully');
           }}
         >
-          {/* REMOVED SUSPENSE - testing if it causes context loss */}
-          {/* <Suspense fallback={null}> */}
-            {/* TESTING: Disable all components to isolate context loss */}
-            
-            {/* Camera controller with controls ref export - DISABLED FOR TESTING */}
-            {/* <CameraController
-              cameraState={config.camera}
-              productWidth={productWidth}
-              productHeight={productHeight}
-              productDepth={productDepth}
-              onCameraChange={handleCameraChange}
-              onControlsReady={(controls) => {
-                controlsRef.current = controls;
-              }}
-            /> */}
-            
-            {/* Auto-frame component for smooth auto-zoom on load and config changes - DISABLED FOR TESTING */}
-            {/* <AutoFrame
-              components={config.components}
-              controls={controlsRef.current}
-              heroMode={heroMode}
-            /> */}
+          {/* Camera controller with controls ref export */}
+          <CameraController
+            cameraState={config.camera}
+            productWidth={productWidth}
+            productHeight={productHeight}
+            productDepth={productDepth}
+            onCameraChange={handleCameraChange}
+            onControlsReady={(controls) => {
+              controlsRef.current = controls;
+            }}
+          />
+          
+          {/* Auto-frame component for smooth auto-zoom on load and config changes */}
+          <AutoFrame
+            components={config.components}
+            controls={controlsRef.current}
+            heroMode={heroMode}
+          />
 
-            {/* Stage - DISABLED: testing if it contributes to context loss */}
-            {/* <Stage productWidth={productWidth} productHeight={productHeight} /> */}
-            
-            {/* Lighting - DISABLED FOR TESTING */}
-            {/* <Lighting config={config.lighting} /> */}
-            
-            {/* Contact shadows - DISABLED: may contribute to WebGL context loss */}
-            {/* <ContactShadows
-              position={[0, 0.5, 0]}
-              opacity={0.35}
-              blur={2.5}
-              far={10}
-              scale={Math.max(productWidth, productHeight) / 800}
-            /> */}
-            
-            {/* Product components - DISABLED FOR TESTING */}
-            {/* <ProductComponents
-              components={config.components}
-              materials={config.materials}
-              visibility={config.visibility}
-              onSelect={handleComponentSelect}
-              selectedId={selectedComponentId}
-              orbitControlsRef={controlsRef}
-              onTransformEnd={(componentId, newY) => {
-                handleAttributeEdit(componentId, { positionY: newY });
-              }}
-            /> */}
-            
-            {/* Just render a simple mesh to test if Canvas works */}
-            <mesh>
-              <boxGeometry args={[1, 1, 1]} />
-              <meshBasicMaterial color="orange" />
-            </mesh>
-            
-            {/* Environment - DISABLED: causes WebGL texture errors "texSubImage2D: bad image data" */}
-            {/* <Environment preset="studio" /> */}
-
-            {/* Post-processing for subtle polish - DISABLED in hero mode to prevent crashes */}
-            <PostFX enabled={highQuality && !heroMode} heroMode={heroMode} />
-          {/* </Suspense> */}
+          {/* Stage with cyclorama backdrop and floor */}
+          <Stage productWidth={productWidth} productHeight={productHeight} />
+          
+          {/* Lighting */}
+          <Lighting config={config.lighting} />
+          
+          {/* Product components */}
+          <ProductComponents
+            components={config.components}
+            materials={config.materials}
+            visibility={config.visibility}
+            onSelect={handleComponentSelect}
+            selectedId={selectedComponentId}
+            orbitControlsRef={controlsRef}
+            onTransformEnd={(componentId, newY) => {
+              handleAttributeEdit(componentId, { positionY: newY });
+            }}
+          />
+          
+          {/* Environment - DISABLED: causes WebGL texture errors */}
+          {/* <Environment preset="studio" /> */}
+          
+          {/* Post-processing for subtle polish - DISABLED in hero mode to prevent crashes */}
+          <PostFX enabled={highQuality && !heroMode} heroMode={heroMode} />
         </Canvas>
         
         {/* UI Overlay - Only small floating button in hero mode */}
