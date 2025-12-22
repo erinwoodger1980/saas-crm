@@ -102,6 +102,7 @@ function instanceToComponentNode(instance: ResolvedComponentInstance): Component
     name,
     type,
     role,
+    visible: true,
     materialId: materialKey,
     dimsMm: {
       width: dimsMm.x,
@@ -427,7 +428,7 @@ function calculateProductDimensions(product: ResolvedProduct): SceneConfig['dime
     width,
     height,
     depth,
-    unit: 'mm',
+    bounds: { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] },
   };
 }
 

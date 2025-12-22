@@ -8,11 +8,11 @@ import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import {
-  fitCameraToObject,
   getAssemblyBoundingBox,
   ProfiledComponent,
   createProfiledAssembly,
 } from '@/lib/scene/profiled-component';
+import { fitCameraToObject } from '@/lib/scene/filemaker-camera';
 
 export interface UseProfileAssemblyOptions {
   autoFit?: boolean;

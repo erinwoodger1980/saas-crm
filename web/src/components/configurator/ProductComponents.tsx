@@ -47,7 +47,9 @@ const ComponentMesh = forwardRef<THREE.Mesh, {
 }>(function ComponentMesh({ node, material, isSelected, onClick }, ref) {
   const meshRef = useRef<THREE.Mesh>(null);
   const setRef = (value: THREE.Mesh | null) => {
-    meshRef.current = value;
+    if (meshRef.current !== value) {
+      Object.assign(meshRef, { current: value });
+    }
     if (typeof ref === 'function') {
       ref(value);
     } else if (ref) {
@@ -232,8 +234,8 @@ const ComponentMesh = forwardRef<THREE.Mesh, {
         case 'profileExtrude': {
           if (!customData?.profile || !customData?.path) return null;
           return createProfileExtrude({
-            profile: customData.profile,
-            path: customData.path,
+            profile: customData.profile as any,
+            path: customData.path as any,
             closed: customData.closed ?? false,
             fallbackBox: customData.fallbackBox,
           });
@@ -293,7 +295,7 @@ const ComponentMesh = forwardRef<THREE.Mesh, {
   }
 
   // Standard geometry rendering
-  if (!geometry) return null;
+  if (!geometry || !node.geometry) return null;
 
   const position = new THREE.Vector3(...node.geometry.position);
   const rotation = node.geometry.rotation
@@ -379,7 +381,7 @@ function NodeRenderer({
       {mesh}
     </TransformControls>
   ) : (
-    mesh
+    mesh || <></>
   );
 
   return (

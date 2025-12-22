@@ -115,8 +115,8 @@ function configureShadowMaps(
       light.shadow.radius = config.shadowRadius || 4;
 
       // Enable soft shadows on WebGL renderer
-      if (light instanceof THREE.SpotLight) {
-        light.shadow.map.minFilter = THREE.LinearFilter;
+      if (light instanceof THREE.SpotLight && light.shadow.map) {
+        (light.shadow.map as any).minFilter = THREE.LinearFilter;
       }
     }
   });

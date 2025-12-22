@@ -256,11 +256,13 @@ export function restoreCameraState(
   state: any
 ): void {
   if (state.position) {
-    camera.position.set(...state.position);
+    const [x, y, z] = state.position as [number, number, number];
+    camera.position.set(x, y, z);
   }
 
   if (state.target) {
-    controls.target.set(...state.target);
+    const [tx, ty, tz] = state.target as [number, number, number];
+    controls.target.set(tx, ty, tz);
   }
 
   if (state.fov && isPerspectiveCamera(camera)) {

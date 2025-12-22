@@ -23,6 +23,13 @@ export interface RenderHints {
 export function applyRenderHints(mesh: THREE.Mesh | THREE.Object3D, hints: RenderHints): void {
   if (!mesh) return;
 
+  // Type guard for Mesh
+  const isMesh = (obj: THREE.Object3D): obj is THREE.Mesh => {
+    return 'material' in obj;
+  };
+
+  if (!isMesh(mesh)) return;
+
   const materials = Array.isArray(mesh.material)
     ? mesh.material
     : mesh.material

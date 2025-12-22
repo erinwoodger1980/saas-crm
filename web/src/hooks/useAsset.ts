@@ -104,11 +104,13 @@ export function useAsset(assetId: string | null | undefined): UseAssetResult {
         const url = URL.createObjectURL(blob);
 
         // Cache it
-        assetCache.set(assetId, {
-          objectURL: url,
-          blob,
-          loadedAt: Date.now(),
-        });
+        if (assetId) {
+          assetCache.set(assetId, {
+            objectURL: url,
+            blob,
+            loadedAt: Date.now(),
+          });
+        }
 
         setObjectURL(url);
         

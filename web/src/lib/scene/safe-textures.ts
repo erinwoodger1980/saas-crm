@@ -65,7 +65,8 @@ async function loadSingleTexture(
       },
       undefined,
       (error) => {
-        console.warn(`[safe-textures] Failed to load texture: ${path}`, error?.message ?? error);
+        const err = error as Error;
+        console.warn(`[safe-textures] Failed to load texture: ${path}`, err?.message ?? error);
         textureCache.set(path, null);
         resolve(null);
       }
