@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback, useMemo, Suspense, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { Environment, ContactShadows } from '@react-three/drei';
+// import { Environment, ContactShadows } from '@react-three/drei'; // DISABLED: causing WebGL context loss
 import * as THREE from 'three';
 import {
   SceneConfig,
@@ -814,14 +814,14 @@ export function ProductConfigurator3D({
             {/* Lighting */}
             <Lighting config={config.lighting} />
             
-            {/* Contact shadows to anchor product to floor */}
-            <ContactShadows
+            {/* Contact shadows - DISABLED: may contribute to WebGL context loss */}
+            {/* <ContactShadows
               position={[0, 0.5, 0]}
               opacity={0.35}
               blur={2.5}
               far={10}
               scale={Math.max(productWidth, productHeight) / 800}
-            />
+            /> */}
             
             {/* Product components */}
             <ProductComponents
