@@ -35,6 +35,16 @@ router.post('/run', requireAuth, async (req: any, res) => {
   };
 
   const openaiKey = process.env.OPENAI_API_KEY || '';
+  const isProd = process.env.NODE_ENV === "production";
+  
+  // Fail fast in production if OpenAI key is missing
+  if (isProd && !openaiKey) {
+    return res.status(503).json({ 
+      error: "service_unavailable", 
+      message: "OPENAI_API_KEY must be configured in production for AI code generation" 
+    });
+  }
+  
   const stubDiff = (context: string) => {
     const now = new Date().toISOString();
     const body = [

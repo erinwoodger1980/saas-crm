@@ -484,11 +484,20 @@ async function runStageC(
     return { parse: base, used: false, warnings: ["LLM structuring skipped: no lines available"] };
   }
 
+  const isProd = process.env.NODE_ENV === "production";
   if (!openaiClient) {
+    const warning = isProd 
+      ? "OPENAI_API_KEY is required in production for supplier quote structuring"
+      : "OpenAI API key missing; structuring stage skipped";
+    
+    if (isProd) {
+      console.error(`[runStageC] ${warning}`);
+    }
+    
     return {
       parse: base,
       used: false,
-      warnings: ["OpenAI API key missing or placeholder; structuring stage skipped"],
+      warnings: [warning],
     };
   }
 

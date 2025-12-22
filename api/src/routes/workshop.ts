@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { Prisma } from "@prisma/client";
+import { logOrderFlow } from "../lib/order-flow-log";
 
 const router = Router();
 
@@ -856,6 +857,14 @@ router.post("/time", async (req: any, res) => {
       hours: new Prisma.Decimal(Number(hours)),
       notes: notes || null,
     },
+  });
+
+  logOrderFlow("workshop_time_logged", {
+    tenantId,
+    orderId: projectId ? String(projectId) : null,
+    process: String(process),
+    hours: Number(hours),
+    userId: String(userId),
   });
 
   // If we have a projectId, mark process as in_progress (unless it's being marked complete)

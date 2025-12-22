@@ -105,7 +105,7 @@ export function Lighting({ config }: LightingProps) {
           opacity={0.15}
           scale={shadowCatcherDiameter * 2}
           blur={8}
-          far={Math.max(...lightPositions.shadowCamera.top, Math.abs(lightPositions.shadowCamera.bottom)) * 2}
+          far={Math.max(lightPositions.shadowCamera.top, Math.abs(lightPositions.shadowCamera.bottom)) * 2}
           resolution={1024}
           color="#000000"
         />

@@ -13,6 +13,7 @@ import { doorBuilder } from './parametric-door';
 import { windowBuilder } from './parametric-window';
 import { SceneConfig } from '@/types/scene-config';
 import { calculateHeroCamera } from './fit-camera';
+import { normalizeLightingConfig } from './normalize-lighting';
 
 /**
  * Global builder registry
@@ -131,14 +132,14 @@ export function initializeSceneFromParams(
       fov: 45,
     },
     visibility: buildVisibilityMap(result.components),
-    lighting: {
+    lighting: normalizeLightingConfig({
       boundsX: result.lighting.boundsX,
       boundsZ: result.lighting.boundsZ,
       intensity: 3.5,
       shadowCatcherDiameter: result.lighting.shadowCatcherDiameter,
       ambientIntensity: 1.2,
       castShadows: true,
-    },
+    }),
     ui: {
       guides: false,
       axis: false,

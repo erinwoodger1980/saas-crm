@@ -297,6 +297,8 @@ export const DEFAULT_CAMERA_STATE: CameraState = {
 /**
  * Default UI toggles
  */
+import { createLightingFromDimensions } from '@/lib/scene/normalize-lighting';
+
 export const DEFAULT_UI_TOGGLES: UIToggles = {
   guides: false,
   axis: false,
@@ -317,11 +319,6 @@ export function createDefaultSceneConfig(
     max: [width / 2, height / 2, depth / 2] as [number, number, number],
   };
   
-  // Calculate lighting bounds (extend 50% beyond product)
-  const boundsX: [number, number] = [bounds.min[0] * 1.5, bounds.max[0] * 1.5];
-  const boundsZ: [number, number] = [bounds.min[2] * 1.5, bounds.max[2] * 1.5];
-  const shadowCatcherDiameter = Math.max(width, height) * 2;
-  
   return {
     version: '1.0.0',
     updatedAt: new Date().toISOString(),
@@ -335,14 +332,7 @@ export function createDefaultSceneConfig(
     materials: [],
     camera: { ...DEFAULT_CAMERA_STATE },
     visibility: {},
-    lighting: {
-      boundsX,
-      boundsZ,
-      intensity: 1.6,
-      shadowCatcherDiameter,
-      ambientIntensity: 0.45,
-      castShadows: true,
-    },
+    lighting: createLightingFromDimensions(width, height, depth),
     ui: { ...DEFAULT_UI_TOGGLES },
   };
 }

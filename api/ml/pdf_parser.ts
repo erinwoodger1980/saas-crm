@@ -24,6 +24,7 @@ export function _is_gibberish(text: string): boolean {
 }
 
 export function extract_text_from_pdf_bytes(_bytes: Uint8Array): string {
-  // Placeholder; real implementation can bridge to Python via a subprocess.
-  return "";
+  // This TypeScript shim requires a Python bridge implementation.
+  // The ML service should be used instead for production PDF parsing.
+  throw new Error("extract_text_from_pdf_bytes is not implemented - use ML service API for PDF parsing");
 }

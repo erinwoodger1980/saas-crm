@@ -1049,14 +1049,51 @@ function startServer() {
       try { fs.accessSync(resolvedUpload, fs.constants.W_OK); } catch { writable = false; }
       console.log(`[storage] UPLOAD_DIR -> ${resolvedUpload} (writable=${writable})`);
       
-      // Log ML configuration
+      // Validate AI/ML service configuration
+      const isProd = process.env.NODE_ENV === "production";
       const mlEnv = ((process.env.ML_URL || process.env.NEXT_PUBLIC_ML_URL || "").trim());
+      const openaiKey = (process.env.OPENAI_API_KEY || "").trim();
+      
+      // ML service validation
       if (!mlEnv) {
-        console.warn("[ml] ML_URL not set; ML proxy will default to http://localhost:8000 (dev only)");
-      } else if (process.env.NODE_ENV === "production" && /(localhost|127\.0\.0\.1)/i.test(mlEnv)) {
-        console.warn(`[ml] ML_URL is '${mlEnv}' which points to localhost in production — update your API env to the deployed ML service URL.`);
+        if (isProd) {
+          console.error("[ml] ❌ CRITICAL: ML_URL not set in production - ML features will fail");
+          console.error("[ml] Set ML_URL environment variable to your deployed ML service URL");
+        } else {
+          console.warn("[ml] ML_URL not set; ML proxy will default to http://localhost:8000 (dev only)");
+        }
+      } else if (isProd && /(localhost|127\.0\.0\.1)/i.test(mlEnv)) {
+        console.error(`[ml] ❌ CRITICAL: ML_URL is '${mlEnv}' which points to localhost in production`);
+        console.error("[ml] Update your API env to the deployed ML service URL");
       } else {
-        console.log(`[ml] ML proxy target: ${mlEnv}`);
+        console.log(`[ml] ✅ ML proxy target: ${mlEnv}`);
+      }
+      
+      // OpenAI API key validation
+      if (!openaiKey) {
+        if (isProd) {
+          console.warn("[ai] ⚠️  OPENAI_API_KEY not set in production - some AI features will be limited");
+          console.warn("[ai] Set OPENAI_API_KEY for supplier quote structuring and AI code generation");
+        } else {
+          console.log("[ai] OPENAI_API_KEY not set - some AI features disabled in dev mode");
+        }
+      } else {
+        console.log(`[ai] ✅ OpenAI API configured (key: ${openaiKey.slice(0, 7)}...)`);
+      }
+      
+      // Summary of AI service status
+      if (isProd) {
+        const mlOk = mlEnv && !/(localhost|127\.0\.0\.1)/i.test(mlEnv);
+        const aiOk = !!openaiKey;
+        if (mlOk && aiOk) {
+          console.log("[services] ✅ All AI services configured for production");
+        } else if (!mlOk && !aiOk) {
+          console.error("[services] ❌ CRITICAL: ML and OpenAI services not configured - most AI features will fail");
+        } else if (!mlOk) {
+          console.error("[services] ❌ CRITICAL: ML service not configured - parsing and estimation features will fail");
+        } else if (!aiOk) {
+          console.warn("[services] ⚠️  OpenAI not configured - structuring and code generation features limited");
+        }
       }
       
       // Initialize scheduled jobs (cron tasks)

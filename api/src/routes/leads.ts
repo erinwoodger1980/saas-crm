@@ -20,6 +20,7 @@ import { extractGlobalSpecsFromAnswers, specsToPrismaData } from "../lib/globalS
 import { linkLeadToClientAccount, linkOpportunityToClientAccount } from "../lib/clientAccount";
 import { completeTasksOnRecordChangeByLinks } from "../services/field-link";
 import { evaluateAutomationRules } from "./automation-rules";
+import { logOrderFlow } from "../lib/order-flow-log";
 
 const router = Router();
 
@@ -1209,6 +1210,8 @@ router.patch("/:id", async (req, res) => {
     const actorId = (req.auth?.userId as string | undefined) ?? null;
     const playbook = await loadTaskPlaybook(tenantId);
     await handleStatusTransition({ tenantId, leadId: id, prevUi, nextUi, actorId, playbook });
+
+    logOrderFlow("lead_status_transition", { tenantId, leadId: id, from: prevUi, to: nextUi, actorId });
 
     // Learning signal: when users move a lead to certain buckets, label the originating ingests
     const positive: UiStatus[] = [

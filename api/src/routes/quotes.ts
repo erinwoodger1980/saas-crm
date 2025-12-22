@@ -8,6 +8,7 @@ import { prisma } from "../prisma";
 import { Prisma, FileKind } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import { env } from "../env";
+import { logOrderFlow } from "../lib/order-flow-log";
 
 import { callMlWithSignedUrl, callMlWithUpload, normaliseMlPayload } from "../lib/ml";
 import { fallbackParseSupplierPdf } from "../lib/pdf/fallback";
@@ -95,8 +96,9 @@ async function getTenantId(req: any): Promise<string> {
   if (tenantId) return tenantId;
 
   const isDev = process.env.NODE_ENV !== "production";
+  const allowDevFallback = process.env.ALLOW_DEV_TENANT_FALLBACK === "true";
   
-  if (isDev) {
+  if (isDev && allowDevFallback) {
     // In dev mode, fall back to LAJ Joinery tenant when no auth context
     const lajTenant = await prisma.tenant.findUnique({
       where: { slug: "laj-joinery" },
@@ -1133,7 +1135,98 @@ router.post("/", requireAuth, async (req: any, res) => {
       quoteSourceType: null,
     },
   });
+  logOrderFlow("quote_created", { tenantId, quoteId: q.id, leadId: leadId || null, title });
   res.json(mapQuoteSourceForResponse(q));
+});
+
+/** POST /quotes/:id/convert
+ * Convert a quote to an order (opportunity WON) and record ML actuals.
+ */
+router.post("/:id/convert", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = await getTenantId(req);
+    const id = String(req.params.id);
+    const now = new Date();
+
+    const quote = await prisma.quote.findFirst({
+      where: { id, tenantId },
+      include: { lead: true },
+    });
+    if (!quote) return res.status(404).json({ error: "quote_not_found" });
+
+    const leadId = quote.leadId || null;
+
+    // Upsert opportunity as WON
+    let opportunity = await prisma.opportunity.findFirst({ where: { tenantId, leadId: leadId || undefined } });
+    if (opportunity) {
+      opportunity = await prisma.opportunity.update({
+        where: { id: opportunity.id },
+        data: {
+          stage: "WON" as any,
+          wonAt: opportunity.wonAt ?? now,
+          valueGBP: quote.totalGBP != null ? new Prisma.Decimal(Number(quote.totalGBP)) : opportunity.valueGBP,
+        },
+      });
+    } else {
+      opportunity = await prisma.opportunity.create({
+        data: {
+          tenantId,
+          leadId,
+          title: quote.title || "Order",
+          stage: "WON" as any,
+          valueGBP: quote.totalGBP != null ? new Prisma.Decimal(Number(quote.totalGBP)) : null,
+          wonAt: now,
+        },
+      });
+    }
+
+    // Ensure a Project exists for this quote
+    let project = await prisma.project.findFirst({ where: { quoteId: quote.id, tenantId } });
+    if (!project) {
+      project = await prisma.project.create({
+        data: {
+          tenantId,
+          projectType: "QUOTE",
+          projectName: quote.title || "Quote Project",
+          quoteId: quote.id,
+          status: "WON",
+          referenceNumber: quote.id,
+        },
+      });
+    }
+
+    // Mark quote accepted
+    if (quote.status !== "ACCEPTED") {
+      await prisma.quote.update({ where: { id, tenantId }, data: { status: "ACCEPTED" as any } });
+    }
+
+    // Update ML estimate with actual accepted price if present
+    const acceptedPrice = quote.totalGBP != null ? Number(quote.totalGBP) : null;
+    if (acceptedPrice != null) {
+      const updatedEstimates = await prisma.estimate.updateMany({
+        where: { tenantId, quoteId: quote.id },
+        data: { actualAcceptedPrice: acceptedPrice, outcome: "accepted" },
+      });
+      if (updatedEstimates.count > 0) {
+        logOrderFlow("ml_actuals_recorded", { tenantId, quoteId: quote.id, opportunityId: opportunity.id, acceptedPrice });
+      }
+    }
+
+    logOrderFlow("order_converted", {
+      tenantId,
+      quoteId: quote.id,
+      opportunityId: opportunity.id,
+      projectId: project?.id,
+      leadId,
+      totalGBP: quote.totalGBP,
+    });
+
+    return res.json({ ok: true, quoteId: quote.id, opportunityId: opportunity.id, projectId: project?.id });
+  } catch (e: any) {
+    console.error("[/quotes/:id/convert] failed:", e?.message || e);
+    if (e?.message === "unauthorized") return res.status(401).json({ error: "unauthorized" });
+    return res.status(500).json({ error: "internal_error", detail: e?.message });
+  }
 });
 
 /** POST /quotes/:id/lines - Add a line item to a quote */
@@ -1300,6 +1393,7 @@ router.patch("/:id", requireAuth, async (req: any, res) => {
     if (!quote) return res.status(404).json({ error: "quote_not_found" });
 
     const data: Prisma.QuoteUpdateInput = {};
+    const prevStatus = quote.status;
 
     // Merge meta when explicitly provided (preserve existing keys by default)
     const metaProvided = Object.prototype.hasOwnProperty.call(req.body || {}, "meta");
@@ -1333,6 +1427,11 @@ router.patch("/:id", requireAuth, async (req: any, res) => {
     }
 
     const updated = await prisma.quote.update({ where: { id, tenantId }, data });
+
+    if (data.status && data.status !== prevStatus) {
+      logOrderFlow("quote_status_changed", { tenantId, quoteId: id, from: prevStatus, to: data.status, leadId: quote.leadId });
+    }
+
     return res.json(mapQuoteSourceForResponse(updated));
   } catch (e: any) {
     console.error("[/quotes/:id PATCH] failed:", e?.message || e);

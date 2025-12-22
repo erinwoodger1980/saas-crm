@@ -26,6 +26,7 @@ import {
   applyEditToScene,
   rebuildSceneConfig,
 } from '@/lib/scene/builder-registry';
+import { createLightingFromDimensions, normalizeLightingConfig } from '@/lib/scene/normalize-lighting';
 import { CameraController } from './CameraController';
 import { Lighting } from './Lighting';
 import { ProductComponents } from './ProductComponents';
@@ -172,22 +173,8 @@ function buildDefaultLighting(dimensions: SceneConfig['dimensions']): LightingCo
   const width = dimensions?.width ?? 1000;
   const height = dimensions?.height ?? 2000;
   const depth = dimensions?.depth ?? 45;
-  const bounds = dimensions?.bounds ?? {
-    min: [-width / 2, -height / 2, -depth / 2] as [number, number, number],
-    max: [width / 2, height / 2, depth / 2] as [number, number, number],
-  };
-  const boundsX: [number, number] = [bounds.min[0] * 1.5, bounds.max[0] * 1.5];
-  const boundsZ: [number, number] = [bounds.min[2] * 1.5, bounds.max[2] * 1.5];
-  const shadowCatcherDiameter = Math.max(width, height) * 2;
-
-  return {
-    boundsX,
-    boundsZ,
-    intensity: 1.6,
-    shadowCatcherDiameter,
-    ambientIntensity: 0.45,
-    castShadows: true,
-  };
+  
+  return createLightingFromDimensions(width, height, depth);
 }
 
 function normalizeSceneConfig(config: SceneConfig): SceneConfig {
@@ -197,7 +184,7 @@ function normalizeSceneConfig(config: SceneConfig): SceneConfig {
     materials: Array.isArray(config.materials) ? config.materials : [],
     visibility: config.visibility || {},
     ui: config.ui || { ...DEFAULT_UI_TOGGLES },
-    lighting: config.lighting || buildDefaultLighting(config.dimensions),
+    lighting: normalizeLightingConfig(config.lighting || buildDefaultLighting(config.dimensions)),
   };
 
   normalized.materials = normalized.materials.map((mat) => {

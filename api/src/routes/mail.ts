@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
 import OpenAI from "openai";
+import { logOrderFlow } from "../lib/order-flow-log";
 
 const router = Router();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -67,6 +68,8 @@ router.post("/ingest", async (req, res) => {
       skipDuplicates: true,
     });
 
+    logOrderFlow("ingest_recorded", { tenantId, messageId, provider, userId, created: createRes.count });
+
     // 2) Classify as lead vs not lead using OpenAI with explicit subject + full body
     let ai: any = null;
     try {
@@ -124,6 +127,7 @@ router.post("/ingest", async (req, res) => {
           where: { tenantId_provider_messageId: { tenantId, provider, messageId } },
           data: { processedAt: new Date(), aiPredictedIsLead: aiIsLead ?? false },
         });
+        logOrderFlow("ingest_classified_non_lead", { tenantId, messageId, provider, aiIsLead, aiConfidence });
       } catch {}
 
       // Record training example for learning
@@ -237,6 +241,8 @@ Return ONLY JSON.
 
       return lead;
     });
+
+    logOrderFlow("ingest_promoted_to_lead", { tenantId, messageId, provider, leadId: out.id, userId });
 
     // Record positive example
     try {

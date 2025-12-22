@@ -2,6 +2,7 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { Prisma } from "@prisma/client";
+import { logOrderFlow } from "../lib/order-flow-log";
 
 const router = Router();
 
@@ -151,6 +152,19 @@ router.post("/quote/:quoteId", requireAuth, async (req: any, res) => {
         },
       });
       savedAnswers.push(answer);
+    }
+
+    const payload = {
+      tenantId,
+      quoteId,
+      responseId: response.id,
+      leadId: quote.leadId,
+      savedAnswers: savedAnswers.length,
+    };
+
+    logOrderFlow("questionnaire_saved", payload);
+    if (completed) {
+      logOrderFlow("questionnaire_completed", payload);
     }
 
     return res.json({
