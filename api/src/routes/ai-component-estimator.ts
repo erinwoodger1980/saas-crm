@@ -8,6 +8,7 @@ import { Router } from 'express';
 import openai from '../ai';
 import multer from 'multer';
 import { z } from 'zod';
+import { generateEstimatedProfile } from '../lib/svg-profile-generator';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -46,6 +47,7 @@ interface ComponentEstimate {
     suggested: string;
     widthMm: number;
     depthMm: number;
+    svg?: string; // Generated SVG profile geometry
   };
   confidence: number;
 }
@@ -229,30 +231,37 @@ function transformAIResponse(
   aiResponse: any,
   dimensions: { widthMm: number; heightMm: number; depthMm?: number }
 ): EstimationResult {
-  const components: ComponentEstimate[] = (aiResponse.components || []).map((c: any) => ({
-    id: c.id || `component-${Math.random().toString(36).substr(2, 9)}`,
-    type: c.type || 'panel',
-    label: c.label || c.type,
-    geometry: {
-      width: c.geometry?.width || 50,
-      height: c.geometry?.height || 50,
-      depth: c.geometry?.depth || dimensions.depthMm || 45,
-    },
-    position: {
-      x: c.position?.x || 0,
-      y: c.position?.y || 0,
-      z: c.position?.z || 0,
-    },
-    material: c.material || 'timber',
-    profile: c.profile
-      ? {
-          suggested: c.profile.suggested || 'Standard profile',
-          widthMm: c.profile.widthMm || c.geometry?.width || 50,
-          depthMm: c.profile.depthMm || c.geometry?.depth || dimensions.depthMm || 45,
-        }
-      : undefined,
-    confidence: c.confidence || 0.7,
-  }));
+  const components: ComponentEstimate[] = (aiResponse.components || []).map((c: any) => {
+    const profileWidth = c.profile?.widthMm || c.geometry?.width || 50;
+    const profileDepth = c.profile?.depthMm || c.geometry?.depth || dimensions.depthMm || 45;
+    
+    // Generate actual SVG profile geometry
+    const profileDef = generateEstimatedProfile(c.type || 'panel', profileWidth, profileDepth);
+    
+    return {
+      id: c.id || `component-${Math.random().toString(36).substr(2, 9)}`,
+      type: c.type || 'panel',
+      label: c.label || c.type,
+      geometry: {
+        width: c.geometry?.width || 50,
+        height: c.geometry?.height || 50,
+        depth: c.geometry?.depth || dimensions.depthMm || 45,
+      },
+      position: {
+        x: c.position?.x || 0,
+        y: c.position?.y || 0,
+        z: c.position?.z || 0,
+      },
+      material: c.material || 'timber',
+      profile: {
+        suggested: c.profile?.suggested || profileDef.name,
+        widthMm: profileWidth,
+        depthMm: profileDepth,
+        svg: profileDef.svg, // Include generated SVG
+      },
+      confidence: c.confidence || 0.7,
+    };
+  });
 
   return {
     components,
