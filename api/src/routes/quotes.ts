@@ -1171,7 +1171,7 @@ router.post("/:id/convert", requireAuth, async (req: any, res) => {
       opportunity = await prisma.opportunity.create({
         data: {
           tenantId,
-          leadId,
+          leadId: leadId || undefined,
           title: quote.title || "Order",
           stage: "WON" as any,
           valueGBP: quote.totalGBP != null ? new Prisma.Decimal(Number(quote.totalGBP)) : null,

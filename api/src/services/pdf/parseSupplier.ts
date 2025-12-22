@@ -1,5 +1,6 @@
 // api/src/services/pdf/parseSupplier.ts
 import { callMlWithSignedUrl, callMlWithUpload, normaliseMlPayload } from "../lib/ml";
+import type { SupplierParseResult } from "../types/parse";
 import fs from "fs";
 import path from "path";
 
@@ -53,7 +54,7 @@ export async function parseSupplierPdf(
     const parsed = normaliseMlPayload(result.data);
     
     // Convert to the expected ParseResult format
-    const lines = parsed.lines.map(ln => {
+    const lines = parsed.lines.map((ln: SupplierParseResult['lines'][number]) => {
       const parts = [];
       if (ln.description) parts.push(ln.description);
       if (ln.qty) parts.push(`Qty: ${ln.qty}`);
