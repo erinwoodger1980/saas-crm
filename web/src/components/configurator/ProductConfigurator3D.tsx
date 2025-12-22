@@ -775,6 +775,7 @@ export function ProductConfigurator3D({
       {/* Main 3D Canvas */}
       <div className={`${heroMode ? 'w-full h-full' : 'flex-1 relative'} bg-gradient-to-b from-slate-100 to-slate-200 ${!heroMode ? 'rounded-lg' : ''} overflow-hidden ${!heroMode ? 'border' : ''} min-h-0`}>
         <Canvas
+          frameloop="demand"
           shadows="soft"
           dpr={[1, 2]}
           camera={{
@@ -789,6 +790,7 @@ export function ProductConfigurator3D({
             preserveDrawingBuffer: false,
           }}
           onCreated={({ gl }) => {
+            console.log('[ProductConfigurator3D] Canvas created, initializing WebGL renderer');
             // Improved renderer settings for better quality
             rendererRef.current = gl;
             gl.setClearColor('#e8e8e8');
@@ -808,6 +810,7 @@ export function ProductConfigurator3D({
             canvas.addEventListener('webglcontextrestored', () => {
               console.log('[ProductConfigurator3D] WebGL context restored');
             });
+            console.log('[ProductConfigurator3D] WebGL renderer initialized successfully');
           }}
         >
           <Suspense fallback={null}>
