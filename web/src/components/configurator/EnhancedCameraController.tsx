@@ -9,7 +9,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
-import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 import {
   fitCameraToObject,
@@ -23,7 +22,7 @@ interface EnhancedCameraControllerProps {
   autoFit?: boolean;
   perspective?: 'front' | '3/4' | 'top' | 'isometric';
   onCameraChange?: (state: any) => void;
-  onControlsReady?: (controls: OrbitControlsImpl) => void;
+  onControlsReady?: (controls: any) => void;
   savedCameraState?: any;
   productWidth?: number;
   productHeight?: number;
@@ -129,6 +128,7 @@ export function EnhancedCameraController({
       onEnd={() => {
         // Re-enable damping
       }}
+      // @ts-ignore - onMount not in types but works
       onMount={(api: any) => {
         controlsRef.current = api;
         onControlsReady?.(api);

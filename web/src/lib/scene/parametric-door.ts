@@ -75,12 +75,12 @@ function buildProfileGeometry(params: {
       ];
 
   return {
-    type: 'profileExtrude',
+    type: 'profileExtrude' as any,
     dimensions: [width, height, depth],
     position,
     customData: {
-      profile: profile.shape2D.points,
-      path,
+      profile: { points: profile.shape2D.points } as any,
+      path: path as any,
       closed: profile.shape2D.closed,
       fallbackBox: { width, height, depth },
     },
@@ -197,7 +197,7 @@ export function buildDoorComponentTree(params: ProductParams): BuildResult {
       const addedPartComponent: ComponentNode = {
         id: `addedPart_${part.id || index}`,
         name: `${part.componentTypeCode} ${index + 1}`,
-        type: 'addedPart',
+        type: 'ironmongery' as any, // addedPart not in union, using ironmongery
         materialId: part.params?.materialId || 'timber',
         geometry: {
           type: 'box',

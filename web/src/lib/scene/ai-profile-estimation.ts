@@ -126,7 +126,7 @@ export function enhanceComponentListWithProfiles(
     lengthMm?: number;
   }>
 ): ComponentProfile[] {
-  const profileMap = estimateProfilesForAssembly(componentList);
+  const profileMap = estimateProfilesForAssembly(componentList as any);
 
   return componentList.map((component) => ({
     componentId: component.id,

@@ -62,7 +62,7 @@ export async function resolveTemplateDraft(
   
   // Resolve materials
   const materials: ResolvedMaterialAssignment[] = draft.materials.map(rule => ({
-    role: rule.materialRole,
+    role: (rule as any).materialRole || (rule as any).componentRole,
     materialKey: rule.materialKey,
     name: undefined, // Will be populated by material registry lookup
     meta: {},
@@ -182,11 +182,7 @@ async function resolveInstance(
     profileRef = {
       type: 'estimated',
       estimatedFrom: templateInstance.componentModelId,
-      meta: {
-        confidence: 0.7,
-        source: 'auto-estimated',
-      },
-    };
+    } as any;
   }
   
   // Assign material key (from instance or from global material rules)

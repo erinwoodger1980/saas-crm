@@ -31,7 +31,8 @@ export interface SVGProfileDefinition {
  */
 function parseSVGToShapes(svgText: string): THREE.Shape[] {
   try {
-    const paths = SVGLoader.parse(svgText);
+    const loader = new SVGLoader();
+    const paths = loader.parse(svgText);
     const shapes: THREE.Shape[] = [];
 
     paths.paths.forEach((path: any) => {

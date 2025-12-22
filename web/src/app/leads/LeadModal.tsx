@@ -3829,7 +3829,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
 
                     {questionnaireSubmittedAt && (
                       <div className="mt-2 text-xs text-slate-500">
-                        Submitted {new Date(questionnaireSubmittedAt).toLocaleString()}
+                        Submitted {new Date(questionnaireSubmittedAt || '').toLocaleString()}
                       </div>
                     )}
 
@@ -4255,7 +4255,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       )}
                     </div>
 
-                    {settings?.slug && (
+                    {settings?.slug && lead?.id && (
                       <div className="mt-4 flex flex-wrap gap-2">
                         <a
                           href={`/q/${settings.slug}/${encodeURIComponent(lead.id)}`}
@@ -4339,7 +4339,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
           )}
 
           {/* QUESTIONNAIRE STAGE */}
-          {currentStage === "questionnaire" && (
+          {(currentStage as any) === "questionnaire" && (
             <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-indigo-50/60 min-h-[60vh]">
               <div className="max-w-4xl mx-auto space-y-6">
                 <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">

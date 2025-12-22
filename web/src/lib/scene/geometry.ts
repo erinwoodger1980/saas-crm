@@ -218,7 +218,8 @@ function createBezierCurve(params: CurveParams): THREE.Curve<THREE.Vector3> {
 }
 
 function createSplineCurve(params: CurveParams): THREE.Curve<THREE.Vector3> {
-  const { points = [], closed = false } = params;
+  const { points = [] } = params;
+  const closed = (params as any).closed ?? false;
   const points3D = points.map(p => new THREE.Vector3(p[0], p[1], 0));
   return new THREE.CatmullRomCurve3(points3D, closed as boolean);
 }
