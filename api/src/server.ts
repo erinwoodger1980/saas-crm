@@ -141,6 +141,7 @@ import componentsRouter from "./routes/components";
 import componentProcessesRouter from "./routes/component-processes";
 import componentAttributesRouter from "./routes/component-attributes";
 import componentVariantsRouter from "./routes/component-variants";
+import materialsRouter from "./routes/materials";
 import sceneStateRouter from "./routes/scene-state";
 import assetsRouter from "./routes/assets";
 import profilesRouter from "./routes/profiles";
@@ -749,6 +750,8 @@ app.use("/components", requireAuth, componentsRouter);
 app.use("/component-processes", requireAuth, componentProcessesRouter);
 app.use("/component-attributes", requireAuth, componentAttributesRouter); // Component attribute management (timber types, dimensions, etc)
 app.use("/component-variants", requireAuth, componentVariantsRouter); // Component variants with specific specifications
+// Material library (timber, boards, finishes with textures and costs)
+app.use("/materials", requireAuth, materialsRouter);
 // 3D asset storage (GLB/GLTF models for ironmongery, etc.)
 app.use("/assets", requireAuth, assetsRouter);
 // 2D profile storage (SVG/DXF files for component extrusion)

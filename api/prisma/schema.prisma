@@ -2371,6 +2371,7 @@ model Supplier {
   updatedAt             DateTime               @updatedAt
   materialItems         MaterialItem[]
   purchaseOrders        PurchaseOrder[]
+  materials             Material[]             @relation("MaterialSupplier")
   tenant                Tenant                 @relation("SupplierToTenant", fields: [tenantId], references: [id])
   supplierQuoteRequests SupplierQuoteRequest[]
   users                 User[]
@@ -2635,33 +2636,48 @@ model QuestionnairePhoto {
 }
 
 model Material {
-  id           String           @id @default(cuid())
-  tenantId     String
-  category     MaterialCategory
-  code         String
-  name         String
-  description  String?
-  supplier     String?
-  unitCost     Decimal          @default(0)
-  currency     String           @default("GBP")
-  unit         String           @default("m")
-  thickness    Decimal?
-  width        Decimal?
-  length       Decimal?
-  species      String?
-  grade        String?
-  finish       String?
-  isActive     Boolean          @default(true)
-  isStock      Boolean          @default(false)
-  leadTimeDays Int?
-  minOrderQty  Decimal?
-  notes        String?
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id             String           @id @default(cuid())
+  tenantId       String
+  category       MaterialCategory
+  code           String
+  name           String
+  description    String?
+  supplierId     String?
+  supplier       Supplier?        @relation("MaterialSupplier", fields: [supplierId], references: [id], onDelete: SetNull)
+  unitCost       Decimal          @default(0)
+  currency       String           @default("GBP")
+  unit           String           @default("m")
+  thickness      Decimal?
+  width          Decimal?
+  length         Decimal?
+  species        String?
+  grade          String?
+  finish         String?
+  
+  // 3D Rendering fields
+  color          String?          // Hex color for base material (e.g., "#8B4513" for brown timber)
+  colorName      String?          // Human-readable color name (e.g., "Oak Natural", "White", "Grey")
+  textureUrl     String?          // URL to texture image for realistic rendering
+  textureType    String?          // WOOD_GRAIN, SOLID, METALLIC, GLASS, etc.
+  roughness      Decimal?         @default(0.5) // 0 (smooth/glossy) to 1 (rough/matte)
+  metalness      Decimal?         @default(0)   // 0 (non-metal) to 1 (metal)
+  opacity        Decimal?         @default(1)   // 0 (transparent) to 1 (opaque)
+  
+  // Material properties for rendering
+  renderingProps Json?            // { normalMap, bumpMap, aoMap, emissive, etc. }
+  
+  isActive       Boolean          @default(true)
+  isStock        Boolean          @default(false)
+  leadTimeDays   Int?
+  minOrderQty    Decimal?
+  notes          String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, code])
   @@index([tenantId, category, isActive])
+  @@index([tenantId, colorName])
 }
 
 model GlazingItem {

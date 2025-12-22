@@ -29,6 +29,17 @@ const EstimateRequestSchema = z.object({
   imageBase64: z.string().optional(),
 });
 
+interface MaterialSuggestion {
+  materialId?: string; // Reference to Material in database
+  category: string; // TIMBER_HARDWOOD, TIMBER_SOFTWOOD, etc.
+  name: string; // e.g., "Oak Natural", "Pine Stained"
+  color?: string; // Hex color
+  colorName?: string; // Human-readable color
+  finish?: string; // Stained, Painted, Natural, etc.
+  species?: string; // Oak, Pine, etc.
+  confidence: number;
+}
+
 interface ComponentEstimate {
   id: string;
   type: 'stile' | 'rail' | 'mullion' | 'transom' | 'panel' | 'glass' | 'glazingBar';
@@ -44,7 +55,8 @@ interface ComponentEstimate {
     y: number;
     z: number;
   };
-  material: string;
+  material: string; // Legacy string (e.g., "timber")
+  materialSuggestion?: MaterialSuggestion; // NEW: Detailed material recommendation
   profile?: {
     suggested: string;
     widthMm: number;
@@ -197,6 +209,15 @@ Respond with valid JSON:
       "geometry": { "width": 0, "height": 0, "depth": 0 },
       "position": { "x": 0, "y": 0, "z": 0 },
       "material": "timber|glass|composite",
+      "materialSuggestion": {
+        "category": "TIMBER_HARDWOOD|TIMBER_SOFTWOOD|BOARD_MDF|etc",
+        "name": "Oak Natural|Pine Stained|White Painted|etc",
+        "color": "#8B4513",
+        "colorName": "Natural Oak|White|Grey|etc",
+        "finish": "Natural|Stained|Painted|Lacquered",
+        "species": "Oak|Pine|Sapele|etc",
+        "confidence": 0.8
+      },
       "profile": { "suggested": "description", "widthMm": 0, "depthMm": 0 },
       "confidence": 0.9
     }
@@ -213,7 +234,15 @@ Use standard joinery conventions:
 - Transoms are horizontal intermediate dividers (typically 40-60mm high)
 - Glass/panels fill between frames
 - Positions are relative to product center (0,0,0)
-- Y-axis points up, X-axis points right, Z-axis points forward`;
+- Y-axis points up, X-axis points right, Z-axis points forward
+
+For materialSuggestion:
+- Analyze image for wood species (oak, pine, sapele, etc.)
+- Detect finish type (natural, stained, painted, lacquered)
+- Estimate color (provide hex code and name)
+- Use TIMBER_HARDWOOD for oak, sapele, walnut, etc.
+- Use TIMBER_SOFTWOOD for pine, spruce, cedar, etc.
+- For painted finishes, use color name like "White Painted" or "Grey Painted"`;
 }
 
 /**
@@ -264,6 +293,19 @@ async function transformAndMatchComponents(
       profileSvg = profileDef.svg;
     }
     
+    // Match or create material if AI suggested one
+    let materialSuggestion: MaterialSuggestion | undefined;
+    if (c.materialSuggestion) {
+      const materialMatch = await findOrCreateMaterial(
+        tenantId,
+        c.materialSuggestion
+      );
+      materialSuggestion = {
+        ...c.materialSuggestion,
+        materialId: materialMatch?.id,
+      };
+    }
+    
     components.push({
       id: c.id || `component-${Math.random().toString(36).substr(2, 9)}`,
       type: c.type || 'panel',
@@ -280,6 +322,7 @@ async function transformAndMatchComponents(
         z: c.position?.z || 0,
       },
       material: c.material || 'timber',
+      materialSuggestion, // NEW: Include matched material
       profile: {
         suggested: c.profile?.suggested || matchResult.component?.name || `${c.type} profile`,
         widthMm: profileWidth,
@@ -386,6 +429,71 @@ async function findOrCreateComponent(
     component,
     profile: component.profile,
   };
+}
+
+/**
+ * Find existing material or create new one in database
+ * Returns material for reuse in 3D rendering
+ */
+async function findOrCreateMaterial(
+  tenantId: string,
+  materialSuggestion: any
+): Promise<any | null> {
+  if (!materialSuggestion) return null;
+
+  const { category, name, color, colorName, finish, species } = materialSuggestion;
+  
+  // Normalize for matching
+  const code = `${category}_${(species || colorName || name).toUpperCase().replace(/\s+/g, '_')}`;
+
+  try {
+    // Try to find existing material with same category + color/species
+    let material = await prisma.material.findFirst({
+      where: {
+        tenantId,
+        category: category || 'TIMBER_HARDWOOD',
+        OR: [
+          { code },
+          { colorName: { equals: colorName, mode: 'insensitive' } },
+          { species: { equals: species, mode: 'insensitive' } },
+        ],
+      },
+    });
+
+    if (material) {
+      console.log(`[AI Estimator] Reusing existing material: ${material.code}`);
+      return material;
+    }
+
+    // Create new material
+    console.log(`[AI Estimator] Creating new material: ${code}`);
+    
+    material = await prisma.material.create({
+      data: {
+        tenantId,
+        category: category || 'TIMBER_HARDWOOD',
+        code,
+        name: name || `${species || colorName} ${finish || ''}`.trim(),
+        species,
+        finish,
+        color,
+        colorName,
+        textureType: category?.includes('TIMBER') ? 'WOOD_GRAIN' : 'SOLID',
+        roughness: 0.7, // Default for timber
+        metalness: 0,
+        opacity: 1,
+        unitCost: 0, // Default, can be updated later
+        currency: 'GBP',
+        unit: 'm',
+        isActive: true,
+      },
+    });
+
+    return material;
+  } catch (error) {
+    console.error('[AI Estimator] Failed to create material:', error);
+    return null;
+  }
 }
 
 /**
