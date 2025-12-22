@@ -7,20 +7,21 @@ export interface NewFieldPayload {
   required: boolean;
   costingInputKey?: string;
   options?: string[]; // only for select
-  scope?: "client" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal";
+  scope?: "client" | "item" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal";
 }
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onCreate: (data: NewFieldPayload) => Promise<void> | void;
-  defaultScope?: "client" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal";
+  defaultScope?: "client" | "item" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal";
 }
 
 const TYPES = ["text", "number", "select", "boolean"] as const;
 
 const SCOPE_OPTIONS: Array<NonNullable<NewFieldPayload["scope"]>> = [
   "client",
+  "item",
   "quote_details",
   "manufacturing",
   "fire_door_schedule",

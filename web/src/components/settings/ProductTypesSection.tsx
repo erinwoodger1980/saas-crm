@@ -206,7 +206,10 @@ export default function ProductTypesSection() {
     label: string;
     type: string;
   } | null>(null);
-  const [configuratorKey, setConfiguratorKey] = useState(0); // Force remount on changes
+  // Stable key based on product identity - prevents unnecessary Canvas remounts
+  const configuratorKey = configuratorDialog 
+    ? `${configuratorDialog.categoryId}-${configuratorDialog.type}-${configuratorDialog.optionId}` 
+    : '';
   const [aiEstimateDialog, setAiEstimateDialog] = useState<{
     categoryId: string;
     typeIdx: number;
@@ -619,7 +622,6 @@ export default function ProductTypesSection() {
       setAiImagePreview(null);
       
       setConfiguratorDialog(aiEstimateDialog);
-      setConfiguratorKey(prev => prev + 1);
     } catch (error: any) {
       console.error('[AI Estimation] Error:', error);
       toast({
@@ -929,7 +931,6 @@ export default function ProductTypesSection() {
                                         label: option.label,
                                         type: type.type,
                                       });
-                                      setConfiguratorKey(prev => prev + 1); // Force fresh mount
                                     }}
                                   >
                                     <Box className="h-3 w-3 mr-1" />

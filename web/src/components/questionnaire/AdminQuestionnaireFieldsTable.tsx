@@ -290,7 +290,7 @@ function FieldRow({ field, onEdit, onDelete, canDelete }: { field: Questionnaire
 
 export const AdminQuestionnaireFieldsTable: React.FC<{
   apiBase?: string;
-  scope?: "client" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal";
+  scope?: "client" | "item" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal";
 }> = ({ apiBase = process.env.NEXT_PUBLIC_API_URL || "", scope }) => {
   const { user } = useCurrentUser();
   const baseUrl = apiBase.replace(/\/$/, "") + "/questionnaire-fields";

@@ -17,12 +17,14 @@ interface CustomFieldsPanelProps {
   entityType: 'lead' | 'client' | 'line_item' | 'opportunity';
   entityId: string;
   readOnly?: boolean;
+  onSave?: () => void;
 }
 
 export function CustomFieldsPanel({
   entityType,
   entityId,
   readOnly = false,
+  onSave,
 }: CustomFieldsPanelProps) {
   const { toast } = useToast();
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, any>>({});

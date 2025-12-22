@@ -63,6 +63,7 @@ export function FieldRenderer({
   field,
   value,
   onChange,
+  onBlur,
   context,
   disabled = false,
   error,

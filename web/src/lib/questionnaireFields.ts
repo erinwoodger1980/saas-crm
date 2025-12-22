@@ -16,7 +16,7 @@ export interface QuestionnaireField {
   options?: string[] | null;
   placeholder?: string | null;
   helpText?: string | null;
-  scope: 'client' | 'quote_details' | 'manufacturing' | 'fire_door_schedule' | 'fire_door_line_items' | 'public' | 'internal';
+  scope: 'client' | 'item' | 'project_details' | 'quote_details' | 'manufacturing' | 'fire_door_schedule' | 'fire_door_line_items' | 'public' | 'internal';
   isStandard?: boolean;
   sortOrder?: number;
 }
@@ -29,7 +29,7 @@ const fieldsCache = new Map<string, QuestionnaireField[]>();
  */
 export async function fetchQuestionnaireFields(params: {
   tenantSlug: string;
-  scope?: 'client' | 'quote_details' | 'manufacturing' | 'fire_door_schedule' | 'fire_door_line_items' | 'public' | 'internal';
+  scope?: 'client' | 'item' | 'project_details' | 'quote_details' | 'manufacturing' | 'fire_door_schedule' | 'fire_door_line_items' | 'public' | 'internal';
   includeStandard?: boolean;
 }): Promise<QuestionnaireField[]> {
   const { tenantSlug, scope, includeStandard = true } = params;

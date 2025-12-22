@@ -982,7 +982,7 @@ export default function LeadModal({
               const fetchPromises = [
                 fetchQuestionnaireFields({ tenantSlug: slug, scope: "project_details" }).catch(() => []),
                 // Back-compat: some tenants still store item fields under legacy scope "item"
-                fetchQuestionnaireFields({ tenantSlug: slug, scope: "item" as any }).catch(() => []),
+                fetchQuestionnaireFields({ tenantSlug: slug, scope: "item" }).catch(() => []),
                 fetchQuestionnaireFields({ tenantSlug: slug, scope: "manufacturing" }).catch(() => []),
                 fetchQuestionnaireFields({ tenantSlug: slug, scope: "public" }).catch(() => []),
               ];

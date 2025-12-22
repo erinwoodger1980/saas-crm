@@ -256,6 +256,7 @@ export default function SettingsPage() {
   const [s, setS] = useState<Settings | null>(null);
   const [inbox, setInbox] = useState<InboxCfg>({ gmail: false, ms365: false, intervalMinutes: 10 });
   const [savingInbox, setSavingInbox] = useState(false);
+  const [updatingEarlyAccess, setUpdatingEarlyAccess] = useState(false);
   const [gmailConn, setGmailConn] = useState<{ gmailAddress?: string | null } | null>(null);
   const [ms365Conn, setMs365Conn] = useState<{ ms365Address?: string | null } | null>(null);
   const [userGmailConn, setUserGmailConn] = useState<{ gmailAddress?: string | null } | null>(null);
@@ -267,7 +268,7 @@ export default function SettingsPage() {
   const [qSearch, setQSearch] = useState("");
   const [qHideInternal, setQHideInternal] = useState(true);
   const [qOnlyPublic, setQOnlyPublic] = useState(false);
-  const [qScopeTab, setQScopeTab] = useState<"client" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal">("client");
+  const [qScopeTab, setQScopeTab] = useState<"client" | "item" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal">("client");
   const [savingSettings, setSavingSettings] = useState(false);
     // Seed placeholder testimonials if none exist on initial load
     useEffect(() => {
