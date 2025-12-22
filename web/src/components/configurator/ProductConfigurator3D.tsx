@@ -250,6 +250,20 @@ export function ProductConfigurator3D({
   const mountedRef = useRef(true);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
 
+  // Track mount/unmount for debugging
+  useEffect(() => {
+    console.log('[ProductConfigurator3D] Component mounted');
+    return () => {
+      console.log('[ProductConfigurator3D] Component unmounting - THIS CAUSES CONTEXT LOSS');
+      mountedRef.current = false;
+      if (rendererRef.current) {
+        console.log('[ProductConfigurator3D] Disposing renderer on unmount');
+        rendererRef.current.dispose();
+        rendererRef.current = null;
+      }
+    };
+  }, []);
+
   const safeEntityId = useMemo(() => String(entityId ?? 'preview-settings'), [entityId]);
   const isPreviewMode = useMemo(
     () => tenantId === 'settings' || tenantId === 'preview' || safeEntityId.startsWith('preview-'),
