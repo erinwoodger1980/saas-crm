@@ -1156,8 +1156,18 @@ router.post("/:id/convert", requireAuth, async (req: any, res) => {
 
     const leadId = quote.leadId || null;
 
+    // Skip opportunity/project creation if no lead (leadId is required by schema)
+    if (!leadId) {
+      logOrderFlow("order_converted_no_lead", {
+        tenantId,
+        quoteId: quote.id,
+        totalGBP: quote.totalGBP,
+      });
+      return res.json({ ok: true, quoteId: quote.id, message: "quote_has_no_lead" });
+    }
+
     // Upsert opportunity as WON
-    let opportunity = await prisma.opportunity.findFirst({ where: { tenantId, leadId: leadId || undefined } });
+    let opportunity = await prisma.opportunity.findFirst({ where: { tenantId, leadId } });
     if (opportunity) {
       opportunity = await prisma.opportunity.update({
         where: { id: opportunity.id },
@@ -1171,7 +1181,7 @@ router.post("/:id/convert", requireAuth, async (req: any, res) => {
       opportunity = await prisma.opportunity.create({
         data: {
           tenantId,
-          leadId: leadId || undefined,
+          leadId,
           title: quote.title || "Order",
           stage: "WON" as any,
           valueGBP: quote.totalGBP != null ? new Prisma.Decimal(Number(quote.totalGBP)) : null,

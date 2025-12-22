@@ -1,6 +1,6 @@
 // api/src/services/pdf/parseSupplier.ts
-import { callMlWithSignedUrl, callMlWithUpload, normaliseMlPayload } from "../lib/ml";
-import type { SupplierParseResult } from "../types/parse";
+import { callMlWithUpload, normaliseMlPayload } from "../../lib/ml";
+import type { SupplierParseResult } from "../../types/parse";
 import fs from "fs";
 import path from "path";
 
