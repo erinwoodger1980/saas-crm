@@ -203,6 +203,7 @@ export default function ProductTypesSection() {
   
   // Canonical dialog state - prevents re-render loop
   const [isConfiguratorOpen, setIsConfiguratorOpen] = useState(false);
+  const [mount3D, setMount3D] = useState(false); // Canvas only mounts when true
   const [capturedConfig, setCapturedConfig] = useState<any>(null);
   const [capturedLineItem, setCapturedLineItem] = useState<any>(null);
   const [capturedDialogInfo, setCapturedDialogInfo] = useState<{
@@ -252,17 +253,27 @@ export default function ProductTypesSection() {
       };
       setCapturedLineItem(lineItem);
       
+      // Mount Canvas after next frame to ensure clean context creation
+      requestAnimationFrame(() => {
+        setMount3D(true);
+      });
+      
       if (process.env.NODE_ENV === 'development') {
-        console.log('[ProductTypesSection] Dialog opened, config captured');
+        console.log('[ProductTypesSection] Dialog opened, config captured, Canvas will mount');
       }
     } else if (!isConfiguratorOpen) {
-      // Dialog closed - clear state
-      setCapturedConfig(null);
-      setCapturedLineItem(null);
-      setCapturedDialogInfo(null);
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[ProductTypesSection] Dialog closed, state cleared');
-      }
+      // Dialog closing - unmount Canvas FIRST, then clear state
+      setMount3D(false);
+      
+      // Clear state on next tick to ensure Canvas unmounts cleanly
+      setTimeout(() => {
+        setCapturedConfig(null);
+        setCapturedLineItem(null);
+        setCapturedDialogInfo(null);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[ProductTypesSection] Dialog closed, Canvas unmounted, state cleared');
+        }
+      }, 0);
     }
   }, [isConfiguratorOpen, capturedDialogInfo, products]);
 
@@ -1150,7 +1161,7 @@ export default function ProductTypesSection() {
               </button>
             </div>
             <div className="rounded-lg border bg-muted/30">
-              {capturedConfig ? (
+              {capturedConfig && mount3D ? (
                 <ProductConfigurator3D
                   key={configuratorKey}
                   tenantId="settings"
@@ -1163,6 +1174,7 @@ export default function ProductTypesSection() {
                     type: capturedDialogInfo.type,
                     option: capturedDialogInfo.optionId,
                   }}
+                  settingsPreview={true}
                   renderQuality="low"
                   onChange={(sceneConfig) => {
                     // Update the option's sceneConfig as user makes changes

@@ -109,6 +109,20 @@ export function MaterialLibrarySection() {
     }
   };
 
+  // Normalize suppliers response to always return an array
+  function normalizeSuppliers(res: any): any[] {
+    if (Array.isArray(res)) return res;
+    if (Array.isArray(res?.data)) return res.data;
+    if (Array.isArray(res?.data?.data)) return res.data.data;
+    if (Array.isArray(res?.suppliers)) return res.suppliers;
+    if (Array.isArray(res?.data?.suppliers)) return res.data.suppliers;
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[MaterialLibrary] Unexpected suppliers response format, returning empty array');
+    }
+    return [];
+  }
+
   const loadSuppliers = async () => {
     try {
       const response = await fetch('/api/suppliers', {
@@ -116,18 +130,7 @@ export function MaterialLibrarySection() {
       });
       if (response.ok) {
         const data = await response.json();
-        // Handle various response formats
-        let suppliers: any[] = [];
-        if (Array.isArray(data)) {
-          suppliers = data;
-        } else if (data && Array.isArray(data.data)) {
-          suppliers = data.data;
-        } else if (data && Array.isArray(data.suppliers)) {
-          suppliers = data.suppliers;
-        } else {
-          console.warn('[MaterialLibrary] Unexpected suppliers response format:', data);
-          suppliers = [];
-        }
+        const suppliers = normalizeSuppliers(data);
         setSuppliers(suppliers);
         if (process.env.NODE_ENV === 'development') {
           console.log('[MaterialLibrary] Loaded suppliers:', suppliers.length);

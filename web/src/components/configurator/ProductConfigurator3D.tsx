@@ -35,6 +35,7 @@ import { SceneUI } from './SceneUI';
 import { InspectorPanel } from './InspectorPanel';
 import { AutoFrame } from './AutoFrame';
 import { Stage } from './Stage';
+import { SceneDisposer } from './SceneDisposer';
 import { PostFX } from './PostFX';
 import { Loader2, Save, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -72,6 +73,8 @@ interface ProductConfigurator3DProps {
   heroMode?: boolean;
   /** Render quality: 'low' for Settings preview (low power), 'high' for production */
   renderQuality?: 'low' | 'high';
+  /** Settings preview mode - enables ultra low-power rendering */
+  settingsPreview?: boolean;
 }
 
 /**
@@ -234,6 +237,7 @@ export function ProductConfigurator3D({
   onClose,
   heroMode = true,
   renderQuality = 'high',
+  settingsPreview = false,
 }: ProductConfigurator3DProps) {
   // ===== ALL STATE & REFS (MUST BE AT TOP) =====
   const [config, setConfig] = useState<SceneConfig | null>(null);
@@ -257,32 +261,21 @@ export function ProductConfigurator3D({
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   
-  // LOW POWER MODE for Settings preview
-  const isLowPowerMode = renderQuality === 'low';
+  // SETTINGS PREVIEW = ultra low-power mode
+  const isLowPowerMode = renderQuality === 'low' || settingsPreview;
 
   // Track mount/unmount with COMPLETE WebGL cleanup
   useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
-      console.log('[ProductConfigurator3D] Component mounted, renderQuality:', renderQuality);
+      console.log('[ProductConfigurator3D] Mounted, settingsPreview:', settingsPreview, 'renderQuality:', renderQuality);
     }
     return () => {
       if (process.env.NODE_ENV === 'development') {
-        console.log('[ProductConfigurator3D] Unmounting - disposing ALL WebGL resources');
+        console.log('[ProductConfigurator3D] Unmounting - Canvas will be fully disposed by SceneDisposer');
       }
       mountedRef.current = false;
-      
-      // CRITICAL: Dispose all resources to prevent context loss
-      if (sceneRef.current) {
-        disposeScene(sceneRef.current);
-        sceneRef.current = null;
-      }
-      
-      if (rendererRef.current) {
-        disposeRenderer(rendererRef.current);
-        rendererRef.current = null;
-      }
     };
-  }, [renderQuality]);
+  }, [renderQuality, settingsPreview]);
 
   const safeEntityId = useMemo(() => String(entityId ?? 'preview-settings'), [entityId]);
   const isPreviewMode = useMemo(
@@ -798,7 +791,7 @@ export function ProductConfigurator3D({
           key={canvasKey}
           frameloop="demand"
           shadows={isLowPowerMode ? false : "soft"}
-          dpr={isLowPowerMode ? [1, 1] : [1, 2]}
+          dpr={settingsPreview ? 1 : (isLowPowerMode ? [1, 1] : [1, 2])}
           camera={{
             position: config.camera?.position || [0, 1000, 2000],
             fov: cameraMode === 'Perspective' ? (config.camera?.fov || 50) : 50,
@@ -870,6 +863,9 @@ export function ProductConfigurator3D({
             };
           }}
         >
+          {/* SceneDisposer ensures complete cleanup on unmount */}
+          <SceneDisposer />
+          
           {/* Camera controller with controls ref export */}
           <CameraController
             cameraState={config.camera}
