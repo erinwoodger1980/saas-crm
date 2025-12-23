@@ -931,8 +931,11 @@ export function ProductConfigurator3D({
   const fallbackAttributes = useMemo(() => {
     if (!selectedComponentId) return null;
     
+    // Check if we already have attributes from the builder
+    if (editableAttributes[selectedComponentId]) return null;
+    
     const selectedComponent = config?.components.find(c => c.id === selectedComponentId);
-    if (!selectedComponent || selectedAttributes) return null;
+    if (!selectedComponent) return null;
     
     const attrs: EditableAttribute[] = [];
     
@@ -993,7 +996,7 @@ export function ProductConfigurator3D({
     }
     
     return attrs.length > 0 ? attrs : null;
-  }, [selectedComponentId, config?.components, selectedAttributes]);
+  }, [selectedComponentId, config?.components, editableAttributes]);
 
   const effectiveAttributes = selectedAttributes || fallbackAttributes;
 
