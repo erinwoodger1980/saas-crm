@@ -23,20 +23,22 @@ export function Stage({ productWidth, productHeight, hideFloor }: StageProps) {
 
   return (
     <group>
-      {/* Cyclorama backdrop */}
-      <mesh
-        geometry={backdropGeometry}
-        position={[0, height / 2, -curveRadius]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        receiveShadow
-      >
-        <meshStandardMaterial
-          color="#f5f5f5"
-          roughness={0.95}
-          metalness={0}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
+      {/* Cyclorama backdrop - hidden in settings preview mode */}
+      {!hideFloor && (
+        <mesh
+          geometry={backdropGeometry}
+          position={[0, height / 2, -curveRadius]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          receiveShadow
+        >
+          <meshStandardMaterial
+            color="#f5f5f5"
+            roughness={0.95}
+            metalness={0}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      )}
 
       {/* Floor plane for subtle gradient and catch lighting - offset below to prevent z-fighting */}
       {!hideFloor && (
