@@ -215,19 +215,18 @@ export default function ProductTypesSection() {
     ? `${configuratorDialog.categoryId}-${configuratorDialog.type}-${configuratorDialog.optionId}` 
     : '';
   
-  // Update ref when dialog opens with current config
-  useEffect(() => {
-    if (configuratorDialog) {
-      const config = products
-        .find(c => c.id === configuratorDialog.categoryId)
-        ?.types[configuratorDialog.typeIdx]
-        ?.options.find(o => o.id === configuratorDialog.optionId)
-        ?.sceneConfig;
-      configuratorConfigRef.current = config;
-    } else {
-      configuratorConfigRef.current = null;
-    }
-  }, [configuratorDialog, products]);
+  // Compute config synchronously to avoid useEffect timing issues
+  // This ensures config is available on first render
+  if (configuratorDialog && !configuratorConfigRef.current) {
+    const config = products
+      .find(c => c.id === configuratorDialog.categoryId)
+      ?.types[configuratorDialog.typeIdx]
+      ?.options.find(o => o.id === configuratorDialog.optionId)
+      ?.sceneConfig;
+    configuratorConfigRef.current = config;
+  } else if (!configuratorDialog) {
+    configuratorConfigRef.current = null;
+  }
   
   // Memoize config to prevent Canvas remounts from parent re-renders
   // Use ref value to ensure it doesn't change when products updates
