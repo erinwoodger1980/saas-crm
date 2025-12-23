@@ -361,7 +361,9 @@ export function ProductConfigurator3D({
       return;
     }
 
-    const loadId = crypto.randomUUID();
+    const loadId = typeof crypto !== 'undefined' && crypto.randomUUID 
+      ? crypto.randomUUID() 
+      : Math.random().toString(36).substring(7);
     const controller = new AbortController();
 
     async function load() {
@@ -541,22 +543,29 @@ export function ProductConfigurator3D({
       }
     }
 
-    // Wrap in timeout to guarantee either success or error
-    Promise.race([
-      load(),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('3D load timeout after 10 seconds')), 10000)
-      ),
-    ]).catch((err) => {
-      if (!mountedRef.current) return;
-      console.error('[3D LOAD TIMEOUT]', err);
-      setLoadError(err.message || 'Load timeout');
-      setStatus('error');
-      setIsLoading(false);
-      setCanRender(false);
+    // Start load with timeout protection
+    const timeoutId = setTimeout(() => {
+      if (mountedRef.current) {
+        console.error('[3D LOAD TIMEOUT]');
+        setStatus((currentStatus) => {
+          if (currentStatus === 'loading') {
+            setLoadError('Load timeout after 10 seconds');
+            setIsLoading(false);
+            setCanRender(false);
+            toast.error('3D Load timeout - please try again');
+            return 'error';
+          }
+          return currentStatus;
+        });
+      }
+    }, 10000);
+
+    load().finally(() => {
+      clearTimeout(timeoutId);
     });
 
     return () => {
+      clearTimeout(timeoutId);
       controller.abort();
     };
   }, [tenantId, entityType, safeEntityId, lineItemKey, productTypeKey, isPreviewMode, initialConfig, status]);
