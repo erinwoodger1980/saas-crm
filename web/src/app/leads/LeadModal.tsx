@@ -3824,7 +3824,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       <span aria-hidden="true">🧾</span>
                       {(Array.isArray(settings?.questionnaire)
                         ? null
-                        : settings?.questionnaire?.title) || "Questionnaire"}
+                        : (settings?.questionnaire as { title?: string })?.title) || "Questionnaire"}
                     </div>
 
                     {questionnaireSubmittedAt && (
@@ -4258,7 +4258,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                     {settings?.slug && lead?.id && (
                       <div className="mt-4 flex flex-wrap gap-2">
                         <a
-                          href={`/q/${settings.slug}/${encodeURIComponent(lead.id)}`}
+                          href={`/q/${settings!.slug}/${encodeURIComponent(lead!.id)}`}
                           className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-white/80 px-3 py-1.5 text-sm font-semibold text-sky-600 shadow-sm hover:bg-white"
                           target="_blank"
                           rel="noreferrer"

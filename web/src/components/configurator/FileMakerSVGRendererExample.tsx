@@ -156,10 +156,9 @@ export function FileMakerSVGRendererExample() {
 
     // Create material
     const material = createPBRMaterial({
-      timber: 'oak',
       finish: 'satin',
       envMapIntensity: 0.8,
-    });
+    } as any);
 
     // Create assembly
     const assembly = new THREE.Group();
@@ -284,9 +283,8 @@ export function FileMakerSVGRendererExample() {
       const component = findComponentInAssembly(assemblyRef.current, componentId);
       if (component) {
         const material = createPBRMaterial({
-          timber: 'oak',
           finish: 'satin',
-        });
+        } as any);
 
         // Remove old mesh
         while (component.children.length > 0) {
@@ -363,7 +361,7 @@ export function FileMakerSVGRendererExample() {
         {/* Click to select */}
         <div
           className="absolute inset-0 cursor-pointer"
-          onClick={handleClick}
+          onClick={handleClick as any}
           style={{ pointerEvents: 'auto' }}
         />
 

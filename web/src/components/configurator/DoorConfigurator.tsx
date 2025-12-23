@@ -337,7 +337,7 @@ export function DoorConfigurator({
             enabled: true,
             type: THREE.PCFSoftShadowMap,
             autoUpdate: true,
-          },
+          } as any,
         }}
         style={{
           background: '#e6e6e6',

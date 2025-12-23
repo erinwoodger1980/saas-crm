@@ -231,6 +231,7 @@ const ComponentMesh = forwardRef<THREE.Mesh, {
           );
         }
 
+        // @ts-ignore - profileExtrude not in base geometry types
         case 'profileExtrude': {
           if (!customData?.profile || !customData?.path) return null;
           return createProfileExtrude({
@@ -378,7 +379,7 @@ function NodeRenderer({
         }
       }}
     >
-      {mesh}
+      {mesh ? mesh : <mesh />}
     </TransformControls>
   ) : (
     mesh || <></>

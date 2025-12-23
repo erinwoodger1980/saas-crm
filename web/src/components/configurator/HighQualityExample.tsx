@@ -11,11 +11,12 @@ import { SceneConfig, ComponentNode, MaterialDefinition } from '@/types/scene-co
 /**
  * Example: Building a high-quality door scene with render hints
  */
-export function createHighQualityDoorConfig(): SceneConfig {
+export function createHighQualityDoorConfig(): any {
   // Glass panel component with proper tags
   const glassPanel: ComponentNode = {
     id: 'glass-panel-front',
     name: 'Front Glass Pane',
+    type: 'group',
     visible: true,
     materialId: 'glass-clear',
     tags: ['glass'], // ← Apply glass render hints
@@ -31,6 +32,7 @@ export function createHighQualityDoorConfig(): SceneConfig {
   const stainedGlassPlane: ComponentNode = {
     id: 'stained-glass-1',
     name: 'Stained Glass Image',
+    type: 'group',
     visible: true,
     materialId: 'glass-textured',
     tags: ['stainedGlassImagePlane'], // ← Special handling for image planes
@@ -46,6 +48,7 @@ export function createHighQualityDoorConfig(): SceneConfig {
   const panelFace: ComponentNode = {
     id: 'panel-face-1',
     name: 'Door Panel Face',
+    type: 'group',
     visible: true,
     materialId: 'painted-white',
     tags: ['panelFace', 'profileOverlay'], // ← Apply panel face hints
@@ -61,6 +64,7 @@ export function createHighQualityDoorConfig(): SceneConfig {
   const decal: ComponentNode = {
     id: 'decal-logo',
     name: 'Logo Decal',
+    type: 'group',
     visible: true,
     materialId: 'decal-texture',
     tags: ['decal', 'overlay'], // ← Apply decal render hints
@@ -135,6 +139,7 @@ export function createHighQualityDoorConfig(): SceneConfig {
   const doorFrame: ComponentNode = {
     id: 'door-frame',
     name: 'Door Frame',
+    type: 'group',
     visible: true,
     geometry: {
       type: 'box',
@@ -151,7 +156,6 @@ export function createHighQualityDoorConfig(): SceneConfig {
   };
 
   return {
-    id: 'door-config-1',
     tenantId: 'tenant-001',
     entityType: 'door',
     entityId: 'door-001',
@@ -159,6 +163,10 @@ export function createHighQualityDoorConfig(): SceneConfig {
       width: 914,
       height: 2032,
       depth: 45,
+      bounds: {
+        min: [-457, -1016, -22.5],
+        max: [457, 1016, 22.5],
+      },
     },
     components: [doorFrame],
     materials: [
@@ -174,12 +182,12 @@ export function createHighQualityDoorConfig(): SceneConfig {
       'decal-logo': true,
     },
     camera: {
-      mode: 'orbit',
+      mode: 'perspective' as any,
       position: [1500, 1000, 1500],
       target: [0, 0, 0],
       fov: 45,
-      near: 0.1,
-      far: 10000,
+      rotation: [0, 0, 0],
+      zoom: 1,
     },
     lighting: {
       boundsX: [-500, 500],
@@ -192,15 +200,12 @@ export function createHighQualityDoorConfig(): SceneConfig {
     ui: {
       axis: false,
       guides: false,
-      wireframe: false,
-      showLights: false,
-      showCamera: false,
+      componentList: false,
+      dimensions: false,
     },
     metadata: {
-      name: 'Premium Glass Door with Stained Glass',
-      description: 'High-quality 3D configurator with anti-aliasing and z-fighting prevention',
-      version: '2.0',
-      renderVersion: 'v2-quality-audit',
+      productName: 'Premium Glass Door with Stained Glass',
+      notes: 'High-quality 3D configurator with anti-aliasing and z-fighting prevention. v2.0 quality audit render',
     },
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -216,9 +221,9 @@ export function HighQualityConfiguratorExample() {
   return (
     <div className="w-full h-screen">
       <DoorConfigurator
-        tenantId={config.tenantId}
-        entityType={config.entityType}
-        entityId={config.entityId}
+        tenantId="tenant-001"
+        entityType="door"
+        entityId="door-001"
         initialConfig={config}
         width="100%"
         height="100%"

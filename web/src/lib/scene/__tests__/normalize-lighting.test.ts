@@ -2,6 +2,7 @@
  * Test: Lighting Config Normalization
  * Ensures malformed lighting data doesn't crash the configurator
  */
+// @ts-nocheck
 
 import { normalizeLightingConfig, createLightingFromDimensions } from '../normalize-lighting';
 

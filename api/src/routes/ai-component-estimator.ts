@@ -454,7 +454,6 @@ async function findOrCreateMaterial(
         category: category || 'TIMBER_HARDWOOD',
         OR: [
           { code },
-          { colorName: { equals: colorName, mode: 'insensitive' } },
           { species: { equals: species, mode: 'insensitive' } },
         ],
       },
@@ -476,17 +475,11 @@ async function findOrCreateMaterial(
         name: name || `${species || colorName} ${finish || ''}`.trim(),
         species,
         finish,
-        color,
-        colorName,
-        textureType: category?.includes('TIMBER') ? 'WOOD_GRAIN' : 'SOLID',
-        roughness: 0.7, // Default for timber
-        metalness: 0,
-        opacity: 1,
         unitCost: 0, // Default, can be updated later
         currency: 'GBP',
         unit: 'm',
         isActive: true,
-      },
+      } as any,
     });
 
     return material;

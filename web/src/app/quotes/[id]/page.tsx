@@ -1687,11 +1687,6 @@ export default function QuoteBuilderPage() {
                             description: newLineDesc || 'New Product',
                           }}
                           description={newLineDesc}
-                          onGeneratedComponents={(components) => {
-                            // Handle created components - could add them to the line item
-                            console.log('[Quote] Components created:', components);
-                            mutateLines();
-                          }}
                           onClose={() => {
                             setShow3dModal(false);
                             setModalProductOptionId(null);
@@ -2150,7 +2145,7 @@ export default function QuoteBuilderPage() {
                     onShowRawParse={() => setRawParseOpen(true)}
                     onDownloadCsv={handleDownloadCsv}
                     imageUrlMap={imageUrlMap}
-                    tenantId={quote?.tenantId}
+                    tenantId={quote?.tenantId || ''}
                   />
                 </div>
               ) : (

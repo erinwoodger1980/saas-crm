@@ -54,6 +54,7 @@ export function AIComponentConfigurator({
    * Merge AI suggestions into current params
    */
   const mergeParams = useCallback((base: ProductParams | null, suggestion: AIResponse): ProductParams => {
+    const baseParams = base as any;
     if (!base) {
       // Start fresh from suggestion
       return {
@@ -62,14 +63,14 @@ export function AIComponentConfigurator({
           type: 'entrance',
           option: 'E01',
         },
-        dimensions: base?.dimensions || { width: 914, height: 2032, depth: 45 },
+        dimensions: baseParams?.dimensions || { width: 914, height: 2032, depth: 45 },
         construction: {
-          ...base?.construction,
+          ...baseParams?.construction,
           ...suggestion.suggestedParamsPatch.construction,
         },
-        addedParts: [...(base?.addedParts || []), ...suggestion.suggestedAddedParts],
-        curves: base?.curves,
-        curveSlots: base?.curveSlots,
+        addedParts: [...(baseParams?.addedParts || []), ...suggestion.suggestedAddedParts],
+        curves: baseParams?.curves,
+        curveSlots: baseParams?.curveSlots,
       };
     }
 
@@ -146,11 +147,11 @@ export function AIComponentConfigurator({
         meta: {
           ...lineItem.meta,
           configuredProductParams: appliedParams,
-        },
-        configuredProduct: {
-          ...lineItem.configuredProduct,
-          productType: appliedParams.productType,
-          customData: appliedParams,
+          configuredProduct: {
+            ...lineItem.configuredProduct,
+            productType: appliedParams.productType,
+            customData: appliedParams,
+          },
         },
       });
 

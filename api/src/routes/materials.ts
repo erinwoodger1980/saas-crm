@@ -57,27 +57,16 @@ router.get('/', async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { category, colorName, isActive } = req.query;
+    const { category, isActive } = req.query;
 
     const where: any = { tenantId: auth.tenantId };
     if (category) where.category = category;
-    if (colorName) where.colorName = { contains: colorName as string, mode: 'insensitive' };
     if (isActive !== undefined) where.isActive = isActive === 'true';
 
     const materials = await prisma.material.findMany({
       where,
-      include: {
-        supplier: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-          },
-        },
-      },
       orderBy: [
         { category: 'asc' },
-        { colorName: 'asc' },
         { name: 'asc' },
       ],
     });
@@ -104,9 +93,6 @@ router.get('/:id', async (req, res) => {
       where: {
         id: req.params.id,
         tenantId: auth.tenantId,
-      },
-      include: {
-        supplier: true,
       },
     });
 
@@ -155,15 +141,6 @@ router.post('/', async (req, res) => {
       data: {
         ...data,
         tenantId: auth.tenantId,
-      },
-      include: {
-        supplier: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-          },
-        },
       },
     });
 
@@ -223,15 +200,6 @@ router.patch('/:id', async (req, res) => {
     const material = await prisma.material.update({
       where: { id: req.params.id },
       data,
-      include: {
-        supplier: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-          },
-        },
-      },
     });
 
     console.log('[Materials API] Updated material:', material.code);
@@ -291,21 +259,18 @@ router.get('/colors/list', async (req, res) => {
     const materials = await prisma.material.findMany({
       where: {
         tenantId: auth.tenantId,
-        colorName: { not: null },
         isActive: true,
       },
       select: {
-        color: true,
-        colorName: true,
-      },
-      distinct: ['colorName'],
+        name: true,
+      } as any,
     });
 
     const colors = materials
-      .filter(m => m.colorName)
+      .filter(m => m.name)
       .map(m => ({
-        name: m.colorName,
-        hex: m.color,
+        name: m.name,
+        hex: null,
       }));
 
     res.json(colors);
