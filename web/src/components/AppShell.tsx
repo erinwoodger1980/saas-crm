@@ -101,8 +101,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
     // Fetch tenant settings to check for fire door manufacturer and coaching flags
     apiFetch<{ isFireDoorManufacturer?: boolean; isGroupCoachingMember?: boolean }>("/tenant/settings")
       .then((data) => {
-        console.log("[AppShell] Fire door flag from API:", data?.isFireDoorManufacturer);
-        console.log("[AppShell] Coaching flag from API:", data?.isGroupCoachingMember);
+        if (process.env.NEXT_PUBLIC_DEBUG_FLAGS === 'true') {
+          console.log("[AppShell] Fire door flag from API:", data?.isFireDoorManufacturer);
+          console.log("[AppShell] Coaching flag from API:", data?.isGroupCoachingMember);
+        }
         setIsFireDoorManufacturer(Boolean(data?.isFireDoorManufacturer));
         setIsGroupCoachingMember(Boolean(data?.isGroupCoachingMember));
       })
@@ -112,13 +114,19 @@ export default function AppShell({ children }: { children: ReactNode }) {
       });
     const handleTenantSettingsUpdate = (event: Event) => {
       const detail = (event as CustomEvent<{ isFireDoorManufacturer?: boolean; isGroupCoachingMember?: boolean }>).detail;
-      console.log("[AppShell] Received tenant-settings:updated event:", detail);
+      if (process.env.NEXT_PUBLIC_DEBUG_FLAGS === 'true') {
+        console.log("[AppShell] Received tenant-settings:updated event:", detail);
+      }
       if (detail && Object.prototype.hasOwnProperty.call(detail, "isFireDoorManufacturer")) {
-        console.log("[AppShell] Updating fire door flag to:", detail.isFireDoorManufacturer);
+        if (process.env.NEXT_PUBLIC_DEBUG_FLAGS === 'true') {
+          console.log("[AppShell] Updating fire door flag to:", detail.isFireDoorManufacturer);
+        }
         setIsFireDoorManufacturer(Boolean(detail.isFireDoorManufacturer));
       }
       if (detail && Object.prototype.hasOwnProperty.call(detail, "isGroupCoachingMember")) {
-        console.log("[AppShell] Updating coaching flag to:", detail.isGroupCoachingMember);
+        if (process.env.NEXT_PUBLIC_DEBUG_FLAGS === 'true') {
+          console.log("[AppShell] Updating coaching flag to:", detail.isGroupCoachingMember);
+        }
         setIsGroupCoachingMember(Boolean(detail.isGroupCoachingMember));
       }
     };

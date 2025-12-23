@@ -1,5 +1,10 @@
 "use client";
 
+// Note: Chrome may log "The resource ...css was preloaded using link preload but not used..."
+// This is a Next.js optimization warning, not an error. Next.js preloads CSS for faster page loads.
+// It occurs when CSS is preloaded but the route/component using it hasn't rendered yet.
+// Safe to ignore - does not break functionality.
+
 import "./globals.css";
 import { ReactNode, useEffect } from "react";
 import { usePathname } from "next/navigation";

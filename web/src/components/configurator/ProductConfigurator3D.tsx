@@ -366,7 +366,9 @@ export function ProductConfigurator3D({
       // 1. Try to use provided initialConfig first
       if (initialConfig) {
         loaded = initialConfig;
-        console.log('[ProductConfigurator3D] Using provided initialConfig');
+        if (process.env.NEXT_PUBLIC_DEBUG_3D === 'true') {
+          console.log('[ProductConfigurator3D] Using provided initialConfig');
+        }
       }
       // 2. Try to load existing scene state from database
       else if (!isPreviewMode) {
