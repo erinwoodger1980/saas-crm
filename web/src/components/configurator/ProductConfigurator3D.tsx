@@ -320,6 +320,35 @@ export function ProductConfigurator3D({
   const productDepth = (config?.customData as any)?.dimensions?.depth || 45;
   const cameraMode = config?.camera?.mode || 'Perspective';
 
+  // Selected and fallback attributes must be computed before any conditional returns
+  const selectedAttributes = selectedComponentId ? editableAttributes[selectedComponentId] : null;
+
+  const fallbackAttributes = useMemo(() => {
+    if (!selectedComponentId) return null;
+    if (editableAttributes[selectedComponentId]) return null;
+
+    const selectedComponent = config?.components.find(c => c.id === selectedComponentId);
+    if (!selectedComponent) return null;
+
+    const attrs: EditableAttribute[] = [];
+
+    if (selectedComponent.position) {
+      attrs.push({ key: 'positionX', label: 'Position X', type: 'number', value: selectedComponent.position[0], min: -2000, max: 2000 });
+      attrs.push({ key: 'positionY', label: 'Position Y', type: 'number', value: selectedComponent.position[1], min: -2000, max: 2000 });
+      attrs.push({ key: 'positionZ', label: 'Position Z', type: 'number', value: selectedComponent.position[2], min: -2000, max: 2000 });
+    }
+
+    if (selectedComponent.geometry?.type === 'box' && selectedComponent.geometry.dimensions) {
+      attrs.push({ key: 'width', label: 'Width', type: 'number', value: selectedComponent.geometry.dimensions[0], min: 10, max: 5000 });
+      attrs.push({ key: 'height', label: 'Height', type: 'number', value: selectedComponent.geometry.dimensions[1], min: 10, max: 5000 });
+      attrs.push({ key: 'depth', label: 'Depth', type: 'number', value: selectedComponent.geometry.dimensions[2], min: 10, max: 500 });
+    }
+
+    return attrs.length > 0 ? attrs : null;
+  }, [selectedComponentId, config?.components, editableAttributes]);
+
+  const effectiveAttributes = selectedAttributes || fallbackAttributes;
+
   // ===== ALL EFFECTS (MUST BE AT TOP, BEFORE RETURNS) =====
 
   // Reset load state when entity changes
@@ -925,80 +954,7 @@ export function ProductConfigurator3D({
     );
   }
 
-  const selectedAttributes = selectedComponentId ? editableAttributes[selectedComponentId] : null;
-
-  // Fallback: If no editable attributes from builder, create basic ones from component properties
-  const fallbackAttributes = useMemo(() => {
-    if (!selectedComponentId) return null;
-    
-    // Check if we already have attributes from the builder
-    if (editableAttributes[selectedComponentId]) return null;
-    
-    const selectedComponent = config?.components.find(c => c.id === selectedComponentId);
-    if (!selectedComponent) return null;
-    
-    const attrs: EditableAttribute[] = [];
-    
-    // Add position if available
-    if (selectedComponent.position) {
-      attrs.push({
-        key: 'positionX',
-        label: 'Position X',
-        type: 'number',
-        value: selectedComponent.position[0],
-        min: -2000,
-        max: 2000,
-      });
-      attrs.push({
-        key: 'positionY',
-        label: 'Position Y',
-        type: 'number',
-        value: selectedComponent.position[1],
-        min: -2000,
-        max: 2000,
-      });
-      attrs.push({
-        key: 'positionZ',
-        label: 'Position Z',
-        type: 'number',
-        value: selectedComponent.position[2],
-        min: -2000,
-        max: 2000,
-      });
-    }
-    
-    // Add dimensions if it's a box geometry
-    if (selectedComponent.geometry?.type === 'box' && selectedComponent.geometry.dimensions) {
-      attrs.push({
-        key: 'width',
-        label: 'Width',
-        type: 'number',
-        value: selectedComponent.geometry.dimensions[0],
-        min: 10,
-        max: 5000,
-      });
-      attrs.push({
-        key: 'height',
-        label: 'Height',
-        type: 'number',
-        value: selectedComponent.geometry.dimensions[1],
-        min: 10,
-        max: 5000,
-      });
-      attrs.push({
-        key: 'depth',
-        label: 'Depth',
-        type: 'number',
-        value: selectedComponent.geometry.dimensions[2],
-        min: 10,
-        max: 500,
-      });
-    }
-    
-    return attrs.length > 0 ? attrs : null;
-  }, [selectedComponentId, config?.components, editableAttributes]);
-
-  const effectiveAttributes = selectedAttributes || fallbackAttributes;
+  // moved: selectedAttributes/fallbackAttributes computed near top before returns
 
   // Loading state - show spinner with current step
   if (status === 'loading') {
