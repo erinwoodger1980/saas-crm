@@ -269,6 +269,15 @@ export function ProductConfigurator3D({
   // SETTINGS PREVIEW = ultra low-power mode
   const isLowPowerMode = renderQuality === 'low' || settingsPreview;
 
+  // Retry handler for error state
+  const handleRetry = useCallback(() => {
+    setStatus('idle');
+    setLoadError(null);
+    setCanRender(false);
+    initialFrameApplied.current = false;
+    loadInitiated.current = false;
+  }, []);
+
   // Track mount/unmount with COMPLETE WebGL cleanup
   useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
@@ -825,15 +834,6 @@ export function ProductConfigurator3D({
   }
 
   const selectedAttributes = selectedComponentId ? editableAttributes[selectedComponentId] : null;
-
-  // Retry handler for error state
-  const handleRetry = useCallback(() => {
-    setStatus('idle');
-    setLoadError(null);
-    setCanRender(false);
-    initialFrameApplied.current = false;
-    loadInitiated.current = false;
-  }, []);
 
   // Loading state - show spinner with current step
   if (status === 'loading') {
