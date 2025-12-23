@@ -215,23 +215,33 @@ export default function ProductTypesSection() {
     ? `${configuratorDialog.categoryId}-${configuratorDialog.type}-${configuratorDialog.optionId}` 
     : '';
   
-  // Compute config synchronously to avoid useEffect timing issues
-  // This ensures config is available on first render
-  if (configuratorDialog && !configuratorConfigRef.current) {
+  console.log('[ProductTypesSection] configuratorKey:', configuratorKey, 'dialog:', configuratorDialog);
+  
+  // Use ref to capture config ONCE when dialog opens, preventing changes from products updates
+  // This is safe because we only set it when transitioning from null to a value
+  const prevDialogRef = useRef<typeof configuratorDialog>(null);
+  if (configuratorDialog && !prevDialogRef.current) {
+    // Dialog just opened - capture the config
     const config = products
       .find(c => c.id === configuratorDialog.categoryId)
       ?.types[configuratorDialog.typeIdx]
       ?.options.find(o => o.id === configuratorDialog.optionId)
       ?.sceneConfig;
     configuratorConfigRef.current = config;
-  } else if (!configuratorDialog) {
+    prevDialogRef.current = configuratorDialog;
+    console.log('[ProductTypesSection] Dialog opened, captured config:', config);
+  } else if (!configuratorDialog && prevDialogRef.current) {
+    // Dialog closed
     configuratorConfigRef.current = null;
+    prevDialogRef.current = null;
+    console.log('[ProductTypesSection] Dialog closed, cleared config');
   }
   
-  // Memoize config to prevent Canvas remounts from parent re-renders
-  // Use ref value to ensure it doesn't change when products updates
+  // Memoize config - returns stable ref value that doesn't change when products updates
   const memoizedInitialConfig = useMemo(() => {
-    return configuratorConfigRef.current;
+    const config = configuratorConfigRef.current;
+    console.log('[ProductTypesSection] Memoized config:', config);
+    return config;
   }, [configuratorDialog?.categoryId, configuratorDialog?.type, configuratorDialog?.optionId, configuratorDialog?.typeIdx]);
   
   const memoizedLineItem = useMemo(() => {
