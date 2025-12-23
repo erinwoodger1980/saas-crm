@@ -711,18 +711,107 @@ export function ProductConfigurator3D({
   }, []);
 
   /**
+   * Handle adding a new component
+   */
+  const handleAddComponent = useCallback(() => {
+    if (!config) return;
+    
+    // Create a simple box component as template
+    const newComponent: ComponentNode = {
+      id: `component_${Date.now()}`,
+      name: 'New Component',
+      type: 'frame',
+      visible: true,
+      position: [0, 0, 0],
+      rotation: [0, 0, 0],
+      geometry: {
+        type: 'box',
+        dimensions: [100, 100, 50],
+      },
+      materialId: config.materials[0]?.id || 'default',
+    };
+
+    const updatedConfig = {
+      ...config,
+      components: [...config.components, newComponent],
+    };
+
+    setConfig(updatedConfig);
+    persistConfig(updatedConfig);
+    if (onChange) onChange(updatedConfig);
+    setSelectedComponentId(newComponent.id);
+  }, [config, persistConfig, onChange]);
+
+  /**
+   * Handle deleting selected component
+   */
+  const handleDeleteComponent = useCallback(() => {
+    if (!config || !selectedComponentId) return;
+
+    const updatedConfig = {
+      ...config,
+      components: config.components.filter(c => c.id !== selectedComponentId),
+    };
+
+    setConfig(updatedConfig);
+    persistConfig(updatedConfig);
+    if (onChange) onChange(updatedConfig);
+    setSelectedComponentId(null);
+  }, [config, selectedComponentId, persistConfig, onChange]);
+
+  /**
    * Handle attribute edit from inspector
    */
   const handleAttributeEdit = useCallback(
     (componentId: string, changes: Record<string, any>) => {
       if (!config) return;
       
-      // Apply edit and rebuild scene
-      const updated = applyEditToScene(config, componentId, changes);
+      // For fallback attributes (position, dimensions), apply directly to component
+      let updated = { ...config };
+      const componentIndex = config.components.findIndex(c => c.id === componentId);
+      
+      if (componentIndex >= 0) {
+        const component = { ...config.components[componentIndex] };
+        
+        // Handle position changes
+        if ('positionX' in changes || 'positionY' in changes || 'positionZ' in changes) {
+          component.position = [
+            changes.positionX ?? component.position?.[0] ?? 0,
+            changes.positionY ?? component.position?.[1] ?? 0,
+            changes.positionZ ?? component.position?.[2] ?? 0,
+          ];
+        }
+        
+        // Handle dimension changes for box geometry
+        if (component.geometry?.type === 'box' && ('width' in changes || 'height' in changes || 'depth' in changes)) {
+          const currentDims = component.geometry.dimensions || [100, 100, 50];
+          component.geometry = {
+            ...component.geometry,
+            dimensions: [
+              changes.width ?? currentDims[0],
+              changes.height ?? currentDims[1],
+              changes.depth ?? currentDims[2],
+            ],
+          };
+        }
+        
+        updated.components = [...config.components];
+        updated.components[componentIndex] = component;
+      }
+      
+      // Try to apply edit through scene builder if customData exists
+      if (config.customData) {
+        try {
+          const sceneUpdated = applyEditToScene(config, componentId, changes);
+          updated = sceneUpdated;
+        } catch (err) {
+          console.warn('[handleAttributeEdit] Scene builder failed, using direct update:', err);
+        }
+      }
       
       setConfig(updated);
       
-      // Update editable attributes
+      // Update editable attributes from builder if available
       if (updated.customData) {
         import('@/lib/scene/builder-registry').then((builder) => {
           const result = builder.buildScene(updated.customData as ProductParams);
@@ -734,8 +823,9 @@ export function ProductConfigurator3D({
       
       // Persist
       setTimeout(() => persistConfig(updated), 500);
+      if (onChange) onChange(updated);
     },
-    [config, persistConfig]
+    [config, persistConfig, onChange]
   );
 
   /**
@@ -834,6 +924,74 @@ export function ProductConfigurator3D({
   }
 
   const selectedAttributes = selectedComponentId ? editableAttributes[selectedComponentId] : null;
+
+  // Fallback: If no editable attributes from builder, create basic ones from component properties
+  const selectedComponent = config?.components.find(c => c.id === selectedComponentId);
+  const fallbackAttributes = useMemo(() => {
+    if (!selectedComponent || selectedAttributes) return null;
+    
+    const attrs: EditableAttribute[] = [];
+    
+    // Add position if available
+    if (selectedComponent.position) {
+      attrs.push({
+        key: 'positionX',
+        label: 'Position X',
+        type: 'number',
+        value: selectedComponent.position[0],
+        min: -2000,
+        max: 2000,
+      });
+      attrs.push({
+        key: 'positionY',
+        label: 'Position Y',
+        type: 'number',
+        value: selectedComponent.position[1],
+        min: -2000,
+        max: 2000,
+      });
+      attrs.push({
+        key: 'positionZ',
+        label: 'Position Z',
+        type: 'number',
+        value: selectedComponent.position[2],
+        min: -2000,
+        max: 2000,
+      });
+    }
+    
+    // Add dimensions if it's a box geometry
+    if (selectedComponent.geometry?.type === 'box' && selectedComponent.geometry.dimensions) {
+      attrs.push({
+        key: 'width',
+        label: 'Width',
+        type: 'number',
+        value: selectedComponent.geometry.dimensions[0],
+        min: 10,
+        max: 5000,
+      });
+      attrs.push({
+        key: 'height',
+        label: 'Height',
+        type: 'number',
+        value: selectedComponent.geometry.dimensions[1],
+        min: 10,
+        max: 5000,
+      });
+      attrs.push({
+        key: 'depth',
+        label: 'Depth',
+        type: 'number',
+        value: selectedComponent.geometry.dimensions[2],
+        min: 10,
+        max: 500,
+      });
+    }
+    
+    return attrs.length > 0 ? attrs : null;
+  }, [selectedComponent, selectedAttributes]);
+
+  const effectiveAttributes = selectedAttributes || fallbackAttributes;
 
   // Loading state - show spinner with current step
   if (status === 'loading') {
@@ -1014,8 +1172,8 @@ export function ProductConfigurator3D({
             heroMode={heroMode}
           />
 
-          {/* Stage with cyclorama backdrop and floor - Hidden in settings preview */}
-          {!settingsPreview && <Stage productWidth={productWidth} productHeight={productHeight} />}
+          {/* Stage with cyclorama backdrop and floor */}
+          <Stage productWidth={productWidth} productHeight={productHeight} hideFloor={settingsPreview} />
           
           {/* Lighting */}
           <Lighting config={config.lighting} />
@@ -1098,7 +1256,7 @@ export function ProductConfigurator3D({
                 <SheetContent side="right" className="w-72 p-4 space-y-4">
                   <InspectorPanel
                     selectedComponentId={selectedComponentId}
-                    attributes={selectedAttributes}
+                    attributes={effectiveAttributes}
                     onAttributeChange={(changes) => {
                       if (selectedComponentId) {
                         handleAttributeEdit(selectedComponentId, changes);
@@ -1182,7 +1340,7 @@ export function ProductConfigurator3D({
           {/* Inspector */}
           <InspectorPanel
             selectedComponentId={selectedComponentId}
-            attributes={selectedAttributes}
+            attributes={effectiveAttributes}
             onAttributeChange={(changes) => {
               if (selectedComponentId) {
                 handleAttributeEdit(selectedComponentId, changes);
@@ -1206,7 +1364,7 @@ export function ProductConfigurator3D({
           
           {/* Component Actions */}
           <div className="space-y-2 border-t pt-4">
-            <Button variant="outline" className="w-full" size="sm">
+            <Button variant="outline" className="w-full" size="sm" onClick={handleAddComponent}>
               Add Component
             </Button>
             <Button 
@@ -1214,6 +1372,7 @@ export function ProductConfigurator3D({
               className="w-full" 
               size="sm"
               disabled={!selectedComponentId}
+              onClick={handleDeleteComponent}
             >
               Delete Selected
             </Button>
@@ -1226,7 +1385,7 @@ export function ProductConfigurator3D({
         <div className="w-80 flex flex-col gap-4 min-h-0 overflow-y-auto">
           <InspectorPanel
             selectedComponentId={selectedComponentId}
-            attributes={selectedAttributes}
+            attributes={effectiveAttributes}
             onAttributeChange={(changes) => {
               if (selectedComponentId) {
                 handleAttributeEdit(selectedComponentId, changes);
