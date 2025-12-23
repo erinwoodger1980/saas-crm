@@ -1317,13 +1317,13 @@ export function ProductConfigurator3D({
       </div>
       
       {/* Settings Preview UI - Shows components list and inspector */}
-      {settingsPreview && (
+      {settingsPreview && config && (
         <div className="w-80 flex flex-col gap-4 min-h-0 overflow-y-auto bg-white border-l p-4">
           {/* Components List */}
           <div className="space-y-3">
             <h3 className="text-sm font-semibold">Components</h3>
             <div className="space-y-1 max-h-64 overflow-y-auto">
-              {config.components.map((comp) => (
+              {(config.components || []).map((comp) => (
                 <button
                   key={comp.id}
                   onClick={() => {
