@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -206,20 +206,34 @@ export default function ProductTypesSection() {
     label: string;
     type: string;
   } | null>(null);
+  
+  // Capture config at dialog open to prevent changes from products updates
+  const configuratorConfigRef = useRef<any>(null);
+  
   // Stable key based on product identity - prevents unnecessary Canvas remounts
   const configuratorKey = configuratorDialog 
     ? `${configuratorDialog.categoryId}-${configuratorDialog.type}-${configuratorDialog.optionId}` 
     : '';
   
+  // Update ref when dialog opens with current config
+  useEffect(() => {
+    if (configuratorDialog) {
+      const config = products
+        .find(c => c.id === configuratorDialog.categoryId)
+        ?.types[configuratorDialog.typeIdx]
+        ?.options.find(o => o.id === configuratorDialog.optionId)
+        ?.sceneConfig;
+      configuratorConfigRef.current = config;
+    } else {
+      configuratorConfigRef.current = null;
+    }
+  }, [configuratorDialog, products]);
+  
   // Memoize config to prevent Canvas remounts from parent re-renders
+  // Use ref value to ensure it doesn't change when products updates
   const memoizedInitialConfig = useMemo(() => {
-    if (!configuratorDialog) return undefined;
-    return products
-      .find(c => c.id === configuratorDialog.categoryId)
-      ?.types[configuratorDialog.typeIdx]
-      ?.options.find(o => o.id === configuratorDialog.optionId)
-      ?.sceneConfig;
-  }, [configuratorDialog?.categoryId, configuratorDialog?.type, configuratorDialog?.optionId, configuratorDialog?.typeIdx, products]);
+    return configuratorConfigRef.current;
+  }, [configuratorDialog?.categoryId, configuratorDialog?.type, configuratorDialog?.optionId, configuratorDialog?.typeIdx]);
   
   const memoizedLineItem = useMemo(() => {
     if (!configuratorDialog) return undefined;
@@ -1101,7 +1115,7 @@ export default function ProductTypesSection() {
       )}
 
       {/* 3D Configurator Modal */}
-      {configuratorDialog && (
+      {configuratorDialog && memoizedInitialConfig && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-y-auto">
           <div className="w-full max-w-6xl rounded-lg bg-white p-6 shadow-xl my-8">
             <div className="mb-4 flex items-center justify-between">
