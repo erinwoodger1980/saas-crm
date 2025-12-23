@@ -423,6 +423,7 @@ export function ProductComponents({
   selectedId,
   orbitControlsRef,
   onTransformEnd,
+  wireframe,
 }: ProductComponentsProps) {
   // Create material map with array guard
   const materialMap = useMemo(() => {
