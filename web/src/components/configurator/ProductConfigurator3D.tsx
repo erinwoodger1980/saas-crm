@@ -221,6 +221,9 @@ function getPreviewDefaults(productType?: { category?: string; type?: string; op
   return { widthMm: 1000, heightMm: 2000, depthMm: 100 };
 }
 
+// Load state machine
+type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
+
 /**
  * Main Product Configurator Component
  */
@@ -240,6 +243,8 @@ export function ProductConfigurator3D({
   settingsPreview = false,
 }: ProductConfigurator3DProps) {
   // ===== ALL STATE & REFS (MUST BE AT TOP) =====
+  const [status, setStatus] = useState<LoadStatus>('idle');
+  const [loadStep, setLoadStep] = useState<string>('init');
   const [config, setConfig] = useState<SceneConfig | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -345,153 +350,216 @@ export function ProductConfigurator3D({
     }
   }, [heroMode, selectedComponentId]);
 
-  // Main scene load/initialize effect
+  // Main scene load/initialize effect - SINGLE AUTHORITATIVE LOADER
   useEffect(() => {
-    // Prevent duplicate loads in React StrictMode AND re-render loops
-    if (loadInitiated.current) {
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('[ProductConfigurator3D] Skipping duplicate load - already initialized');
+    // Only skip if explicitly idle (initial mount before we want to load)
+    // This prevents duplicate loads but ensures we can retry on error
+    if (status === 'loading' || status === 'ready') {
+      if (process.env.NEXT_PUBLIC_DEBUG_3D === 'true') {
+        console.log('[ProductConfigurator3D] Skipping load - status:', status);
       }
       return;
     }
-    loadInitiated.current = true;
+
+    const loadId = crypto.randomUUID();
+    const controller = new AbortController();
 
     async function load() {
       if (!mountedRef.current) return;
+
+      if (process.env.NEXT_PUBLIC_DEBUG_3D === 'true') {
+        console.group(`[3D LOAD ${loadId}]`);
+        console.log('Inputs:', { tenantId, entityType, entityId, productType, hasInitialConfig: !!initialConfig });
+      }
+
+      setStatus('loading');
       setIsLoading(true);
       setLoadError(null);
-      
-      let loaded: SceneConfig | null = null;
-      
-      // 1. Try to use provided initialConfig first
-      if (initialConfig) {
-        loaded = initialConfig;
+      setCanRender(false);
+
+      try {
+        // Step 1: Validate inputs
+        setLoadStep('validate-inputs');
+        if (!tenantId) throw new Error('Missing tenantId');
+        
         if (process.env.NEXT_PUBLIC_DEBUG_3D === 'true') {
-          console.log('[ProductConfigurator3D] Using provided initialConfig');
+          console.log('✓ Inputs validated');
         }
-      }
-      // 2. Try to load existing scene state from database
-      else if (!isPreviewMode) {
-        loaded = await loadSceneState(tenantId, entityType, safeEntityId);
-      }
-      
-      if (!loaded) {
-        // Initialize from line item
-        try {
-          console.log('[ProductConfigurator3D] Initializing from lineItem:', { lineItem, tenantId, entityType, entityId: safeEntityId });
-          
+
+        // Step 2: Resolve configuration
+        setLoadStep('resolve-config');
+        let loaded: SceneConfig | null = null;
+
+        // Priority 1: Use provided initialConfig
+        if (initialConfig) {
+          loaded = initialConfig;
+          if (process.env.NEXT_PUBLIC_DEBUG_3D === 'true') {
+            console.log('✓ Using initialConfig');
+          }
+        }
+        // Priority 2: Load from database (non-preview only)
+        else if (!isPreviewMode) {
+          if (process.env.NEXT_PUBLIC_DEBUG_3D === 'true') {
+            console.log('→ Loading from database...');
+          }
+          loaded = await loadSceneState(tenantId, entityType, safeEntityId);
+          if (loaded && process.env.NEXT_PUBLIC_DEBUG_3D === 'true') {
+            console.log('✓ Loaded from database');
+          }
+        }
+
+        // Priority 3: Build from line item / product type
+        if (!loaded) {
+          setLoadStep('build-from-params');
+          if (process.env.NEXT_PUBLIC_DEBUG_3D === 'true') {
+            console.log('→ Building scene from params...');
+          }
+
           const previewProductType = productType || lineItem?.configuredProduct?.productType;
           let effectiveLineItem = lineItem ?? {};
+
           if (isPreviewMode) {
             if (!previewProductType) {
-              console.warn('[ProductConfigurator3D] Preview mode requires a product type');
-              if (mountedRef.current) {
-                const message = 'Select a product type to preview in 3D.';
-                setLoadError(message);
-                toast.error(message);
-                setIsLoading(false);
-              }
-              return;
+              throw new Error('Preview mode requires a product type');
             }
             const defaults = getPreviewDefaults(previewProductType);
             const widthMm = Number((lineItem as any)?.lineStandard?.widthMm) || defaults.widthMm;
             const heightMm = Number((lineItem as any)?.lineStandard?.heightMm) || defaults.heightMm;
             const depthMm = Number((lineItem as any)?.meta?.depthMm) || defaults.depthMm;
 
-            console.log('[ProductConfigurator3D] Using preview mode with productType:', previewProductType);
             effectiveLineItem = {
               ...(lineItem || {}),
               configuredProduct: {
                 ...(lineItem as any)?.configuredProduct,
                 productType: previewProductType,
               },
-              lineStandard: {
-                widthMm,
-                heightMm,
-              },
-              meta: {
-                ...(lineItem as any)?.meta,
-                depthMm,
-              },
+              lineStandard: { widthMm, heightMm },
+              meta: { ...(lineItem as any)?.meta, depthMm },
             };
           }
-          
-          console.log('[ProductConfigurator3D] Effective lineItem:', effectiveLineItem);
-          
-          // Check if product type can be detected
+
+          // Detect product type
           const { detectProductType } = await import('@/lib/scene/builder-registry');
           const detectedType = detectProductType(effectiveLineItem);
-          console.log('[ProductConfigurator3D] Detected product type:', detectedType);
           
           if (!detectedType) {
-            console.error('[ProductConfigurator3D] Cannot detect product type from lineItem:', effectiveLineItem);
-            if (!mountedRef.current) return;
-            const message = isPreviewMode
-              ? 'Select a product type to preview in 3D.'
-              : 'Please configure the product type before opening 3D preview';
-            setLoadError(message);
-            toast.error(message);
-            setIsLoading(false);
-            return;
+            throw new Error(
+              isPreviewMode
+                ? 'Select a product type to preview in 3D'
+                : 'Cannot detect product type - please configure product dimensions and type'
+            );
           }
-          
+
+          if (process.env.NEXT_PUBLIC_DEBUG_3D === 'true') {
+            console.log('✓ Detected type:', detectedType);
+          }
+
+          // Generate params and build scene
           const params = getOrCreateParams(effectiveLineItem);
-          console.log('[ProductConfigurator3D] Generated params:', params);
-          
-          if (params) {
-            loaded = initializeSceneFromParams(params, tenantId, entityType, safeEntityId);
-            console.log('[ProductConfigurator3D] Scene initialized:', loaded ? 'success' : 'null');
-            
-            if (loaded && !isPreviewMode) {
-              // Save initial state (skip for preview mode)
-              await saveSceneState(tenantId, entityType, safeEntityId, loaded);
-            }
-          } else {
-            console.error('[ProductConfigurator3D] Failed to generate params from lineItem:', effectiveLineItem);
-            setLoadError('Failed to create a preview. Please check product dimensions and type.');
+          if (!params) {
+            throw new Error('Failed to generate scene parameters from product data');
           }
-        } catch (error) {
-          console.error('[ProductConfigurator3D] Error initializing scene:', error, { lineItem });
-          setLoadError('Failed to initialize 3D preview. Please try again.');
+
+          if (process.env.NEXT_PUBLIC_DEBUG_3D === 'true') {
+            console.log('✓ Generated params:', params);
+          }
+
+          loaded = initializeSceneFromParams(params, tenantId, entityType, safeEntityId);
+          
+          if (!loaded) {
+            throw new Error('Scene initialization returned null - check builder registry');
+          }
+
+          if (process.env.NEXT_PUBLIC_DEBUG_3D === 'true') {
+            console.log('✓ Scene built successfully');
+          }
+
+          // Save initial state (non-preview only)
+          if (!isPreviewMode) {
+            setLoadStep('save-initial-state');
+            await saveSceneState(tenantId, entityType, safeEntityId, loaded);
+            if (process.env.NEXT_PUBLIC_DEBUG_3D === 'true') {
+              console.log('✓ Initial state saved');
+            }
+          }
         }
-      }
-      
-      if (!mountedRef.current) return;
-      
-      if (loaded) {
+
+        if (!loaded) {
+          throw new Error('Configuration resolution failed - no config generated');
+        }
+
+        // Step 3: Normalize and set config
+        setLoadStep('normalize-config');
         const normalized = normalizeSceneConfig(loaded);
+        
+        if (!mountedRef.current || controller.signal.aborted) return;
+        
         setConfig(normalized);
-        // Extract editable attributes from customData
+
+        if (process.env.NEXT_PUBLIC_DEBUG_3D === 'true') {
+          console.log('✓ Config normalized and set');
+        }
+
+        // Step 4: Extract editable attributes
+        setLoadStep('extract-attributes');
         if (normalized.customData) {
           const builder = await import('@/lib/scene/builder-registry');
           const result = builder.buildScene(normalized.customData as ProductParams);
           if (result?.editableAttributes) {
             setEditableAttributes(result.editableAttributes);
+            if (process.env.NEXT_PUBLIC_DEBUG_3D === 'true') {
+              console.log('✓ Attributes extracted:', Object.keys(result.editableAttributes).length, 'components');
+            }
           }
         }
-        // Give React time to update state before rendering Canvas
-        setTimeout(() => {
-          if (mountedRef.current) {
-            setCanRender(true);
-          }
-        }, 100);
-      } else {
-        console.error('[ProductConfigurator3D] Failed to initialize configurator', { lineItem, tenantId, entityType, entityId });
-        const message =
-          loadError ||
-          'Failed to load 3D configurator. Please ensure the product has valid dimensions and type.';
-        setLoadError(message);
-        toast.error(message);
-      }
-      
-      if (mountedRef.current) {
+
+        // Step 5: Mark ready
+        setLoadStep('ready');
+        setStatus('ready');
+        setCanRender(true);
         setIsLoading(false);
+
+        if (process.env.NEXT_PUBLIC_DEBUG_3D === 'true') {
+          console.log('✅ Load complete');
+          console.groupEnd();
+        }
+
+      } catch (err) {
+        if (!mountedRef.current || controller.signal.aborted) return;
+
+        console.error('[3D LOAD ERROR]', err);
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        setLoadError(message);
+        setStatus('error');
+        setIsLoading(false);
+        setCanRender(false);
+        toast.error(`3D Load Failed: ${message}`);
+
+        if (process.env.NEXT_PUBLIC_DEBUG_3D === 'true') {
+          console.groupEnd();
+        }
       }
     }
-    
-    load();
-    // Use stable keys instead of objects to prevent infinite re-renders
-  }, [tenantId, entityType, safeEntityId, lineItemKey, productTypeKey, isPreviewMode]);
+
+    // Wrap in timeout to guarantee either success or error
+    Promise.race([
+      load(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('3D load timeout after 10 seconds')), 10000)
+      ),
+    ]).catch((err) => {
+      if (!mountedRef.current) return;
+      console.error('[3D LOAD TIMEOUT]', err);
+      setLoadError(err.message || 'Load timeout');
+      setStatus('error');
+      setIsLoading(false);
+      setCanRender(false);
+    });
+
+    return () => {
+      controller.abort();
+    };
+  }, [tenantId, entityType, safeEntityId, lineItemKey, productTypeKey, isPreviewMode, initialConfig, status]);
 
   // Auto-frame once after load using bounding box from dimensions
   useEffect(() => {
@@ -749,8 +817,51 @@ export function ProductConfigurator3D({
 
   const selectedAttributes = selectedComponentId ? editableAttributes[selectedComponentId] : null;
 
-  // Wait for canRender flag before showing Canvas
-  if (!canRender) {
+  // Retry handler for error state
+  const handleRetry = useCallback(() => {
+    setStatus('idle');
+    setLoadError(null);
+    setCanRender(false);
+    initialFrameApplied.current = false;
+    loadInitiated.current = false;
+  }, []);
+
+  // Loading state - show spinner with current step
+  if (status === 'loading') {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4" style={{ width, height }}>
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div className="text-sm text-muted-foreground">
+          Loading 3D builder… ({loadStep})
+        </div>
+      </div>
+    );
+  }
+
+  // Error state - show error with retry button
+  if (status === 'error') {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 p-8 text-center" style={{ width, height }}>
+        <div className="rounded-lg bg-destructive/10 p-4 border border-destructive/20">
+          <p className="font-medium text-destructive mb-2">Failed to load 3D configurator</p>
+          <p className="text-sm text-muted-foreground mb-4">
+            {loadError || 'Unknown error occurred'}
+          </p>
+          <Button onClick={handleRetry} variant="outline" size="sm">
+            Retry
+          </Button>
+        </div>
+        {process.env.NEXT_PUBLIC_DEBUG_3D === 'true' && (
+          <div className="text-xs text-muted-foreground">
+            Last step: {loadStep}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Idle state - should not happen, but handle gracefully
+  if (status === 'idle') {
     return (
       <div className="flex items-center justify-center" style={{ width, height }}>
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -758,7 +869,7 @@ export function ProductConfigurator3D({
     );
   }
 
-  // Safety check: ensure config is valid with all required properties before rendering Canvas
+  // Ready state - ensure config is valid before rendering Canvas
   const isConfigValid = config && 
     config.camera && 
     config.camera.position && 
@@ -778,9 +889,16 @@ export function ProductConfigurator3D({
       hasMaterials: !!config?.materials,
     });
     return (
-      <div className="flex flex-col items-center justify-center gap-4" style={{ width, height }}>
-        <p className="text-muted-foreground">Configuration not ready</p>
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="flex flex-col items-center justify-center gap-4 p-8" style={{ width, height }}>
+        <div className="rounded-lg bg-destructive/10 p-4 border border-destructive/20">
+          <p className="font-medium text-destructive mb-2">Invalid configuration</p>
+          <p className="text-sm text-muted-foreground mb-4">
+            Configuration is missing required properties
+          </p>
+          <Button onClick={handleRetry} variant="outline" size="sm">
+            Retry
+          </Button>
+        </div>
       </div>
     );
   }
