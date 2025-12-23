@@ -1020,7 +1020,7 @@ export function ProductConfigurator3D({
           {/* Lighting */}
           <Lighting config={config.lighting} />
           
-          {/* Product components */}
+          {/* Product components - Wireframe mode for technical drawing */}
           <ProductComponents
             components={config.components}
             materials={config.materials}
@@ -1028,6 +1028,7 @@ export function ProductConfigurator3D({
             onSelect={handleComponentSelect}
             selectedId={selectedComponentId}
             orbitControlsRef={controlsRef}
+            wireframe={settingsPreview}
             onTransformEnd={(componentId, newY) => {
               handleAttributeEdit(componentId, { positionY: newY });
             }}
@@ -1056,111 +1057,8 @@ export function ProductConfigurator3D({
               </SheetTrigger>
               <SheetContent side="right" className="w-72 p-6 space-y-4">
                 <div className="space-y-4">
-                  {/* Camera Controls */}
-                  <div className="space-y-3">
-                    <h3 className="text-sm font-semibold">Camera</h3>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant={cameraMode === 'Perspective' ? 'default' : 'outline'}
-                        onClick={() => {
-                          updateConfig({
-                            camera: { ...config.camera, mode: 'Perspective' },
-                          });
-                        }}
-                        className="flex-1 text-xs"
-                      >
-                        Perspective
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={cameraMode === 'Ortho' ? 'default' : 'outline'}
-                        onClick={() => {
-                          updateConfig({
-                            camera: { ...config.camera, mode: 'Ortho' },
-                          });
-                        }}
-                        className="flex-1 text-xs"
-                      >
-                        Orthographic
-                      </Button>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        const params = config.customData as ProductParams;
-                        updateConfig({
-                          camera: {
-                            ...config.camera,
-                            position: [0, 0, Math.max(params.dimensions.width, params.dimensions.height) * 2],
-                            rotation: [0, 0, 0],
-                            target: [0, 0, 0],
-                            zoom: 1,
-                          },
-                        });
-                      }}
-                      className="w-full text-xs"
-                    >
-                      Reset View
-                    </Button>
-                  </div>
-
-                  {/* View Options */}
-                  <div className="space-y-3 border-t pt-4">
-                    <h3 className="text-sm font-semibold">View Options</h3>
-                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={config.ui.guides}
-                        onChange={(e) => {
-                          updateConfig({
-                            ui: { ...config.ui, guides: e.target.checked },
-                          });
-                        }}
-                        className="rounded"
-                      />
-                      <span>Guides</span>
-                    </label>
-                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={config.ui.axis}
-                        onChange={(e) => {
-                          updateConfig({
-                            ui: { ...config.ui, axis: e.target.checked },
-                          });
-                        }}
-                        className="rounded"
-                      />
-                      <span>Axis</span>
-                    </label>
-                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={config.ui.dimensions}
-                        onChange={(e) => {
-                          updateConfig({
-                            ui: { ...config.ui, dimensions: e.target.checked },
-                          });
-                        }}
-                        className="rounded"
-                      />
-                      <span>Dimensions</span>
-                    </label>
-                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={highQuality}
-                        onChange={(e) => setHighQuality(e.target.checked)}
-                        className="rounded"
-                      />
-                    <span>High Quality</span>
-                    </label>
-                  </div>
-
                   {/* Components List */}
-                  <div className="space-y-3 border-t pt-4">
+                  <div className="space-y-3">
                     <h3 className="text-sm font-semibold">Components</h3>
                     <div className="space-y-1 max-h-64 overflow-y-auto">
                       {config.components.map((comp) => (

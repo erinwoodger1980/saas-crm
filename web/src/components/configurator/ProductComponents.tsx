@@ -25,14 +25,20 @@ interface ProductComponentsProps {
   selectedId?: string | null;
   orbitControlsRef?: MutableRefObject<any>;
   onTransformEnd?: (componentId: string, newY: number) => void;
+  wireframe?: boolean;
 }
 
 /**
  * Convert material definition to Three.js material
  * UPGRADED: Uses new PBR material factory
  */
-function createMaterial(def: MaterialDefinition): THREE.Material {
-  return createPBRMaterial(def);
+function createMaterial(def: MaterialDefinition, wireframe?: boolean): THREE.Material {
+  const material = createPBRMaterial(def);
+  if (wireframe) {
+    material.wireframe = true;
+    material.wireframeLinewidth = 2;
+  }
+  return material;
 }
 
 /**
@@ -423,10 +429,10 @@ export function ProductComponents({
     const map = new Map<string, THREE.Material>();
     const safeMaterials = Array.isArray(materials) ? materials : [];
     safeMaterials.forEach((def) => {
-      map.set(def.id, createMaterial(def));
+      map.set(def.id, createMaterial(def, wireframe));
     });
     return map;
-  }, [materials]);
+  }, [materials, wireframe]);
 
   // Handle background click to deselect
   const handleBackgroundClick = () => {
