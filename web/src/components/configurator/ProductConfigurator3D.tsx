@@ -33,7 +33,7 @@ import { CameraController } from './CameraController';
 import { Lighting } from './Lighting';
 import { ProductComponents } from './ProductComponents';
 import { SceneUI } from './SceneUI';
-import { InspectorPanel } from './InspectorPanel';
+import InspectorPanel from './InspectorPanel';
 import { AutoFrame } from './AutoFrame';
 import { Stage } from './Stage';
 import { SceneDisposer } from './SceneDisposer';

@@ -26,7 +26,7 @@ interface InspectorPanelProps {
   onCurveChange?: (curve: CurveDefinition) => void;
 }
 
-export function InspectorPanel({
+function InspectorPanel({
   selectedComponentId,
   attributes,
   onAttributeChange,
@@ -316,3 +316,5 @@ export function InspectorPanel({
     </Card>
   );
 }
+
+export default InspectorPanel;
