@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback, useMemo, Suspense, useRef } from 'rea
 import { Canvas } from '@react-three/fiber';
 // import { Environment, ContactShadows } from '@react-three/drei'; // DISABLED: causing WebGL context loss
 import * as THREE from 'three';
+import { disposeScene, disposeRenderer } from '@/lib/three/disposal';
 import {
   SceneConfig,
   CameraState,
@@ -69,6 +70,8 @@ interface ProductConfigurator3DProps {
   onClose?: () => void;
   /** Hero preview mode - hide UI, show only floating button */
   heroMode?: boolean;
+  /** Render quality: 'low' for Settings preview (low power), 'high' for production */
+  renderQuality?: 'low' | 'high';
 }
 
 /**
@@ -230,6 +233,7 @@ export function ProductConfigurator3D({
   height = '80vh',
   onClose,
   heroMode = true,
+  renderQuality = 'high',
 }: ProductConfigurator3DProps) {
   // ===== ALL STATE & REFS (MUST BE AT TOP) =====
   const [config, setConfig] = useState<SceneConfig | null>(null);
@@ -243,26 +247,42 @@ export function ProductConfigurator3D({
   const [showUIDrawer, setShowUIDrawer] = useState(false);
   const [showInspectorDrawer, setShowInspectorDrawer] = useState(false);
   const [highQuality, setHighQuality] = useState(true);
+  const [contextLost, setContextLost] = useState(false);
+  const [canvasKey, setCanvasKey] = useState(0);
   
   const controlsRef = useRef<any>(null);
   const initialFrameApplied = useRef(false);
   const loadInitiated = useRef(false);
   const mountedRef = useRef(true);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  
+  // LOW POWER MODE for Settings preview
+  const isLowPowerMode = renderQuality === 'low';
 
-  // Track mount/unmount for debugging
+  // Track mount/unmount with COMPLETE WebGL cleanup
   useEffect(() => {
-    console.log('[ProductConfigurator3D] Component mounted');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[ProductConfigurator3D] Component mounted, renderQuality:', renderQuality);
+    }
     return () => {
-      console.log('[ProductConfigurator3D] Component unmounting - THIS CAUSES CONTEXT LOSS');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[ProductConfigurator3D] Unmounting - disposing ALL WebGL resources');
+      }
       mountedRef.current = false;
+      
+      // CRITICAL: Dispose all resources to prevent context loss
+      if (sceneRef.current) {
+        disposeScene(sceneRef.current);
+        sceneRef.current = null;
+      }
+      
       if (rendererRef.current) {
-        console.log('[ProductConfigurator3D] Disposing renderer on unmount');
-        rendererRef.current.dispose();
+        disposeRenderer(rendererRef.current);
         rendererRef.current = null;
       }
     };
-  }, []);
+  }, [renderQuality]);
 
   const safeEntityId = useMemo(() => String(entityId ?? 'preview-settings'), [entityId]);
   const isPreviewMode = useMemo(
@@ -775,9 +795,10 @@ export function ProductConfigurator3D({
       {/* Main 3D Canvas */}
       <div className={`${heroMode ? 'w-full h-full' : 'flex-1 relative'} bg-gradient-to-b from-slate-100 to-slate-200 ${!heroMode ? 'rounded-lg' : ''} overflow-hidden ${!heroMode ? 'border' : ''} min-h-0`}>
         <Canvas
+          key={canvasKey}
           frameloop="demand"
-          shadows="soft"
-          dpr={[1, 2]}
+          shadows={isLowPowerMode ? false : "soft"}
+          dpr={isLowPowerMode ? [1, 1] : [1, 2]}
           camera={{
             position: config.camera?.position || [0, 1000, 2000],
             fov: cameraMode === 'Perspective' ? (config.camera?.fov || 50) : 50,
@@ -788,29 +809,65 @@ export function ProductConfigurator3D({
             antialias: true,
             alpha: false,
             preserveDrawingBuffer: false,
+            powerPreference: isLowPowerMode ? 'low-power' : 'high-performance',
           }}
-          onCreated={({ gl }) => {
-            console.log('[ProductConfigurator3D] Canvas created, initializing WebGL renderer');
-            // Improved renderer settings for better quality
+          onCreated={({ gl, scene }) => {
+            // Store refs for cleanup
             rendererRef.current = gl;
-            gl.setClearColor('#e8e8e8');
-            gl.shadowMap.enabled = true;
-            gl.shadowMap.type = THREE.PCFSoftShadowMap;
-            gl.outputColorSpace = THREE.SRGBColorSpace;
-            gl.toneMapping = THREE.ACESFilmicToneMapping;
-            gl.toneMappingExposure = 1.0;
-            (gl as any).physicallyCorrectLights = true;
+            sceneRef.current = scene;
+            
+            if (process.env.NODE_ENV === 'development') {
+              console.log('[ProductConfigurator3D] Canvas created, mode:', isLowPowerMode ? 'LOW-POWER' : 'HIGH-PERFORMANCE');
+            }
+            
+            // LOW POWER MODE for Settings preview
+            if (isLowPowerMode) {
+              gl.setClearColor('#e8e8e8');
+              gl.shadowMap.enabled = false; // No shadows
+              gl.outputColorSpace = THREE.SRGBColorSpace;
+              gl.toneMapping = THREE.NoToneMapping; // Cheapest tone mapping
+              gl.toneMappingExposure = 1.0;
+              (gl as any).physicallyCorrectLights = false; // Cheaper lighting
+            } else {
+              // HIGH PERFORMANCE mode for production
+              gl.setClearColor('#e8e8e8');
+              gl.shadowMap.enabled = true;
+              gl.shadowMap.type = THREE.PCFSoftShadowMap;
+              gl.outputColorSpace = THREE.SRGBColorSpace;
+              gl.toneMapping = THREE.ACESFilmicToneMapping;
+              gl.toneMappingExposure = 1.0;
+              (gl as any).physicallyCorrectLights = true;
+            }
             
             // Add context loss/restore handlers
             const canvas = gl.domElement;
-            canvas.addEventListener('webglcontextlost', (e) => {
-              console.error('[ProductConfigurator3D] WebGL context lost', e);
+            const handleContextLost = (e: Event) => {
+              if (process.env.NODE_ENV === 'development') {
+                console.error('[ProductConfigurator3D] WebGL context lost');
+              }
               e.preventDefault();
-            });
-            canvas.addEventListener('webglcontextrestored', () => {
-              console.log('[ProductConfigurator3D] WebGL context restored');
-            });
-            console.log('[ProductConfigurator3D] WebGL renderer initialized successfully');
+              setContextLost(true);
+            };
+            
+            const handleContextRestored = () => {
+              if (process.env.NODE_ENV === 'development') {
+                console.log('[ProductConfigurator3D] WebGL context restored');
+              }
+              setContextLost(false);
+            };
+            
+            canvas.addEventListener('webglcontextlost', handleContextLost);
+            canvas.addEventListener('webglcontextrestored', handleContextRestored);
+            
+            if (process.env.NODE_ENV === 'development') {
+              console.log('[ProductConfigurator3D] WebGL renderer initialized successfully (preview mode:', isPreviewMode, ')');
+            }
+            
+            // Cleanup event listeners
+            return () => {
+              canvas.removeEventListener('webglcontextlost', handleContextLost);
+              canvas.removeEventListener('webglcontextrestored', handleContextRestored);
+            };
           }}
         >
           {/* Camera controller with controls ref export */}
@@ -855,7 +912,7 @@ export function ProductConfigurator3D({
           {/* <Environment preset="studio" /> */}
           
           {/* Post-processing for subtle polish - DISABLED in hero mode to prevent crashes */}
-          <PostFX enabled={highQuality && !heroMode} heroMode={heroMode} />
+          <PostFX enabled={!isLowPowerMode && highQuality && !heroMode} heroMode={heroMode} />
         </Canvas>
         
         {/* UI Overlay - Only small floating button in hero mode */}
@@ -1069,6 +1126,37 @@ export function ProductConfigurator3D({
                 Close Configurator
               </Button>
             )}
+          </div>
+        </div>
+      )}
+      
+      {/* WebGL Context Loss Recovery Overlay */}
+      {contextLost && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm mx-4 text-center space-y-4">
+            <div className="text-red-500">
+              <svg className="h-16 w-16 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">3D Preview Paused</h3>
+              <p className="text-sm text-gray-600">
+                The WebGL renderer encountered an error. Click below to restart the 3D view.
+              </p>
+            </div>
+            <Button
+              onClick={() => {
+                setContextLost(false);
+                setCanvasKey(prev => prev + 1);
+                if (process.env.NODE_ENV === 'development') {
+                  console.log('[ProductConfigurator3D] Retrying after context loss');
+                }
+              }}
+              className="w-full"
+            >
+              Retry 3D Preview
+            </Button>
           </div>
         </div>
       )}

@@ -8,6 +8,7 @@ import { apiFetch } from "@/lib/api";
 import { Upload, Trash2, Plus, Wand2, ChevronRight, ChevronDown, Loader2, Box, Sparkles, Image as ImageIcon } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { ProductConfigurator3D } from "@/components/configurator/ProductConfigurator3D";
+import { normalizeSceneConfig, createDefaultSceneConfig } from "@/lib/scene/config-validation";
 
 const DEFAULT_SVG_PROMPT =
   "Provide a detailed elevation with correct timber/glass fills, rails, stiles, panels, muntins, and dimension lines (800mm top, 2025mm left).";
@@ -199,7 +200,12 @@ export default function ProductTypesSection() {
   const [svgDescription, setSvgDescription] = useState<string>("");
   const [svgPreview, setSvgPreview] = useState<string | null>(null);
   const [previewGenerating, setPreviewGenerating] = useState(false);
-  const [configuratorDialog, setConfiguratorDialog] = useState<{
+  
+  // Canonical dialog state - prevents re-render loop
+  const [isConfiguratorOpen, setIsConfiguratorOpen] = useState(false);
+  const [capturedConfig, setCapturedConfig] = useState<any>(null);
+  const [capturedLineItem, setCapturedLineItem] = useState<any>(null);
+  const [capturedDialogInfo, setCapturedDialogInfo] = useState<{
     categoryId: string;
     typeIdx: number;
     optionId: string;
@@ -207,61 +213,59 @@ export default function ProductTypesSection() {
     type: string;
   } | null>(null);
   
-  // Capture config at dialog open to prevent changes from products updates
-  const configuratorConfigRef = useRef<any>(null);
+  // Stable key - set ONCE per dialog open, never changes during render
+  const [configuratorKey, setConfiguratorKey] = useState<string>('');
   
-  // Stable key based on product identity - prevents unnecessary Canvas remounts
-  const configuratorKey = configuratorDialog 
-    ? `${configuratorDialog.categoryId}-${configuratorDialog.type}-${configuratorDialog.optionId}` 
-    : '';
-  
-  console.log('[ProductTypesSection] configuratorKey:', configuratorKey, 'dialog:', configuratorDialog);
-  
-  // Use ref to capture config ONCE when dialog opens, preventing changes from products updates
-  // This is safe because we only set it when transitioning from null to a value
-  const prevDialogRef = useRef<typeof configuratorDialog>(null);
-  if (configuratorDialog && !prevDialogRef.current) {
-    // Dialog just opened - capture the config
-    const config = products
-      .find(c => c.id === configuratorDialog.categoryId)
-      ?.types[configuratorDialog.typeIdx]
-      ?.options.find(o => o.id === configuratorDialog.optionId)
-      ?.sceneConfig;
-    configuratorConfigRef.current = config;
-    prevDialogRef.current = configuratorDialog;
-    console.log('[ProductTypesSection] Dialog opened, captured config:', config);
-  } else if (!configuratorDialog && prevDialogRef.current) {
-    // Dialog closed
-    configuratorConfigRef.current = null;
-    prevDialogRef.current = null;
-    console.log('[ProductTypesSection] Dialog closed, cleared config');
-  }
-  
-  // Memoize config - returns stable ref value that doesn't change when products updates
-  const memoizedInitialConfig = useMemo(() => {
-    const config = configuratorConfigRef.current;
-    console.log('[ProductTypesSection] Memoized config:', config);
-    return config;
-  }, [configuratorDialog?.categoryId, configuratorDialog?.type, configuratorDialog?.optionId, configuratorDialog?.typeIdx]);
-  
-  const memoizedLineItem = useMemo(() => {
-    if (!configuratorDialog) return undefined;
-    return {
-      id: configuratorDialog.optionId,
-      description: configuratorDialog.label,
-      configuredProduct: {
-        productType: {
-          category: configuratorDialog.categoryId,
-          type: configuratorDialog.type,
-          option: configuratorDialog.optionId,
+  // Handle dialog state changes in useEffect to prevent render-time setState
+  useEffect(() => {
+    if (isConfiguratorOpen && capturedDialogInfo) {
+      // Dialog opened - capture and normalize config
+      const rawConfig = products
+        .find(c => c.id === capturedDialogInfo.categoryId)
+        ?.types[capturedDialogInfo.typeIdx]
+        ?.options.find(o => o.id === capturedDialogInfo.optionId)
+        ?.sceneConfig;
+      
+      const normalizedConfig = normalizeSceneConfig(rawConfig);
+      const finalConfig = normalizedConfig || createDefaultSceneConfig(
+        capturedDialogInfo.categoryId,
+        800, 2100, 45
+      );
+      
+      setCapturedConfig(finalConfig);
+      
+      // Create line item for preview
+      const lineItem = {
+        id: capturedDialogInfo.optionId,
+        description: capturedDialogInfo.label,
+        configuredProduct: {
+          productType: {
+            category: capturedDialogInfo.categoryId,
+            type: capturedDialogInfo.type,
+            option: capturedDialogInfo.optionId,
+          },
         },
-      },
-      lineStandard: getDefaultDimensions(configuratorDialog.categoryId, configuratorDialog.type, configuratorDialog.optionId),
-      meta: {
-        depthMm: configuratorDialog.categoryId === 'doors' ? 45 : 100,
-      },
-    };
-  }, [configuratorDialog?.categoryId, configuratorDialog?.type, configuratorDialog?.optionId, configuratorDialog?.label, configuratorDialog?.typeIdx]);
+      lineStandard: getDefaultDimensions(capturedDialogInfo.categoryId, capturedDialogInfo.type, capturedDialogInfo.optionId),
+        meta: {
+          depthMm: capturedDialogInfo.categoryId === 'doors' ? 45 : 100,
+        },
+      };
+      setCapturedLineItem(lineItem);
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[ProductTypesSection] Dialog opened, config captured');
+      }
+    } else if (!isConfiguratorOpen) {
+      // Dialog closed - clear state
+      setCapturedConfig(null);
+      setCapturedLineItem(null);
+      setCapturedDialogInfo(null);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[ProductTypesSection] Dialog closed, state cleared');
+      }
+    }
+  }, [isConfiguratorOpen, capturedDialogInfo, products]);
+
   
   const [aiEstimateDialog, setAiEstimateDialog] = useState<{
     categoryId: string;
@@ -674,7 +678,7 @@ export default function ProductTypesSection() {
       setAiImage(null);
       setAiImagePreview(null);
       
-      setConfiguratorDialog(aiEstimateDialog);
+      // TODO: handle AI estimate -> configurator flow;
     } catch (error: any) {
       console.error('[AI Estimation] Error:', error);
       toast({
@@ -977,13 +981,17 @@ export default function ProductTypesSection() {
                                     size="sm"
                                     variant="outline"
                                     onClick={() => {
-                                      setConfiguratorDialog({
+                                      // Set dialog info and open in one transaction
+                                      const dialogInfo = {
                                         categoryId: category.id,
                                         typeIdx,
                                         optionId: option.id,
                                         label: option.label,
                                         type: type.type,
-                                      });
+                                      };
+                                      setCapturedDialogInfo(dialogInfo);
+                                      setConfiguratorKey(`${category.id}-${type.type}-${option.id}`);
+                                      setIsConfiguratorOpen(true);
                                     }}
                                   >
                                     <Box className="h-3 w-3 mr-1" />
@@ -1124,49 +1132,51 @@ export default function ProductTypesSection() {
       )}
 
       {/* 3D Configurator Modal */}
-      {configuratorDialog && memoizedInitialConfig && (
+      {isConfiguratorOpen && capturedDialogInfo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-y-auto">
           <div className="w-full max-w-6xl rounded-lg bg-white p-6 shadow-xl my-8">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold">3D Component Builder - {configuratorDialog.label}</h2>
+                <h2 className="text-lg font-semibold">3D Component Builder - {capturedDialogInfo.label}</h2>
                 <p className="text-sm text-muted-foreground">
                   Build and arrange components for this product template. Changes are saved automatically.
                 </p>
               </div>
               <button
-                onClick={() => setConfiguratorDialog(null)}
+                onClick={() => setIsConfiguratorOpen(false)}
                 className="text-muted-foreground hover:text-foreground"
               >
                 ✕
               </button>
             </div>
             <div className="rounded-lg border bg-muted/30">
-              <ProductConfigurator3D
-                key={configuratorKey}
-                tenantId="settings"
-                entityType="productTemplate"
-                entityId={`${configuratorDialog.categoryId}-${configuratorDialog.type}-${configuratorDialog.optionId}`}
-                initialConfig={memoizedInitialConfig}
-                lineItem={memoizedLineItem}
-                productType={{
-                  category: configuratorDialog.categoryId,
-                  type: configuratorDialog.type,
-                  option: configuratorDialog.optionId,
-                }}
-                onChange={(sceneConfig) => {
-                  // Update the option's sceneConfig as user makes changes
-                  setProducts((prev) =>
+              {capturedConfig ? (
+                <ProductConfigurator3D
+                  key={configuratorKey}
+                  tenantId="settings"
+                  entityType="productTemplate"
+                  entityId={`${capturedDialogInfo.categoryId}-${capturedDialogInfo.type}-${capturedDialogInfo.optionId}`}
+                  initialConfig={capturedConfig}
+                  lineItem={capturedLineItem}
+                  productType={{
+                    category: capturedDialogInfo.categoryId,
+                    type: capturedDialogInfo.type,
+                    option: capturedDialogInfo.optionId,
+                  }}
+                  renderQuality="low"
+                  onChange={(sceneConfig) => {
+                    // Update the option's sceneConfig as user makes changes
+                    setProducts((prev) =>
                     prev.map((cat) =>
-                      cat.id === configuratorDialog.categoryId
+                      cat.id === capturedDialogInfo.categoryId
                         ? {
                             ...cat,
                             types: cat.types.map((t, idx) =>
-                              idx === configuratorDialog.typeIdx
+                              idx === capturedDialogInfo.typeIdx
                                 ? {
                                     ...t,
                                     options: t.options.map((opt) =>
-                                      opt.id === configuratorDialog.optionId
+                                      opt.id === capturedDialogInfo.optionId
                                         ? { ...opt, sceneConfig }
                                         : opt
                                     ),
@@ -1181,10 +1191,55 @@ export default function ProductTypesSection() {
                   // Auto-save to backend
                   saveProducts();
                 }}
-                onClose={() => setConfiguratorDialog(null)}
+                onClose={() => setIsConfiguratorOpen(false)}
                 height="70vh"
                 heroMode={false}
               />
+              ) : (
+                <div className="flex flex-col items-center justify-center p-12 text-center space-y-4">
+                  <Box className="h-16 w-16 text-muted-foreground/40" />
+                  <div>
+                    <h3 className="text-lg font-medium text-muted-foreground">Config Unavailable</h3>
+                    <p className="text-sm text-muted-foreground/80 mt-1">
+                      The 3D configuration is missing or invalid. Click below to create a default configuration.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => {
+                      const defaultConfig = createDefaultSceneConfig(
+                        capturedDialogInfo.categoryId,
+                        800, 2100, 45
+                      );
+                      // Save default config
+                      setProducts((prev) =>
+                        prev.map((cat) =>
+                          cat.id === capturedDialogInfo.categoryId
+                            ? {
+                                ...cat,
+                                types: cat.types.map((t, idx) =>
+                                  idx === capturedDialogInfo.typeIdx
+                                    ? {
+                                        ...t,
+                                        options: t.options.map((opt) =>
+                                          opt.id === capturedDialogInfo.optionId
+                                            ? { ...opt, sceneConfig: defaultConfig }
+                                            : opt
+                                        ),
+                                      }
+                                    : t
+                                ),
+                              }
+                            : cat
+                        )
+                      );
+                      setCapturedConfig(defaultConfig);
+                      saveProducts();
+                    }}
+                  >
+                    Create Default Configuration
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </div>

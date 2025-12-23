@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { asArray } from '@/lib/utils/array-parsing';
 import {
   Dialog,
   DialogContent,
@@ -115,12 +116,21 @@ export function MaterialLibrarySection() {
       });
       if (response.ok) {
         const data = await response.json();
-        // Ensure data is an array
+        // Handle various response formats
+        let suppliers: any[] = [];
         if (Array.isArray(data)) {
-          setSuppliers(data);
+          suppliers = data;
+        } else if (data && Array.isArray(data.data)) {
+          suppliers = data.data;
+        } else if (data && Array.isArray(data.suppliers)) {
+          suppliers = data.suppliers;
         } else {
-          console.error('Suppliers API returned non-array:', data);
-          setSuppliers([]);
+          console.warn('[MaterialLibrary] Unexpected suppliers response format:', data);
+          suppliers = [];
+        }
+        setSuppliers(suppliers);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[MaterialLibrary] Loaded suppliers:', suppliers.length);
         }
       }
     } catch (error) {
