@@ -37,6 +37,7 @@ function createMaterial(def: MaterialDefinition, wireframe?: boolean): THREE.Mat
   if (wireframe) {
     material.wireframe = true;
     material.wireframeLinewidth = 2;
+    material.color.set(0x000000); // Black wireframe
   }
   return material;
 }

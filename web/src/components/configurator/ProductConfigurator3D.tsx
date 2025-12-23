@@ -1014,8 +1014,8 @@ export function ProductConfigurator3D({
             heroMode={heroMode}
           />
 
-          {/* Stage with cyclorama backdrop and floor */}
-          <Stage productWidth={productWidth} productHeight={productHeight} />
+          {/* Stage with cyclorama backdrop and floor - Hidden in settings preview */}
+          {!settingsPreview && <Stage productWidth={productWidth} productHeight={productHeight} />}
           
           {/* Lighting */}
           <Lighting config={config.lighting} />
@@ -1154,8 +1154,75 @@ export function ProductConfigurator3D({
         )}
       </div>
       
+      {/* Settings Preview UI - Shows components list and inspector */}
+      {settingsPreview && (
+        <div className="w-80 flex flex-col gap-4 min-h-0 overflow-y-auto bg-white border-l p-4">
+          {/* Components List */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold">Components</h3>
+            <div className="space-y-1 max-h-64 overflow-y-auto">
+              {config.components.map((comp) => (
+                <button
+                  key={comp.id}
+                  onClick={() => {
+                    setSelectedComponentId(comp.id === selectedComponentId ? null : comp.id);
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                    comp.id === selectedComponentId
+                      ? 'bg-primary text-primary-foreground'
+                      : 'hover:bg-muted'
+                  }`}
+                >
+                  {comp.name || comp.id}
+                </button>
+              ))}
+            </div>
+          </div>
+          
+          {/* Inspector */}
+          <InspectorPanel
+            selectedComponentId={selectedComponentId}
+            attributes={selectedAttributes}
+            onAttributeChange={(changes) => {
+              if (selectedComponentId) {
+                handleAttributeEdit(selectedComponentId, changes);
+              }
+            }}
+          />
+          
+          {/* AI Component Generation */}
+          <div className="space-y-3 border-t pt-4">
+            <h3 className="text-sm font-semibold">AI Component Generation</h3>
+            <p className="text-xs text-muted-foreground">
+              Describe your product or upload a photo to automatically generate components
+            </p>
+            <Button variant="outline" className="w-full" size="sm">
+              Generate from Description
+            </Button>
+            <Button variant="outline" className="w-full" size="sm">
+              Generate from Photo
+            </Button>
+          </div>
+          
+          {/* Component Actions */}
+          <div className="space-y-2 border-t pt-4">
+            <Button variant="outline" className="w-full" size="sm">
+              Add Component
+            </Button>
+            <Button 
+              variant="outline" 
+              className="w-full" 
+              size="sm"
+              disabled={!selectedComponentId}
+            >
+              Delete Selected
+            </Button>
+          </div>
+        </div>
+      )}
+      
       {/* Inspector Panel */}
-      {!heroMode && (
+      {!heroMode && !settingsPreview && (
         <div className="w-80 flex flex-col gap-4 min-h-0 overflow-y-auto">
           <InspectorPanel
             selectedComponentId={selectedComponentId}
