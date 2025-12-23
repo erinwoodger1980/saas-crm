@@ -24,6 +24,11 @@ interface InspectorPanelProps {
   onAttributeChange: (changes: Record<string, any>) => void;
   curve?: CurveDefinition | null;
   onCurveChange?: (curve: CurveDefinition) => void;
+  componentName?: string;
+  componentType?: string;
+  componentMaterialId?: string;
+  availableMaterials?: Array<{ id: string; name: string }>;
+  onComponentMetadataChange?: (changes: { name?: string; type?: string; materialId?: string }) => void;
 }
 
 function InspectorPanel({
@@ -32,6 +37,11 @@ function InspectorPanel({
   onAttributeChange,
   curve,
   onCurveChange,
+  componentName,
+  componentType,
+  componentMaterialId,
+  availableMaterials = [],
+  onComponentMetadataChange,
 }: InspectorPanelProps) {
   const [localValues, setLocalValues] = useState<Record<string, any>>({});
   const [pendingChanges, setPendingChanges] = useState<Record<string, any>>({});
@@ -311,7 +321,70 @@ function InspectorPanel({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {attributes.map(renderAttribute)}
+        {/* Component metadata section */}
+        {onComponentMetadataChange && (
+          <div className="space-y-3 border-b pb-4">
+            <h4 className="text-xs font-semibold text-muted-foreground">COMPONENT INFO</h4>
+            
+            {/* Name */}
+            <div className="space-y-2">
+              <Label htmlFor="comp-name" className="text-sm">Component Name</Label>
+              <Input
+                id="comp-name"
+                value={componentName || ''}
+                onChange={(e) => onComponentMetadataChange({ name: e.target.value })}
+                placeholder="e.g., Left Rail"
+                className="h-8 text-sm"
+              />
+            </div>
+
+            {/* Type */}
+            <div className="space-y-2">
+              <Label htmlFor="comp-type" className="text-sm">Type</Label>
+              <Input
+                id="comp-type"
+                value={componentType || ''}
+                onChange={(e) => onComponentMetadataChange({ type: e.target.value })}
+                placeholder="e.g., rail"
+                className="h-8 text-sm"
+              />
+            </div>
+
+            {/* Material */}
+            {availableMaterials.length > 0 && (
+              <div className="space-y-2">
+                <Label htmlFor="comp-material" className="text-sm">Material</Label>
+                <Select
+                  value={componentMaterialId || ''}
+                  onValueChange={(val) => onComponentMetadataChange({ materialId: val })}
+                >
+                  <SelectTrigger id="comp-material" className="h-8">
+                    <SelectValue placeholder="Select material..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableMaterials.map(mat => (
+                      <SelectItem key={mat.id} value={mat.id}>
+                        {mat.name || mat.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Attributes section */}
+        {attributes && attributes.length > 0 && (
+          <div className="space-y-3">
+            <h4 className="text-xs font-semibold text-muted-foreground">PROPERTIES</h4>
+            {attributes.map(renderAttribute)}
+          </div>
+        )}
+
+        {!attributes || (attributes.length === 0 && !onComponentMetadataChange) && (
+          <p className="text-xs text-muted-foreground">No properties available</p>
+        )}
       </CardContent>
     </Card>
   );

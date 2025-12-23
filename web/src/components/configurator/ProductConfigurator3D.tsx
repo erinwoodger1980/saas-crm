@@ -34,6 +34,7 @@ import { Lighting } from './Lighting';
 import { ProductComponents } from './ProductComponents';
 import { SceneUI } from './SceneUI';
 import InspectorPanel from './InspectorPanel';
+import { AddComponentDialog } from './AddComponentDialog';
 import { AutoFrame } from './AutoFrame';
 import { Stage } from './Stage';
 import { SceneDisposer } from './SceneDisposer';
@@ -743,35 +744,22 @@ export function ProductConfigurator3D({
   /**
    * Handle adding a new component
    */
-  const handleAddComponent = useCallback(() => {
-    if (!config) return;
-    
-    // Create a simple box component as template
-    const newComponent: ComponentNode = {
-      id: `component_${Date.now()}`,
-      name: 'New Component',
-      type: 'frame',
-      visible: true,
-      position: [0, 0, 0],
-      rotation: [0, 0, 0],
-      geometry: {
-        type: 'box',
-        dimensions: [100, 100, 50],
-        position: [0, 0, 0],
-      },
-      materialId: config.materials[0]?.id || 'default',
-    };
+  const handleAddComponent = useCallback(
+    (newComponent: ComponentNode) => {
+      if (!config) return;
 
-    const updatedConfig = {
-      ...config,
-      components: [...config.components, newComponent],
-    };
+      const updatedConfig = {
+        ...config,
+        components: [...config.components, newComponent],
+      };
 
-    setConfig(updatedConfig);
-    persistConfig(updatedConfig);
-    if (onChange) onChange(updatedConfig);
-    setSelectedComponentId(newComponent.id);
-  }, [config, persistConfig, onChange]);
+      setConfig(updatedConfig);
+      persistConfig(updatedConfig);
+      if (onChange) onChange(updatedConfig);
+      setSelectedComponentId(newComponent.id);
+    },
+    [config, persistConfig, onChange]
+  );
 
   /**
    * Handle deleting selected component
@@ -789,6 +777,34 @@ export function ProductConfigurator3D({
     if (onChange) onChange(updatedConfig);
     setSelectedComponentId(null);
   }, [config, selectedComponentId, persistConfig, onChange]);
+
+  /**
+   * Handle component metadata change (name, type, material)
+   */
+  const handleComponentMetadataChange = useCallback(
+    (changes: { name?: string; type?: string; materialId?: string }) => {
+      if (!config || !selectedComponentId) return;
+
+      const updated = { ...config };
+      const componentIndex = config.components.findIndex(c => c.id === selectedComponentId);
+      
+      if (componentIndex >= 0) {
+        const component = { ...config.components[componentIndex] };
+        
+        if (changes.name !== undefined) component.name = changes.name;
+        if (changes.type !== undefined) component.type = changes.type as any;
+        if (changes.materialId !== undefined) component.materialId = changes.materialId;
+        
+        updated.components = [...config.components];
+        updated.components[componentIndex] = component;
+      }
+
+      setConfig(updated);
+      setTimeout(() => persistConfig(updated), 500);
+      if (onChange) onChange(updated);
+    },
+    [config, selectedComponentId, persistConfig, onChange]
+  );
 
   /**
    * Handle attribute edit from inspector
@@ -1277,7 +1293,7 @@ export function ProductConfigurator3D({
       
       {/* Settings Preview UI - Shows components list and inspector */}
       {settingsPreview && config && (
-        <div className="w-80 flex flex-col gap-4 min-h-0 overflow-y-auto bg-white border-l p-4">
+        <div className="w-80 flex flex-col gap-4 min-h-0 overflow-y-auto bg-slate-50/80 border-l p-4">
           {/* Components List */}
           <div className="space-y-3">
             <h3 className="text-sm font-semibold">Components</h3>
@@ -1301,15 +1317,20 @@ export function ProductConfigurator3D({
           </div>
           
           {/* Inspector */}
-          <InspectorPanel
-            selectedComponentId={selectedComponentId}
-            attributes={effectiveAttributes}
-            onAttributeChange={(changes) => {
-              if (selectedComponentId) {
+          {selectedComponentId && config.components && (
+            <InspectorPanel
+              selectedComponentId={selectedComponentId}
+              attributes={effectiveAttributes}
+              onAttributeChange={(changes) => {
                 handleAttributeEdit(selectedComponentId, changes);
-              }
-            }}
-          />
+              }}
+              componentName={config.components.find(c => c.id === selectedComponentId)?.name}
+              componentType={config.components.find(c => c.id === selectedComponentId)?.type}
+              componentMaterialId={config.components.find(c => c.id === selectedComponentId)?.materialId}
+              availableMaterials={config.materials}
+              onComponentMetadataChange={handleComponentMetadataChange}
+            />
+          )}
           
           {/* AI Component Generation */}
           <div className="space-y-3 border-t pt-4">
@@ -1327,9 +1348,13 @@ export function ProductConfigurator3D({
           
           {/* Component Actions */}
           <div className="space-y-2 border-t pt-4">
-            <Button variant="outline" className="w-full" size="sm" onClick={handleAddComponent}>
-              Add Component
-            </Button>
+            <AddComponentDialog
+              materials={config.materials}
+              onAdd={handleAddComponent}
+              productWidth={productWidth}
+              productHeight={productHeight}
+              existingComponents={config.components}
+            />
             <Button 
               variant="outline" 
               className="w-full" 
@@ -1346,15 +1371,20 @@ export function ProductConfigurator3D({
       {/* Inspector Panel */}
       {!heroMode && !settingsPreview && (
         <div className="w-80 flex flex-col gap-4 min-h-0 overflow-y-auto">
-          <InspectorPanel
-            selectedComponentId={selectedComponentId}
-            attributes={effectiveAttributes}
-            onAttributeChange={(changes) => {
-              if (selectedComponentId) {
+          {selectedComponentId && config && config.components && (
+            <InspectorPanel
+              selectedComponentId={selectedComponentId}
+              attributes={effectiveAttributes}
+              onAttributeChange={(changes) => {
                 handleAttributeEdit(selectedComponentId, changes);
-              }
-            }}
-          />
+              }}
+              componentName={config.components.find(c => c.id === selectedComponentId)?.name}
+              componentType={config.components.find(c => c.id === selectedComponentId)?.type}
+              componentMaterialId={config.components.find(c => c.id === selectedComponentId)?.materialId}
+              availableMaterials={config.materials}
+              onComponentMetadataChange={handleComponentMetadataChange}
+            />
+          )}
           
           {/* Action buttons */}
           <div className="flex flex-col gap-2">
