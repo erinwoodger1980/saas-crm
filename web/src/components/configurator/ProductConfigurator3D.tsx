@@ -1108,7 +1108,7 @@ export function ProductConfigurator3D({
 
                   {/* View Options */}
                   <div className="space-y-3 border-t pt-4">
-                    <h3 className="text-sm font-semibold">View</h3>
+                    <h3 className="text-sm font-semibold">View Options</h3>
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
                       <input
                         type="checkbox"
@@ -1120,7 +1120,7 @@ export function ProductConfigurator3D({
                         }}
                         className="rounded"
                       />
-                      <span>Show Grid</span>
+                      <span>Guides</span>
                     </label>
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
                       <input
@@ -1133,7 +1133,20 @@ export function ProductConfigurator3D({
                         }}
                         className="rounded"
                       />
-                      <span>Show Axis</span>
+                      <span>Axis</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={config.ui.dimensions}
+                        onChange={(e) => {
+                          updateConfig({
+                            ui: { ...config.ui, dimensions: e.target.checked },
+                          });
+                        }}
+                        className="rounded"
+                      />
+                      <span>Dimensions</span>
                     </label>
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
                       <input
@@ -1144,6 +1157,29 @@ export function ProductConfigurator3D({
                       />
                     <span>High Quality</span>
                     </label>
+                  </div>
+
+                  {/* Components List */}
+                  <div className="space-y-3 border-t pt-4">
+                    <h3 className="text-sm font-semibold">Components</h3>
+                    <div className="space-y-1 max-h-64 overflow-y-auto">
+                      {config.components.map((comp) => (
+                        <button
+                          key={comp.id}
+                          onClick={() => {
+                            setSelectedComponentId(comp.id === selectedComponentId ? null : comp.id);
+                            if (comp.id !== selectedComponentId) {
+                              setShowInspectorDrawer(true);
+                            }
+                          }}
+                          className={`w-full text-left px-3 py-2 rounded text-sm hover:bg-accent transition-colors ${
+                            selectedComponentId === comp.id ? 'bg-primary text-primary-foreground' : ''
+                          }`}
+                        >
+                          {comp.name || comp.type}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </SheetContent>
