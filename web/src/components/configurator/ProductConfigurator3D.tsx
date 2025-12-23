@@ -728,6 +728,7 @@ export function ProductConfigurator3D({
       geometry: {
         type: 'box',
         dimensions: [100, 100, 50],
+        position: [0, 0, 0],
       },
       materialId: config.materials[0]?.id || 'default',
     };
