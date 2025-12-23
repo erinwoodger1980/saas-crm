@@ -1111,8 +1111,8 @@ export function ProductConfigurator3D({
           </div>
         )}
 
-        {/* UI Overlay - Full scene UI in normal mode */}
-        {!heroMode && (
+        {/* UI Overlay - Full scene UI in normal mode (hidden in settingsPreview) */}
+        {!heroMode && !settingsPreview && (
           <SceneUI
             components={config.components}
             ui={config.ui}
