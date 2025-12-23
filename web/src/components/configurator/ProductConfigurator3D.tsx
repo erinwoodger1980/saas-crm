@@ -19,6 +19,7 @@ import {
   CameraMode,
   DEFAULT_UI_TOGGLES,
   LightingConfig,
+  ComponentNode,
 } from '@/types/scene-config';
 import { ProductParams, EditableAttribute, ComponentEdit } from '@/types/parametric-builder';
 import {
