@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ParsedLineDto, QuestionnaireField, ParseResponse } from "@/lib/api/quotes";
 import { ProductConfigurator3D } from "@/components/configurator/ProductConfigurator3D";
+import { normalizeSceneConfig } from "@/lib/scene/config-validation";
 import { canConfigure } from "@/lib/scene/builder-registry";
 
 export type ParsedLinesTableProps = {
@@ -823,6 +824,9 @@ function ConfiguratorModal({
 }) {
   if (!line || !tenantId) return null;
 
+  // If the line has a saved sceneConfig (e.g., from Instant Quote), normalize it
+  const initialConfig = normalizeSceneConfig(line.meta?.sceneConfig);
+
   return (
     <Dialog open={!!line} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-[90vw] max-h-[90vh] p-6">
@@ -834,8 +838,10 @@ function ConfiguratorModal({
           entityType="quoteLineItem"
           entityId={line.id}
           lineItem={line}
+          initialConfig={initialConfig || undefined}
           onClose={onClose}
           height="75vh"
+          heroMode={true}
         />
       </DialogContent>
     </Dialog>

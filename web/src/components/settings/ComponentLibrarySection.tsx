@@ -23,6 +23,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { Edit, Trash2, Copy, Box, Search, Filter } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/components/ui/use-toast';
 
 interface ComponentProfile {
   id: string;
@@ -64,9 +66,16 @@ export function ComponentLibrarySection() {
   const [filterType, setFilterType] = useState<string | null>(null);
   const [selectedComponent, setSelectedComponent] = useState<ComponentLookup | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [assignOptionCode, setAssignOptionCode] = useState<string>('');
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [productOptions, setProductOptions] = useState<Array<{ id: string; label: string; category: string; type: string }>>([]);
+  const [pickerCategory, setPickerCategory] = useState<string>('all');
+  const [pickerSearch, setPickerSearch] = useState<string>('');
+  const { toast } = useToast();
 
   useEffect(() => {
     loadComponents();
+    loadProductOptions();
   }, []);
 
   const loadComponents = async () => {
@@ -82,6 +91,25 @@ export function ComponentLibrarySection() {
       console.error('Failed to load component library:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadProductOptions = async () => {
+    try {
+      const res = await fetch('/api/tenant/settings', { credentials: 'include' });
+      if (!res.ok) return;
+      const data = await res.json();
+      const out: Array<{ id: string; label: string; category: string; type: string }> = [];
+      (data.productTypes || []).forEach((cat: any) => {
+        (cat.types || []).forEach((t: any) => {
+          (t.options || []).forEach((opt: any) => {
+            out.push({ id: opt.id, label: opt.label, category: cat.id, type: t.type });
+          });
+        });
+      });
+      setProductOptions(out);
+    } catch (err) {
+      console.error('Failed to load product options', err);
     }
   };
 
@@ -271,9 +299,17 @@ export function ComponentLibrarySection() {
                       variant="ghost"
                       size="sm"
                       className="h-8 w-8 p-0"
-                      onClick={() => handleDuplicate(comp)}
+                      onClick={() => handleDelete(comp.id)}
                     >
-                      <Copy className="w-4 h-4" />
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-2"
+                      onClick={() => { setSelectedComponent(comp); setAssignDialogOpen(true); }}
+                    >
+                      Assign
                     </Button>
                     <Button
                       variant="ghost"
@@ -386,6 +422,52 @@ export function ComponentLibrarySection() {
                   />
                 </div>
               )}
+              {/* Usage and assignment */}
+              <div className="border rounded-lg p-3 bg-slate-50">
+                <div className="text-xs font-medium text-slate-700 mb-1">Used in product options</div>
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {(selectedComponent.productTypes || []).map((pt) => (
+                    <Badge key={pt} variant="secondary" className="text-xs">{pt}</Badge>
+                  ))}
+                  {(!selectedComponent.productTypes || selectedComponent.productTypes.length === 0) && (
+                    <div className="text-xs text-muted-foreground">None</div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder="Add to product option (e.g., entrance-single)"
+                    value={assignOptionCode}
+                    onChange={(e) => setAssignOptionCode(e.target.value)}
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={async () => {
+                      if (!selectedComponent || !assignOptionCode.trim()) return;
+                      try {
+                        const current = Array.isArray(selectedComponent.productTypes) ? selectedComponent.productTypes : [];
+                        if (current.includes(assignOptionCode.trim())) return;
+                        const next = [...current, assignOptionCode.trim()];
+                        const response = await fetch(`/api/components/${encodeURIComponent(selectedComponent.id)}`, {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          credentials: 'include',
+                          body: JSON.stringify({ productTypes: next })
+                        });
+                        if (!response.ok) throw new Error('Failed to assign');
+                        setAssignOptionCode('');
+                        // Update local state and refresh list
+                        setSelectedComponent({ ...selectedComponent, productTypes: next });
+                        await loadComponents();
+                      } catch (err) {
+                        console.error('Assign failed', err);
+                        alert('Failed to assign to product option');
+                      }
+                    }}
+                  >
+                    Add
+                  </Button>
+                </div>
+              </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
                   Cancel
@@ -411,6 +493,81 @@ export function ComponentLibrarySection() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign to Product Option Dialog */}
+      <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Assign to Product Option</DialogTitle>
+            <DialogDescription>
+              Link this component to a product option so it appears in that template.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedComponent ? (
+            <div className="space-y-3">
+              <div className="text-sm">Component: <span className="font-mono">{selectedComponent.code}</span> — {selectedComponent.name}</div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label>Filter by Category</Label>
+                  <Select value={pickerCategory} onValueChange={setPickerCategory}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="All" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      {[...new Set(productOptions.map((p) => p.category))].map((cat) => (
+                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Search</Label>
+                  <Input value={pickerSearch} onChange={(e) => setPickerSearch(e.target.value)} placeholder="Search options" />
+                </div>
+              </div>
+              <div className="max-h-64 overflow-auto border rounded">
+                {productOptions
+                  .filter((p) => pickerCategory === 'all' || p.category === pickerCategory)
+                  .filter((p) => !pickerSearch.trim() || (p.label + ' ' + p.id).toLowerCase().includes(pickerSearch.toLowerCase()))
+                  .map((p) => (
+                    <div key={p.id} className="flex items-center justify-between px-3 py-2 border-b last:border-b-0">
+                      <div className="text-sm">
+                        <span className="font-medium">{p.label}</span>
+                        <span className="ml-2 text-xs text-slate-600">[{p.category} / {p.type}]</span>
+                        <span className="ml-2 text-xs font-mono text-slate-500">{p.id}</span>
+                      </div>
+                      <Button size="sm" onClick={async () => {
+                        try {
+                          const current = Array.isArray(selectedComponent.productTypes) ? selectedComponent.productTypes : [];
+                          if (current.includes(p.id)) {
+                            toast({ title: 'Already assigned', description: `${selectedComponent.code} is already linked to ${p.id}` });
+                            return;
+                          }
+                          const next = [...current, p.id];
+                          const response = await fetch(`/api/components/${encodeURIComponent(selectedComponent.id)}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            credentials: 'include',
+                            body: JSON.stringify({ productTypes: next })
+                          });
+                          if (!response.ok) throw new Error('Failed to assign');
+                          toast({ title: 'Assigned', description: `Linked ${selectedComponent.code} to ${p.id}` });
+                          setSelectedComponent({ ...selectedComponent, productTypes: next });
+                        } catch (err: any) {
+                          toast({ title: 'Assign failed', description: err?.message || 'Could not assign', variant: 'destructive' });
+                        }
+                      }}>Link</Button>
+                    </div>
+                  ))}
+              </div>
+              <div className="flex justify-end">
+                <Button variant="outline" onClick={() => setAssignDialogOpen(false)}>Close</Button>
+              </div>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
     </div>

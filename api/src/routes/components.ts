@@ -52,7 +52,11 @@ router.get('/', async (req, res) => {
             name: true,
             leadTimeDays: true
           }
-        }
+        },
+        material: true,
+        bodyProfile: true,
+        startEndProfile: true,
+        endEndProfile: true
       },
       orderBy: [
         { componentType: 'asc' },
@@ -87,7 +91,11 @@ router.get('/:id', async (req, res) => {
     const component = await prisma.componentLookup.findFirst({
       where: { id, tenantId },
       include: {
-        supplier: true
+        supplier: true,
+        material: true,
+        bodyProfile: true,
+        startEndProfile: true,
+        endEndProfile: true
       }
     });
 
@@ -165,7 +173,19 @@ router.post('/', async (req, res) => {
       leadTimeDays,
       supplierId,
       isActive,
-      metadata
+      metadata,
+      // Formula fields
+      positionXFormula,
+      positionYFormula,
+      positionZFormula,
+      widthFormula,
+      heightFormula,
+      depthFormula,
+      // Material and Profile references
+      materialId,
+      bodyProfileId,
+      startEndProfileId,
+      endEndProfileId
     } = req.body;
 
     // Validate required fields
@@ -201,10 +221,26 @@ router.post('/', async (req, res) => {
         leadTimeDays: leadTimeDays || 0,
         supplierId,
         isActive: isActive !== false,
-        metadata
+        metadata,
+        // Formula fields
+        positionXFormula,
+        positionYFormula,
+        positionZFormula,
+        widthFormula,
+        heightFormula,
+        depthFormula,
+        // Material and Profile references
+        materialId,
+        bodyProfileId,
+        startEndProfileId,
+        endEndProfileId
       },
       include: {
-        supplier: true
+        supplier: true,
+        material: true,
+        bodyProfile: true,
+        startEndProfile: true,
+        endEndProfile: true
       }
     });
 
@@ -244,7 +280,19 @@ router.put('/:id', async (req, res) => {
       leadTimeDays,
       supplierId,
       isActive,
-      metadata
+      metadata,
+      // Formula fields
+      positionXFormula,
+      positionYFormula,
+      positionZFormula,
+      widthFormula,
+      heightFormula,
+      depthFormula,
+      // Material and Profile references
+      materialId,
+      bodyProfileId,
+      startEndProfileId,
+      endEndProfileId
     } = req.body;
 
     // If code is changing, check for duplicates
@@ -275,10 +323,26 @@ router.put('/:id', async (req, res) => {
         leadTimeDays,
         supplierId,
         isActive,
-        metadata
+        metadata,
+        // Formula fields
+        positionXFormula,
+        positionYFormula,
+        positionZFormula,
+        widthFormula,
+        heightFormula,
+        depthFormula,
+        // Material and Profile references
+        materialId,
+        bodyProfileId,
+        startEndProfileId,
+        endEndProfileId
       },
       include: {
-        supplier: true
+        supplier: true,
+        material: true,
+        bodyProfile: true,
+        startEndProfile: true,
+        endEndProfile: true
       }
     });
 

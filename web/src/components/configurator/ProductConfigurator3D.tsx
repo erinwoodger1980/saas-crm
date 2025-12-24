@@ -39,7 +39,7 @@ import { AutoFrame } from './AutoFrame';
 import { Stage } from './Stage';
 import { SceneDisposer } from './SceneDisposer';
 import { PostFX } from './PostFX';
-import { Loader2, Save, Settings } from 'lucide-react';
+import { Loader2, Edit3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -397,7 +397,9 @@ export function ProductConfigurator3D({
 
   // Inspector drawer trigger
   useEffect(() => {
-    if (heroMode && selectedComponentId) {
+    // In minimal (hero) mode, do NOT auto-open the inspector; just show the edit icon.
+    // In full UI mode, auto-open when a component is selected.
+    if (!heroMode && selectedComponentId) {
       setShowInspectorDrawer(true);
     }
   }, [heroMode, selectedComponentId]);
@@ -875,11 +877,20 @@ export function ProductConfigurator3D({
         
         // Handle position changes
         if ('positionX' in changes || 'positionY' in changes || 'positionZ' in changes) {
-          component.position = [
-            changes.positionX ?? component.position?.[0] ?? 0,
-            changes.positionY ?? component.position?.[1] ?? 0,
-            changes.positionZ ?? component.position?.[2] ?? 0,
+          const newPosition: [number, number, number] = [
+            changes.positionX ?? component.position?.[0] ?? component.geometry?.position?.[0] ?? 0,
+            changes.positionY ?? component.position?.[1] ?? component.geometry?.position?.[1] ?? 0,
+            changes.positionZ ?? component.position?.[2] ?? component.geometry?.position?.[2] ?? 0,
           ];
+          component.position = newPosition;
+          
+          // Also update geometry.position if geometry exists
+          if (component.geometry) {
+            component.geometry = {
+              ...component.geometry,
+              position: newPosition,
+            };
+          }
         }
         
         // Handle dimension changes for box geometry
@@ -1384,56 +1395,17 @@ export function ProductConfigurator3D({
         
         {/* UI Overlay - Only small floating button in hero mode */}
         {heroMode && (
-          <div className="absolute bottom-4 right-4 z-50 pointer-events-auto flex gap-2">
-            <Sheet open={showUIDrawer} onOpenChange={setShowUIDrawer}>
-              <SheetTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-2 bg-white/90 backdrop-blur hover:bg-white shadow-lg"
-                >
-                  <Settings className="h-4 w-4" />
-                  View options
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="right" className="w-72 p-6 space-y-4">
-                <div className="space-y-4">
-                  {/* Components List */}
-                  <div className="space-y-3">
-                    <h3 className="text-sm font-semibold">Components</h3>
-                    <div className="space-y-1 max-h-64 overflow-y-auto">
-                      {config.components.map((comp) => (
-                        <button
-                          key={comp.id}
-                          onClick={() => {
-                            setSelectedComponentId(comp.id === selectedComponentId ? null : comp.id);
-                            if (comp.id !== selectedComponentId) {
-                              setShowInspectorDrawer(true);
-                            }
-                          }}
-                          className={`w-full text-left px-3 py-2 rounded text-sm hover:bg-accent transition-colors ${
-                            selectedComponentId === comp.id ? 'bg-primary text-primary-foreground' : ''
-                          }`}
-                        >
-                          {comp.name || comp.type}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </SheetContent>
-            </Sheet>
-
+          <div className="absolute bottom-4 right-4 z-50 pointer-events-auto">
             {(selectedComponentId || showInspectorDrawer) && (
               <Sheet open={showInspectorDrawer} onOpenChange={setShowInspectorDrawer}>
                 <SheetTrigger asChild>
                   <Button
-                    size="sm"
+                    size="icon"
                     variant="outline"
-                    className="gap-2 bg-white/90 backdrop-blur hover:bg-white shadow-lg"
+                    className="bg-white/90 backdrop-blur hover:bg-white shadow-lg"
+                    aria-label="Edit selected component"
                   >
-                    <Save className="h-4 w-4" />
-                    Edit
+                    <Edit3 className="h-4 w-4" />
                   </Button>
                 </SheetTrigger>
                 <SheetContent side="right" className="w-72 p-4 space-y-4">

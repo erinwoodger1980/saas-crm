@@ -33,6 +33,7 @@ import authRouter from "./routes/auth";
 import aiRouter from "./routes/ai";
 import aiAssistantRouter from "./routes/ai-assistant";
 import aiComponentEstimatorRouter from "./routes/ai-component-estimator";
+import aiProductGeneratorRouter from "./routes/ai-product-generator";
 import reportsRouter from "./routes/reports";
 import leadsRouter from "./routes/leads";
 import clientsRouter from "./routes/clients";
@@ -141,6 +142,7 @@ import componentsRouter from "./routes/components";
 import componentProcessesRouter from "./routes/component-processes";
 import componentAttributesRouter from "./routes/component-attributes";
 import componentVariantsRouter from "./routes/component-variants";
+import productTypeComponentsRouter from "./routes/product-type-components";
 import materialsRouter from "./routes/materials";
 import sceneStateRouter from "./routes/scene-state";
 import assetsRouter from "./routes/assets";
@@ -640,6 +642,7 @@ app.use("/leads", leadsRouter);
 app.use("/clients", clientsRouter);
 app.use("/ai", aiRouter);
 app.use("/ai", requireAuth, aiComponentEstimatorRouter);
+app.use("/ai-product-generator", requireAuth, aiProductGeneratorRouter);
 app.use("/reports", reportsRouter);
 app.use("/mail", mailRouter);
 app.use("/gmail", gmailRouter);
@@ -746,6 +749,8 @@ app.use("/api/lookup", requireAuth, lookupRouter);
 app.use("/lipping-lookup", requireAuth, lippingLookupRouter);
 // Component catalog and product type configuration
 app.use("/components", requireAuth, componentsRouter);
+// Product type component assignments (assign specific components to product types)
+app.use("/product-type-components", requireAuth, productTypeComponentsRouter);
 // Component process tracking, ML timing predictions, and cost calculations
 app.use("/component-processes", requireAuth, componentProcessesRouter);
 app.use("/component-attributes", requireAuth, componentAttributesRouter); // Component attribute management (timber types, dimensions, etc)

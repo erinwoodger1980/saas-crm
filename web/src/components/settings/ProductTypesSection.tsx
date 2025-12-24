@@ -9,6 +9,7 @@ import { Upload, Trash2, Plus, Wand2, ChevronRight, ChevronDown, Loader2, Box, S
 import { useToast } from "@/components/ui/use-toast";
 import { ProductConfigurator3D } from "@/components/configurator/ProductConfigurator3D";
 import { normalizeSceneConfig, createDefaultSceneConfig } from "@/lib/scene/config-validation";
+import { getAssignedComponents, getAvailableComponents, assignComponent, deleteAssignment, updateAssignment } from "@/lib/api/product-type-components";
 
 const DEFAULT_SVG_PROMPT =
   "Provide a detailed elevation with correct timber/glass fills, rails, stiles, panels, muntins, and dimension lines (800mm top, 2025mm left).";
@@ -289,6 +290,79 @@ export default function ProductTypesSection() {
   const [aiImage, setAiImage] = useState<File | null>(null);
   const [aiImagePreview, setAiImagePreview] = useState<string | null>(null);
   const [aiEstimating, setAiEstimating] = useState(false);
+
+  // Assigned components per product option (keyed by option.id)
+  const [assignedComponents, setAssignedComponents] = useState<Record<string, Array<{ id: string; code: string; name: string; componentType: string }>>>({});
+  const [loadingAssigned, setLoadingAssigned] = useState<Record<string, boolean>>({});
+  const [addByCode, setAddByCode] = useState<Record<string, string>>({});
+
+  async function loadAssignedForOption(optionId: string) {
+    try {
+      setLoadingAssigned((prev) => ({ ...prev, [optionId]: true }));
+      const items = await apiFetch<Array<{ id: string; code: string; name: string; componentType: string }>>(`/components?productType=${encodeURIComponent(optionId)}`);
+      setAssignedComponents((prev) => ({ ...prev, [optionId]: items }));
+    } catch (err) {
+      console.error('Failed to load assigned components for', optionId, err);
+      setAssignedComponents((prev) => ({ ...prev, [optionId]: [] }));
+    } finally {
+      setLoadingAssigned((prev) => ({ ...prev, [optionId]: false }));
+    }
+  }
+
+  async function assignExistingComponentToOption(optionId: string, codeOrId: string) {
+    try {
+      // Resolve by code (preferred) or treat as id
+      let comp: any | null = null;
+      try {
+        comp = await apiFetch<any>(`/components/code/${encodeURIComponent(codeOrId)}`);
+      } catch {
+        // Fallback to fetching by id
+        try {
+          comp = await apiFetch<any>(`/components/${encodeURIComponent(codeOrId)}`);
+        } catch {
+          comp = null;
+        }
+      }
+      if (!comp?.id) {
+        toast({ title: 'Not found', description: `Component '${codeOrId}' not found`, variant: 'destructive' });
+        return;
+      }
+
+      const current = Array.isArray(comp.productTypes) ? comp.productTypes : [];
+      if (current.includes(optionId)) {
+        toast({ title: 'Already assigned', description: `${comp.code} is already linked to this product type.` });
+        return;
+      }
+      const next = [...current, optionId];
+      await apiFetch(`/components/${encodeURIComponent(comp.id)}`, {
+        method: 'PUT',
+        json: { productTypes: next }
+      });
+      toast({ title: 'Assigned', description: `Linked ${comp.code} to ${optionId}` });
+      await loadAssignedForOption(optionId);
+      setAddByCode((prev) => ({ ...prev, [optionId]: '' }));
+    } catch (err: any) {
+      toast({ title: 'Assign failed', description: err?.message || 'Could not assign component', variant: 'destructive' });
+    }
+  }
+
+  async function unlinkExistingComponentFromOption(optionId: string, componentId: string) {
+    try {
+      const comp = await apiFetch<any>(`/components/${encodeURIComponent(componentId)}`);
+      if (!comp?.id) return;
+      const current = Array.isArray(comp.productTypes) ? comp.productTypes : [];
+      if (!current.includes(optionId)) return;
+      const next = current.filter((pt: string) => pt !== optionId);
+      await apiFetch(`/components/${encodeURIComponent(comp.id)}`, {
+        method: 'PUT',
+        json: { productTypes: next }
+      });
+      toast({ title: 'Removed', description: `Unlinked ${comp.code} from ${optionId}` });
+      await loadAssignedForOption(optionId);
+    } catch (err: any) {
+      toast({ title: 'Remove failed', description: err?.message || 'Could not unlink component', variant: 'destructive' });
+    }
+  }
 
   useEffect(() => {
     loadProducts();
@@ -1020,7 +1094,40 @@ export default function ProductTypesSection() {
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
+                            {/* Assigned components to this option */}
+                            <div className="mt-3 p-3 bg-slate-50 rounded border">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="text-sm font-medium text-slate-700">Components assigned to this product option</div>
+                                <Button size="sm" variant="outline" onClick={() => loadAssignedForOption(option.id)} disabled={loadingAssigned[option.id] === true}>
+                                  {loadingAssigned[option.id] ? 'Loading…' : 'Refresh'}
+                                </Button>
+                              </div>
+                              <div className="space-y-1">
+                                {(assignedComponents[option.id] || []).length === 0 ? (
+                                  <div className="text-xs text-slate-500">No components linked yet.</div>
+                                ) : (
+                                  (assignedComponents[option.id] || []).map((c) => (
+                                    <div key={c.id} className="text-xs text-slate-700 flex items-center gap-2">
+                                      <span className="px-1.5 py-0.5 bg-slate-200 rounded text-slate-800">{c.componentType}</span>
+                                      <span className="font-mono">{c.code}</span>
+                                      <span className="opacity-70">— {c.name}</span>
+                                      <Button size="xs" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => unlinkExistingComponentFromOption(option.id, c.id)}>Remove</Button>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                              <div className="mt-2 flex items-center gap-2">
+                                <Input
+                                  value={addByCode[option.id] || ''}
+                                  onChange={(e) => setAddByCode((prev) => ({ ...prev, [option.id]: e.target.value }))}
+                                  placeholder="Add existing component by code (e.g., HNG-BT-SS)"
+                                />
+                                <Button size="sm" onClick={() => assignExistingComponentToOption(option.id, (addByCode[option.id] || '').trim())} disabled={!((addByCode[option.id] || '').trim())}>
+                                  Add
+                                </Button>
+                              </div>
                             </div>
+                          </div>
                           ))}
                         </div>
                       )}
@@ -1174,7 +1281,7 @@ export default function ProductTypesSection() {
                     type: capturedDialogInfo.type,
                     option: capturedDialogInfo.optionId,
                   }}
-                  settingsPreview={true}
+                  settingsPreview={false}
                   renderQuality="low"
                   onChange={(sceneConfig) => {
                     // Update the option's sceneConfig as user makes changes
@@ -1205,7 +1312,7 @@ export default function ProductTypesSection() {
                 }}
                 onClose={() => setIsConfiguratorOpen(false)}
                 height="70vh"
-                heroMode={false}
+                heroMode={true}
               />
               ) : (
                 <div className="flex flex-col items-center justify-center p-12 text-center space-y-4">

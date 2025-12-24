@@ -135,6 +135,8 @@ model Tenant {
   architectPacks             ArchitectPack[]             @relation("ArchitectPacks")
   tenantAIUsageEvents        TenantAIUsageEvent[]        @relation("TenantAIUsageEvents")
   tenantAIUsageMonthly       TenantAIUsageMonthly[]      @relation("TenantAIUsageMonthly")
+  productTypeComponentAssignments ProductTypeComponentAssignment[] @relation("ProductTypeComponentAssignmentsTenant")
+  profiles                   Profile[]                   @relation("TenantProfiles")
 }
 
 model LippingLookup {
@@ -186,21 +188,43 @@ model ComponentLookup {
   metadata        Json? // Flexible storage for component-specific data (dimensions, specs, etc.)
   inclusionRules  Json? // JSON rules for when component is included based on configuredProduct.selections
   quantityFormula String? // Formula to calculate quantity based on dimensions and selections
+  
+  // Parametric positioning and sizing (formulas can reference other components, product dimensions)
+  positionXFormula String? // e.g., "frameWidth + gap"
+  positionYFormula String? // e.g., "0"
+  positionZFormula String? // e.g., "product.height - railHeight - gap"
+  widthFormula     String? // e.g., "product.width - frameWidth * 2 - stileWidth * 2 + tennonLength * 2"
+  heightFormula    String? // e.g., "railHeight"
+  depthFormula     String? // e.g., "doorThickness"
+  
+  // Material and Profile references for rendering and manufacturing
+  materialId       String? // Reference to Material for display/rendering
+  bodyProfileId    String? // Main profile shape for component body
+  startEndProfileId String? // Profile for start end (tenon/shoulder machining)
+  endEndProfileId   String? // Profile for end end (tenon/shoulder machining)
+  
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   tenant             Tenant                @relation("ComponentLookups", fields: [tenantId], references: [id], onDelete: Cascade)
   supplier           Supplier?             @relation("SupplierComponents", fields: [supplierId], references: [id])
+  material           Material?             @relation("ComponentMaterial", fields: [materialId], references: [id])
+  bodyProfile        Profile?              @relation("ComponentBodyProfile", fields: [bodyProfileId], references: [id])
+  startEndProfile    Profile?              @relation("ComponentStartEndProfile", fields: [startEndProfileId], references: [id])
+  endEndProfile      Profile?              @relation("ComponentEndEndProfile", fields: [endEndProfileId], references: [id])
   profile            ComponentProfile?     @relation("ComponentProfile")
   bomLineItems       BOMLineItem[]         @relation("ComponentBOMItems")
   componentProcesses ComponentProcess[]    @relation("ComponentProcesses")
   variants           ComponentVariant[]    @relation("ComponentVariants")
   fields             QuestionnaireField[]  @relation("FieldComponentLookup")
-
+  productTypeAssignments ProductTypeComponentAssignment[] @relation("ComponentProductTypeAssignments")
+  
   @@unique([tenantId, code])
   @@index([tenantId])
   @@index([componentType])
   @@index([supplierId])
+  @@index([materialId])
+  @@index([bodyProfileId])
 }
 
 model ProductTypeComponent {
@@ -236,6 +260,29 @@ model ComponentProfile {
   component ComponentLookup @relation("ComponentProfile", fields: [componentLookupId], references: [id], onDelete: Cascade)
 
   @@index([profileType])
+}
+
+// Reusable Profile definitions for component body shapes and end joinery (tenon, shoulder, rebate, etc.)
+model Profile {
+  id           String   @id @default(cuid())
+  tenantId     String
+  code         String   // Unique profile code (e.g., "RECT-25x45", "TENON-10x30")
+  name         String   // Display name (e.g., "Rectangular 25x45mm", "Tenon 10x30mm")
+  profileType  String   // RECTANGULAR, L_SHAPE, U_CHANNEL, TENON, SHOULDER, REBATE, CUSTOM
+  description  String?
+  svgPath      String?  // SVG path data for 2D profile shape
+  dimensions   Json     // {width, height, tennonLength, shoulderDepth, rebateWidth, etc.}
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant                Tenant            @relation("TenantProfiles", fields: [tenantId], references: [id], onDelete: Cascade)
+  componentsBodyProfile ComponentLookup[] @relation("ComponentBodyProfile")
+  componentsStartEnd    ComponentLookup[] @relation("ComponentStartEndProfile")
+  componentsEndEnd      ComponentLookup[] @relation("ComponentEndEndProfile")
+
+  @@unique([tenantId, code])
+  @@index([tenantId, profileType])
 }
 
 // Dynamic attributes that can be selected for each component (e.g., timber types, finishes, grades)
@@ -459,6 +506,7 @@ model ProductType {
   questionSet          QuestionSet?             @relation("ProductTypeQuestionSet", fields: [questionSetId], references: [id])
   questionSets         QuestionSet[]            @relation("QuestionSetProductType")
   standardFieldMaps    StandardFieldMapping[]   @relation("ProductTypeStandardFieldMappings")
+    componentAssignments ProductTypeComponentAssignment[] @relation("ProductTypeComponentAssignments")
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -468,6 +516,31 @@ model ProductType {
 }
 
 // Attribute: Universal attribute system replacing fragmented questionnaire fields
+// ProductTypeComponentAssignment: Many-to-many relationship between ProductType and ComponentLookup
+// This allows specific components to be assigned to product type options
+model ProductTypeComponentAssignment {
+  id              String   @id @default(cuid())
+  tenantId        String
+  productTypeId   String // Links to ProductType (option level)
+  componentId     String // Links to ComponentLookup
+  isRequired      Boolean  @default(false)
+  isDefault       Boolean  @default(false) // Auto-select when product type is chosen
+  sortOrder       Int      @default(0)
+  quantityFormula String? // Override component's default quantity formula
+  metadata        Json? // Additional config (min/max quantity, validation rules, etc.)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant      Tenant          @relation("ProductTypeComponentAssignmentsTenant", fields: [tenantId], references: [id], onDelete: Cascade)
+  productType ProductType     @relation("ProductTypeComponentAssignments", fields: [productTypeId], references: [id], onDelete: Cascade)
+  component   ComponentLookup @relation("ComponentProductTypeAssignments", fields: [componentId], references: [id], onDelete: Cascade)
+
+  @@unique([productTypeId, componentId])
+  @@index([tenantId])
+  @@index([productTypeId])
+  @@index([componentId])
+}
+
 model Attribute {
   id                     String   @id @default(cuid())
   tenantId               String
@@ -2674,6 +2747,7 @@ model Material {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
   tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  componentsUsingThis ComponentLookup[] @relation("ComponentMaterial")
 
   @@unique([tenantId, code])
   @@index([tenantId, category, isActive])

@@ -44,6 +44,7 @@ import { apiFetch } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { deriveLineMaterialAlerts, groupAlerts, type GroupedAlert } from "@/lib/materialAlerts";
+import { InstantQuoteGenerator } from "@/components/instant-quote/InstantQuoteGenerator";
 
 // Material cost alert types imported from helper; interface here intentionally omitted.
 
@@ -1262,6 +1263,57 @@ export default function QuoteBuilderPage() {
                   <p className="text-sm text-muted-foreground">
                     Select a product type and answer configuration questions
                   </p>
+                </div>
+
+                {/* Instant product from photo (AI) */}
+                <div className="rounded-xl border bg-muted/20 p-4">
+                  <h3 className="text-sm font-medium text-foreground mb-2">Instant product from photo</h3>
+                  <p className="text-xs text-muted-foreground mb-3">Upload a photo or paste a description to auto-build a product with 3D, BOM and pricing.</p>
+                  <InstantQuoteGenerator
+                    productTypeHint={(() => {
+                      if (!selectedProductOptionId || !productCategories?.length) return null;
+                      for (const cat of productCategories) {
+                        if (!cat.types) continue;
+                        for (const type of cat.types) {
+                          if (!type.options) continue;
+                          const opt = type.options.find((o: any) => o.id === selectedProductOptionId);
+                          if (opt) {
+                            return {
+                              category: cat.value || 'doors',
+                              type: type.value || 'standard',
+                              option: opt.value || 'GEN',
+                            };
+                          }
+                        }
+                      }
+                      return null;
+                    })()}
+                    onAddToQuote={async (data, dims) => {
+                      // Create a single product line using the AI total price; attach sceneConfig for later editing
+                      const created = await createQuoteLine(quoteId, {
+                        description: data.analysis.description || `AI ${data.analysis.productType}`,
+                        quantity: 1,
+                        unitPrice: data.pricing.totalPrice,
+                      });
+                      const newLineId = (created as any)?.line?.id;
+                      if (newLineId) {
+                        await updateQuoteLine(quoteId, newLineId, {
+                          lineStandard: {
+                            widthMm: Math.round(dims.width),
+                            heightMm: Math.round(dims.height),
+                          },
+                          meta: {
+                            aiInstantQuote: data,
+                            sceneConfig: data.sceneConfig,
+                          } as any,
+                        });
+                        await mutateLines();
+                        setActiveTab("quote-lines");
+                      } else {
+                        throw new Error("Line ID not returned");
+                      }
+                    }}
+                  />
                 </div>
 
                 {/* Product option selector with 3D preview button */}

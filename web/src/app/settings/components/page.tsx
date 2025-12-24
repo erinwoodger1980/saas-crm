@@ -218,6 +218,7 @@ export default function ComponentsPage() {
       setTypeLabels(data || {});
     } catch (error) {
       console.error('Error loading component type labels:', error);
+      // Silently fail - use default labels from COMPONENT_TYPE_LABELS
       setTypeLabels({});
     }
   };
