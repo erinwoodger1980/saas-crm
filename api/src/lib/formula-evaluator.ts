@@ -301,8 +301,7 @@ export function evaluateComponentTree(
 
     const evaluator = new FormulaEvaluator(context);
 
-    const evaluated = {
-      code: comp.code,
+    const evaluatedComponent = {
       positionX: evaluator.evaluate(comp.positionXFormula),
       positionY: evaluator.evaluate(comp.positionYFormula),
       positionZ: evaluator.evaluate(comp.positionZFormula),
@@ -312,8 +311,8 @@ export function evaluateComponentTree(
     };
 
     // Add to context for subsequent evaluations
-    context.components[comp.code] = evaluated;
-    results.push(evaluated);
+    context.components[comp.code] = evaluatedComponent;
+    results.push({ code: comp.code, ...evaluatedComponent });
   }
 
   return results;
