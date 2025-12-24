@@ -262,6 +262,11 @@ const ComponentMesh = forwardRef<THREE.Mesh, {
     }
   }, [hasRenderableGeometry, node.geometry]);
 
+  const wireframeMaterial = useMemo(() => {
+    if (!wireframe) return null;
+    return new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: true });
+  }, [wireframe]);
+
   // Selection highlight material - must be called before any returns
   const highlightMaterial = useMemo(() => {
     if (!isSelected || !material) return material;
@@ -345,16 +350,20 @@ function NodeRenderer({
   materials: MaterialDefinition[];
   visibility: ComponentVisibility;
   materialMap: Map<string, THREE.Material>;
-  onSelect?: (componentId: string | null) => void;
-  selectedId?: string | null;
+      castShadow={!wireframe}
+      receiveShadow={!wireframe}
   orbitControlsRef?: MutableRefObject<any>;
   onTransformEnd?: (componentId: string, newY: number) => void;
   wireframe?: boolean;
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
-
-  const isVisible = visibility[node.id] ?? node.visible;
-  if (!isVisible) return null;
+      {wireframeMaterial ? (
+        <primitive object={wireframeMaterial} attach="material" />
+      ) : (
+        material && (
+          <primitive object={material} attach="material" />
+        )
+      )}
 
   const material = node.materialId ? materialMap.get(node.materialId) : undefined;
   const isSelected = node.id === selectedId;

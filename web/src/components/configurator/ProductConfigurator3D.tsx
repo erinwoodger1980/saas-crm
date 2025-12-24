@@ -321,6 +321,13 @@ export function ProductConfigurator3D({
   const productDepth = (config?.customData as any)?.dimensions?.depth || 45;
   const cameraMode = config?.camera?.mode || 'Perspective';
 
+  // Available profiles from params
+  const availableProfiles = useMemo(() => {
+    const params = (config?.customData || {}) as ProductParams;
+    const profiles = params?.profiles || [];
+    return profiles.map(p => ({ id: p.id, name: p.name }));
+  }, [config?.customData]);
+
   // Selected and fallback attributes must be computed before any conditional returns
   const selectedAttributes = selectedComponentId ? editableAttributes[selectedComponentId] : null;
 
@@ -807,6 +814,47 @@ export function ProductConfigurator3D({
   );
 
   /**
+   * Handle component profile change
+   */
+  const handleComponentProfileChange = useCallback(
+    (profileId: string | null) => {
+      if (!config || !selectedComponentId) return;
+
+      const params = (config.customData || {}) as ProductParams;
+      const components = config.components || [];
+      const selected = components.find(c => c.id === selectedComponentId);
+
+      // Determine role based on component id
+      const id = selectedComponentId.toLowerCase();
+      let roleKey: string | null = null;
+      if (id.includes('stile')) roleKey = 'stile';
+      else if (id.includes('toprail')) roleKey = 'topRail';
+      else if (id.includes('bottomrail')) roleKey = 'bottomRail';
+      else if (id.includes('midrail')) roleKey = 'midRail';
+
+      // If role cannot be inferred, do nothing
+      if (!roleKey) return;
+
+      const nextParams: ProductParams = {
+        ...params,
+        construction: {
+          ...(params.construction || {}),
+          profileIds: {
+            ...((params.construction || {}).profileIds || {}),
+            ...(profileId ? { [roleKey]: profileId } : (() => { const p = { ...(((params.construction || {}).profileIds) || {}) }; delete (p as any)[roleKey]; return p; })()),
+          },
+        },
+      };
+
+      const rebuilt = rebuildSceneConfig(config, nextParams);
+      setConfig(rebuilt);
+      setTimeout(() => persistConfig(rebuilt), 500);
+      onChange?.(rebuilt);
+    },
+    [config, selectedComponentId, persistConfig, onChange]
+  );
+
+  /**
    * Handle attribute edit from inspector
    */
   const handleAttributeEdit = useCallback(
@@ -942,12 +990,117 @@ export function ProductConfigurator3D({
 
   // Stub AI generation handlers (UX placeholder)
   const handleGenerateFromDescription = useCallback(() => {
-    toast.info('AI generation coming soon', { description: 'We will generate components from your description.' });
-  }, []);
+    if (!config) return;
+    const params = (config.customData || {}) as ProductParams;
+    const desc = typeof window !== 'undefined' ? window.prompt('Describe components (e.g., "4 panels, stile 120mm, ogee profile, mid rail at 50%")') : null;
+    const text = (desc || '').toLowerCase();
+
+    let next = { ...params } as ProductParams;
+    next.construction = { ...(next.construction || {}) };
+
+    // Option detection
+    if (text.match(/4\s*panels|two\s*x\s*two|2x2/)) {
+      next.productType = { ...next.productType, option: 'E02' };
+    } else if (text.match(/glazed.*top|fanlight|glass.*top/)) {
+      next.productType = { ...next.productType, option: 'E03' };
+    } else if (text.match(/2\s*panels|one\s*x\s*two|1x2/)) {
+      next.productType = { ...next.productType, option: 'E01' };
+    }
+
+    // Parse explicit dimensions (e.g., "stile 120mm", "top rail 90mm")
+    const stileDimMatch = text.match(/stile\s+(\d+)\s*mm/);
+    const topRailMatch = text.match(/top\s*rail\s+(\d+)\s*mm/);
+    const bottomRailMatch = text.match(/bottom\s*rail\s+(\d+)\s*mm/);
+    const midRailMatch = text.match(/mid\s*rail\s+(\d+)\s*mm/);
+
+    if (stileDimMatch) {
+      next.construction.stileWidth = parseInt(stileDimMatch[1], 10);
+    } else if (text.includes('stile')) {
+      next.construction.stileWidth = next.construction.stileWidth || Math.round(next.dimensions.width * 0.08);
+    }
+
+    if (topRailMatch) {
+      next.construction.topRail = parseInt(topRailMatch[1], 10);
+    } else if (text.includes('top rail')) {
+      next.construction.topRail = next.construction.topRail || Math.round(next.dimensions.height * 0.08);
+    }
+
+    if (bottomRailMatch) {
+      next.construction.bottomRail = parseInt(bottomRailMatch[1], 10);
+    } else if (text.includes('bottom rail')) {
+      next.construction.bottomRail = next.construction.bottomRail || Math.round(next.dimensions.height * 0.1);
+    }
+
+    if (midRailMatch) {
+      next.construction.midRail = parseInt(midRailMatch[1], 10);
+    } else if (text.includes('mid rail')) {
+      next.construction.midRail = next.construction.midRail || Math.round(next.dimensions.height * 0.1);
+    }
+
+    // Layout overrides (e.g., "mid rail at 900mm" or "mid rail at 45%")
+    const layoutMmMatch = text.match(/mid\s*rail\s*at\s*(\d+)\s*mm/);
+    const layoutPercentMatch = text.match(/mid\s*rail\s*at\s*(\d+)\s*%/);
+    if (layoutMmMatch) {
+      const mm = parseInt(layoutMmMatch[1], 10);
+      next.construction.layoutOverrides = { ...(next.construction.layoutOverrides || {}), midRailY: mm };
+    } else if (layoutPercentMatch) {
+      const pct = parseInt(layoutPercentMatch[1], 10);
+      const mm = Math.round((pct / 100) * next.dimensions.height);
+      next.construction.layoutOverrides = { ...(next.construction.layoutOverrides || {}), midRailY: mm };
+    }
+
+    // Auto-attach profiles by keyword (e.g., "ogee stile", "bead profile")
+    const profileMap: Record<string, string> = {};
+    const profiles = (next.profiles || []) as any[];
+    
+    // Build keyword -> profile ID map
+    if (text.includes('ogee')) {
+      const ogeeProfile = profiles.find(p => (p.name || '').toLowerCase().includes('ogee'));
+      if (ogeeProfile) profileMap['stile'] = ogeeProfile.id;
+    }
+    if (text.includes('bead')) {
+      const beadProfile = profiles.find(p => (p.name || '').toLowerCase().includes('bead'));
+      if (beadProfile) profileMap['stile'] = beadProfile.id;
+    }
+    if (text.includes('bolection')) {
+      const bolectionProfile = profiles.find(p => (p.name || '').toLowerCase().includes('bolection'));
+      if (bolectionProfile) {
+        profileMap['stile'] = bolectionProfile.id;
+        profileMap['topRail'] = bolectionProfile.id;
+        profileMap['bottomRail'] = bolectionProfile.id;
+      }
+    }
+
+    // Apply profile mappings
+    if (Object.keys(profileMap).length > 0) {
+      next.construction.profileIds = {
+        ...(next.construction.profileIds || {}),
+        ...profileMap,
+      };
+    }
+
+    const rebuilt = rebuildSceneConfig(config, next);
+    setConfig(rebuilt);
+    persistConfig(rebuilt);
+    onChange?.(rebuilt);
+    toast.success('Parametric components generated');
+  }, [config, onChange, persistConfig]);
 
   const handleGenerateFromPhoto = useCallback(() => {
-    toast.info('AI generation coming soon', { description: 'We will generate components from a photo.' });
-  }, []);
+    if (!config) return;
+    const params = (config.customData || {}) as ProductParams;
+    // Placeholder inference: choose E03 (glazed top) for photo-based generation
+    const next: ProductParams = {
+      ...params,
+      productType: { ...params.productType, option: 'E03' },
+      construction: { ...(params.construction || {}) },
+    };
+    const rebuilt = rebuildSceneConfig(config, next);
+    setConfig(rebuilt);
+    persistConfig(rebuilt);
+    onChange?.(rebuilt);
+    toast.success('Parametric components generated from photo');
+  }, [config, onChange, persistConfig]);
 
   if (isLoading) {
     return (
@@ -1075,7 +1228,7 @@ export function ProductConfigurator3D({
           }}
           gl={{
             antialias: true,
-            alpha: false,
+            alpha: settingsPreview ? true : false,
             preserveDrawingBuffer: false,
             powerPreference: isLowPowerMode ? 'low-power' : 'high-performance',
           }}
@@ -1090,7 +1243,12 @@ export function ProductConfigurator3D({
             
             // LOW POWER MODE for Settings preview
             if (isLowPowerMode) {
-              gl.setClearColor('#e8e8e8');
+              // Transparent canvas for wireframe-only preview
+              if (settingsPreview) {
+                gl.setClearColor(new THREE.Color(0, 0, 0), 0);
+              } else {
+                gl.setClearColor('#e8e8e8');
+              }
               gl.shadowMap.enabled = false; // No shadows
               gl.outputColorSpace = THREE.SRGBColorSpace;
               gl.toneMapping = THREE.NoToneMapping; // Cheapest tone mapping
@@ -1339,6 +1497,9 @@ export function ProductConfigurator3D({
                 componentMaterialId={config.components.find(c => c.id === selectedComponentId)?.materialId}
                 availableMaterials={config.materials}
                 onComponentMetadataChange={handleComponentMetadataChange}
+                componentProfileId={config.components.find(c => c.id === selectedComponentId)?.profile?.profileId}
+                availableProfiles={availableProfiles}
+                onComponentProfileChange={handleComponentProfileChange}
               />
             </div>
           )}
@@ -1394,6 +1555,9 @@ export function ProductConfigurator3D({
               componentMaterialId={config.components.find(c => c.id === selectedComponentId)?.materialId}
               availableMaterials={config.materials}
               onComponentMetadataChange={handleComponentMetadataChange}
+              componentProfileId={config.components.find(c => c.id === selectedComponentId)?.profile?.profileId}
+              availableProfiles={availableProfiles}
+              onComponentProfileChange={handleComponentProfileChange}
             />
           )}
           

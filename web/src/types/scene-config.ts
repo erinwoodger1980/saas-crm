@@ -112,6 +112,9 @@ export interface ComponentProfile {
   depthMm: number;
   /** Scale factor: mm per SVG unit */
   scale: number;
+  /** Optional profile id/name reference */
+  profileId?: string;
+  profileName?: string;
 }
 
 export interface ComponentNode {

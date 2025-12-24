@@ -27,8 +27,11 @@ interface InspectorPanelProps {
   componentName?: string;
   componentType?: string;
   componentMaterialId?: string;
+  componentProfileId?: string;
   availableMaterials?: Array<{ id: string; name: string }>;
   onComponentMetadataChange?: (changes: { name?: string; type?: string; materialId?: string }) => void;
+  availableProfiles?: Array<{ id: string; name: string }>;
+  onComponentProfileChange?: (profileId: string | null) => void;
 }
 
 function InspectorPanel({
@@ -40,8 +43,11 @@ function InspectorPanel({
   componentName,
   componentType,
   componentMaterialId,
+  componentProfileId,
   availableMaterials = [],
   onComponentMetadataChange,
+  availableProfiles = [],
+  onComponentProfileChange,
 }: InspectorPanelProps) {
   const [localValues, setLocalValues] = useState<Record<string, any>>({});
   const [pendingChanges, setPendingChanges] = useState<Record<string, any>>({});
@@ -365,6 +371,28 @@ function InspectorPanel({
                     {availableMaterials.map(mat => (
                       <SelectItem key={mat.id} value={mat.id}>
                         {mat.name || mat.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Profile */}
+            {availableProfiles.length > 0 && onComponentProfileChange && (
+              <div className="space-y-2">
+                <Label htmlFor="comp-profile" className="text-sm">Profile</Label>
+                <Select
+                  value={componentProfileId || ''}
+                  onValueChange={(val) => onComponentProfileChange(val || null)}
+                >
+                  <SelectTrigger id="comp-profile" className="h-8">
+                    <SelectValue placeholder="Select profile..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableProfiles.map(profile => (
+                      <SelectItem key={profile.id} value={profile.id}>
+                        {profile.name || profile.id}
                       </SelectItem>
                     ))}
                   </SelectContent>
