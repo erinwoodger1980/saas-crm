@@ -28,6 +28,10 @@ export const builderRegistry: BuilderRegistry = {
  * Get builder for product type
  */
 export function getBuilder(category: string): ParametricBuilder | null {
+  if (!category || typeof category !== 'string') {
+    console.warn('[getBuilder] Invalid category:', category);
+    return null;
+  }
   return builderRegistry[category.toLowerCase()] || null;
 }
 

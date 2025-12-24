@@ -1009,7 +1009,14 @@ export function ProductConfigurator3D({
     const params = (config.customData || {}) as ProductParams;
     const text = aiDescription.toLowerCase();
 
+    // Ensure productType has all required properties
     let next = { ...params } as ProductParams;
+    if (!next.productType || !next.productType.category) {
+      toast.error('Invalid product configuration');
+      setShowAIDescriptionDialog(false);
+      setAiDescription('');
+      return;
+    }
     next.construction = { ...(next.construction || {}) };
 
     // Option detection
@@ -1105,19 +1112,31 @@ export function ProductConfigurator3D({
   }, [config, aiDescription, onChange, persistConfig]);
 
   const handleGenerateFromPhoto = useCallback(() => {
-    if (!config) return;
+    if (!config) {
+      toast.error('No configuration available');
+      return;
+    }
+    
     const params = (config.customData || {}) as ProductParams;
+    
+    // Ensure productType exists
+    if (!params.productType || !params.productType.category) {
+      toast.error('Invalid product configuration');
+      return;
+    }
+    
     // Placeholder inference: choose E03 (glazed top) for photo-based generation
     const next: ProductParams = {
       ...params,
       productType: { ...params.productType, option: 'E03' },
       construction: { ...(params.construction || {}) },
     };
+    
     const rebuilt = rebuildSceneConfig(config, next);
     setConfig(rebuilt);
     persistConfig(rebuilt);
     onChange?.(rebuilt);
-    toast.success('Parametric components generated from photo');
+    toast.success('Generated components from photo (glazed top design)');
   }, [config, onChange, persistConfig]);
 
   if (isLoading) {
