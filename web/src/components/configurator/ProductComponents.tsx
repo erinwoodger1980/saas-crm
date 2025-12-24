@@ -350,21 +350,13 @@ function NodeRenderer({
   materials: MaterialDefinition[];
   visibility: ComponentVisibility;
   materialMap: Map<string, THREE.Material>;
-      castShadow={!wireframe}
-      receiveShadow={!wireframe}
+  onSelect?: (componentId: string | null) => void;
+  selectedId?: string | null;
   orbitControlsRef?: MutableRefObject<any>;
   onTransformEnd?: (componentId: string, newY: number) => void;
   wireframe?: boolean;
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
-      {wireframeMaterial ? (
-        <primitive object={wireframeMaterial} attach="material" />
-      ) : (
-        material && (
-          <primitive object={material} attach="material" />
-        )
-      )}
-
   const material = node.materialId ? materialMap.get(node.materialId) : undefined;
   const isSelected = node.id === selectedId;
   const isRail = node.type === 'frame' && node.id.includes('Rail');
