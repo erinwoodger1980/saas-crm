@@ -940,6 +940,15 @@ export function ProductConfigurator3D({
     }
   }, [lineItem, tenantId, entityType, entityId, persistConfig]);
 
+  // Stub AI generation handlers (UX placeholder)
+  const handleGenerateFromDescription = useCallback(() => {
+    toast.info('AI generation coming soon', { description: 'We will generate components from your description.' });
+  }, []);
+
+  const handleGenerateFromPhoto = useCallback(() => {
+    toast.info('AI generation coming soon', { description: 'We will generate components from a photo.' });
+  }, []);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center" style={{ width, height }}>
@@ -1293,9 +1302,9 @@ export function ProductConfigurator3D({
       
       {/* Settings Preview UI - Shows components list and inspector */}
       {settingsPreview && config && (
-        <div className="w-80 flex flex-col gap-4 min-h-0 overflow-y-auto bg-slate-50/80 border-l p-4">
+        <div className="w-80 flex flex-col gap-4 min-h-0 overflow-y-auto bg-slate-50/90 border-l border-slate-200 p-4 shadow-inner">
           {/* Components List */}
-          <div className="space-y-3">
+          <div className="space-y-3 bg-white/80 border border-slate-200 rounded-lg p-3 shadow-sm">
             <h3 className="text-sm font-semibold">Components</h3>
             <div className="space-y-1 max-h-64 overflow-y-auto">
               {(config.components || []).map((comp) => (
@@ -1318,36 +1327,38 @@ export function ProductConfigurator3D({
           
           {/* Inspector */}
           {selectedComponentId && config.components && (
-            <InspectorPanel
-              selectedComponentId={selectedComponentId}
-              attributes={effectiveAttributes}
-              onAttributeChange={(changes) => {
-                handleAttributeEdit(selectedComponentId, changes);
-              }}
-              componentName={config.components.find(c => c.id === selectedComponentId)?.name}
-              componentType={config.components.find(c => c.id === selectedComponentId)?.type}
-              componentMaterialId={config.components.find(c => c.id === selectedComponentId)?.materialId}
-              availableMaterials={config.materials}
-              onComponentMetadataChange={handleComponentMetadataChange}
-            />
+            <div className="bg-white/80 border border-slate-200 rounded-lg p-3 shadow-sm">
+              <InspectorPanel
+                selectedComponentId={selectedComponentId}
+                attributes={effectiveAttributes}
+                onAttributeChange={(changes) => {
+                  handleAttributeEdit(selectedComponentId, changes);
+                }}
+                componentName={config.components.find(c => c.id === selectedComponentId)?.name}
+                componentType={config.components.find(c => c.id === selectedComponentId)?.type}
+                componentMaterialId={config.components.find(c => c.id === selectedComponentId)?.materialId}
+                availableMaterials={config.materials}
+                onComponentMetadataChange={handleComponentMetadataChange}
+              />
+            </div>
           )}
           
           {/* AI Component Generation */}
-          <div className="space-y-3 border-t pt-4">
+          <div className="space-y-3 border-t pt-4 bg-white/80 border border-slate-200 rounded-lg p-3 shadow-sm">
             <h3 className="text-sm font-semibold">AI Component Generation</h3>
             <p className="text-xs text-muted-foreground">
               Describe your product or upload a photo to automatically generate components
             </p>
-            <Button variant="outline" className="w-full" size="sm">
+            <Button variant="outline" className="w-full" size="sm" onClick={handleGenerateFromDescription}>
               Generate from Description
             </Button>
-            <Button variant="outline" className="w-full" size="sm">
+            <Button variant="outline" className="w-full" size="sm" onClick={handleGenerateFromPhoto}>
               Generate from Photo
             </Button>
           </div>
           
           {/* Component Actions */}
-          <div className="space-y-2 border-t pt-4">
+          <div className="space-y-2 border-t pt-4 bg-white/80 border border-slate-200 rounded-lg p-3 shadow-sm">
             <AddComponentDialog
               materials={config.materials}
               onAdd={handleAddComponent}

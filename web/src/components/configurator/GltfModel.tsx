@@ -40,6 +40,8 @@ interface GltfModelProps {
   onClick?: (e: any) => void;
   /** Material override (e.g., polished chrome for ironmongery) */
   materialOverride?: MaterialDefinition;
+  /** Wireframe override (for settings preview) */
+  wireframe?: boolean;
 }
 
 /**
@@ -70,6 +72,7 @@ export function GltfModel({
   isSelected,
   onClick,
   materialOverride,
+  wireframe,
 }: GltfModelProps) {
   const groupRef = useRef<THREE.Group>(null);
   const { objectURL, loading, error } = useAsset(assetId || '');
@@ -95,6 +98,20 @@ export function GltfModel({
   }, [base64Data, objectURL]);
 
   const gltf = urlToLoad ? useGLTF(urlToLoad) : null;
+
+  // Apply wireframe override for settings preview to keep everything as line art
+  useEffect(() => {
+    if (!wireframe || !gltf?.scene) return;
+
+    gltf.scene.traverse((child: any) => {
+      if (child.isMesh) {
+        child.material = new THREE.MeshBasicMaterial({
+          color: 0x000000,
+          wireframe: true,
+        });
+      }
+    });
+  }, [wireframe, gltf]);
 
   // Apply transform from asset metadata + node overrides
   const finalPosition = useMemo(() => {

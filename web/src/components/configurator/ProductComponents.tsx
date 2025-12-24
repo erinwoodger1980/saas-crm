@@ -33,13 +33,16 @@ interface ProductComponentsProps {
  * UPGRADED: Uses new PBR material factory
  */
 function createMaterial(def: MaterialDefinition, wireframe?: boolean): THREE.Material {
-  const material = createPBRMaterial(def);
+  const material = createPBRMaterial(def) as THREE.MeshStandardMaterial;
   if (wireframe) {
+    // Force line art rendering for settings preview
     material.wireframe = true;
-    material.wireframeLinewidth = 2;
-    material.color.set(0x000000); // Black wireframe
+    material.wireframeLinewidth = 1;
+    if (material.color) {
+      material.color = new THREE.Color(0x000000);
+    }
   }
-  return material;
+  return material as THREE.Material;
 }
 
 /**
@@ -51,7 +54,8 @@ const ComponentMesh = forwardRef<THREE.Mesh, {
   material?: THREE.Material;
   isSelected: boolean;
   onClick: (e: ThreeEvent<MouseEvent>) => void;
-}>(function ComponentMesh({ node, material, isSelected, onClick }, ref) {
+  wireframe?: boolean;
+}>(function ComponentMesh({ node, material, isSelected, onClick, wireframe }, ref) {
   const meshRef = useRef<THREE.Mesh>(null);
   const setRef = (value: THREE.Mesh | null) => {
     if (meshRef.current !== value) {
@@ -298,6 +302,7 @@ const ComponentMesh = forwardRef<THREE.Mesh, {
         componentName={node.name}
         isSelected={isSelected}
         onClick={onClick}
+        wireframe={wireframe}
       />
     );
   }
@@ -334,6 +339,7 @@ function NodeRenderer({
   selectedId,
   orbitControlsRef,
   onTransformEnd,
+  wireframe,
 }: {
   node: ComponentNode;
   materials: MaterialDefinition[];
@@ -343,6 +349,7 @@ function NodeRenderer({
   selectedId?: string | null;
   orbitControlsRef?: MutableRefObject<any>;
   onTransformEnd?: (componentId: string, newY: number) => void;
+  wireframe?: boolean;
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
 
@@ -368,6 +375,7 @@ function NodeRenderer({
       material={material}
       isSelected={isSelected}
       onClick={handleClick}
+      wireframe={wireframe}
     />
   ) : null;
 
@@ -407,6 +415,7 @@ function NodeRenderer({
             selectedId={selectedId}
             orbitControlsRef={orbitControlsRef}
             onTransformEnd={onTransformEnd}
+            wireframe={wireframe}
           />
         ))}
     </group>
@@ -460,6 +469,7 @@ export function ProductComponents({
           selectedId={selectedId}
           orbitControlsRef={orbitControlsRef}
           onTransformEnd={onTransformEnd}
+          wireframe={wireframe}
         />
       ))}
     </group>
