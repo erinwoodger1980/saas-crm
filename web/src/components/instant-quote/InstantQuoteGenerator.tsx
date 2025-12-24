@@ -69,13 +69,13 @@ interface InstantQuoteResult {
   sceneConfig: any;
 }
 
-export function InstantQuoteGenerator({
-  onAddToQuote,
-  productTypeHint?: { category: string; type?: string; option?: string } | null;
-}: {
+type InstantQuoteGeneratorProps = {
   onAddToQuote?: (data: InstantQuoteResult, dims: { width: number; height: number; depth: number }) => Promise<void> | void;
   productTypeHint?: { category: string; type?: string; option?: string } | null;
-}) {
+};
+
+export function InstantQuoteGenerator(props: InstantQuoteGeneratorProps) {
+  const { onAddToQuote, productTypeHint } = props;
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
