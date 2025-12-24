@@ -42,6 +42,9 @@ import { PostFX } from './PostFX';
 import { Loader2, Save, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { updateQuoteLine } from '@/lib/api/quotes';
 import { toast } from 'sonner';
 import { fitCameraToBox } from '@/lib/scene/fit-camera';
@@ -260,6 +263,8 @@ export function ProductConfigurator3D({
   const [highQuality, setHighQuality] = useState(true);
   const [contextLost, setContextLost] = useState(false);
   const [canvasKey, setCanvasKey] = useState(0);
+  const [showAIDescriptionDialog, setShowAIDescriptionDialog] = useState(false);
+  const [aiDescription, setAiDescription] = useState('');
   
   const controlsRef = useRef<any>(null);
   const initialFrameApplied = useRef(false);
@@ -988,12 +993,21 @@ export function ProductConfigurator3D({
     }
   }, [lineItem, tenantId, entityType, entityId, persistConfig]);
 
-  // Stub AI generation handlers (UX placeholder)
+  // AI generation handler - opens dialog
   const handleGenerateFromDescription = useCallback(() => {
-    if (!config) return;
+    setShowAIDescriptionDialog(true);
+  }, []);
+
+  // Process AI description when user submits
+  const handleAIDescriptionSubmit = useCallback(() => {
+    if (!config || !aiDescription.trim()) {
+      setShowAIDescriptionDialog(false);
+      setAiDescription('');
+      return;
+    }
+
     const params = (config.customData || {}) as ProductParams;
-    const desc = typeof window !== 'undefined' ? window.prompt('Describe components (e.g., "4 panels, stile 120mm, ogee profile, mid rail at 50%")') : null;
-    const text = (desc || '').toLowerCase();
+    const text = aiDescription.toLowerCase();
 
     let next = { ...params } as ProductParams;
     next.construction = { ...(next.construction || {}) };
@@ -1084,7 +1098,11 @@ export function ProductConfigurator3D({
     persistConfig(rebuilt);
     onChange?.(rebuilt);
     toast.success('Parametric components generated');
-  }, [config, onChange, persistConfig]);
+    
+    // Close dialog and clear input
+    setShowAIDescriptionDialog(false);
+    setAiDescription('');
+  }, [config, aiDescription, onChange, persistConfig]);
 
   const handleGenerateFromPhoto = useCallback(() => {
     if (!config) return;
@@ -1582,6 +1600,47 @@ export function ProductConfigurator3D({
           </div>
         </div>
       )}
+      
+      {/* AI Description Dialog */}
+      <Dialog open={showAIDescriptionDialog} onOpenChange={setShowAIDescriptionDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Generate Components from Description</DialogTitle>
+            <DialogDescription>
+              Describe your product components and we'll generate them parametrically.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="ai-description">Description</Label>
+              <Input
+                id="ai-description"
+                placeholder="e.g., 4 panels, stile 120mm, ogee profile, mid rail at 50%"
+                value={aiDescription}
+                onChange={(e) => setAiDescription(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleAIDescriptionSubmit();
+                  }
+                }}
+                autoFocus
+              />
+              <p className="text-xs text-muted-foreground">
+                Examples: "2 panels" • "4 panels" • "glazed top" • "stile 120mm" • "top rail 90mm" • "mid rail at 50%" • "ogee profile"
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAIDescriptionDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAIDescriptionSubmit} disabled={!aiDescription.trim()}>
+              Generate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       
       {/* WebGL Context Loss Recovery Overlay */}
       {contextLost && (
