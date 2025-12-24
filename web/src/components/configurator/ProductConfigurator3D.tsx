@@ -1400,9 +1400,9 @@ export function ProductConfigurator3D({
               <Sheet open={showInspectorDrawer} onOpenChange={setShowInspectorDrawer}>
                 <SheetTrigger asChild>
                   <Button
-                    size="icon"
+                    size="sm"
                     variant="outline"
-                    className="bg-white/90 backdrop-blur hover:bg-white shadow-lg"
+                    className="bg-white/90 backdrop-blur hover:bg-white shadow-lg w-9 h-9 p-0"
                     aria-label="Edit selected component"
                   >
                     <Edit3 className="h-4 w-4" />

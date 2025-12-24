@@ -1111,7 +1111,7 @@ export default function ProductTypesSection() {
                                       <span className="px-1.5 py-0.5 bg-slate-200 rounded text-slate-800">{c.componentType}</span>
                                       <span className="font-mono">{c.code}</span>
                                       <span className="opacity-70">— {c.name}</span>
-                                      <Button size="xs" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => unlinkExistingComponentFromOption(option.id, c.id)}>Remove</Button>
+                                      <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => unlinkExistingComponentFromOption(option.id, c.id)}>Remove</Button>
                                     </div>
                                   ))
                                 )}

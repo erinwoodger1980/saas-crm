@@ -167,7 +167,7 @@ export function InstantQuoteGenerator(props: InstantQuoteGeneratorProps) {
           }))
         : [];
 
-      const bom = components.map((comp) => {
+      const bom = components.map((comp: any) => {
         const volume = (comp.dimensions.width * comp.dimensions.height * comp.dimensions.depth) / 1000000;
         return {
           code: comp.code,
@@ -178,7 +178,7 @@ export function InstantQuoteGenerator(props: InstantQuoteGeneratorProps) {
         };
       });
 
-      const cuttingList = components.map((comp) => ({
+      const cuttingList = components.map((comp: any) => ({
         componentCode: comp.code,
         componentName: comp.name,
         length: comp.dimensions.width,
@@ -193,8 +193,8 @@ export function InstantQuoteGenerator(props: InstantQuoteGeneratorProps) {
         { name: 'Assembly', duration: 60, sequence: 3 },
         { name: 'Finishing', duration: 90, sequence: 4 },
       ];
-      const totalTime = processes.reduce((sum, p) => sum + p.duration, 0);
-      const materialCost = bom.reduce((sum, b) => sum + b.estimatedCost, 0);
+      const totalTime = processes.reduce((sum: number, p: any) => sum + p.duration, 0);
+      const materialCost = bom.reduce((sum: number, b: any) => sum + b.estimatedCost, 0);
       const labourCost = (totalTime / 60) * 45;
       const totalPrice = (materialCost + labourCost) * 1.4;
 

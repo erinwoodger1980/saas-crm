@@ -13,7 +13,7 @@ router.get('/:productTypeId', async (req, res) => {
 
     const { productTypeId } = req.params;
 
-    const assignments = await prisma.productTypeComponentAssignment.findMany({
+    const assignments = await (prisma as any).productTypeComponentAssignment.findMany({
       where: {
         tenantId,
         productTypeId
@@ -21,8 +21,7 @@ router.get('/:productTypeId', async (req, res) => {
       include: {
         component: {
           include: {
-            supplier: true,
-            profile: true
+            supplier: true
           }
         }
       },
@@ -70,7 +69,7 @@ router.post('/:productTypeId/assign', async (req, res) => {
     }
 
     // Get current max sort order
-    const maxSortOrder = await prisma.productTypeComponentAssignment.findFirst({
+    const maxSortOrder = await (prisma as any).productTypeComponentAssignment.findFirst({
       where: { productTypeId, tenantId },
       orderBy: { sortOrder: 'desc' },
       select: { sortOrder: true }
@@ -79,7 +78,7 @@ router.post('/:productTypeId/assign', async (req, res) => {
     const sortOrder = (maxSortOrder?.sortOrder ?? -1) + 1;
 
     // Create assignment
-    const assignment = await prisma.productTypeComponentAssignment.create({
+    const assignment = await (prisma as any).productTypeComponentAssignment.create({
       data: {
         tenantId,
         productTypeId,
@@ -122,7 +121,7 @@ router.patch('/:assignmentId', async (req, res) => {
     const { isRequired, isDefault, sortOrder, quantityFormula, metadata } = req.body;
 
     // Verify assignment exists and belongs to tenant
-    const existing = await prisma.productTypeComponentAssignment.findFirst({
+    const existing = await (prisma as any).productTypeComponentAssignment.findFirst({
       where: { id: assignmentId, tenantId }
     });
 
@@ -130,7 +129,7 @@ router.patch('/:assignmentId', async (req, res) => {
       return res.status(404).json({ error: 'Assignment not found' });
     }
 
-    const assignment = await prisma.productTypeComponentAssignment.update({
+    const assignment = await (prisma as any).productTypeComponentAssignment.update({
       where: { id: assignmentId },
       data: {
         isRequired: isRequired ?? existing.isRequired,
@@ -167,7 +166,7 @@ router.delete('/:assignmentId', async (req, res) => {
     const { assignmentId } = req.params;
 
     // Verify assignment exists and belongs to tenant
-    const existing = await prisma.productTypeComponentAssignment.findFirst({
+    const existing = await (prisma as any).productTypeComponentAssignment.findFirst({
       where: { id: assignmentId, tenantId }
     });
 
@@ -175,7 +174,7 @@ router.delete('/:assignmentId', async (req, res) => {
       return res.status(404).json({ error: 'Assignment not found' });
     }
 
-    await prisma.productTypeComponentAssignment.delete({
+    await (prisma as any).productTypeComponentAssignment.delete({
       where: { id: assignmentId }
     });
 
@@ -198,12 +197,12 @@ router.get('/:productTypeId/available', async (req, res) => {
     const { componentType, search } = req.query;
 
     // Get already assigned component IDs
-    const assigned = await prisma.productTypeComponentAssignment.findMany({
+    const assigned = await (prisma as any).productTypeComponentAssignment.findMany({
       where: { tenantId, productTypeId },
       select: { componentId: true }
     });
 
-    const assignedIds = assigned.map(a => a.componentId);
+    const assignedIds = assigned.map((a: any) => a.componentId);
 
     // Get available components (not yet assigned)
     const where: any = {

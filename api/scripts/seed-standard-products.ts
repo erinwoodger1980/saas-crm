@@ -357,6 +357,19 @@ async function seedStandardProducts() {
         tenantId: tenant.id,
         code: material.code,
         name: material.name,
+        // Map string categories to enum MaterialCategory
+        category: ((): any => {
+          switch (material.category) {
+            case 'HARDWOOD':
+              return 'TIMBER_HARDWOOD';
+            case 'SOFTWOOD':
+              return 'TIMBER_SOFTWOOD';
+            case 'ENGINEERED':
+              return 'BOARD_MDF';
+            default:
+              return 'TIMBER_SOFTWOOD';
+          }
+        })(),
         color: material.color,
         isActive: true
       }

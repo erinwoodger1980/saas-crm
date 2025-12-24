@@ -52,11 +52,7 @@ router.get('/', async (req, res) => {
             name: true,
             leadTimeDays: true
           }
-        },
-        material: true,
-        bodyProfile: true,
-        startEndProfile: true,
-        endEndProfile: true
+        }
       },
       orderBy: [
         { componentType: 'asc' },
@@ -91,11 +87,7 @@ router.get('/:id', async (req, res) => {
     const component = await prisma.componentLookup.findFirst({
       where: { id, tenantId },
       include: {
-        supplier: true,
-        material: true,
-        bodyProfile: true,
-        startEndProfile: true,
-        endEndProfile: true
+        supplier: true
       }
     });
 
@@ -221,26 +213,10 @@ router.post('/', async (req, res) => {
         leadTimeDays: leadTimeDays || 0,
         supplierId,
         isActive: isActive !== false,
-        metadata,
-        // Formula fields
-        positionXFormula,
-        positionYFormula,
-        positionZFormula,
-        widthFormula,
-        heightFormula,
-        depthFormula,
-        // Material and Profile references
-        materialId,
-        bodyProfileId,
-        startEndProfileId,
-        endEndProfileId
+        metadata
       },
       include: {
-        supplier: true,
-        material: true,
-        bodyProfile: true,
-        startEndProfile: true,
-        endEndProfile: true
+        supplier: true
       }
     });
 
@@ -323,26 +299,10 @@ router.put('/:id', async (req, res) => {
         leadTimeDays,
         supplierId,
         isActive,
-        metadata,
-        // Formula fields
-        positionXFormula,
-        positionYFormula,
-        positionZFormula,
-        widthFormula,
-        heightFormula,
-        depthFormula,
-        // Material and Profile references
-        materialId,
-        bodyProfileId,
-        startEndProfileId,
-        endEndProfileId
+        metadata
       },
       include: {
-        supplier: true,
-        material: true,
-        bodyProfile: true,
-        startEndProfile: true,
-        endEndProfile: true
+        supplier: true
       }
     });
 
