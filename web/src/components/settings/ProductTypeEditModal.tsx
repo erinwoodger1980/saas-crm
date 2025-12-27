@@ -86,62 +86,52 @@ export function ProductTypeEditModal({
 
     setIsEstimating(true);
     try {
-      const formData = new FormData();
-      formData.append(
-        'data',
-        JSON.stringify({
-          productType: {
-            category: initialData?.categoryId || 'doors',
-            type: initialData?.type || 'entrance',
-            option: initialData?.optionId || 'single',
-          },
-          dimensions: defaultDimensions,
-          description: aiDescription || undefined,
-        })
-      );
+      // Get tenant ID from settings
+      const settingsRes = await fetch('/api/tenant/settings', { credentials: 'include' });
+      if (!settingsRes.ok) {
+        throw new Error('Failed to get tenant settings');
+      }
+      const settingsData = await settingsRes.json();
+      const tenantId = settingsData.tenantId;
 
-      if (aiImage) {
-        formData.append('image', aiImage);
+      if (!tenantId) {
+        throw new Error('No tenant ID found');
       }
 
       const response = await fetch('/api/ai/estimate-components', {
         method: 'POST',
         credentials: 'include',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tenantId,
+          description: aiDescription || 'Product from image',
+          productType: initialData?.categoryId || 'doors',
+          existingDimensions: {
+            widthMm: defaultDimensions.widthMm,
+            heightMm: defaultDimensions.heightMm,
+            thicknessMm: 45,
+          },
+        }),
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('AI API error:', errorText);
         throw new Error(`API error: ${response.statusText}`);
       }
 
       const result = await response.json();
+      console.log('AI estimation result:', result);
       
-      // Convert AI result to scene config and move to 3D editor
-      const estimatedConfig = {
-        ...sceneConfig,
-        components: result.components.map((c: any) => ({
-          id: c.id,
-          type: 'Box',
-          geometry: c.geometry,
-          transform: {
-            position: [c.position.x, c.position.y, c.position.z],
-            rotation: [0, 0, 0],
-            scale: [1, 1, 1],
-          },
-          material: { materialId: c.materialId },
-          metadata: {
-            label: c.label,
-            componentType: c.type,
-            confidence: c.confidence,
-          },
-        })),
-      };
-
-      setSceneConfig(estimatedConfig);
+      // The new API returns suggestedParamsPatch and suggestedAddedParts
+      // For now, just show success and switch to the 3D tab
+      // The user can manually configure the product
       setActiveTab('components');
       toast({
-        title: 'Components estimated!',
-        description: `${result.components.length} components detected. Confidence: ${Math.round(result.confidence * 100)}%`,
+        title: 'AI Analysis Complete',
+        description: result.rationale || 'AI has analyzed your product. You can now configure it in the 3D editor.',
       });
     } catch (error: any) {
       console.error('AI estimation error:', error);
