@@ -792,13 +792,23 @@ export default function ProductTypesSection() {
         description: `${result.components.length} components detected. Confidence: ${Math.round(result.confidence * 100)}%`,
       });
 
-      // Close AI dialog and open configurator to refine
+      // Close AI dialog and open configurator to refine and save
       setAiEstimateDialog(null);
       setAiDescription("");
       setAiImage(null);
       setAiImagePreview(null);
       
-      // TODO: handle AI estimate -> configurator flow;
+      // Open configurator to refine and save the estimated components
+      const dialogInfo = {
+        categoryId: aiEstimateDialog.categoryId,
+        typeIdx: aiEstimateDialog.typeIdx,
+        optionId: aiEstimateDialog.optionId,
+        label: aiEstimateDialog.label,
+        type: aiEstimateDialog.type,
+      };
+      setCapturedDialogInfo(dialogInfo);
+      setConfiguratorKey(`${aiEstimateDialog.categoryId}-${aiEstimateDialog.type}-${aiEstimateDialog.optionId}`);
+      setIsConfiguratorOpen(true);
     } catch (error: any) {
       console.error('[AI Estimation] Error:', error);
       console.error('[AI Estimation] Error stack:', error.stack);
