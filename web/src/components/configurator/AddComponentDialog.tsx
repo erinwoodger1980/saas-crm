@@ -38,6 +38,8 @@ interface AddComponentDialogProps {
   productWidth?: number;
   productHeight?: number;
   existingComponents?: ComponentNode[];
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function AddComponentDialog({
@@ -46,11 +48,17 @@ export function AddComponentDialog({
   productWidth = 800,
   productHeight = 2000,
   existingComponents = [],
+  open: externalOpen,
+  onOpenChange: externalOnOpenChange,
 }: AddComponentDialogProps) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
   const [componentType, setComponentType] = useState<string>('');
   const [name, setName] = useState('');
   const [selectedMaterialId, setSelectedMaterialId] = useState(materials[0]?.id || 'default');
+
+  // Use external control if provided, otherwise use internal state
+  const open = externalOpen !== undefined ? externalOpen : internalOpen;
+  const setOpen = externalOnOpenChange || setInternalOpen;
 
   const typeConfig = COMPONENT_TYPES.find(t => t.id === componentType);
 
@@ -122,11 +130,13 @@ export function AddComponentDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" className="w-full" size="sm">
-          Add Component
-        </Button>
-      </DialogTrigger>
+      {externalOpen === undefined && (
+        <DialogTrigger asChild>
+          <Button variant="outline" className="w-full" size="sm">
+            Add Component
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Add Component</DialogTitle>

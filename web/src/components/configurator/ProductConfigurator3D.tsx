@@ -39,9 +39,15 @@ import { AutoFrame } from './AutoFrame';
 import { Stage } from './Stage';
 import { SceneDisposer } from './SceneDisposer';
 import { PostFX } from './PostFX';
-import { Loader2, Edit3 } from 'lucide-react';
+import { Loader2, Edit3, Box, Plus, Sparkles, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -264,6 +270,7 @@ export function ProductConfigurator3D({
   const [contextLost, setContextLost] = useState(false);
   const [canvasKey, setCanvasKey] = useState(0);
   const [showAIDescriptionDialog, setShowAIDescriptionDialog] = useState(false);
+  const [showAddComponentDialog, setShowAddComponentDialog] = useState(false);
   const [aiDescription, setAiDescription] = useState('');
   
   const controlsRef = useRef<any>(null);
@@ -1395,8 +1402,9 @@ export function ProductConfigurator3D({
         
         {/* UI Overlay - Only small floating button in hero mode */}
         {heroMode && (
-          <div className="absolute bottom-4 right-4 z-50 pointer-events-auto">
-            {(selectedComponentId || showInspectorDrawer) && (
+          <div className="absolute bottom-4 right-4 z-50 pointer-events-auto flex flex-col gap-2">
+            {/* Inspector for selected component */}
+            {selectedComponentId && (
               <Sheet open={showInspectorDrawer} onOpenChange={setShowInspectorDrawer}>
                 <SheetTrigger asChild>
                   <Button
@@ -1421,6 +1429,42 @@ export function ProductConfigurator3D({
                 </SheetContent>
               </Sheet>
             )}
+            
+            {/* Always-visible menu button */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="sm"
+                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg w-9 h-9 p-0"
+                  aria-label="3D Builder Menu"
+                >
+                  <Box className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={() => setShowAddComponentDialog(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Component
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowAIDescriptionDialog(true)}>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Generate with AI
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => {
+                  const params = config.customData as ProductParams;
+                  updateConfig({
+                    camera: {
+                      ...config.camera,
+                      position: [0, 0, Math.max(params.dimensions.width, params.dimensions.height) * 2],
+                      rotation: [0, 0, 0],
+                    },
+                  });
+                }}>
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Reset Camera
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         )}
 
@@ -1592,6 +1636,17 @@ export function ProductConfigurator3D({
         </div>
       )}
       
+      {/* Add Component Dialog - Controlled for hero mode */}
+      <AddComponentDialog
+        materials={config.materials}
+        onAdd={handleAddComponent}
+        productWidth={productWidth}
+        productHeight={productHeight}
+        existingComponents={config.components}
+        open={showAddComponentDialog}
+        onOpenChange={setShowAddComponentDialog}
+      />
+
       {/* AI Description Dialog */}
       <Dialog open={showAIDescriptionDialog} onOpenChange={setShowAIDescriptionDialog}>
         <DialogContent>

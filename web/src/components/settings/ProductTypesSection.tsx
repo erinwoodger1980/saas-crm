@@ -1340,7 +1340,7 @@ export default function ProductTypesSection() {
                 }}
                 onClose={() => setIsConfiguratorOpen(false)}
                 height="70vh"
-                heroMode={true}
+                heroMode={false}
               />
               ) : (
                 <div className="flex flex-col items-center justify-center p-12 text-center space-y-4">
