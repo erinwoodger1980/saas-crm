@@ -94,9 +94,13 @@ export function MaterialLibrarySection() {
       });
       if (!response.ok) throw new Error('Failed to load materials');
       const data = await response.json();
-      // Ensure data is an array
+      // Ensure data is an array and normalize unitCost to number
       if (Array.isArray(data)) {
-        setMaterials(data);
+        const normalized = data.map(m => ({
+          ...m,
+          unitCost: typeof m.unitCost === 'number' ? m.unitCost : parseFloat(m.unitCost) || 0,
+        }));
+        setMaterials(normalized);
       } else {
         console.error('Materials API returned non-array:', data);
         setMaterials([]);
@@ -330,7 +334,7 @@ export function MaterialLibrarySection() {
                 <TableCell>{mat.species || '-'}</TableCell>
                 <TableCell>{mat.finish || '-'}</TableCell>
                 <TableCell>
-                  {mat.currency} {mat.unitCost.toFixed(2)}/{mat.unit}
+                  {mat.currency} {typeof mat.unitCost === 'number' ? mat.unitCost.toFixed(2) : (parseFloat(String(mat.unitCost)) || 0).toFixed(2)}/{mat.unit}
                 </TableCell>
                 <TableCell>
                   {mat.supplier ? (
