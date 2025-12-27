@@ -14,6 +14,7 @@ import { normalizeSceneConfig } from "@/lib/scene/config-validation";
 import { canConfigure } from "@/lib/scene/builder-registry";
 import { toast } from "sonner";
 import type { SceneConfig } from "@/types/scene-config";
+import { aiSuggestionToSceneConfig } from "@/lib/ai/aiSuggestionToSceneConfig";
 
 export type ParsedLinesTableProps = {
   lines?: ParsedLineDto[] | null;
@@ -32,62 +33,6 @@ export type ParsedLinesTableProps = {
 };
 
 const SAVE_DEBOUNCE_MS = 500;
-
-/**
- * Convert AI estimation result to complete SceneConfig using parametric builders
- * This is the same function used in Settings, ensuring consistent AI→3D flow
- */
-function blueprintToSceneConfig(
-  aiResult: any,
-  productType: { category: string; type: string; option: string },
-  dimensions: { width: number; height: number; depth: number },
-  entityId: string
-): SceneConfig {
-  const { suggestedParamsPatch, suggestedAddedParts } = aiResult;
-  
-  console.log('[blueprintToSceneConfig] Input:', {
-    productType,
-    dimensions,
-    suggestedParamsPatch,
-    addedPartsCount: suggestedAddedParts?.length || 0,
-  });
-
-  const { initializeSceneFromParams } = require('@/lib/scene/builder-registry');
-  const { getBuilder } = require('@/lib/scene/builder-registry');
-  
-  const builder = getBuilder(productType.category);
-  const { width, height, depth } = dimensions;
-  const baseParams = builder.getDefaults(productType, { width, height, depth });
-  
-  const params = {
-    ...baseParams,
-    ...suggestedParamsPatch,
-    productType,
-    dimensions: { width, height, depth },
-    construction: {
-      ...baseParams.construction,
-      ...suggestedParamsPatch?.construction,
-    },
-    addedParts: suggestedAddedParts || [],
-  };
-
-  const sceneConfig = initializeSceneFromParams(
-    params,
-    'quoteLineItem',
-    'quoteLineItem',
-    entityId
-  );
-  
-  console.log('[blueprintToSceneConfig] Output:', {
-    componentCount: sceneConfig.components?.length || 0,
-    materialCount: Object.keys(sceneConfig.materials || {}).length,
-    hasLighting: !!sceneConfig.lighting,
-    hasCamera: !!sceneConfig.camera,
-    sceneVersion: sceneConfig.version,
-  });
-  
-  return sceneConfig;
-}
 
 export function ParsedLinesTable({
   lines,
@@ -934,13 +879,24 @@ function ConfiguratorModal({
       const aiData = await result.json();
       console.log('[Line Item AI] Response:', aiData);
 
-      // Convert AI result to SceneConfig using parametric builders
-      const sceneConfig = blueprintToSceneConfig(
-        aiData,
-        productType,
-        { width: widthMm, height: heightMm, depth: thicknessMm },
-        line.id
-      );
+      // Convert AI result to SceneConfig using shared helper
+      const { getBuilder } = require('@/lib/scene/builder-registry');
+      const builder = getBuilder(productType.category);
+      const baseParams = builder.getDefaults(productType, {
+        width: widthMm,
+        height: heightMm,
+        depth: thicknessMm,
+      });
+
+      const sceneConfig = aiSuggestionToSceneConfig({
+        baseParams,
+        ai: aiData,
+        context: {
+          tenantId: 'current',
+          entityType: 'quoteLineItem',
+          entityId: line.id,
+        },
+      });
 
       setGeneratedConfig(sceneConfig);
       setShowAIDialog(false);
