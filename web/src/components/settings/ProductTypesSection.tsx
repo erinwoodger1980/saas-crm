@@ -10,6 +10,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { ProductConfigurator3D } from "@/components/configurator/ProductConfigurator3D";
 import { normalizeSceneConfig, createDefaultSceneConfig } from "@/lib/scene/config-validation";
 import { getAssignedComponents, getAvailableComponents, assignComponent, deleteAssignment, updateAssignment } from "@/lib/api/product-type-components";
+import { ComponentPickerDialog } from "./ComponentPickerDialog";
 
 const DEFAULT_SVG_PROMPT =
   "Provide a detailed elevation with correct timber/glass fills, rails, stiles, panels, muntins, and dimension lines (800mm top, 2025mm left).";
@@ -295,6 +296,8 @@ export default function ProductTypesSection() {
   const [assignedComponents, setAssignedComponents] = useState<Record<string, Array<{ id: string; code: string; name: string; componentType: string }>>>({});
   const [loadingAssigned, setLoadingAssigned] = useState<Record<string, boolean>>({});
   const [addByCode, setAddByCode] = useState<Record<string, string>>({});
+  const [componentPickerOpen, setComponentPickerOpen] = useState(false);
+  const [componentPickerOptionId, setComponentPickerOptionId] = useState<string>('');
 
   async function loadAssignedForOption(optionId: string) {
     try {
@@ -363,6 +366,27 @@ export default function ProductTypesSection() {
       toast({ title: 'Remove failed', description: err?.message || 'Could not unlink component', variant: 'destructive' });
     }
   }
+
+  const handleComponentSelected = async (component: any) => {
+    if (!componentPickerOptionId) return;
+    
+    try {
+      const current = Array.isArray(component.productTypes) ? component.productTypes : [];
+      if (current.includes(componentPickerOptionId)) {
+        toast({ title: 'Already assigned', description: `${component.code} is already linked to this product type.` });
+        return;
+      }
+      const next = [...current, componentPickerOptionId];
+      await apiFetch(`/components/${encodeURIComponent(component.id)}`, {
+        method: 'PUT',
+        json: { productTypes: next }
+      });
+      toast({ title: 'Assigned', description: `Linked ${component.code} to this product type` });
+      await loadAssignedForOption(componentPickerOptionId);
+    } catch (err: any) {
+      toast({ title: 'Assign failed', description: err?.message || 'Could not assign component', variant: 'destructive' });
+    }
+  };
 
   useEffect(() => {
     loadProducts();
@@ -1117,13 +1141,17 @@ export default function ProductTypesSection() {
                                 )}
                               </div>
                               <div className="mt-2 flex items-center gap-2">
-                                <Input
-                                  value={addByCode[option.id] || ''}
-                                  onChange={(e) => setAddByCode((prev) => ({ ...prev, [option.id]: e.target.value }))}
-                                  placeholder="Add existing component by code (e.g., HNG-BT-SS)"
-                                />
-                                <Button size="sm" onClick={() => assignExistingComponentToOption(option.id, (addByCode[option.id] || '').trim())} disabled={!((addByCode[option.id] || '').trim())}>
-                                  Add
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  onClick={() => {
+                                    setComponentPickerOptionId(option.id);
+                                    setComponentPickerOpen(true);
+                                  }}
+                                  className="w-full"
+                                >
+                                  <Plus className="h-4 w-4 mr-2" />
+                                  Add Component
                                 </Button>
                               </div>
                             </div>
@@ -1470,6 +1498,17 @@ export default function ProductTypesSection() {
           </div>
         </div>
       )}
+
+      {/* Component Picker Dialog */}
+      <ComponentPickerDialog
+        isOpen={componentPickerOpen}
+        onClose={() => {
+          setComponentPickerOpen(false);
+          setComponentPickerOptionId('');
+        }}
+        onSelect={handleComponentSelected}
+        productTypeId={componentPickerOptionId}
+      />
     </div>
   );
 }
