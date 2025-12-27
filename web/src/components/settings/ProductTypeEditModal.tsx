@@ -1,0 +1,373 @@
+'use client';
+
+import { useState, useCallback } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Loader2, Sparkles, Image as ImageIcon, Trash2, Plus, Box } from 'lucide-react';
+import { useToast } from '@/components/ui/use-toast';
+import { ProductConfigurator3D } from '@/components/configurator/ProductConfigurator3D';
+import { createDefaultSceneConfig } from '@/lib/scene/config-validation';
+
+interface ProductTypeOption {
+  id: string;
+  label: string;
+  sceneConfig?: any;
+  imagePath?: string;
+  imageDataUrl?: string;
+  svg?: string;
+}
+
+interface ProductTypeEditModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: (config: any) => Promise<void>;
+  initialData?: {
+    categoryId: string;
+    typeIdx: number;
+    optionId: string;
+    label: string;
+    type: string;
+  };
+  defaultDimensions?: { widthMm: number; heightMm: number };
+}
+
+export function ProductTypeEditModal({
+  isOpen,
+  onClose,
+  onSave,
+  initialData,
+  defaultDimensions = { widthMm: 800, heightMm: 2000 },
+}: ProductTypeEditModalProps) {
+  const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState('overview');
+  const [isSaving, setIsSaving] = useState(false);
+  
+  // Overview tab state
+  const [optionLabel, setOptionLabel] = useState(initialData?.label || '');
+  const [optionDescription, setOptionDescription] = useState('');
+  
+  // AI Generation tab state
+  const [aiDescription, setAiDescription] = useState('');
+  const [aiImage, setAiImage] = useState<File | null>(null);
+  const [aiImagePreview, setAiImagePreview] = useState<string | null>(null);
+  const [isEstimating, setIsEstimating] = useState(false);
+  
+  // 3D Configurator state
+  const [sceneConfig, setSceneConfig] = useState<any>(
+    createDefaultSceneConfig(
+      initialData?.categoryId || 'doors',
+      defaultDimensions.widthMm,
+      defaultDimensions.heightMm
+    )
+  );
+  const [show3DConfigurator, setShow3DConfigurator] = useState(false);
+
+  const handleAiImageUpload = (file: File) => {
+    setAiImage(file);
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setAiImagePreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleAIEstimate = async () => {
+    if (!aiDescription && !aiImage) {
+      toast({
+        title: 'Input required',
+        description: 'Please provide a description or upload an image',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsEstimating(true);
+    try {
+      const formData = new FormData();
+      formData.append(
+        'data',
+        JSON.stringify({
+          productType: {
+            category: initialData?.categoryId || 'doors',
+            type: initialData?.type || 'entrance',
+            option: initialData?.optionId || 'single',
+          },
+          dimensions: defaultDimensions,
+          description: aiDescription || undefined,
+        })
+      );
+
+      if (aiImage) {
+        formData.append('image', aiImage);
+      }
+
+      const response = await fetch('/api/ai/estimate-components', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      
+      // Convert AI result to scene config and move to 3D editor
+      const estimatedConfig = {
+        ...sceneConfig,
+        components: result.components.map((c: any) => ({
+          id: c.id,
+          type: 'Box',
+          geometry: c.geometry,
+          transform: {
+            position: [c.position.x, c.position.y, c.position.z],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1],
+          },
+          material: { materialId: c.materialId },
+          metadata: {
+            label: c.label,
+            componentType: c.type,
+            confidence: c.confidence,
+          },
+        })),
+      };
+
+      setSceneConfig(estimatedConfig);
+      setActiveTab('components');
+      toast({
+        title: 'Components estimated!',
+        description: `${result.components.length} components detected. Confidence: ${Math.round(result.confidence * 100)}%`,
+      });
+    } catch (error: any) {
+      console.error('AI estimation error:', error);
+      toast({
+        title: 'Estimation failed',
+        description: error.message || 'Could not estimate components',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsEstimating(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!optionLabel.trim()) {
+      toast({
+        title: 'Validation error',
+        description: 'Please enter an option label',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await onSave({
+        optionId: initialData?.optionId,
+        label: optionLabel,
+        description: optionDescription,
+        sceneConfig,
+      });
+
+      toast({
+        title: 'Product type saved!',
+        description: 'Your components and configuration are now ready to use',
+      });
+
+      onClose();
+    } catch (error: any) {
+      console.error('Save error:', error);
+      toast({
+        title: 'Save failed',
+        description: error.message || 'Could not save product type',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Product Type Configuration</DialogTitle>
+        </DialogHeader>
+
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="generate">Generate with AI</TabsTrigger>
+            <TabsTrigger value="components">3D Components</TabsTrigger>
+            <TabsTrigger value="profiles">Profiles</TabsTrigger>
+          </TabsList>
+
+          {/* Overview Tab */}
+          <TabsContent value="overview" className="flex-1 overflow-y-auto space-y-4">
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Option Label</label>
+                <Input
+                  value={optionLabel}
+                  onChange={(e) => setOptionLabel(e.target.value)}
+                  placeholder="e.g., Single Panel, Double Hung, 4-Panel Bifold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Description</label>
+                <Textarea
+                  value={optionDescription}
+                  onChange={(e) => setOptionDescription(e.target.value)}
+                  placeholder="Describe this product option (optional)"
+                  rows={4}
+                />
+              </div>
+
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-900">
+                  <strong>Next steps:</strong>
+                </p>
+                <ul className="text-sm text-blue-800 mt-2 space-y-1 list-disc list-inside">
+                  <li>Upload an image or describe the product in the "Generate with AI" tab</li>
+                  <li>AI will analyze and create initial components</li>
+                  <li>Edit and arrange components in the "3D Components" tab</li>
+                  <li>Save when complete</li>
+                </ul>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* Generate with AI Tab */}
+          <TabsContent value="generate" className="flex-1 overflow-y-auto space-y-4">
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Upload Image (Optional)</label>
+                {aiImagePreview ? (
+                  <div className="relative">
+                    <img
+                      src={aiImagePreview}
+                      alt="Preview"
+                      className="w-full h-48 object-contain border rounded-lg bg-slate-50"
+                    />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="absolute top-2 right-2 bg-white/90 hover:bg-white"
+                      onClick={() => {
+                        setAiImage(null);
+                        setAiImagePreview(null);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center h-32 border-2 border-dashed rounded-lg cursor-pointer hover:border-purple-300 hover:bg-purple-50/50 transition-colors">
+                    <ImageIcon className="h-8 w-8 text-muted-foreground mb-2" />
+                    <span className="text-sm text-muted-foreground">Click to upload image</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleAiImageUpload(file);
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Description (Optional if image provided)
+                </label>
+                <Textarea
+                  value={aiDescription}
+                  onChange={(e) => setAiDescription(e.target.value)}
+                  placeholder="e.g., Six panel traditional door with raised panels, or Double hung sash window with 2x2 muntins..."
+                  rows={4}
+                />
+              </div>
+
+              <Button
+                onClick={handleAIEstimate}
+                disabled={isEstimating || (!aiDescription && !aiImage)}
+                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+              >
+                {isEstimating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Estimate Components
+                  </>
+                )}
+              </Button>
+            </div>
+          </TabsContent>
+
+          {/* 3D Components Tab */}
+          <TabsContent value="components" className="flex-1 overflow-hidden">
+            <div className="h-full flex flex-col">
+              <p className="text-sm text-muted-foreground mb-2">
+                Build, arrange, and edit components in 3D space. Click the menu button (⋮) for options.
+              </p>
+              <div className="flex-1 border rounded-lg overflow-hidden">
+              {isOpen && (
+                  <ProductConfigurator3D
+                    key={`configurator-${initialData?.optionId}`}
+                    tenantId="settings"
+                    entityType="productType"
+                    heroMode={true}
+                    settingsPreview={true}
+                    initialConfig={sceneConfig}
+                    onChange={(newConfig: any) => setSceneConfig(newConfig)}
+                    renderQuality="high"
+                  />
+                )}
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* Profiles Tab */}
+          <TabsContent value="profiles" className="flex-1 overflow-y-auto space-y-4">
+            <div className="space-y-4">
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <p className="text-sm text-amber-900">
+                  <strong>Profiles:</strong> Assign custom profiles (ogee, bead, bolection, etc.) to components
+                </p>
+              </div>
+              <p className="text-sm text-muted-foreground">Profile management coming soon</p>
+            </div>
+          </TabsContent>
+        </Tabs>
+
+        <DialogFooter className="flex gap-2 justify-end">
+          <Button variant="outline" onClick={onClose} disabled={isSaving}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={isSaving || !optionLabel.trim()}>
+            {isSaving ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              'Save Product Type'
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
