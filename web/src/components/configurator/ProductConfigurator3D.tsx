@@ -747,6 +747,13 @@ export function ProductConfigurator3D({
             finish: params.construction?.finish || undefined,
             glazing: params.construction?.glazingType || undefined,
           };
+          const metaPatch: Record<string, any> = {
+            configuredProductParams: params,
+            dimensions: `${Math.round(params.dimensions.width)} x ${Math.round(params.dimensions.height)} x ${Math.round(params.dimensions.depth)}mm`,
+            timber: params.construction?.timber || undefined,
+            finish: params.construction?.finish || undefined,
+            glazing: params.construction?.glazingType || undefined,
+          };
           const metaPatch: Record<string, any> = templateParams
             ? {
                 configuredProductTemplateParams: templateParams,
