@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, Sparkles, Image as ImageIcon, Trash2, Plus, Box } from 'lucide-react';
+import { Loader2, Sparkles, Image as ImageIcon, Trash2, Plus, Box, Package } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { ProductConfigurator3D } from '@/components/configurator/ProductConfigurator3D';
 import { createDefaultSceneConfig } from '@/lib/scene/config-validation';
@@ -190,11 +190,10 @@ export function ProductTypeEditModal({
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="generate">Generate with AI</TabsTrigger>
-            <TabsTrigger value="components">3D Components</TabsTrigger>
-            <TabsTrigger value="profiles">Profiles</TabsTrigger>
+            <TabsTrigger value="components">Components</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
@@ -221,13 +220,13 @@ export function ProductTypeEditModal({
 
               <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
                 <p className="text-sm text-blue-900">
-                  <strong>Next steps:</strong>
+                  <strong>Workflow:</strong>
                 </p>
                 <ul className="text-sm text-blue-800 mt-2 space-y-1 list-disc list-inside">
-                  <li>Upload an image or describe the product in the "Generate with AI" tab</li>
-                  <li>AI will analyze and create initial components</li>
-                  <li>Edit and arrange components in the "3D Components" tab</li>
-                  <li>Save when complete</li>
+                  <li>First, create components in Settings → Components (stiles, rails, panels, etc.)</li>
+                  <li>Each component includes 3D model, profile, dimensions, pricing</li>
+                  <li>Use "Generate with AI" to get component suggestions from images</li>
+                  <li>Select components from catalog in the "Components" tab</li>
                 </ul>
               </div>
             </div>
@@ -306,37 +305,45 @@ export function ProductTypeEditModal({
             </div>
           </TabsContent>
 
-          {/* 3D Components Tab */}
-          <TabsContent value="components" className="flex-1 flex flex-col min-h-0">
-            <p className="text-sm text-muted-foreground mb-2">
-              Build, arrange, and edit components in 3D space. Click the menu button (⋮) for options.
-            </p>
-            <div className="flex-1 min-h-0 border rounded-lg overflow-hidden">
-              {isOpen && (
-                <ProductConfigurator3D
-                  key={`configurator-${initialData?.optionId}`}
-                  tenantId="settings"
-                  entityType="productType"
-                  heroMode={true}
-                  settingsPreview={true}
-                  initialConfig={sceneConfig}
-                  onChange={(newConfig: any) => setSceneConfig(newConfig)}
-                  renderQuality="high"
-                  height="100%"
-                />
-              )}
+          {/* 3D Components Tab - Now uses catalog components */}
+          <TabsContent value="components" className="flex-1 flex flex-col min-h-0 space-y-4">
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-sm text-blue-900">
+                <strong>Component-Based Configuration:</strong> Select components from your catalog (Settings → Components).
+                Components include 3D models, profiles, pricing, and parametric dimensions.
+              </p>
             </div>
-          </TabsContent>
 
-          {/* Profiles Tab */}
-          <TabsContent value="profiles" className="flex-1 overflow-y-auto space-y-4">
-            <div className="space-y-4">
-              <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                <p className="text-sm text-amber-900">
-                  <strong>Profiles:</strong> Assign custom profiles (ogee, bead, bolection, etc.) to components
-                </p>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold">Selected Components</h4>
+                <Button size="sm" variant="outline">
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add Component from Catalog
+                </Button>
               </div>
-              <p className="text-sm text-muted-foreground">Profile management coming soon</p>
+
+              {/* Component list placeholder */}
+              <div className="border rounded-lg p-8 text-center text-sm text-muted-foreground">
+                <Package className="h-12 w-12 mx-auto mb-3 text-slate-300" />
+                <p className="font-medium mb-1">No components added yet</p>
+                <p className="text-xs">Components are managed in Settings → Components</p>
+                <p className="text-xs mt-2">Each component includes:</p>
+                <ul className="text-xs mt-2 space-y-1">
+                  <li>✓ 3D Model (GLB/GLTF)</li>
+                  <li>✓ Profile (SVG/DXF) for extrusion</li>
+                  <li>✓ Parametric dimensions</li>
+                  <li>✓ Pricing & variants</li>
+                  <li>✓ Supplier & lead time</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="mt-auto p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-xs text-amber-900">
+                <strong>Next Update:</strong> Component picker will allow you to select from your catalog and configure quantities/positions.
+                For now, manage components in Settings → Components, then create product types that reference them.
+              </p>
             </div>
           </TabsContent>
         </Tabs>
