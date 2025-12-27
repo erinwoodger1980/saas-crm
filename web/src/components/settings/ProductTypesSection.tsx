@@ -12,7 +12,7 @@ import { ProductTypeEditModal } from "./ProductTypeEditModal";
 import { normalizeSceneConfig, createDefaultSceneConfig } from "@/lib/scene/config-validation";
 import { getAssignedComponents, getAvailableComponents, assignComponent, deleteAssignment, updateAssignment } from "@/lib/api/product-type-components";
 import { ComponentPickerDialog } from "./ComponentPickerDialog";
-import { aiSuggestionToSceneConfig } from "@/lib/ai/aiSuggestionToSceneConfig";
+import { parametricToSceneConfig } from "@/lib/scene/parametricToSceneConfig";
 import type { ProductParams } from "@/types/parametric-builder";
 
 const DEFAULT_SVG_PROMPT =
@@ -78,6 +78,7 @@ type ProductOption = {
   imageDataUrl?: string;
   svg?: string;
   sceneConfig?: any; // Saved 3D configuration with components
+  productParams?: ProductParams;
 };
 
 type ProductType = {
@@ -239,17 +240,31 @@ export default function ProductTypesSection() {
   useEffect(() => {
     if (isConfiguratorOpen && capturedDialogInfo) {
       // Dialog opened - capture and normalize config
-      const rawConfig = products
+      const option = products
         .find(c => c.id === capturedDialogInfo.categoryId)
         ?.types[capturedDialogInfo.typeIdx]
-        ?.options.find(o => o.id === capturedDialogInfo.optionId)
-        ?.sceneConfig;
-      
+        ?.options.find(o => o.id === capturedDialogInfo.optionId);
+
+      const rawConfig = option?.sceneConfig;
       const normalizedConfig = normalizeSceneConfig(rawConfig);
-      const finalConfig = normalizedConfig || createDefaultSceneConfig(
-        capturedDialogInfo.categoryId,
-        800, 2100, 45
-      );
+
+      let finalConfig = normalizedConfig;
+
+      if (!finalConfig && option?.productParams) {
+        finalConfig = parametricToSceneConfig({
+          tenantId: 'settings',
+          entityType: 'productTemplate',
+          entityId: `${capturedDialogInfo.categoryId}-${capturedDialogInfo.type}-${capturedDialogInfo.optionId}`,
+          productParams: option.productParams,
+        });
+      }
+
+      if (!finalConfig) {
+        finalConfig = createDefaultSceneConfig(
+          capturedDialogInfo.categoryId,
+          800, 2100, 45
+        );
+      }
       
       setCapturedConfig(finalConfig);
       
@@ -811,7 +826,7 @@ export default function ProductTypesSection() {
         rationale: aiData.rationale,
       });
 
-      // Convert AI result to SceneConfig using shared helper
+      // Convert AI result to canonical ProductParams
       const { getBuilder } = require('@/lib/scene/builder-registry');
       const builder = getBuilder(aiEstimateDialog.categoryId);
       const baseParams = builder.getDefaults(
@@ -827,14 +842,23 @@ export default function ProductTypesSection() {
         }
       );
 
-      const sceneConfig = aiSuggestionToSceneConfig({
-        baseParams,
-        ai: aiData,
-        context: {
-          tenantId: 'settings',
-          entityType: 'productTemplate',
-          entityId: `${aiEstimateDialog.categoryId}-${aiEstimateDialog.type}-${aiEstimateDialog.optionId}`,
+      const mergedParams: ProductParams = {
+        ...baseParams,
+        ...aiData.suggestedParamsPatch,
+        productType: aiData.suggestedParamsPatch?.productType || baseParams.productType,
+        dimensions: baseParams.dimensions,
+        construction: {
+          ...baseParams.construction,
+          ...aiData.suggestedParamsPatch?.construction,
         },
+        addedParts: aiData.suggestedAddedParts || [],
+      };
+
+      const sceneConfig = parametricToSceneConfig({
+        tenantId: 'settings',
+        entityType: 'productTemplate',
+        entityId: `${aiEstimateDialog.categoryId}-${aiEstimateDialog.type}-${aiEstimateDialog.optionId}`,
+        productParams: mergedParams,
       });
 
       // Update the product option with the estimated scene config
@@ -849,7 +873,7 @@ export default function ProductTypesSection() {
                         ...t,
                         options: t.options.map((opt) =>
                           opt.id === aiEstimateDialog.optionId
-                            ? { ...opt, sceneConfig }
+                            ? { ...opt, sceneConfig, productParams: mergedParams }
                             : opt
                         ),
                       }
@@ -1339,6 +1363,15 @@ export default function ProductTypesSection() {
                 ✕
               </button>
             </div>
+            <div className="mb-4 rounded-lg border bg-slate-50 px-4 py-3 text-xs text-slate-600">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="font-semibold text-slate-700">Wizard steps:</span>
+                <span className="rounded-full bg-white px-2 py-0.5">1. Dimensions</span>
+                <span className="rounded-full bg-white px-2 py-0.5">2. Layout (rails/panels)</span>
+                <span className="rounded-full bg-white px-2 py-0.5">3. Materials</span>
+                <span className="rounded-full bg-white px-2 py-0.5">4. Hardware (later)</span>
+              </div>
+            </div>
             <div className="rounded-lg border bg-muted/30">
               {capturedConfig && mount3D ? (
                 <ProductConfigurator3D
@@ -1357,6 +1390,7 @@ export default function ProductTypesSection() {
                   renderQuality="low"
                   onChange={(sceneConfig) => {
                     // Update the option's sceneConfig as user makes changes
+                    const params = sceneConfig?.customData as ProductParams | undefined;
                     setProducts((prev) =>
                     prev.map((cat) =>
                       cat.id === capturedDialogInfo.categoryId
@@ -1368,7 +1402,7 @@ export default function ProductTypesSection() {
                                     ...t,
                                     options: t.options.map((opt) =>
                                       opt.id === capturedDialogInfo.optionId
-                                        ? { ...opt, sceneConfig }
+                                        ? { ...opt, sceneConfig, productParams: params || opt.productParams }
                                         : opt
                                     ),
                                   }
@@ -1397,11 +1431,37 @@ export default function ProductTypesSection() {
                   </div>
                   <Button
                     onClick={() => {
-                      const defaultConfig = createDefaultSceneConfig(
+                      const { getBuilder } = require('@/lib/scene/builder-registry');
+                      const builder = getBuilder(capturedDialogInfo.categoryId);
+                      const dims = getDefaultDimensions(
                         capturedDialogInfo.categoryId,
-                        800, 2100, 45
+                        capturedDialogInfo.type,
+                        capturedDialogInfo.optionId
                       );
-                      // Save default config
+                      const defaultParams = builder?.getDefaults(
+                        {
+                          category: capturedDialogInfo.categoryId,
+                          type: capturedDialogInfo.type,
+                          option: capturedDialogInfo.optionId,
+                        },
+                        {
+                          width: dims.widthMm,
+                          height: dims.heightMm,
+                          depth: capturedDialogInfo.categoryId === 'doors' ? 45 : 100,
+                        }
+                      );
+                      const defaultConfig = defaultParams
+                        ? parametricToSceneConfig({
+                            tenantId: 'settings',
+                            entityType: 'productTemplate',
+                            entityId: `${capturedDialogInfo.categoryId}-${capturedDialogInfo.type}-${capturedDialogInfo.optionId}`,
+                            productParams: defaultParams,
+                          })
+                        : createDefaultSceneConfig(
+                            capturedDialogInfo.categoryId,
+                            800, 2100, 45
+                          );
+                      // Save default config + params
                       setProducts((prev) =>
                         prev.map((cat) =>
                           cat.id === capturedDialogInfo.categoryId
@@ -1413,7 +1473,7 @@ export default function ProductTypesSection() {
                                         ...t,
                                         options: t.options.map((opt) =>
                                           opt.id === capturedDialogInfo.optionId
-                                            ? { ...opt, sceneConfig: defaultConfig }
+                                            ? { ...opt, sceneConfig: defaultConfig, productParams: defaultParams || opt.productParams }
                                             : opt
                                         ),
                                       }
