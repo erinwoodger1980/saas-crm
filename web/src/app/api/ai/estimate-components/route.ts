@@ -14,6 +14,14 @@ interface AIEstimateResponse {
   suggestedAddedParts: AddedPart[];
   rationale: string;
   components?: Array<any>; // Backwards compat
+  layoutHint?: {
+    panelCount?: number;
+    panelGrid?: string;
+    glazedTopPct?: number;
+    railHeightsHints?: { top?: number; mid?: number; bottom?: number };
+    style?: string;
+  };
+  confidence?: number;
 }
 
 export async function POST(request: NextRequest) {
@@ -63,6 +71,13 @@ Given a product description, return a JSON object with:
     "finish": "clear|paint|stain|oiled",
     "glazingType": "single|double|triple"
   },
+  "layoutHint": {
+    "panelCount": number,
+    "panelGrid": "1x2" | "2x2",
+    "glazedTopPct": number,
+    "railHeightsHints": { "top": number, "mid": number, "bottom": number },
+    "style": "traditional 4-panel" | "glazed 1/3 top" | string
+  },
   "addedParts": [
     {
       "componentTypeCode": "MULLION_V|MULLION_H|TRANSOM|GLAZING_BAR",
@@ -70,7 +85,8 @@ Given a product description, return a JSON object with:
       "params": { "materialId": "timber" }
     }
   ],
-  "rationale": "explanation of AI choices"
+  "rationale": "explanation of AI choices",
+  "confidence": 0.0-1.0
 }
 
 For doors:
@@ -96,6 +112,7 @@ If the description implies added components (mullions, glass bars, transoms), su
 
 Return ONLY valid JSON.`;
 
+    const startTime = Date.now();
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -151,6 +168,9 @@ Return ONLY valid JSON.`;
       );
     }
 
+    const layoutHint = aiSuggestion.layoutHint || aiSuggestion.layoutHints;
+    const confidence = typeof aiSuggestion.confidence === 'number' ? aiSuggestion.confidence : 0.7;
+
     // Build parametric response
     const suggestedParamsPatch: Partial<ProductParams> = {
       productType: aiSuggestion.productType || {
@@ -167,6 +187,15 @@ Return ONLY valid JSON.`;
         timber: aiSuggestion.construction?.timber || 'oak',
         finish: aiSuggestion.construction?.finish || 'clear',
         glazingType: aiSuggestion.construction?.glazingType || 'double',
+        layoutHint: layoutHint
+          ? {
+              panelCount: layoutHint.panelCount,
+              panelGrid: layoutHint.panelGrid,
+              glazedTopPct: layoutHint.glazedTopPct,
+              railHeightsHints: layoutHint.railHeightsHints,
+              style: layoutHint.style,
+            }
+          : undefined,
       },
     };
 
@@ -186,7 +215,15 @@ Return ONLY valid JSON.`;
       suggestedParamsPatch,
       suggestedAddedParts,
       rationale: aiSuggestion.rationale || 'AI-suggested parameters',
+      layoutHint,
+      confidence,
     };
+
+    const usage = data.usage || {};
+    const latencyMs = Date.now() - startTime;
+    console.log(
+      `[AI COST][tenant=${tenantId}] model=${data.model || 'unknown'} imageBytes=0 promptTokens=${usage.prompt_tokens ?? 'n/a'} completionTokens=${usage.completion_tokens ?? 'n/a'} totalTokens=${usage.total_tokens ?? 'n/a'} latencyMs=${latencyMs} confidence=${confidence}`
+    );
 
     return NextResponse.json(result);
   } catch (error) {

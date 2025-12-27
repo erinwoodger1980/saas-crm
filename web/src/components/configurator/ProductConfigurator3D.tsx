@@ -60,6 +60,7 @@ import { updateQuoteLine } from '@/lib/api/quotes';
 import { toast } from 'sonner';
 import { fitCameraToBox } from '@/lib/scene/fit-camera';
 import { Box3, Vector3 } from 'three';
+import { diffProductParams } from '@/lib/scene/parametric-overrides';
 
 interface ProductConfigurator3DProps {
   /** Tenant ID for multi-tenancy */
@@ -146,6 +147,7 @@ async function loadSceneState(
     return null;
   }
 }
+
 
 /**
  * Save scene state to API
@@ -296,6 +298,7 @@ export function ProductConfigurator3D({
   const mountedRef = useRef(true);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
+  const templateParamsRef = useRef<ProductParams | null>(null);
   
   // SETTINGS PREVIEW = ultra low-power mode
   const isLowPowerMode = renderQuality === 'low' || settingsPreview;
@@ -692,6 +695,18 @@ export function ProductConfigurator3D({
     return () => clearTimeout(timeoutId);
   }, [canRender, config]);
 
+  useEffect(() => {
+    if (configuratorMode !== 'INSTANCE') return;
+    if (!config || templateParamsRef.current) return;
+    const baseParams =
+      lineItem?.configuredProduct?.templateParams ||
+      lineItem?.meta?.configuredProductTemplateParams ||
+      (config.customData as ProductParams | undefined);
+    if (baseParams) {
+      templateParamsRef.current = baseParams;
+    }
+  }, [config, configuratorMode, lineItem]);
+
   /**
    * Persist configuration changes to database
    * Debounced to avoid excessive writes
@@ -722,6 +737,8 @@ export function ProductConfigurator3D({
         const quoteId = (lineItem?.quoteId || lineItem?.quote_id || lineItem?.quoteID) as string | undefined;
         const lineId = (lineItem?.id) as string | undefined;
         if (params && quoteId && lineId) {
+          const templateParams = templateParamsRef.current;
+          const overrides = templateParams ? diffProductParams(templateParams, params) : params;
           const lineStandard: Record<string, any> = {
             widthMm: Number(params.dimensions.width) || undefined,
             heightMm: Number(params.dimensions.height) || undefined,
@@ -730,9 +747,14 @@ export function ProductConfigurator3D({
             finish: params.construction?.finish || undefined,
             glazing: params.construction?.glazingType || undefined,
           };
-          const metaPatch: Record<string, any> = {
-            configuredProductParams: params,
-          };
+          const metaPatch: Record<string, any> = templateParams
+            ? {
+                configuredProductTemplateParams: templateParams,
+                configuredProductOverrides: overrides,
+              }
+            : {
+                configuredProductParams: params,
+              };
           await updateQuoteLine(String(quoteId), String(lineId), {
             lineStandard,
             meta: metaPatch,
@@ -836,6 +858,22 @@ export function ProductConfigurator3D({
   const handleComponentMetadataChange = useCallback(
     (changes: { name?: string; type?: string; materialId?: string }) => {
       if (!config || !selectedComponentId) return;
+
+      const params = config.customData as ProductParams | undefined;
+      if (changes.materialId && params) {
+        const updatedParams: ProductParams = {
+          ...params,
+          materialOverrides: {
+            ...(params.materialOverrides || {}),
+            [selectedComponentId]: changes.materialId,
+          },
+        };
+        const rebuilt = rebuildSceneConfig(config, updatedParams);
+        setConfig(rebuilt);
+        setTimeout(() => persistConfig(rebuilt), 500);
+        if (onChange) onChange(rebuilt);
+        return;
+      }
 
       const updated = { ...config };
       const componentIndex = config.components.findIndex(c => c.id === selectedComponentId);
