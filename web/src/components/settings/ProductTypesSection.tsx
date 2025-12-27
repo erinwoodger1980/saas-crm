@@ -712,12 +712,20 @@ export default function ProductTypesSection() {
     }
 
     setAiEstimating(true);
+    console.log('[AI Estimation] Starting with:', {
+      hasImage: !!aiImage,
+      hasDescription: !!aiDescription,
+      aiEstimateDialog,
+    });
+    
     try {
       const dims = getDefaultDimensions(
         aiEstimateDialog.categoryId,
         aiEstimateDialog.type,
         aiEstimateDialog.optionId
       );
+
+      console.log('[AI Estimation] Dimensions:', dims);
 
       const formData = new FormData();
       formData.append('data', JSON.stringify({
@@ -736,7 +744,10 @@ export default function ProductTypesSection() {
 
       if (aiImage) {
         formData.append('image', aiImage);
+        console.log('[AI Estimation] Image attached, size:', aiImage.size);
       }
+
+      console.log('[AI Estimation] Sending request to /ai/estimate-components...');
 
       const result = await apiFetch<{
         components: any[];
@@ -790,6 +801,12 @@ export default function ProductTypesSection() {
       // TODO: handle AI estimate -> configurator flow;
     } catch (error: any) {
       console.error('[AI Estimation] Error:', error);
+      console.error('[AI Estimation] Error stack:', error.stack);
+      console.error('[AI Estimation] Error details:', {
+        message: error.message,
+        response: error.response,
+        status: error.status,
+      });
       toast({
         title: "Estimation failed",
         description: error.message || "Could not estimate components",
