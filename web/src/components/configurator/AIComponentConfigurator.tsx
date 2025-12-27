@@ -15,6 +15,7 @@ import { ProductParams, AddedPart } from '@/types/parametric-builder';
 import { getOrCreateParams } from '@/lib/scene/builder-registry';
 import { ProductConfigurator3D } from './ProductConfigurator3D';
 import { updateQuoteLine } from '@/lib/api/quotes';
+import { diffProductParams } from '@/lib/scene/parametric-overrides';
 
 interface AIComponentConfiguratorProps {
   tenantId: string;
@@ -142,11 +143,23 @@ export function AIComponentConfigurator({
 
     setIsSaving(true);
     try {
+      const templateParams =
+        lineItem?.configuredProduct?.templateParams ||
+        lineItem?.meta?.configuredProductTemplateParams;
+      const overrides = templateParams ? diffProductParams(templateParams, appliedParams) : appliedParams;
+
       // Persist to quote line item via API
       await updateQuoteLine(tenantId, lineItem.id, {
         meta: {
           ...lineItem.meta,
-          configuredProductParams: appliedParams,
+          ...(templateParams
+            ? {
+                configuredProductTemplateParams: templateParams,
+                configuredProductOverrides: overrides,
+              }
+            : {
+                configuredProductParams: appliedParams,
+              }),
           configuredProduct: {
             ...lineItem.configuredProduct,
             productType: appliedParams.productType,
@@ -171,6 +184,11 @@ export function AIComponentConfigurator({
 
   // Patcher function to update appliedParams when ProductConfigurator3D changes
   const patchedLineItem = useMemo(() => {
+    const templateParams =
+      lineItem?.configuredProduct?.templateParams ||
+      lineItem?.meta?.configuredProductTemplateParams;
+    const overrides = templateParams && appliedParams ? diffProductParams(templateParams, appliedParams) : appliedParams;
+
     return {
       ...lineItem,
       lineStandard: {
@@ -186,7 +204,14 @@ export function AIComponentConfigurator({
       },
       meta: {
         ...lineItem.meta,
-        configuredProductParams: appliedParams,
+        ...(templateParams
+          ? {
+              configuredProductTemplateParams: templateParams,
+              configuredProductOverrides: overrides,
+            }
+          : {
+              configuredProductParams: appliedParams,
+            }),
       },
     };
   }, [appliedParams, lineItem]);

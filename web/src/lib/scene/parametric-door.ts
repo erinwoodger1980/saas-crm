@@ -14,6 +14,8 @@ import {
 } from '@/types/parametric-builder';
 import { ComponentNode, MaterialDefinition } from '@/types/scene-config';
 import * as THREE from 'three';
+import { resolveDoorLayout } from '@/lib/scene/layout';
+import { deriveMaterialRoleMap, resolveMaterialId } from '@/lib/scene/material-role-map';
 
 /**
  * Door-specific defaults
@@ -29,13 +31,6 @@ const DOOR_DEFAULTS = {
   beadWidth: 20, // mm
   mouldingWidth: 25, // mm
   mouldingProjection: 12, // mm
-};
-
-type RailPositions = {
-  topRailY: number;
-  bottomRailY: number;
-  midRailY: number;
-  railYById: Record<string, number>;
 };
 
 function buildProfileLookup(profiles?: ProfileDefinition[]): Record<string, ProfileDefinition> {
@@ -56,7 +51,30 @@ function buildProfileGeometry(params: {
 }): ComponentNode['geometry'] {
   const { kind, width, height, depth, position, profile } = params;
 
-  if (!profile || !profile.shape2D?.points || profile.shape2D.points.length < 2) {
+  if (!profile || (!profile.shape2D?.points && !profile.svgText) || (profile.shape2D?.points?.length ?? 0) < 2) {
+    return {
+      type: 'box',
+      dimensions: [width, height, depth],
+      position,
+    };
+  }
+
+  let points = profile.shape2D?.points;
+  if (!points && profile.svgText) {
+    try {
+      const { SVGLoader } = require('three/examples/jsm/loaders/SVGLoader.js');
+      const loader = new SVGLoader();
+      const data = loader.parse(profile.svgText);
+      const firstShape = data.paths?.[0]?.toShapes(true)?.[0];
+      if (firstShape) {
+        points = firstShape.getPoints().map((p: any) => [p.x, p.y]);
+      }
+    } catch (error) {
+      console.warn('[buildProfileGeometry] Failed to parse SVG profile, falling back to box:', error);
+    }
+  }
+
+  if (!points || points.length < 2) {
     return {
       type: 'box',
       dimensions: [width, height, depth],
@@ -79,46 +97,12 @@ function buildProfileGeometry(params: {
     dimensions: [width, height, depth],
     position,
     customData: {
-      profile: { points: profile.shape2D.points } as any,
+      profile: { points } as any,
       path: path as any,
-      closed: profile.shape2D.closed,
+      closed: profile.shape2D?.closed ?? true,
       fallbackBox: { width, height, depth },
     },
   };
-}
-
-function computeRailPositions(height: number, config: any, overrides?: ProductParams['construction']['layoutOverrides']): RailPositions {
-  const minSpacing = 80;
-  const topDefault = height - config.topRail / 2;
-  const bottomDefault = config.bottomRail / 2;
-
-  let bottomRailY = overrides?.bottomRailY ?? bottomDefault;
-  bottomRailY = THREE.MathUtils.clamp(bottomRailY, config.bottomRail / 2, height - config.bottomRail / 2);
-
-  let topRailY = overrides?.topRailY ?? topDefault;
-  topRailY = THREE.MathUtils.clamp(topRailY, config.topRail / 2, height - config.topRail / 2);
-
-  if (topRailY - config.topRail / 2 < bottomRailY + config.bottomRail / 2 + minSpacing) {
-    topRailY = bottomRailY + config.bottomRail / 2 + minSpacing + config.topRail / 2;
-    topRailY = Math.min(topRailY, height - config.topRail / 2);
-  }
-
-  if (bottomRailY + config.bottomRail / 2 > topRailY - config.topRail / 2 - minSpacing) {
-    bottomRailY = Math.max(config.bottomRail / 2, topRailY - config.topRail / 2 - minSpacing - config.bottomRail / 2);
-  }
-
-  const midDefault = (bottomRailY + topRailY) / 2;
-  let midRailY = overrides?.midRailY ?? midDefault;
-  const midMin = bottomRailY + config.bottomRail / 2 + minSpacing;
-  const midMax = topRailY - config.topRail / 2 - minSpacing;
-  midRailY = THREE.MathUtils.clamp(midRailY, midMin, midMax);
-
-  const railYById: Record<string, number> = { ...(overrides?.railYById || {}) };
-  Object.keys(railYById).forEach((id) => {
-    railYById[id] = THREE.MathUtils.clamp(railYById[id], midMin, midMax);
-  });
-
-  return { topRailY, bottomRailY, midRailY, railYById };
 }
 
 /**
@@ -137,9 +121,17 @@ export function buildDoorComponentTree(params: ProductParams): BuildResult {
   
   // Build components based on option
   const components: ComponentNode[] = [];
+  const roleMap = params.materialRoleMap || deriveMaterialRoleMap(params);
   const materials: MaterialDefinition[] = createDoorMaterials(config);
+  const resolvedParams: ProductParams = {
+    ...params,
+    materialRoleMap: roleMap,
+  };
 
-  const railPositions = computeRailPositions(height, config, construction?.layoutOverrides);
+  const layout = resolveDoorLayout(resolvedParams);
+  const layoutWidth = layout.width;
+  const layoutHeight = layout.height;
+  const layoutDepth = layout.depth;
   const profileLookup = buildProfileLookup(params.profiles);
   
   // Root product node
@@ -149,7 +141,7 @@ export function buildDoorComponentTree(params: ProductParams): BuildResult {
     type: 'group',
     geometry: {
       type: 'box',
-      dimensions: [width, height, config.thickness],
+      dimensions: [layoutWidth, layoutHeight, config.thickness],
       position: [0, 0, 0],
     },
     visible: true,
@@ -157,7 +149,7 @@ export function buildDoorComponentTree(params: ProductParams): BuildResult {
   };
   
   // Build frame
-  const frame = buildDoorFrame(width, height, config, railPositions, profileLookup, construction?.profileIds, params.materialRoleMap, params.materialOverrides);
+  const frame = buildDoorFrame(layout, config, profileLookup, construction?.profileIds, roleMap, params.materialOverrides);
   product.children!.push(frame);
   
   // Check if door has curved head (arch support)
@@ -175,17 +167,17 @@ export function buildDoorComponentTree(params: ProductParams): BuildResult {
       
       // For E03 arched, add bottom panels
       if (productType.option === 'E03') {
-        const bottomPanels = buildPanelLayout(width, height * 0.4, config, 2, 1, railPositions, profileLookup, construction?.profileIds);
+        const bottomPanels = buildPanelsFromLayout(layout, config, profileLookup, construction?.profileIds, roleMap, params.materialOverrides);
         product.children!.push(...bottomPanels);
       }
     } else {
       // Curve not found, fall back to regular infill
-      const infill = buildDoorInfill(width, height, config, productType.option, railPositions, profileLookup, construction?.profileIds);
+      const infill = buildDoorInfill(layout, config, profileLookup, construction?.profileIds, roleMap, params.materialOverrides);
       product.children!.push(infill);
     }
   } else {
     // No arch - build standard infill based on option
-    const infill = buildDoorInfill(width, height, config, productType.option, railPositions, profileLookup, construction?.profileIds);
+    const infill = buildDoorInfill(layout, config, profileLookup, construction?.profileIds, roleMap, params.materialOverrides);
     product.children!.push(infill);
   }
   
@@ -201,7 +193,7 @@ export function buildDoorComponentTree(params: ProductParams): BuildResult {
         materialId: part.params?.materialId || 'timber',
         geometry: {
           type: 'box',
-          dimensions: part.params?.dimensions || [50, height * 0.5, depth],
+          dimensions: part.params?.dimensions || [50, layoutHeight * 0.5, layoutDepth],
           position: part.position || [0, 0, 0],
         },
         visible: true,
@@ -212,17 +204,17 @@ export function buildDoorComponentTree(params: ProductParams): BuildResult {
   
   // Calculate lighting bounds
   const lighting = {
-    boundsX: [-width / 2 * 1.5, width / 2 * 1.5] as [number, number],
+    boundsX: [-layoutWidth / 2 * 1.5, layoutWidth / 2 * 1.5] as [number, number],
     boundsZ: [-config.thickness / 2 * 1.5, config.thickness / 2 * 1.5] as [number, number],
-    shadowCatcherDiameter: Math.max(width, height) * 2,
+    shadowCatcherDiameter: Math.max(layoutWidth, layoutHeight) * 2,
   };
   
   return {
     components,
     materials,
     lighting,
-    params,
-    editableAttributes: buildEditableAttributes(params, components),
+    params: resolvedParams,
+    editableAttributes: buildEditableAttributes(resolvedParams, layout, components),
   };
 }
 
@@ -231,17 +223,18 @@ export function buildDoorComponentTree(params: ProductParams): BuildResult {
  * Y=0 is at door base, Y=height is at door top
  */
 function buildDoorFrame(
-  width: number,
-  height: number,
+  layout: ReturnType<typeof resolveDoorLayout>,
   config: any,
-  railPositions: RailPositions,
   profileLookup: Record<string, ProfileDefinition>,
   profileIds?: Record<string, string>,
   materialRoleMap?: ProductParams['materialRoleMap'],
   materialOverrides?: Record<string, string>
 ): ComponentNode {
-  const { stileWidth, topRail, bottomRail, thickness } = config;
-  const frameMaterialId = materialRoleMap?.FRAME_TIMBER || 'timber';
+  const { stileWidth } = layout;
+  const { top: topRail, bottom: bottomRail } = layout.railSizes;
+  const thickness = config.thickness;
+  const width = layout.width;
+  const height = layout.height;
   
   const frame: ComponentNode = {
     id: 'frame',
@@ -260,7 +253,7 @@ function buildDoorFrame(
     name: 'Left Stile',
     type: 'frame',
     role: 'stile',
-    materialId: materialOverrides?.frame_leftStile || frameMaterialId,
+    materialId: resolveMaterialId('FRAME_TIMBER', 'frame_leftStile', materialRoleMap, materialOverrides),
     geometry: buildProfileGeometry({
       kind: 'vertical',
       width: stileWidth,
@@ -278,7 +271,7 @@ function buildDoorFrame(
     name: 'Right Stile',
     type: 'frame',
     role: 'stile',
-    materialId: materialOverrides?.frame_rightStile || frameMaterialId,
+    materialId: resolveMaterialId('FRAME_TIMBER', 'frame_rightStile', materialRoleMap, materialOverrides),
     geometry: buildProfileGeometry({
       kind: 'vertical',
       width: stileWidth,
@@ -297,13 +290,13 @@ function buildDoorFrame(
     name: 'Top Rail',
     type: 'frame',
     role: 'rail',
-    materialId: materialOverrides?.frame_topRail || frameMaterialId,
+    materialId: resolveMaterialId('FRAME_TIMBER', 'frame_topRail', materialRoleMap, materialOverrides),
     geometry: buildProfileGeometry({
       kind: 'horizontal',
       width: topRailWidth,
       height: topRail,
       depth: thickness,
-      position: [0, railPositions.topRailY, 0],
+      position: [0, layout.rails.find((rail) => rail.role === 'top')?.y ?? height - topRail / 2, 0],
       profile: profileIds?.topRail ? profileLookup[profileIds.topRail] : undefined,
     }),
     visible: true,
@@ -315,13 +308,13 @@ function buildDoorFrame(
     name: 'Bottom Rail',
     type: 'frame',
     role: 'rail',
-    materialId: materialOverrides?.frame_bottomRail || frameMaterialId,
+    materialId: resolveMaterialId('FRAME_TIMBER', 'frame_bottomRail', materialRoleMap, materialOverrides),
     geometry: buildProfileGeometry({
       kind: 'horizontal',
       width: topRailWidth,
       height: bottomRail,
       depth: thickness,
-      position: [0, railPositions.bottomRailY, 0],
+      position: [0, layout.rails.find((rail) => rail.role === 'bottom')?.y ?? bottomRail / 2, 0],
       profile: profileIds?.bottomRail ? profileLookup[profileIds.bottomRail] : undefined,
     }),
     visible: true,
@@ -334,13 +327,12 @@ function buildDoorFrame(
  * Build door infill (panels/glazing based on option)
  */
 function buildDoorInfill(
-  width: number,
-  height: number,
+  layout: ReturnType<typeof resolveDoorLayout>,
   config: any,
-  option: string,
-  railPositions: RailPositions,
   profileLookup: Record<string, ProfileDefinition>,
-  profileIds?: Record<string, string>
+  profileIds?: Record<string, string>,
+  materialRoleMap?: ProductParams['materialRoleMap'],
+  materialOverrides?: Record<string, string>
 ): ComponentNode {
   const infill: ComponentNode = {
     id: 'infill',
@@ -349,273 +341,170 @@ function buildDoorInfill(
     visible: true,
     children: [],
   };
-  
-  switch (option) {
-    case 'E01':
-      // 2 panels (1x2 layout)
-      infill.children = buildPanelLayout(width, height, config, 1, 2, railPositions, profileLookup, profileIds);
-      break;
-      
-    case 'E02':
-      // 4 panels (2x2 layout)
-      infill.children = buildPanelLayout(width, height, config, 2, 2, railPositions, profileLookup, profileIds);
-      break;
-      
-    case 'E03':
-      // Glazed top 35%, panels bottom 65%
-      infill.children = buildGlazedTopLayout(width, height, config, 35, 65, railPositions, profileLookup, profileIds);
-      break;
-      
-    default:
-      // Unknown option - default to 2 panels
-      infill.children = buildPanelLayout(width, height, config, 1, 2, railPositions, profileLookup, profileIds);
-  }
-  
+
+  infill.children = [
+    ...buildPanelsFromLayout(layout, config, profileLookup, profileIds, materialRoleMap, materialOverrides),
+    ...buildGlazingFromLayout(layout, config, materialRoleMap, materialOverrides),
+    ...buildMidRailsFromLayout(layout, config, profileLookup, profileIds, materialRoleMap, materialOverrides),
+  ];
+
   return infill;
 }
 
-/**
- * Build panel layout (rows x cols)
- * Y=0 is at door base, Y=height is at door top
- */
-function buildPanelLayout(
-  width: number,
-  height: number,
+function buildPanelsFromLayout(
+  layout: ReturnType<typeof resolveDoorLayout>,
   config: any,
-  cols: number,
-  rows: number,
-  railPositions: RailPositions,
   profileLookup: Record<string, ProfileDefinition>,
-  profileIds?: Record<string, string>
+  profileIds?: Record<string, string>,
+  materialRoleMap?: ProductParams['materialRoleMap'],
+  materialOverrides?: Record<string, string>
 ): ComponentNode[] {
-  const { stileWidth, topRail, bottomRail, midRail, thickness, panelThickness, mouldingWidth, mouldingProjection } = config;
-  
-  const panels: ComponentNode[] = [];
-  const topBoundary = railPositions.topRailY - topRail / 2;
-  const bottomBoundary = railPositions.bottomRailY + bottomRail / 2;
-  
-  // Available area for panels (between stiles and between top/bottom rails)
-  const panelAreaWidth = width - 2 * stileWidth;
-  const panelAreaHeight = topBoundary - bottomBoundary - (rows - 1) * midRail;
-  
-  // Y range: from bottomBoundary to topBoundary
-  const panelAreaYStart = bottomBoundary;
-  const panelAreaYEnd = topBoundary;
-  
-  // Panel dimensions
-  const panelWidth = panelAreaWidth / cols;
-  const panelHeight = panelAreaHeight / rows;
-  
-  // Actual panel size (subtract moulding clearance)
-  const actualPanelWidth = panelWidth - 2 * mouldingWidth;
-  const actualPanelHeight = panelHeight - 2 * mouldingWidth;
-  
-  // Generate panels
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      const panelId = `panel_r${row + 1}c${col + 1}`;
-      
-      // Calculate position from bottom-left
-      const xOffset = -panelAreaWidth / 2 + col * panelWidth + panelWidth / 2;
-      // Y position: start from panelAreaYEnd and go down for each row
-      const yOffset = panelAreaYEnd - row * panelHeight - panelHeight / 2;
-      
-      // Panel group
-      const panelGroup: ComponentNode = {
-        id: panelId,
-        name: `Panel R${row + 1}C${col + 1}`,
-        type: 'group',
-        visible: true,
-        children: [],
-      };
-      
-      // Flat timber panel
-      panelGroup.children!.push({
-        id: `${panelId}_timber`,
-        name: 'Timber Panel',
-        type: 'panel',
-        role: 'panel',
-        materialId: (materialOverrides?.[`${panelId}_timber`]) || (params.materialRoleMap?.PANEL_TIMBER || 'timber'),
-        geometry: {
-          type: 'box',
-          dimensions: [actualPanelWidth, actualPanelHeight, panelThickness],
-          position: [xOffset, yOffset, 0],
-        },
-        visible: true,
-      });
-      
-      // Bolection moulding (raised on both sides)
-      panelGroup.children!.push({
-        id: `${panelId}_moulding_front`,
-        name: 'Moulding Front',
-        type: 'panel',
-        role: 'panel',
-        materialId: materialOverrides?.[`${panelId}_moulding_front`] || (params.materialRoleMap?.PANEL_TIMBER || 'timber'),
-        geometry: {
-          type: 'box',
-          dimensions: [actualPanelWidth + mouldingWidth, actualPanelHeight + mouldingWidth, mouldingProjection],
-          position: [xOffset, yOffset, thickness / 2 - mouldingProjection / 2],
-        },
-        visible: true,
-      });
-      
-      panelGroup.children!.push({
-        id: `${panelId}_moulding_back`,
-        name: 'Moulding Back',
-        type: 'panel',
-        role: 'panel',
-        materialId: materialOverrides?.[`${panelId}_moulding_back`] || (params.materialRoleMap?.PANEL_TIMBER || 'timber'),
-        geometry: {
-          type: 'box',
-          dimensions: [actualPanelWidth + mouldingWidth, actualPanelHeight + mouldingWidth, mouldingProjection],
-          position: [xOffset, yOffset, -thickness / 2 + mouldingProjection / 2],
-        },
-        visible: true,
-      });
-      
-      panels.push(panelGroup);
-    }
-  }
-  
-  // Add mid rails if multiple rows
-  if (rows > 1) {
-    for (let i = 0; i < rows - 1; i++) {
-      // Mid rail position with override support
-      const defaultRailY = panelAreaYEnd - (i + 1) * panelHeight - i * midRail - midRail / 2;
-      const railId = `midRail_${i + 1}`;
-      const railY = railPositions.railYById[railId] ?? railPositions.midRailY ?? defaultRailY;
-      panels.push({
-        id: railId,
-        name: `Mid Rail ${i + 1}`,
-        type: 'frame',
-        role: 'rail',
-        materialId: materialOverrides?.[railId] || frameMaterialId,
-        geometry: buildProfileGeometry({
-          kind: 'horizontal',
-          width: panelAreaWidth,
-          height: midRail,
-          depth: thickness,
-          position: [0, railY, 0],
-          profile: profileIds?.midRail ? profileLookup[profileIds.midRail] : undefined,
-        }),
-        visible: true,
-      });
-    }
-  }
-  
-  return panels;
-}
+  const { panelThickness, mouldingWidth, mouldingProjection, thickness } = config;
 
-/**
- * Build glazed top + panel bottom layout
- * Y=0 is at door base, Y=height is at door top
- */
-function buildGlazedTopLayout(
-  width: number,
-  height: number,
-  config: any,
-  glazedPercent: number,
-  panelPercent: number,
-  railPositions: RailPositions,
-  profileLookup: Record<string, ProfileDefinition>,
-  profileIds?: Record<string, string>
-): ComponentNode[] {
-  const { stileWidth, topRail, bottomRail, midRail, thickness, glazingThickness, beadWidth, mouldingWidth } = config;
-  
-  const components: ComponentNode[] = [];
-  
-  // Available area between frame
-  const areaWidth = width - 2 * stileWidth;
-  const topBoundary = railPositions.topRailY - topRail / 2;
-  const bottomBoundary = railPositions.bottomRailY + bottomRail / 2;
-  const areaHeight = topBoundary - bottomBoundary - midRail;
-  
-  // Split heights
-  const glazedHeight = areaHeight * (glazedPercent / 100);
-  const panelHeight = areaHeight * (panelPercent / 100);
-  
-  // Y range for glazed area: from (height - topRail) down
-  const glazedAreaYStart = topBoundary;
-  const glazedAreaYEnd = glazedAreaYStart - glazedHeight;
-  
-  // Glazed unit (top)
-  const glazingGroup: ComponentNode = {
-    id: 'glazing_top',
-    name: 'Glazing',
-    type: 'group',
-    visible: true,
-    children: [],
-  };
-  
-  // Center Y of glazed area
-  const glazedCenterY = glazedAreaYStart - glazedHeight / 2;
-  
-  // Glass
-  glazingGroup.children!.push({
-    id: 'glass_top',
-    name: 'Glass Unit',
-    type: 'glazing',
-    role: 'glass',
-    materialId: materialOverrides?.glass_top || params.materialRoleMap?.GLASS || 'glass',
-    geometry: {
-      type: 'box',
-      dimensions: [areaWidth - 2 * beadWidth, glazedHeight - 2 * beadWidth, glazingThickness],
-      position: [0, glazedCenterY, 0],
-    },
-    visible: true,
-  });
-  
-  // Timber beads
-  const beadPositions = [
-    { id: 'bead_top_left', pos: [-(areaWidth - beadWidth) / 2, glazedCenterY, 0], dims: [beadWidth, glazedHeight, thickness] },
-    { id: 'bead_top_right', pos: [(areaWidth - beadWidth) / 2, glazedCenterY, 0], dims: [beadWidth, glazedHeight, thickness] },
-    { id: 'bead_top_top', pos: [0, glazedAreaYStart - beadWidth / 2, 0], dims: [areaWidth, beadWidth, thickness] },
-  ];
-  
-  beadPositions.forEach(({ id, pos, dims }) => {
-    glazingGroup.children!.push({
-      id,
-      name: 'Bead',
-      type: 'glazing',
-      role: 'rail',
-      materialId: materialOverrides?.[id] || frameMaterialId,
+  return layout.panels.map((slot) => {
+    const panelId = slot.id;
+    const actualPanelWidth = slot.rect.width - 2 * mouldingWidth;
+    const actualPanelHeight = slot.rect.height - 2 * mouldingWidth;
+
+    const panelGroup: ComponentNode = {
+      id: panelId,
+      name: `Panel ${panelId}`,
+      type: 'group',
+      visible: true,
+      children: [],
+    };
+
+    panelGroup.children!.push({
+      id: `${panelId}_timber`,
+      name: 'Timber Panel',
+      type: 'panel',
+      role: 'panel',
+      materialId: resolveMaterialId('PANEL_TIMBER', `${panelId}_timber`, materialRoleMap, materialOverrides),
       geometry: {
         type: 'box',
-        dimensions: dims as [number, number, number],
-        position: pos as [number, number, number],
+        dimensions: [actualPanelWidth, actualPanelHeight, panelThickness],
+        position: [slot.rect.x, slot.rect.y, 0],
       },
       visible: true,
     });
+
+    panelGroup.children!.push({
+      id: `${panelId}_moulding_front`,
+      name: 'Moulding Front',
+      type: 'panel',
+      role: 'panel',
+      materialId: resolveMaterialId('PANEL_TIMBER', `${panelId}_moulding_front`, materialRoleMap, materialOverrides),
+      geometry: {
+        type: 'box',
+        dimensions: [actualPanelWidth + mouldingWidth, actualPanelHeight + mouldingWidth, mouldingProjection],
+        position: [slot.rect.x, slot.rect.y, thickness / 2 - mouldingProjection / 2],
+      },
+      visible: true,
+    });
+
+    panelGroup.children!.push({
+      id: `${panelId}_moulding_back`,
+      name: 'Moulding Back',
+      type: 'panel',
+      role: 'panel',
+      materialId: resolveMaterialId('PANEL_TIMBER', `${panelId}_moulding_back`, materialRoleMap, materialOverrides),
+      geometry: {
+        type: 'box',
+        dimensions: [actualPanelWidth + mouldingWidth, actualPanelHeight + mouldingWidth, mouldingProjection],
+        position: [slot.rect.x, slot.rect.y, -thickness / 2 + mouldingProjection / 2],
+      },
+      visible: true,
+    });
+
+    return panelGroup;
   });
-  
-  components.push(glazingGroup);
-  
-  // Mid rail between glazing and panels
-  components.push({
-    id: 'midRail_glazing',
-    name: 'Mid Rail',
+}
+
+function buildGlazingFromLayout(
+  layout: ReturnType<typeof resolveDoorLayout>,
+  config: any,
+  materialRoleMap?: ProductParams['materialRoleMap'],
+  materialOverrides?: Record<string, string>
+): ComponentNode[] {
+  const { glazingThickness, beadWidth, thickness } = config;
+
+  return layout.glazing.map((slot) => {
+    const glazingGroup: ComponentNode = {
+      id: slot.id,
+      name: 'Glazing',
+      type: 'group',
+      visible: true,
+      children: [],
+    };
+
+    glazingGroup.children!.push({
+      id: `${slot.id}_glass`,
+      name: 'Glass Unit',
+      type: 'glazing',
+      role: 'glass',
+      materialId: resolveMaterialId('GLASS', `${slot.id}_glass`, materialRoleMap, materialOverrides),
+      geometry: {
+        type: 'box',
+        dimensions: [slot.rect.width - 2 * beadWidth, slot.rect.height - 2 * beadWidth, glazingThickness],
+        position: [slot.rect.x, slot.rect.y, 0],
+      },
+      visible: true,
+    });
+
+    const beadPositions = [
+      { id: `${slot.id}_bead_left`, pos: [slot.rect.x - slot.rect.width / 2 + beadWidth / 2, slot.rect.y, 0], dims: [beadWidth, slot.rect.height, thickness] },
+      { id: `${slot.id}_bead_right`, pos: [slot.rect.x + slot.rect.width / 2 - beadWidth / 2, slot.rect.y, 0], dims: [beadWidth, slot.rect.height, thickness] },
+      { id: `${slot.id}_bead_top`, pos: [slot.rect.x, slot.rect.y + slot.rect.height / 2 - beadWidth / 2, 0], dims: [slot.rect.width, beadWidth, thickness] },
+      { id: `${slot.id}_bead_bottom`, pos: [slot.rect.x, slot.rect.y - slot.rect.height / 2 + beadWidth / 2, 0], dims: [slot.rect.width, beadWidth, thickness] },
+    ];
+
+    beadPositions.forEach(({ id, pos, dims }) => {
+      glazingGroup.children!.push({
+        id,
+        name: 'Bead',
+        type: 'glazing',
+        role: 'rail',
+        materialId: resolveMaterialId('FRAME_TIMBER', id, materialRoleMap, materialOverrides),
+        geometry: {
+          type: 'box',
+          dimensions: dims as [number, number, number],
+          position: pos as [number, number, number],
+        },
+        visible: true,
+      });
+    });
+
+    return glazingGroup;
+  });
+}
+
+function buildMidRailsFromLayout(
+  layout: ReturnType<typeof resolveDoorLayout>,
+  config: any,
+  profileLookup: Record<string, ProfileDefinition>,
+  profileIds?: Record<string, string>,
+  materialRoleMap?: ProductParams['materialRoleMap'],
+  materialOverrides?: Record<string, string>
+): ComponentNode[] {
+  const { thickness } = config;
+  const midRails = layout.rails.filter((rail) => rail.role === 'mid');
+
+  return midRails.map((rail) => ({
+    id: rail.id,
+    name: rail.id.replace(/_/g, ' '),
     type: 'frame',
-    materialId: 'timber',
+    role: 'rail',
+    materialId: resolveMaterialId('FRAME_TIMBER', rail.id, materialRoleMap, materialOverrides),
     geometry: buildProfileGeometry({
       kind: 'horizontal',
-      width: areaWidth,
-      height: midRail,
+      width: layout.width - 2 * layout.stileWidth,
+      height: rail.height,
       depth: thickness,
-      position: [0, railPositions.railYById['midRail_glazing'] ?? railPositions.midRailY ?? glazedAreaYEnd - midRail / 2, 0],
+      position: [0, rail.y, 0],
       profile: profileIds?.midRail ? profileLookup[profileIds.midRail] : undefined,
     }),
     visible: true,
-  });
-  
-  // Bottom panels (2 panels side by side)
-  // Panels span from bottom rail to mid rail
-  const panelAreaHeight = height - topRail - bottomRail - midRail;
-  const bottomPanels = buildPanelLayout(width, panelAreaHeight, config, 2, 1, railPositions, profileLookup, profileIds);
-  
-  // Note: buildPanelLayout already positions panels correctly, just add them
-  components.push(...bottomPanels);
-  
-  return components;
+  }));
 }
 
 /**
@@ -625,10 +514,50 @@ function createDoorMaterials(config: any): MaterialDefinition[] {
   return [
     {
       id: 'timber',
-      name: config.timber || 'Oak',
+      name: config.timber || 'Timber',
       type: 'wood',
       baseColor: '#d4a574',
       roughness: 0.7,
+      metalness: 0.0,
+    },
+    {
+      id: 'oak',
+      name: 'Oak',
+      type: 'wood',
+      baseColor: '#d4a574',
+      roughness: 0.7,
+      metalness: 0.0,
+    },
+    {
+      id: 'oak-veneer',
+      name: 'Oak Veneered Ply',
+      type: 'wood',
+      baseColor: '#c9a16b',
+      roughness: 0.75,
+      metalness: 0.0,
+    },
+    {
+      id: 'accoya',
+      name: 'Accoya',
+      type: 'wood',
+      baseColor: '#c7a47d',
+      roughness: 0.65,
+      metalness: 0.0,
+    },
+    {
+      id: 'painted-wood',
+      name: config.finish || 'Painted Timber',
+      type: 'painted',
+      baseColor: '#f2f2f2',
+      roughness: 0.4,
+      metalness: 0.0,
+    },
+    {
+      id: 'painted-accoya',
+      name: 'Painted Accoya',
+      type: 'painted',
+      baseColor: '#f0f0f0',
+      roughness: 0.4,
       metalness: 0.0,
     },
     {
@@ -640,11 +569,19 @@ function createDoorMaterials(config: any): MaterialDefinition[] {
       metalness: 0.0,
     },
     {
-      id: 'paint',
-      name: config.finish || 'White Paint',
-      type: 'painted',
-      baseColor: '#f5f5f5',
-      roughness: 0.3,
+      id: 'chrome',
+      name: 'Chrome',
+      type: 'metal',
+      baseColor: '#d9d9d9',
+      roughness: 0.25,
+      metalness: 1.0,
+    },
+    {
+      id: 'rubber',
+      name: 'Rubber Seal',
+      type: 'default',
+      baseColor: '#2f2f2f',
+      roughness: 0.9,
       metalness: 0.0,
     },
   ];
@@ -655,14 +592,11 @@ function createDoorMaterials(config: any): MaterialDefinition[] {
  */
 function buildEditableAttributes(
   params: ProductParams,
+  layout: ReturnType<typeof resolveDoorLayout>,
   components: ComponentNode[]
 ): Record<string, EditableAttribute[]> {
   const attrs: Record<string, EditableAttribute[]> = {};
-  const railPositions = computeRailPositions(
-    params.dimensions.height,
-    { ...DOOR_DEFAULTS, thickness: params.dimensions.depth, ...params.construction },
-    params.construction?.layoutOverrides
-  );
+  const railConstraints = layout.constraints.railY;
   
   // Frame attributes
   attrs['frame'] = [
@@ -772,23 +706,8 @@ function buildEditableAttributes(
   // Rail position attributes (one entry per rail component)
   const railComponents = components.filter(c => c.id.includes('Rail') && c.geometry?.position);
   railComponents.forEach((rail) => {
-    const height = rail.geometry?.dimensions?.[1] || 0;
-    const isTop = rail.id.includes('top');
-    const isBottom = rail.id.includes('bottom');
     const value = rail.geometry?.position?.[1] || 0;
-    const minSpacing = 80;
-
-    let min = height / 2;
-    let max = params.dimensions.height - height / 2;
-
-    if (isTop) {
-      min = railPositions.bottomRailY + (params.construction.bottomRail || DOOR_DEFAULTS.bottomRail) / 2 + minSpacing;
-    } else if (isBottom) {
-      max = railPositions.topRailY - (params.construction.topRail || DOOR_DEFAULTS.topRail) / 2 - minSpacing;
-    } else {
-      min = railPositions.bottomRailY + (params.construction.bottomRail || DOOR_DEFAULTS.bottomRail) / 2 + minSpacing;
-      max = railPositions.topRailY - (params.construction.topRail || DOOR_DEFAULTS.topRail) / 2 - minSpacing;
-    }
+    const constraint = railConstraints[rail.id] || { min: 0, max: params.dimensions.height };
 
     attrs[rail.id] = [
       {
@@ -797,8 +716,38 @@ function buildEditableAttributes(
         type: 'number',
         value,
         unit: 'mm',
-        min,
-        max,
+        min: constraint.min,
+        max: constraint.max,
+        step: 1,
+      },
+    ];
+  });
+
+  layout.panels.forEach((panel) => {
+    attrs[panel.id] = [
+      {
+        key: 'panelThickness',
+        label: 'Panel Thickness',
+        type: 'number',
+        value: params.construction.panelThickness || DOOR_DEFAULTS.panelThickness,
+        unit: 'mm',
+        min: 8,
+        max: 40,
+        step: 1,
+      },
+    ];
+  });
+
+  layout.glazing.forEach((glazing) => {
+    attrs[glazing.id] = [
+      {
+        key: 'glazingThickness',
+        label: 'Glazing Thickness',
+        type: 'number',
+        value: params.construction.glazingThickness || DOOR_DEFAULTS.glazingThickness,
+        unit: 'mm',
+        min: 12,
+        max: 60,
         step: 1,
       },
     ];
@@ -866,6 +815,10 @@ export function applyDoorEdit(params: ProductParams, edit: ComponentEdit): Produ
     }
   });
 
+  if (edit.changes.timber !== undefined || edit.changes.finish !== undefined) {
+    updated.materialRoleMap = deriveMaterialRoleMap(updated);
+  }
+
   return updated;
 }
 
@@ -894,7 +847,7 @@ export function getDefaultDoorParams(
   productType: { category: string; type: string; option: string },
   dimensions: { width: number; height: number; depth: number }
 ): ProductParams {
-  return {
+  const base: ProductParams = {
     productType,
     dimensions,
     construction: {
@@ -903,10 +856,17 @@ export function getDefaultDoorParams(
       midRail: DOOR_DEFAULTS.midRail,
       bottomRail: DOOR_DEFAULTS.bottomRail,
       thickness: dimensions.depth || DOOR_DEFAULTS.thickness,
+      timber: 'oak',
+      finish: 'clear',
+      glazingType: 'double',
       panelLayout: productType.option === 'E02' ? { rows: 2, cols: 2 } : { rows: 2, cols: 1 },
       glazingArea: productType.option === 'E03' ? { topPercent: 35, bottomPercent: 65 } : undefined,
     },
     addedParts: [],
+  };
+  return {
+    ...base,
+    materialRoleMap: deriveMaterialRoleMap(base),
   };
 }
 

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import {
   Dialog,
@@ -25,6 +26,7 @@ import { cn } from '@/lib/utils';
 import { Edit, Trash2, Copy, Box, Search, Filter } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
+import { normalizeSvgText, validateSvgText } from '@/lib/svg-validation';
 
 interface ComponentProfile {
   id: string;
@@ -36,6 +38,10 @@ interface ComponentProfile {
   geometry: {
     svg?: string;
     type?: string;
+    sourceType?: 'svg' | 'points';
+    svgText?: string;
+    depthMm?: number;
+    scale?: number;
   };
 }
 
@@ -71,12 +77,68 @@ export function ComponentLibrarySection() {
   const [productOptions, setProductOptions] = useState<Array<{ id: string; label: string; category: string; type: string }>>([]);
   const [pickerCategory, setPickerCategory] = useState<string>('all');
   const [pickerSearch, setPickerSearch] = useState<string>('');
+  const [svgPasteText, setSvgPasteText] = useState<string>('');
+  const [svgPastePreview, setSvgPastePreview] = useState<string | null>(null);
+  const [svgPasteError, setSvgPasteError] = useState<string | null>(null);
+  const [svgDepthMm, setSvgDepthMm] = useState<number>(20);
+  const [svgScale, setSvgScale] = useState<number>(1);
   const { toast } = useToast();
 
   useEffect(() => {
     loadComponents();
     loadProductOptions();
   }, []);
+
+  useEffect(() => {
+    if (!selectedComponent?.profile?.geometry?.svgText) return;
+    setSvgPasteText(selectedComponent.profile.geometry.svgText);
+    setSvgPastePreview(selectedComponent.profile.geometry.svg || null);
+    setSvgDepthMm(selectedComponent.profile.geometry.depthMm || 20);
+    setSvgScale(selectedComponent.profile.geometry.scale || 1);
+  }, [selectedComponent]);
+
+  const handleSvgPreview = () => {
+    if (!svgPasteText.trim()) {
+      setSvgPasteError('Paste SVG text to preview');
+      return;
+    }
+
+    const validation = validateSvgText(svgPasteText);
+    if (!validation.valid) {
+      setSvgPasteError(validation.errors.join(' '));
+      return;
+    }
+
+    const normalized = normalizeSvgText(svgPasteText);
+    setSvgPastePreview(normalized.normalizedSvg);
+    setSvgPasteError(null);
+  };
+
+  const applySvgProfile = () => {
+    if (!selectedComponent) return;
+    if (!svgPastePreview) {
+      setSvgPasteError('Preview SVG before applying');
+      return;
+    }
+
+    const normalized = normalizeSvgText(svgPasteText);
+    setSelectedComponent({
+      ...selectedComponent,
+      profile: {
+        id: selectedComponent.profile?.id || `profile_${selectedComponent.id}`,
+        profileType: selectedComponent.profile?.profileType || 'custom',
+        dimensions: selectedComponent.profile?.dimensions || { widthMm: 0, depthMm: svgDepthMm },
+        geometry: {
+          type: 'svg',
+          sourceType: 'svg',
+          svgText: normalized.normalizedSvg,
+          svg: svgPastePreview,
+          depthMm: svgDepthMm,
+          scale: svgScale,
+        },
+      },
+    });
+  };
 
   const loadComponents = async () => {
     try {
@@ -422,6 +484,63 @@ export function ComponentLibrarySection() {
                   />
                 </div>
               )}
+              <div className="border rounded-lg p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>Paste SVG Profile</Label>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSvgPreview}
+                  >
+                    Preview SVG
+                  </Button>
+                </div>
+                <Textarea
+                  value={svgPasteText}
+                  onChange={(e) => setSvgPasteText(e.target.value)}
+                  placeholder="<svg>...</svg>"
+                  rows={4}
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Depth (mm)</Label>
+                    <Input
+                      type="number"
+                      value={svgDepthMm}
+                      onChange={(e) => setSvgDepthMm(Number(e.target.value))}
+                    />
+                  </div>
+                  <div>
+                    <Label>Scale</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      value={svgScale}
+                      onChange={(e) => setSvgScale(Number(e.target.value))}
+                    />
+                  </div>
+                </div>
+                {svgPasteError && (
+                  <p className="text-xs text-red-600">{svgPasteError}</p>
+                )}
+                {svgPastePreview && (
+                  <div className="border rounded-lg p-3 bg-muted/30">
+                    <div className="text-xs text-muted-foreground mb-2">Preview</div>
+                    <div
+                      className="w-48 h-48"
+                      dangerouslySetInnerHTML={{ __html: svgPastePreview }}
+                    />
+                  </div>
+                )}
+                <div className="flex justify-end">
+                  <Button
+                    size="sm"
+                    onClick={applySvgProfile}
+                  >
+                    Apply SVG Profile
+                  </Button>
+                </div>
+              </div>
               {/* Usage and assignment */}
               <div className="border rounded-lg p-3 bg-slate-50">
                 <div className="text-xs font-medium text-slate-700 mb-1">Used in product options</div>

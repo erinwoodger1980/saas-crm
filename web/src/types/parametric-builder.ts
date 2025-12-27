@@ -204,6 +204,10 @@ export interface ProfileDefinition {
     points: [number, number][];
     closed: boolean;
   };
+  sourceType?: 'points' | 'svg';
+  svgText?: string;
+  depthMm?: number;
+  scale?: number;
   metadata?: {
     source: 'estimated' | 'uploaded';
     notes?: string;
@@ -269,6 +273,19 @@ export interface ProductParams {
       midRailY?: number;
       bottomRailY?: number;
       railYById?: Record<string, number>;
+    };
+
+    /** Optional layout hints from AI (validated by resolvers) */
+    layoutHint?: {
+      panelCount?: number;
+      panelGrid?: string; // e.g., "1x2", "2x2"
+      glazedTopPct?: number;
+      railHeightsHints?: {
+        top?: number;
+        mid?: number;
+        bottom?: number;
+      };
+      style?: string;
     };
     
     // Additional parametric data
