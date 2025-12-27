@@ -2,6 +2,11 @@
  * Unified Product Configurator 3D
  * Single configurator for doors, windows, and all joinery products
  * Product-type driven, parametric, with AI assistance
+ *
+ * New Flow Spec (ConfiguratorMode):
+ * - TEMPLATE: For catalogue/product types. Initialize from productType defaults; save ProductParams to templateConfig. Depth uses builder defaults.
+ * - INSTANCE: For quote line items. Initialize from lineItem dimensions and selections; persist scene + params back to quote and scene-state.
+ * Both modes use the same builder pipeline via builder-registry (ProductParams -> BuildResult -> SceneConfig).
  */
 
 'use client';
@@ -86,6 +91,10 @@ interface ProductConfigurator3DProps {
   renderQuality?: 'low' | 'high';
   /** Settings preview mode - enables ultra low-power rendering */
   settingsPreview?: boolean;
+  /** Configurator mode: TEMPLATE (catalogue) or INSTANCE (quote line) */
+  mode?: 'TEMPLATE' | 'INSTANCE';
+  /** Template ID when in TEMPLATE mode */
+  templateId?: string;
 }
 
 /**
@@ -203,7 +212,11 @@ function normalizeSceneConfig(config: SceneConfig): SceneConfig {
     materials: Array.isArray(config.materials) ? config.materials : [],
     visibility: config.visibility || {},
     ui: config.ui || { ...DEFAULT_UI_TOGGLES },
-    lighting: normalizeLightingConfig(config.lighting || buildDefaultLighting(config.dimensions)),
+    // Always ensure lighting is present and merged with defaults
+    lighting: {
+      ...buildDefaultLighting(config.dimensions),
+      ...(config.lighting || {}),
+    },
   };
 
   normalized.materials = normalized.materials.map((mat) => {
@@ -252,6 +265,8 @@ export function ProductConfigurator3D({
   heroMode = true,
   renderQuality = 'high',
   settingsPreview = false,
+  mode,
+  templateId,
 }: ProductConfigurator3DProps) {
   // ===== ALL STATE & REFS (MUST BE AT TOP) =====
   const [status, setStatus] = useState<LoadStatus>('idle');
@@ -273,6 +288,7 @@ export function ProductConfigurator3D({
   const [showAddComponentDialog, setShowAddComponentDialog] = useState(false);
   const [aiDescription, setAiDescription] = useState('');
   const [wireframeMode, setWireframeMode] = useState(false);
+  const [frameTrigger, setFrameTrigger] = useState(0);
   
   const controlsRef = useRef<any>(null);
   const initialFrameApplied = useRef(false);
@@ -311,6 +327,7 @@ export function ProductConfigurator3D({
     () => tenantId === 'settings' || tenantId === 'preview' || safeEntityId.startsWith('preview-'),
     [tenantId, safeEntityId]
   );
+  const configuratorMode: 'TEMPLATE' | 'INSTANCE' = mode || (isPreviewMode ? 'TEMPLATE' : 'INSTANCE');
   
   // Create stable keys from object props to prevent infinite re-renders
   const lineItemKey = useMemo(() => {
@@ -456,9 +473,16 @@ export function ProductConfigurator3D({
 
         // Priority 1: Use provided initialConfig
         if (initialConfig) {
-          loaded = initialConfig;
+          // Merge initialConfig with defaults, ensuring lighting is present
+          loaded = {
+            ...initialConfig,
+            lighting: {
+              ...buildDefaultLighting(initialConfig.dimensions),
+              ...(initialConfig.lighting || {}),
+            },
+          };
           if (process.env.NEXT_PUBLIC_DEBUG_3D === 'true') {
-            console.log('✓ Using initialConfig');
+            console.log('✓ Using initialConfig with merged defaults');
           }
         }
         // Priority 2: Load from database (non-preview only)
@@ -489,7 +513,9 @@ export function ProductConfigurator3D({
             const defaults = getPreviewDefaults(previewProductType);
             const widthMm = Number((lineItem as any)?.lineStandard?.widthMm) || defaults.widthMm;
             const heightMm = Number((lineItem as any)?.lineStandard?.heightMm) || defaults.heightMm;
-            const depthMm = Number((lineItem as any)?.meta?.depthMm) || defaults.depthMm;
+            // In catalogue/preview, depth should follow component defaults (builder-derived)
+            // Pass 0 so builders use their internal default thickness/depth
+            const depthMm = 0;
 
             effectiveLineItem = {
               ...(lineItem || {}),
@@ -672,11 +698,6 @@ export function ProductConfigurator3D({
    */
   const persistConfig = useCallback(
     async (newConfig: SceneConfig) => {
-      // Skip persistence in preview mode
-      if (isPreviewMode) {
-        return;
-      }
-      
       // Don't try to save if disabled due to auth failure
       if (saveDisabled) {
         return;
@@ -684,7 +705,16 @@ export function ProductConfigurator3D({
       
       if (!mountedRef.current) return;
       setIsSaving(true);
-      const result = await saveSceneState(tenantId, entityType, safeEntityId, newConfig);
+      // Unified persistence based on mode
+      const { persistConfiguratorState } = await import('@/lib/scene/builder-registry');
+      const result = await persistConfiguratorState(configuratorMode, newConfig, {
+        tenantId,
+        entityType,
+        entityId: safeEntityId,
+        templateId,
+        lineItem,
+        saveDisabled,
+      });
       
       // Also persist key fields back to the quote line (width/height/thickness and selections)
       try {
@@ -725,7 +755,7 @@ export function ProductConfigurator3D({
         toast.success('Configuration saved', { duration: 2000 });
       }
     },
-    [tenantId, entityType, safeEntityId, saveDisabled, lineItem, isPreviewMode]
+    [tenantId, entityType, safeEntityId, saveDisabled, lineItem, configuratorMode, templateId]
   );
 
   /**
@@ -1372,6 +1402,7 @@ export function ProductConfigurator3D({
             components={config.components}
             controls={controlsRef.current}
             heroMode={heroMode}
+            frameTrigger={frameTrigger}
           />
 
           {/* Stage with cyclorama backdrop and floor */}
@@ -1504,6 +1535,16 @@ export function ProductConfigurator3D({
             }}
             qualityEnabled={highQuality}
             onQualityToggle={setHighQuality}
+            productWidth={(config.customData as any)?.dimensions?.width}
+            productHeight={(config.customData as any)?.dimensions?.height}
+            productDepth={(config.customData as any)?.dimensions?.depth}
+            onDimensionChange={(changes) => {
+              // Apply as edit to root product to trigger parametric rebuild
+              handleAttributeEdit('product', changes);
+              // Request auto frame after dimension change
+              setFrameTrigger((t) => t + 1);
+            }}
+            dimensionSource={isPreviewMode ? 'catalogue' : 'quote'}
           />
         )}
         
@@ -1511,7 +1552,7 @@ export function ProductConfigurator3D({
         {isSaving && (
           <div className="absolute top-4 right-4 flex items-center gap-2 bg-blue-500 text-white px-3 py-1.5 rounded-md shadow-lg">
             <Loader2 className="h-4 w-4 animate-spin" />
-            <span className="text-sm font-medium">Saving...</span>
+            <span className="text-sm font-medium">Saving ({configuratorMode})...</span>
           </div>
         )}
       </div>
