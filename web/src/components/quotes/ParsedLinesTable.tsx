@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Wand2, FileText, Download, Image as ImageIcon, AlertTriangle, Edit3, ChevronDown, Box } from "lucide-react";
+import { Loader2, Wand2, FileText, Download, Image as ImageIcon, AlertTriangle, Edit3, ChevronDown, Box, Sparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,6 +12,8 @@ import type { ParsedLineDto, QuestionnaireField, ParseResponse } from "@/lib/api
 import { ProductConfigurator3D } from "@/components/configurator/ProductConfigurator3D";
 import { normalizeSceneConfig } from "@/lib/scene/config-validation";
 import { canConfigure } from "@/lib/scene/builder-registry";
+import { toast } from "sonner";
+import type { SceneConfig } from "@/types/scene-config";
 
 export type ParsedLinesTableProps = {
   lines?: ParsedLineDto[] | null;
@@ -30,6 +32,62 @@ export type ParsedLinesTableProps = {
 };
 
 const SAVE_DEBOUNCE_MS = 500;
+
+/**
+ * Convert AI estimation result to complete SceneConfig using parametric builders
+ * This is the same function used in Settings, ensuring consistent AI→3D flow
+ */
+function blueprintToSceneConfig(
+  aiResult: any,
+  productType: { category: string; type: string; option: string },
+  dimensions: { width: number; height: number; depth: number },
+  entityId: string
+): SceneConfig {
+  const { suggestedParamsPatch, suggestedAddedParts } = aiResult;
+  
+  console.log('[blueprintToSceneConfig] Input:', {
+    productType,
+    dimensions,
+    suggestedParamsPatch,
+    addedPartsCount: suggestedAddedParts?.length || 0,
+  });
+
+  const { initializeSceneFromParams } = require('@/lib/scene/builder-registry');
+  const { getBuilder } = require('@/lib/scene/builder-registry');
+  
+  const builder = getBuilder(productType.category);
+  const { width, height, depth } = dimensions;
+  const baseParams = builder.getDefaults(productType, { width, height, depth });
+  
+  const params = {
+    ...baseParams,
+    ...suggestedParamsPatch,
+    productType,
+    dimensions: { width, height, depth },
+    construction: {
+      ...baseParams.construction,
+      ...suggestedParamsPatch?.construction,
+    },
+    addedParts: suggestedAddedParts || [],
+  };
+
+  const sceneConfig = initializeSceneFromParams(
+    params,
+    'quoteLineItem',
+    'quoteLineItem',
+    entityId
+  );
+  
+  console.log('[blueprintToSceneConfig] Output:', {
+    componentCount: sceneConfig.components?.length || 0,
+    materialCount: Object.keys(sceneConfig.materials || {}).length,
+    hasLighting: !!sceneConfig.lighting,
+    hasCamera: !!sceneConfig.camera,
+    sceneVersion: sceneConfig.version,
+  });
+  
+  return sceneConfig;
+}
 
 export function ParsedLinesTable({
   lines,
@@ -822,28 +880,147 @@ function ConfiguratorModal({
   tenantId?: string;
   onClose: () => void;
 }) {
+  const [showAIDialog, setShowAIDialog] = useState(false);
+  const [aiDescription, setAiDescription] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedConfig, setGeneratedConfig] = useState<SceneConfig | null>(null);
+
   if (!line || !tenantId) return null;
 
   // If the line has a saved sceneConfig (e.g., from Instant Quote), normalize it
-  const initialConfig = normalizeSceneConfig(line.meta?.sceneConfig);
+  const initialConfig = generatedConfig || normalizeSceneConfig(line.meta?.sceneConfig);
+
+  const handleGenerateFromAI = async () => {
+    if (!aiDescription.trim()) {
+      toast.error('Description required');
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      // Extract product type from line item
+      const productType = line.configuredProduct?.productType || {
+        category: 'doors',
+        type: 'entrance',
+        option: 'E01',
+      };
+
+      // Get dimensions from line standard
+      const widthMm = Number((line as any)?.lineStandard?.widthMm) || 914;
+      const heightMm = Number((line as any)?.lineStandard?.heightMm) || 2032;
+      const thicknessMm = Number((line as any)?.lineStandard?.thicknessMm) || 45;
+
+      console.log('[Line Item AI] Calling estimate-components with:', {
+        description: aiDescription,
+        productType,
+        dimensions: { widthMm, heightMm, thicknessMm },
+      });
+
+      const result = await fetch('/api/ai/estimate-components', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantId: 'current',
+          description: aiDescription,
+          productType,
+          existingDimensions: { widthMm, heightMm, thicknessMm },
+        }),
+      });
+
+      if (!result.ok) {
+        throw new Error(`AI estimation failed: ${result.statusText}`);
+      }
+
+      const aiData = await result.json();
+      console.log('[Line Item AI] Response:', aiData);
+
+      // Convert AI result to SceneConfig using parametric builders
+      const sceneConfig = blueprintToSceneConfig(
+        aiData,
+        productType,
+        { width: widthMm, height: heightMm, depth: thicknessMm },
+        line.id
+      );
+
+      setGeneratedConfig(sceneConfig);
+      setShowAIDialog(false);
+      setAiDescription('');
+
+      toast.success(`Created ${sceneConfig.components?.length || 0} components from AI`);
+    } catch (error) {
+      console.error('[Line Item AI] Error:', error);
+      toast.error(error instanceof Error ? error.message : 'AI generation failed');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   return (
-    <Dialog open={!!line} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-[90vw] max-h-[90vh] p-6">
-        <DialogHeader>
-          <DialogTitle>3D Product Configurator</DialogTitle>
-        </DialogHeader>
-        <ProductConfigurator3D
-          tenantId={tenantId}
-          entityType="quoteLineItem"
-          entityId={line.id}
-          lineItem={line}
-          initialConfig={initialConfig || undefined}
-          onClose={onClose}
-          height="75vh"
-          heroMode={true}
-        />
-      </DialogContent>
-    </Dialog>
+    <>
+      <Dialog open={!!line} onOpenChange={(open) => !open && onClose()}>
+        <DialogContent className="max-w-[90vw] max-h-[90vh] p-6">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <span>3D Product Configurator</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowAIDialog(true)}
+                className="gap-2"
+              >
+                <Sparkles className="h-4 w-4" />
+                Generate from AI
+              </Button>
+            </DialogTitle>
+          </DialogHeader>
+          <ProductConfigurator3D
+            tenantId={tenantId}
+            entityType="quoteLineItem"
+            entityId={line.id}
+            lineItem={line}
+            initialConfig={initialConfig || undefined}
+            onClose={onClose}
+            height="75vh"
+            heroMode={true}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* AI Description Dialog */}
+      <Dialog open={showAIDialog} onOpenChange={setShowAIDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Generate Product from Description</DialogTitle>
+            <DialogDescription>
+              Describe the product and we'll generate it using parametric builders.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="ai-desc">Description</Label>
+              <Textarea
+                id="ai-desc"
+                placeholder="e.g., 4 panel door, oak timber, stile 120mm, glazed top panel"
+                value={aiDescription}
+                onChange={(e) => setAiDescription(e.target.value)}
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground">
+                Examples: "2 panels" • "4 panels" • "glazed top" • "stile 120mm" • "ogee profile"
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAIDialog(false)} disabled={isGenerating}>
+              Cancel
+            </Button>
+            <Button onClick={handleGenerateFromAI} disabled={!aiDescription.trim() || isGenerating}>
+              {isGenerating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Generate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

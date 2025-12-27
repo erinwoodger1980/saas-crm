@@ -230,6 +230,9 @@ export default function ProductTypesSection() {
   // Stable key - set ONCE per dialog open, never changes during render
   const [configuratorKey, setConfiguratorKey] = useState<string>('');
   
+  // Debounce timer for auto-save
+  const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
   // Handle dialog state changes in useEffect to prevent render-time setState
   useEffect(() => {
     if (isConfiguratorOpen && capturedDialogInfo) {
@@ -446,6 +449,16 @@ export default function ProductTypesSection() {
     } finally {
       setSaving(false);
     }
+  };
+
+  // Debounced save to prevent heavy writes on every configurator change
+  const debouncedSaveProducts = () => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+    saveTimerRef.current = setTimeout(() => {
+      saveProducts();
+    }, 800); // 800ms debounce
   };
 
   const handleImageUpload = async (categoryId: string, typeIdx: number, optionId: string, file: File) => {
@@ -1437,8 +1450,8 @@ export default function ProductTypesSection() {
                     )
                   );
                   
-                  // Auto-save to backend
-                  saveProducts();
+                  // Auto-save to backend (debounced to avoid heavy writes)
+                  debouncedSaveProducts();
                 }}
                 onClose={() => setIsConfiguratorOpen(false)}
                 height="70vh"
@@ -1482,7 +1495,7 @@ export default function ProductTypesSection() {
                         )
                       );
                       setCapturedConfig(defaultConfig);
-                      saveProducts();
+                      debouncedSaveProducts();
                     }}
                   >
                     Create Default Configuration
