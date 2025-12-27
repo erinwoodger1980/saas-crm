@@ -39,7 +39,7 @@ import { AutoFrame } from './AutoFrame';
 import { Stage } from './Stage';
 import { SceneDisposer } from './SceneDisposer';
 import { PostFX } from './PostFX';
-import { Loader2, Edit3, Box, Plus, Sparkles, RotateCcw } from 'lucide-react';
+import { Loader2, Edit3, Box, Plus, Sparkles, RotateCcw, Grid3X3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { 
@@ -272,6 +272,7 @@ export function ProductConfigurator3D({
   const [showAIDescriptionDialog, setShowAIDescriptionDialog] = useState(false);
   const [showAddComponentDialog, setShowAddComponentDialog] = useState(false);
   const [aiDescription, setAiDescription] = useState('');
+  const [wireframeMode, setWireframeMode] = useState(false);
   
   const controlsRef = useRef<any>(null);
   const initialFrameApplied = useRef(false);
@@ -1387,7 +1388,7 @@ export function ProductConfigurator3D({
             onSelect={handleComponentSelect}
             selectedId={selectedComponentId}
             orbitControlsRef={controlsRef}
-            wireframe={settingsPreview}
+            wireframe={settingsPreview || wireframeMode}
             onTransformEnd={(componentId, newY) => {
               handleAttributeEdit(componentId, { positionY: newY });
             }}
@@ -1450,6 +1451,10 @@ export function ProductConfigurator3D({
                   <Sparkles className="h-4 w-4 mr-2" />
                   Generate with AI
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setWireframeMode(!wireframeMode)}>
+                  <Grid3X3 className="h-4 w-4 mr-2" />
+                  {wireframeMode ? 'Show 3D' : 'Show Wireframe'}
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => {
                   const params = config.customData as ProductParams;
                   updateConfig({
@@ -1468,7 +1473,7 @@ export function ProductConfigurator3D({
           </div>
         )}
 
-        {/* UI Overlay - Full scene UI in normal mode (hidden in settingsPreview) */}
+        {/* UI Overlay - Only in normal mode, hidden in heroMode and settingsPreview */}
         {!heroMode && !settingsPreview && (
           <SceneUI
             components={config.components}
