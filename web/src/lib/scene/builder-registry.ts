@@ -1,6 +1,10 @@
 /**
  * Parametric Builder Registry
  * Central registration and selection of product-specific builders
+ * New Flow Spec:
+ *  - ConfiguratorMode: 'TEMPLATE' vs 'INSTANCE'
+ *  - initializeConfiguratorState(mode, source): unified scene init
+ *  - persistConfiguratorState(mode, config, context): unified save
  */
 
 import {
@@ -12,6 +16,7 @@ import {
 import { doorBuilder } from './parametric-door';
 import { windowBuilder } from './parametric-window';
 import { SceneConfig } from '@/types/scene-config';
+import { ConfiguratorMode, ProductParams } from '@/types/parametric-builder';
 import { calculateHeroCamera } from './fit-camera';
 import { normalizeLightingConfig } from './normalize-lighting';
 
@@ -158,6 +163,101 @@ export function initializeSceneFromParams(
 }
 
 /**
+ * Unified initialization for configurator
+ * TEMPLATE: build from productType defaults (depth from builder)
+ * INSTANCE: build from lineItem (dimensions from lineStandard/meta)
+ */
+export function initializeConfiguratorState(
+  mode: ConfiguratorMode,
+  source: {
+    tenantId: string;
+    entityType: string;
+    entityId: string;
+    productType?: { category: string; type: string; option: string };
+    lineItem?: any;
+  }
+): SceneConfig | null {
+  const { tenantId, entityType, entityId, productType, lineItem } = source;
+  if (mode === 'TEMPLATE') {
+    if (!productType) return null;
+    const width = productType.category === 'doors' ? 914 : 1200;
+    const height = productType.category === 'doors' ? 2032 : 1200;
+    const depth = 0; // builder default thickness/depth
+    const builder = getBuilder(productType.category);
+    if (!builder) return null;
+    const params = builder.getDefaults(productType, { width, height, depth });
+    return initializeSceneFromParams(params, tenantId, entityType, entityId);
+  }
+  // INSTANCE
+  const params = getOrCreateParams(lineItem || {});
+  if (!params) return null;
+  return initializeSceneFromParams(params, tenantId, entityType, entityId);
+}
+
+/**
+ * Unified persistence for configurator
+ * TEMPLATE: save ProductParams to product type record (templateConfig)
+ * INSTANCE: save SceneConfig to scene-state and patch quote line
+ */
+export async function persistConfiguratorState(
+  mode: ConfiguratorMode,
+  config: SceneConfig,
+  context: {
+    tenantId: string;
+    entityType: string;
+    entityId: string;
+    templateId?: string;
+    lineItem?: any;
+    saveDisabled?: boolean;
+  }
+): Promise<{ success: boolean; shouldDisable: boolean }> {
+  const params = config.customData as ProductParams | undefined;
+  if (mode === 'TEMPLATE') {
+    if (!params || !context.templateId) {
+      console.warn('[persistConfiguratorState] Missing params or templateId');
+      return { success: false, shouldDisable: false };
+    }
+    try {
+      const res = await fetch('/api/product-type/template-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ templateId: context.templateId, templateConfig: params }),
+      });
+      if (res.status === 401 || res.status === 403) {
+        return { success: false, shouldDisable: true };
+      }
+      return { success: res.ok, shouldDisable: false };
+    } catch (e) {
+      console.error('[persistConfiguratorState] TEMPLATE save error', e);
+      return { success: false, shouldDisable: false };
+    }
+  }
+
+  // INSTANCE persistence: write to /api/scene-state
+  try {
+    const response = await fetch('/api/scene-state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        tenantId: context.tenantId,
+        entityType: context.entityType,
+        entityId: context.entityId,
+        config,
+      }),
+    });
+    if (response.status === 401 || response.status === 403) {
+      return { success: false, shouldDisable: true };
+    }
+    return { success: response.ok, shouldDisable: false };
+  } catch (e) {
+    console.error('[persistConfiguratorState] INSTANCE save error', e);
+    return { success: false, shouldDisable: false };
+  }
+}
+
+/**
  * Build visibility map from component tree
  */
 function buildVisibilityMap(components: any[]): Record<string, boolean> {
@@ -285,7 +385,11 @@ export function getOrCreateParams(lineItem: any): ProductParams | null {
   // Extract dimensions
   const width = lineItem.lineStandard?.widthMm || lineItem.meta?.widthMm || 914;
   const height = lineItem.lineStandard?.heightMm || lineItem.meta?.heightMm || 2032;
-  const depth = lineItem.meta?.depthMm || lineItem.meta?.thicknessMm || (productType.category === 'doors' ? 45 : 100);
+  const depth =
+    lineItem.lineStandard?.thicknessMm ||
+    lineItem.meta?.depthMm ||
+    lineItem.meta?.thicknessMm ||
+    (productType.category === 'doors' ? 45 : 100);
   
   // Get defaults from builder
   return builder.getDefaults(productType, { width, height, depth });

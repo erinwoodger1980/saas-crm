@@ -34,6 +34,11 @@ interface SceneUIProps {
   onResetCamera: () => void;
   qualityEnabled?: boolean;
   onQualityToggle?: (enabled: boolean) => void;
+  productWidth?: number;
+  productHeight?: number;
+  productDepth?: number;
+  onDimensionChange?: (changes: { width?: number; height?: number; depth?: number }) => void;
+  dimensionSource?: 'catalogue' | 'quote';
 }
 
 /**
@@ -118,9 +123,59 @@ export function SceneUI({
   onResetCamera,
   qualityEnabled = true,
   onQualityToggle,
+  productWidth,
+  productHeight,
+  productDepth,
+  onDimensionChange,
+  dimensionSource,
 }: SceneUIProps) {
   return (
     <div className="absolute top-4 right-4 w-80 space-y-3 pointer-events-auto">
+      {/* Dimensions Controls */}
+      {typeof productWidth === 'number' && typeof productHeight === 'number' && typeof productDepth === 'number' && onDimensionChange && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">Dimensions</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {dimensionSource && (
+              <p className="text-xs text-muted-foreground">
+                Source: {dimensionSource === 'catalogue' ? 'Catalogue defaults + component depth' : 'Quote line item'}
+              </p>
+            )}
+            <div className="space-y-1">
+              <Label htmlFor="dim-width" className="text-sm">Width (mm)</Label>
+              <Input
+                id="dim-width"
+                type="number"
+                value={productWidth}
+                onChange={(e) => onDimensionChange({ width: Number(e.target.value) })}
+                className="h-8"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="dim-height" className="text-sm">Height (mm)</Label>
+              <Input
+                id="dim-height"
+                type="number"
+                value={productHeight}
+                onChange={(e) => onDimensionChange({ height: Number(e.target.value) })}
+                className="h-8"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="dim-depth" className="text-sm">Depth (mm)</Label>
+              <Input
+                id="dim-depth"
+                type="number"
+                value={productDepth}
+                onChange={(e) => onDimensionChange({ depth: Number(e.target.value) })}
+                className="h-8"
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
       {/* Camera Controls */}
       <Card>
         <CardHeader className="pb-3">

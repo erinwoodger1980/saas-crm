@@ -41,10 +41,13 @@ export function buildWindowComponentTree(params: ProductParams): BuildResult {
     ...WINDOW_DEFAULTS,
     frameDepth: depth || WINDOW_DEFAULTS.frameDepth,
     ...construction,
+    materialRoleMap: params.materialRoleMap,
   };
   
   const components: ComponentNode[] = [];
   const materials: MaterialDefinition[] = createWindowMaterials(config);
+  const roleMap = params.materialRoleMap || {};
+  const overrides = params.materialOverrides || {};
   
   // Root product node
   const product: ComponentNode = {
@@ -104,6 +107,7 @@ export function buildWindowComponentTree(params: ProductParams): BuildResult {
  */
 function buildWindowOuterFrame(width: number, height: number, config: any): ComponentNode {
   const { frameWidth, frameDepth } = config;
+  const frameMaterialId = (config.materialRoleMap?.FRAME_TIMBER) || 'timber';
   
   const frame: ComponentNode = {
     id: 'outerFrame',
@@ -118,7 +122,8 @@ function buildWindowOuterFrame(width: number, height: number, config: any): Comp
     id: 'frame_head',
     name: 'Head',
     type: 'frame',
-    materialId: 'timber',
+    role: 'rail',
+    materialId: frameMaterialId,
     geometry: {
       type: 'box',
       dimensions: [width, frameWidth, frameDepth],
@@ -132,7 +137,8 @@ function buildWindowOuterFrame(width: number, height: number, config: any): Comp
     id: 'frame_sill',
     name: 'Sill',
     type: 'frame',
-    materialId: 'timber',
+    role: 'rail',
+    materialId: frameMaterialId,
     geometry: {
       type: 'box',
       dimensions: [width, frameWidth, frameDepth],
@@ -147,7 +153,8 @@ function buildWindowOuterFrame(width: number, height: number, config: any): Comp
     id: 'frame_leftJamb',
     name: 'Left Jamb',
     type: 'frame',
-    materialId: 'timber',
+    role: 'stile',
+    materialId: frameMaterialId,
     geometry: {
       type: 'box',
       dimensions: [frameWidth, jambHeight, frameDepth],
@@ -161,7 +168,8 @@ function buildWindowOuterFrame(width: number, height: number, config: any): Comp
     id: 'frame_rightJamb',
     name: 'Right Jamb',
     type: 'frame',
-    materialId: 'timber',
+    role: 'stile',
+    materialId: frameMaterialId,
     geometry: {
       type: 'box',
       dimensions: [frameWidth, jambHeight, frameDepth],
@@ -237,6 +245,8 @@ function buildSingleSash(
   position: [number, number, number]
 ): ComponentNode {
   const { sashStileWidth, sashRailHeight, sashDepth, glazingThickness, glazingGap, beadWidth } = config;
+  const frameMaterialId = (config.materialRoleMap?.FRAME_TIMBER) || 'timber';
+  const glassMaterialId = (config.materialRoleMap?.GLASS) || 'glass';
   
   const sash: ComponentNode = {
     id,
@@ -260,7 +270,8 @@ function buildSingleSash(
     id: `${id}_topRail`,
     name: 'Top Rail',
     type: 'frame',
-    materialId: 'timber',
+    role: 'rail',
+    materialId: frameMaterialId,
     geometry: {
       type: 'box',
       dimensions: [width, sashRailHeight, sashDepth],
@@ -274,7 +285,8 @@ function buildSingleSash(
     id: `${id}_bottomRail`,
     name: 'Bottom Rail',
     type: 'frame',
-    materialId: 'timber',
+    role: 'rail',
+    materialId: frameMaterialId,
     geometry: {
       type: 'box',
       dimensions: [width, sashRailHeight, sashDepth],
@@ -289,7 +301,8 @@ function buildSingleSash(
     id: `${id}_leftStile`,
     name: 'Left Stile',
     type: 'frame',
-    materialId: 'timber',
+    role: 'stile',
+    materialId: frameMaterialId,
     geometry: {
       type: 'box',
       dimensions: [sashStileWidth, stileHeight, sashDepth],
@@ -303,7 +316,8 @@ function buildSingleSash(
     id: `${id}_rightStile`,
     name: 'Right Stile',
     type: 'frame',
-    materialId: 'timber',
+    role: 'stile',
+    materialId: frameMaterialId,
     geometry: {
       type: 'box',
       dimensions: [sashStileWidth, stileHeight, sashDepth],
@@ -331,7 +345,8 @@ function buildSingleSash(
     id: `${id}_glass`,
     name: 'Glass Unit',
     type: 'glazing',
-    materialId: 'glass',
+    role: 'glass',
+    materialId: glassMaterialId,
     geometry: {
       type: 'box',
       dimensions: [glazingWidth, glazingHeight, glazingThickness],
@@ -353,7 +368,8 @@ function buildSingleSash(
       id: beadId,
       name: 'Bead',
       type: 'glazing',
-      materialId: 'timber',
+      role: 'rail',
+      materialId: frameMaterialId,
       geometry: {
         type: 'box',
         dimensions: dims as [number, number, number],
@@ -510,6 +526,39 @@ function buildEditableAttributes(
   // Layout attributes
   attrs['product'] = [
     {
+      key: 'width',
+      label: 'Overall Width',
+      type: 'number',
+      value: params.dimensions.width,
+      unit: 'mm',
+      min: 400,
+      max: 4000,
+      step: 1,
+      helpText: 'Window overall width',
+    },
+    {
+      key: 'height',
+      label: 'Overall Height',
+      type: 'number',
+      value: params.dimensions.height,
+      unit: 'mm',
+      min: 400,
+      max: 3000,
+      step: 1,
+      helpText: 'Window overall height',
+    },
+    {
+      key: 'depth',
+      label: 'Frame Depth',
+      type: 'number',
+      value: params.dimensions.depth,
+      unit: 'mm',
+      min: 60,
+      max: 200,
+      step: 1,
+      helpText: 'Overall frame depth (syncs frameDepth)',
+    },
+    {
       key: 'mullions',
       label: 'Mullions',
       type: 'number',
@@ -566,6 +615,27 @@ function buildEditableAttributes(
 export function applyWindowEdit(params: ProductParams, edit: ComponentEdit): ProductParams {
   const updated = { ...params };
   
+  // Handle global dimension edits when editing the root product
+  if (edit.componentId === 'product') {
+    const nextWidth = typeof edit.changes.width === 'number' ? Math.round(edit.changes.width) : undefined;
+    const nextHeight = typeof edit.changes.height === 'number' ? Math.round(edit.changes.height) : undefined;
+    const nextDepth = typeof edit.changes.depth === 'number' ? Math.round(edit.changes.depth) : undefined;
+
+    updated.dimensions = {
+      width: nextWidth ?? updated.dimensions.width,
+      height: nextHeight ?? updated.dimensions.height,
+      depth: nextDepth ?? updated.dimensions.depth,
+    };
+
+    // Sync construction.frameDepth with overall depth
+    if (typeof nextDepth === 'number') {
+      updated.construction = {
+        ...updated.construction,
+        frameDepth: nextDepth,
+      } as any;
+    }
+  }
+
   // Handle layout changes specially
   if (edit.changes.mullions !== undefined || edit.changes.transoms !== undefined) {
     if (!updated.construction.layout) {
@@ -581,7 +651,7 @@ export function applyWindowEdit(params: ProductParams, edit: ComponentEdit): Pro
   
   // Update other construction values
   Object.keys(edit.changes).forEach(key => {
-    if (key !== 'mullions' && key !== 'transoms') {
+    if (key !== 'mullions' && key !== 'transoms' && key !== 'width' && key !== 'height' && key !== 'depth') {
       if (updated.construction) {
         updated.construction[key] = edit.changes[key];
       }

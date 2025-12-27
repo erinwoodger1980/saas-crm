@@ -7,6 +7,15 @@
 import { ComponentNode, MaterialDefinition, SceneConfig } from './scene-config';
 
 /**
+ * New Flow Spec (TEMPLATE vs INSTANCE)
+ * - ConfiguratorMode dictates persistence target and initialization source
+ * - TEMPLATE edits save to ProductType.templateConfig
+ * - INSTANCE edits save to QuoteLine configuredProductParams / sceneState
+ * - Both modes use the same builder/render pipeline (ProductParams -> BuildResult -> SceneConfig)
+ */
+export type ConfiguratorMode = 'TEMPLATE' | 'INSTANCE';
+
+/**
  * Curve type definitions for arches, ellipses, beziers, etc.
  */
 export type CurveType = 'arc' | 'ellipse' | 'bezier' | 'polyline' | 'spline';
@@ -266,6 +275,21 @@ export interface ProductParams {
     [key: string]: any;
   };
   
+  /**
+   * Template-level material role mapping
+   * Maps semantic roles to material ids (e.g., FRAME_TIMBER -> 'oak')
+   */
+  materialRoleMap?: Partial<Record<
+    'FRAME_TIMBER' | 'PANEL_TIMBER' | 'GLASS' | 'HARDWARE_METAL' | 'SEAL_RUBBER' | 'PAINT',
+    string
+  >>;
+
+  /**
+   * Instance-level material overrides
+   * Maps component ids or roles to material ids
+   */
+  materialOverrides?: Record<string, string>;
+  
   /** Curve definitions (arches, fanlights, glazing bars) */
   curves?: CurveDefinition[];
 
@@ -396,7 +420,7 @@ export function extractParamsFromLineItem(
   // Extract dimensions from lineStandard or meta
   const width = line.lineStandard?.widthMm || line.meta?.widthMm || 914;
   const height = line.lineStandard?.heightMm || line.meta?.heightMm || 2032;
-  const depth = line.meta?.depthMm || line.meta?.thicknessMm || 45;
+  const depth = line.lineStandard?.thicknessMm || line.meta?.depthMm || line.meta?.thicknessMm || 45;
   
   // Extract construction details from configuredProduct or lineStandard
   const construction = {

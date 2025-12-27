@@ -6,10 +6,12 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, Sparkles, Image as ImageIcon, Trash2, Plus, Box, Package } from 'lucide-react';
+import { Loader2, Sparkles, Image as ImageIcon, Trash2, Plus, Box, Package, AlertCircle } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { ProductConfigurator3D } from '@/components/configurator/ProductConfigurator3D';
 import { createDefaultSceneConfig } from '@/lib/scene/config-validation';
+import { ProductPlanV1 } from '@/types/product-plan';
+import { compileProductPlanToProductParams } from '@/lib/scene/plan-compiler';
 
 interface ProductTypeOption {
   id: string;
@@ -55,6 +57,10 @@ export function ProductTypeEditModal({
   const [aiImagePreview, setAiImagePreview] = useState<string | null>(null);
   const [isEstimating, setIsEstimating] = useState(false);
   
+  // ProductPlan state (new)
+  const [productPlan, setProductPlan] = useState<ProductPlanV1 | null>(null);
+  const [planVariables, setPlanVariables] = useState<Record<string, number>>({});
+  
   // 3D Configurator state
   const [sceneConfig, setSceneConfig] = useState<any>(
     createDefaultSceneConfig(
@@ -86,32 +92,24 @@ export function ProductTypeEditModal({
 
     setIsEstimating(true);
     try {
-      // Get tenant ID from settings
-      const settingsRes = await fetch('/api/tenant/settings', { credentials: 'include' });
-      if (!settingsRes.ok) {
-        throw new Error('Failed to get tenant settings');
-      }
-      const settingsData = await settingsRes.json();
-      const tenantId = settingsData.tenantId;
-
-      if (!tenantId) {
-        throw new Error('No tenant ID found');
-      }
-
-      const response = await fetch('/api/ai/estimate-components', {
+      // NEW: Call generate-product-plan instead of estimate-components
+      const response = await fetch('/api/ai/generate-product-plan', {
         method: 'POST',
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          tenantId,
           description: aiDescription || 'Product from image',
-          productType: initialData?.categoryId || 'doors',
-          existingDimensions: {
+          image: aiImagePreview || undefined,
+          existingProductType: {
+            category: initialData?.categoryId || 'door',
+            type: initialData?.type || 'timber'
+          },
+          existingDims: {
             widthMm: defaultDimensions.widthMm,
             heightMm: defaultDimensions.heightMm,
-            thicknessMm: 45,
+            depthMm: 45,
           },
         }),
       });
@@ -122,22 +120,27 @@ export function ProductTypeEditModal({
         throw new Error(`API error: ${response.statusText}`);
       }
 
-      const result = await response.json();
-      console.log('AI estimation result:', result);
+      const plan = (await response.json()) as ProductPlanV1;
+      console.log('[AI2SCENE] Generated ProductPlan:', plan);
       
-      // The new API returns suggestedParamsPatch and suggestedAddedParts
-      // For now, just show success and switch to the 3D tab
-      // The user can manually configure the product
-      setActiveTab('components');
+      setProductPlan(plan);
+      // Initialize plan variables
+      const vars: Record<string, number> = {};
+      for (const [key, variable] of Object.entries(plan.variables)) {
+        vars[key] = variable.defaultValue;
+      }
+      setPlanVariables(vars);
+      
+      setActiveTab('plan');
       toast({
-        title: 'AI Analysis Complete',
-        description: result.rationale || 'AI has analyzed your product. You can now configure it in the 3D editor.',
+        title: 'ProductPlan Generated',
+        description: `Detected: ${plan.detected.type} (${plan.detected.option || 'auto'}) - ${plan.components.length} components`,
       });
     } catch (error: any) {
       console.error('AI estimation error:', error);
       toast({
-        title: 'Estimation failed',
-        description: error.message || 'Could not estimate components',
+        title: 'Generation failed',
+        description: error.message || 'Could not generate product plan',
         variant: 'destructive',
       });
     } finally {
@@ -190,9 +193,10 @@ export function ProductTypeEditModal({
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="generate">Generate with AI</TabsTrigger>
+            <TabsTrigger value="plan">Component Plan</TabsTrigger>
             <TabsTrigger value="components">Components</TabsTrigger>
           </TabsList>
 
@@ -305,7 +309,146 @@ export function ProductTypeEditModal({
             </div>
           </TabsContent>
 
-          {/* 3D Components Tab - Now uses catalog components */}
+          {/* ProductPlan Tab - Component Schedule & Configuration */}
+          <TabsContent value="plan" className="flex-1 overflow-y-auto space-y-4">
+            {!productPlan ? (
+              <div className="flex items-center justify-center h-full text-muted-foreground">
+                <p>Generate a plan using AI first</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Detection summary */}
+                <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs text-gray-600">Detected Category</p>
+                      <p className="font-semibold text-sm">{productPlan.detected.category}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-600">Type</p>
+                      <p className="font-semibold text-sm">{productPlan.detected.type}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-600">Confidence</p>
+                      <p className="font-semibold text-sm">{(productPlan.detected.confidence * 100).toFixed(0)}%</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-600">Components</p>
+                      <p className="font-semibold text-sm">{productPlan.components.length} pieces</p>
+                    </div>
+                  </div>
+                  <p className="text-xs mt-3 text-gray-700">{productPlan.rationale}</p>
+                </div>
+
+                {/* Variables editor */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold flex items-center gap-2">
+                    <Box className="h-4 w-4" />
+                    Parametric Variables
+                  </h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    {Object.entries(productPlan.variables).map(([key, variable]) => (
+                      <div key={key} className="space-y-1">
+                        <label className="text-xs font-medium">{key} ({variable.unit})</label>
+                        <Input
+                          type="number"
+                          value={planVariables[key] || variable.defaultValue}
+                          onChange={(e) => {
+                            setPlanVariables({
+                              ...planVariables,
+                              [key]: parseFloat(e.target.value) || variable.defaultValue
+                            });
+                          }}
+                        />
+                        {variable.description && (
+                          <p className="text-xs text-muted-foreground">{variable.description}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Component Schedule */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold flex items-center gap-2">
+                    <Package className="h-4 w-4" />
+                    Component Schedule ({productPlan.components.length} items)
+                  </h4>
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-slate-100">
+                        <tr>
+                          <th className="px-3 py-2 text-left">ID</th>
+                          <th className="px-3 py-2 text-left">Role</th>
+                          <th className="px-3 py-2 text-left">Geometry</th>
+                          <th className="px-3 py-2 text-left">Material Role</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {productPlan.components.map((comp) => (
+                          <tr key={comp.id} className="hover:bg-slate-50">
+                            <td className="px-3 py-2 font-mono text-xs">{comp.id}</td>
+                            <td className="px-3 py-2 text-blue-700">{comp.role}</td>
+                            <td className="px-3 py-2 text-amber-700">{comp.geometry.type}</td>
+                            <td className="px-3 py-2 text-green-700">{comp.materialRole}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Profile slots */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold">Profile Slots</h4>
+                  <div className="space-y-2">
+                    {Object.entries(productPlan.profileSlots).map(([slot, info]) => (
+                      <div key={slot} className="p-3 border rounded-lg bg-slate-50 space-y-2">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="text-xs font-mono font-semibold text-slate-700">{slot}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {info.source === 'uploaded' ? '✓ Uploaded' : '○ Estimated: ' + info.profileHint}
+                            </p>
+                          </div>
+                        </div>
+                        {info.source === 'estimated' && (
+                          <div className="text-xs text-orange-700 flex items-start gap-2 p-2 bg-orange-50 rounded">
+                            <AlertCircle className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                            <span>Paste SVG profile text below to replace estimated geometry</span>
+                          </div>
+                        )}
+                        <Textarea
+                          placeholder="Paste SVG path data here..."
+                          className="text-xs font-mono h-20"
+                          defaultValue={info.uploadedSvg || ''}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <Button
+                  onClick={() => {
+                    if (productPlan) {
+                      const params = compileProductPlanToProductParams(productPlan, {
+                        source: 'estimate'
+                      });
+                      console.log('[AI2SCENE] Compiled params:', params);
+                      setActiveTab('components');
+                      toast({
+                        title: 'Plan compiled',
+                        description: 'Ready to proceed with component configuration'
+                      });
+                    }
+                  }}
+                  className="w-full bg-green-600 hover:bg-green-700"
+                >
+                  Compile Plan & Continue
+                </Button>
+              </div>
+            )}
+          </TabsContent>
           <TabsContent value="components" className="flex-1 flex flex-col min-h-0 space-y-4">
             <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
               <p className="text-sm text-blue-900">

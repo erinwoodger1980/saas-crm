@@ -17,6 +17,7 @@ interface AutoFrameProps {
   controls?: any;
   heroMode?: boolean;
   onFrameComplete?: (success: boolean) => void;
+  frameTrigger?: number;
 }
 
 /**
@@ -29,21 +30,25 @@ export function AutoFrame({
   controls,
   heroMode = false,
   onFrameComplete,
+  frameTrigger,
 }: AutoFrameProps) {
   const { camera, scene } = useThree();
   const didAutoFrameRef = useRef(false);
   const componentCountRef = useRef(0);
+  const lastTriggerRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     // Guard: only run when component structure changes significantly
     const componentCount = components?.length || 0;
     const hasComponentStructureChanged = componentCount !== componentCountRef.current;
+    const hasTriggerChanged = frameTrigger !== lastTriggerRef.current && frameTrigger !== undefined;
     
-    if (!hasComponentStructureChanged || didAutoFrameRef.current) {
+    if (!(hasComponentStructureChanged || hasTriggerChanged) || didAutoFrameRef.current) {
       return;
     }
 
     componentCountRef.current = componentCount;
+    lastTriggerRef.current = frameTrigger;
 
     // Compute bounding box of all meshes in the scene
     const box = new THREE.Box3();
@@ -75,7 +80,7 @@ export function AutoFrame({
       console.error('[AutoFrame] Error framing camera:', error);
       onFrameComplete?.(false);
     }
-  }, [components, camera, scene, controls, heroMode, onFrameComplete]);
+  }, [components, camera, scene, controls, heroMode, onFrameComplete, frameTrigger]);
 
   return null; // This is a non-rendering component
 }

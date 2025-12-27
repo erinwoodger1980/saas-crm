@@ -157,7 +157,7 @@ export function buildDoorComponentTree(params: ProductParams): BuildResult {
   };
   
   // Build frame
-  const frame = buildDoorFrame(width, height, config, railPositions, profileLookup, construction?.profileIds);
+  const frame = buildDoorFrame(width, height, config, railPositions, profileLookup, construction?.profileIds, params.materialRoleMap, params.materialOverrides);
   product.children!.push(frame);
   
   // Check if door has curved head (arch support)
@@ -236,9 +236,12 @@ function buildDoorFrame(
   config: any,
   railPositions: RailPositions,
   profileLookup: Record<string, ProfileDefinition>,
-  profileIds?: Record<string, string>
+  profileIds?: Record<string, string>,
+  materialRoleMap?: ProductParams['materialRoleMap'],
+  materialOverrides?: Record<string, string>
 ): ComponentNode {
   const { stileWidth, topRail, bottomRail, thickness } = config;
+  const frameMaterialId = materialRoleMap?.FRAME_TIMBER || 'timber';
   
   const frame: ComponentNode = {
     id: 'frame',
@@ -256,7 +259,8 @@ function buildDoorFrame(
     id: 'frame_leftStile',
     name: 'Left Stile',
     type: 'frame',
-    materialId: 'timber',
+    role: 'stile',
+    materialId: materialOverrides?.frame_leftStile || frameMaterialId,
     geometry: buildProfileGeometry({
       kind: 'vertical',
       width: stileWidth,
@@ -273,7 +277,8 @@ function buildDoorFrame(
     id: 'frame_rightStile',
     name: 'Right Stile',
     type: 'frame',
-    materialId: 'timber',
+    role: 'stile',
+    materialId: materialOverrides?.frame_rightStile || frameMaterialId,
     geometry: buildProfileGeometry({
       kind: 'vertical',
       width: stileWidth,
@@ -291,7 +296,8 @@ function buildDoorFrame(
     id: 'frame_topRail',
     name: 'Top Rail',
     type: 'frame',
-    materialId: 'timber',
+    role: 'rail',
+    materialId: materialOverrides?.frame_topRail || frameMaterialId,
     geometry: buildProfileGeometry({
       kind: 'horizontal',
       width: topRailWidth,
@@ -308,7 +314,8 @@ function buildDoorFrame(
     id: 'frame_bottomRail',
     name: 'Bottom Rail',
     type: 'frame',
-    materialId: 'timber',
+    role: 'rail',
+    materialId: materialOverrides?.frame_bottomRail || frameMaterialId,
     geometry: buildProfileGeometry({
       kind: 'horizontal',
       width: topRailWidth,
@@ -427,7 +434,8 @@ function buildPanelLayout(
         id: `${panelId}_timber`,
         name: 'Timber Panel',
         type: 'panel',
-        materialId: 'timber',
+        role: 'panel',
+        materialId: (materialOverrides?.[`${panelId}_timber`]) || (params.materialRoleMap?.PANEL_TIMBER || 'timber'),
         geometry: {
           type: 'box',
           dimensions: [actualPanelWidth, actualPanelHeight, panelThickness],
@@ -441,7 +449,8 @@ function buildPanelLayout(
         id: `${panelId}_moulding_front`,
         name: 'Moulding Front',
         type: 'panel',
-        materialId: 'timber',
+        role: 'panel',
+        materialId: materialOverrides?.[`${panelId}_moulding_front`] || (params.materialRoleMap?.PANEL_TIMBER || 'timber'),
         geometry: {
           type: 'box',
           dimensions: [actualPanelWidth + mouldingWidth, actualPanelHeight + mouldingWidth, mouldingProjection],
@@ -454,7 +463,8 @@ function buildPanelLayout(
         id: `${panelId}_moulding_back`,
         name: 'Moulding Back',
         type: 'panel',
-        materialId: 'timber',
+        role: 'panel',
+        materialId: materialOverrides?.[`${panelId}_moulding_back`] || (params.materialRoleMap?.PANEL_TIMBER || 'timber'),
         geometry: {
           type: 'box',
           dimensions: [actualPanelWidth + mouldingWidth, actualPanelHeight + mouldingWidth, mouldingProjection],
@@ -478,7 +488,8 @@ function buildPanelLayout(
         id: railId,
         name: `Mid Rail ${i + 1}`,
         type: 'frame',
-        materialId: 'timber',
+        role: 'rail',
+        materialId: materialOverrides?.[railId] || frameMaterialId,
         geometry: buildProfileGeometry({
           kind: 'horizontal',
           width: panelAreaWidth,
@@ -544,7 +555,8 @@ function buildGlazedTopLayout(
     id: 'glass_top',
     name: 'Glass Unit',
     type: 'glazing',
-    materialId: 'glass',
+    role: 'glass',
+    materialId: materialOverrides?.glass_top || params.materialRoleMap?.GLASS || 'glass',
     geometry: {
       type: 'box',
       dimensions: [areaWidth - 2 * beadWidth, glazedHeight - 2 * beadWidth, glazingThickness],
@@ -565,7 +577,8 @@ function buildGlazedTopLayout(
       id,
       name: 'Bead',
       type: 'glazing',
-      materialId: 'timber',
+      role: 'rail',
+      materialId: materialOverrides?.[id] || frameMaterialId,
       geometry: {
         type: 'box',
         dimensions: dims as [number, number, number],
@@ -698,6 +711,39 @@ function buildEditableAttributes(
   // Material attributes
   attrs['product'] = [
     {
+      key: 'width',
+      label: 'Overall Width',
+      type: 'number',
+      value: params.dimensions.width,
+      unit: 'mm',
+      min: 500,
+      max: 3000,
+      step: 1,
+      helpText: 'Door leaf width in millimetres',
+    },
+    {
+      key: 'height',
+      label: 'Overall Height',
+      type: 'number',
+      value: params.dimensions.height,
+      unit: 'mm',
+      min: 1500,
+      max: 3000,
+      step: 1,
+      helpText: 'Door leaf height in millimetres',
+    },
+    {
+      key: 'depth',
+      label: 'Thickness',
+      type: 'number',
+      value: params.dimensions.depth,
+      unit: 'mm',
+      min: 35,
+      max: 100,
+      step: 1,
+      helpText: 'Door leaf thickness (also sets construction thickness)',
+    },
+    {
       key: 'timber',
       label: 'Timber Species',
       type: 'select',
@@ -775,6 +821,27 @@ export function applyDoorEdit(params: ProductParams, edit: ComponentEdit): Produ
     },
   };
 
+  // Handle global dimension edits when editing the root product
+  if (edit.componentId === 'product') {
+    const nextWidth = typeof edit.changes.width === 'number' ? Math.round(edit.changes.width) : undefined;
+    const nextHeight = typeof edit.changes.height === 'number' ? Math.round(edit.changes.height) : undefined;
+    const nextDepth = typeof edit.changes.depth === 'number' ? Math.round(edit.changes.depth) : undefined;
+
+    updated.dimensions = {
+      width: nextWidth ?? updated.dimensions.width,
+      height: nextHeight ?? updated.dimensions.height,
+      depth: nextDepth ?? updated.dimensions.depth,
+    };
+
+    // Keep construction thickness in sync with depth if provided
+    if (typeof nextDepth === 'number') {
+      updated.construction = {
+        ...updated.construction,
+        thickness: nextDepth,
+      };
+    }
+  }
+
   // Handle positional edits for rails
   if (typeof edit.changes.positionY === 'number') {
     const snapped = Math.round(edit.changes.positionY);
@@ -793,6 +860,7 @@ export function applyDoorEdit(params: ProductParams, edit: ComponentEdit): Produ
   // Update construction values (non-positional)
   Object.keys(edit.changes).forEach(key => {
     if (key === 'positionY') return;
+    if (key === 'width' || key === 'height' || key === 'depth') return; // handled above when componentId === 'product'
     if (updated.construction) {
       updated.construction[key] = edit.changes[key];
     }
