@@ -8,6 +8,7 @@ import { apiFetch } from "@/lib/api";
 import { Upload, Trash2, Plus, Wand2, ChevronRight, ChevronDown, Loader2, Box, Sparkles, Image as ImageIcon } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { ProductConfigurator3D } from "@/components/configurator/ProductConfigurator3D";
+import { ProductTypeEditModal } from "./ProductTypeEditModal";
 import { normalizeSceneConfig, createDefaultSceneConfig } from "@/lib/scene/config-validation";
 import { getAssignedComponents, getAvailableComponents, assignComponent, deleteAssignment, updateAssignment } from "@/lib/api/product-type-components";
 import { ComponentPickerDialog } from "./ComponentPickerDialog";
@@ -203,7 +204,17 @@ export default function ProductTypesSection() {
   const [svgPreview, setSvgPreview] = useState<string | null>(null);
   const [previewGenerating, setPreviewGenerating] = useState(false);
   
-  // Canonical dialog state - prevents re-render loop
+  // New unified edit modal state
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editModalData, setEditModalData] = useState<{
+    categoryId: string;
+    typeIdx: number;
+    optionId: string;
+    label: string;
+    type: string;
+  } | null>(null);
+  
+  // Legacy states - keeping for backward compatibility during transition
   const [isConfiguratorOpen, setIsConfiguratorOpen] = useState(false);
   const [mount3D, setMount3D] = useState(false); // Canvas only mounts when true
   const [capturedConfig, setCapturedConfig] = useState<any>(null);
@@ -1095,43 +1106,21 @@ export default function ProductTypesSection() {
                                   </Button>
                                   <Button
                                     size="sm"
-                                    variant="outline"
+                                    variant="default"
                                     onClick={() => {
-                                      setAiEstimateDialog({
+                                      setEditModalData({
                                         categoryId: category.id,
                                         typeIdx,
                                         optionId: option.id,
                                         label: option.label,
                                         type: type.type,
                                       });
-                                      setAiDescription("");
-                                      setAiImage(null);
-                                      setAiImagePreview(null);
+                                      setEditModalOpen(true);
                                     }}
-                                    className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200 hover:from-purple-100 hover:to-blue-100"
-                                  >
-                                    <Sparkles className="h-3 w-3 mr-1" />
-                                    AI Estimate
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => {
-                                      // Set dialog info and open in one transaction
-                                      const dialogInfo = {
-                                        categoryId: category.id,
-                                        typeIdx,
-                                        optionId: option.id,
-                                        label: option.label,
-                                        type: type.type,
-                                      };
-                                      setCapturedDialogInfo(dialogInfo);
-                                      setConfiguratorKey(`${category.id}-${type.type}-${option.id}`);
-                                      setIsConfiguratorOpen(true);
-                                    }}
+                                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
                                   >
                                     <Box className="h-3 w-3 mr-1" />
-                                    {option.sceneConfig ? 'Edit 3D Components' : 'Build 3D Components'}
+                                    {option.sceneConfig ? 'Configure Product' : 'Create Product'}
                                   </Button>
                                 </div>
                               </div>
@@ -1536,6 +1525,54 @@ export default function ProductTypesSection() {
         onSelect={handleComponentSelected}
         productTypeId={componentPickerOptionId}
       />
+
+      {/* New unified product type edit modal */}
+      {editModalData && (
+        <ProductTypeEditModal
+          isOpen={editModalOpen}
+          onClose={() => {
+            setEditModalOpen(false);
+            setEditModalData(null);
+          }}
+          onSave={async (configData) => {
+            // Update the products state with the new configuration
+            setProducts((prev) =>
+              prev.map((cat) =>
+                cat.id === editModalData.categoryId
+                  ? {
+                      ...cat,
+                      types: cat.types.map((t, idx) =>
+                        idx === editModalData.typeIdx
+                          ? {
+                              ...t,
+                              options: t.options.map((opt) =>
+                                opt.id === editModalData.optionId
+                                  ? { 
+                                      ...opt, 
+                                      label: configData.label,
+                                      sceneConfig: configData.sceneConfig 
+                                    }
+                                  : opt
+                              ),
+                            }
+                          : t
+                      ),
+                    }
+                  : cat
+              )
+            );
+
+            // TODO: Save to API/database
+            console.log('Product type configuration saved:', configData);
+          }}
+          initialData={editModalData}
+          defaultDimensions={getDefaultDimensions(
+            editModalData.categoryId,
+            editModalData.type,
+            editModalData.optionId
+          )}
+        />
+      )}
     </div>
   );
 }
