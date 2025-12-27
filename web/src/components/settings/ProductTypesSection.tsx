@@ -758,22 +758,54 @@ export default function ProductTypesSection() {
         console.log('[AI Estimation] Image attached, size:', aiImage.size);
       }
 
-      console.log('[AI Estimation] Sending request to /ai/estimate-components...');
+      console.log('[AI Estimation] Sending request to /api/ai/estimate-components...');
 
-      const result = await apiFetch<{
-        components: any[];
-        reasoning: string;
-        confidence: number;
-        suggestions: string[];
-      }>('/ai/estimate-components', {
+      // Use parametric API response format
+      const result = await fetch('/api/ai/estimate-components', {
         method: 'POST',
-        body: formData,
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tenantId: 'current', // TODO: get from session
+          description: aiDescription || 'Product from image',
+          productType: {
+            category: aiEstimateDialog.categoryId,
+            type: aiEstimateDialog.type,
+            option: aiEstimateDialog.optionId,
+          },
+          existingDimensions: {
+            widthMm: dims.widthMm,
+            heightMm: dims.heightMm,
+            thicknessMm: aiEstimateDialog.categoryId === 'doors' ? 45 : 100,
+          },
+        }),
       });
 
-      console.log('[AI Estimation] Result:', result);
+      if (!result.ok) {
+        const errorText = await result.text();
+        console.error('[AI Estimation] API error:', errorText);
+        throw new Error(`API error: ${result.statusText}`);
+      }
 
-      // Convert AI components to scene config format
-      const sceneConfig = convertAIComponentsToSceneConfig(result.components, dims);
+      const aiData = await result.json();
+      console.log('[AI Estimation] Result:', {
+        hasParamsPatch: !!aiData.suggestedParamsPatch,
+        addedPartsCount: aiData.suggestedAddedParts?.length || 0,
+        rationale: aiData.rationale,
+      });
+
+      // Convert AI blueprint to complete SceneConfig using parametric builders
+      const sceneConfig = blueprintToSceneConfig(
+        aiData,
+        {
+          category: aiEstimateDialog.categoryId,
+          type: aiEstimateDialog.type,
+          option: aiEstimateDialog.optionId,
+        },
+        dims
+      );
 
       // Update the product option with the estimated scene config
       setProducts((prev) =>
@@ -798,9 +830,10 @@ export default function ProductTypesSection() {
         )
       );
 
+      const componentCount = sceneConfig?.components?.length || 0;
       toast({
-        title: "Components estimated!",
-        description: `${result.components.length} components detected. Confidence: ${Math.round(result.confidence * 100)}%`,
+        title: "Product generated!",
+        description: `Created ${componentCount} components from AI estimation`,
       });
 
       // Close AI dialog and open configurator to refine and save
@@ -838,39 +871,92 @@ export default function ProductTypesSection() {
     }
   };
 
-  const convertAIComponentsToSceneConfig = (components: any[], dimensions: { widthMm: number; heightMm: number }) => {
-    // This is a simplified conversion - the actual scene config is more complex
-    // The ProductConfigurator3D will handle the full conversion
-    return {
-      version: '1.0.0',
-      updatedAt: new Date().toISOString(),
+  /**
+   * Convert AI estimation result to complete SceneConfig using parametric builders
+   * This is the canonical "blueprint → scene" function for Settings
+   */
+  const blueprintToSceneConfig = (
+    aiResult: any,
+    productType: { category: string; type: string; option: string },
+    dimensions: { widthMm: number; heightMm: number }
+  ): any => {
+    const { suggestedParamsPatch, suggestedAddedParts } = aiResult;
+    
+    console.log('[blueprintToSceneConfig] Input:', {
+      productType,
+      dimensions,
+      suggestedParamsPatch,
+      addedPartsCount: suggestedAddedParts?.length || 0,
+    });
+
+    // Import builder functions - these are already in the codebase
+    const { initializeSceneFromParams } = require('@/lib/scene/builder-registry');
+    const { getBuilder } = require('@/lib/scene/builder-registry');
+
+    // Get builder for this product category
+    const builder = getBuilder(productType.category);
+    if (!builder) {
+      console.error(`[blueprintToSceneConfig] No builder for category: ${productType.category}`);
+      return createDefaultSceneConfig(productType.category, dimensions.widthMm, dimensions.heightMm, 45);
+    }
+
+    // Build ProductParams from AI suggestions + defaults
+    const baseParams = builder.getDefaults(productType, {
+      width: dimensions.widthMm,
+      height: dimensions.heightMm,
+      depth: suggestedParamsPatch?.construction?.thickness || (productType.category === 'doors' ? 45 : 100),
+    });
+
+    // Merge AI suggestions into base params
+    const params = {
+      ...baseParams,
+      ...suggestedParamsPatch,
+      productType,
       dimensions: {
         width: dimensions.widthMm,
         height: dimensions.heightMm,
-        depth: 45,
+        depth: suggestedParamsPatch?.construction?.thickness || baseParams.dimensions.depth,
       },
-      components: components.map(c => ({
-        id: c.id,
-        type: 'Box',
-        geometry: c.geometry,
-        transform: {
-          position: [c.position.x, c.position.y, c.position.z],
-          rotation: [0, 0, 0],
-          scale: [1, 1, 1],
-        },
-        material: { materialId: c.material },
-        metadata: {
-          label: c.label,
-          componentType: c.type,
-          confidence: c.confidence,
-        },
-      })),
-      materials: {},
-      camera: {},
-      lighting: {},
-      visibility: {},
-      ui: {},
+      construction: {
+        ...baseParams.construction,
+        ...suggestedParamsPatch?.construction,
+      },
+      addedParts: suggestedAddedParts || [],
     };
+
+    console.log('[blueprintToSceneConfig] Built ProductParams:', {
+      category: params.productType.category,
+      type: params.productType.type,
+      option: params.productType.option,
+      dims: params.dimensions,
+      timber: params.construction.timber,
+      finish: params.construction.finish,
+      addedPartsCount: params.addedParts.length,
+    });
+
+    // Use existing builder to create complete SceneConfig
+    const sceneConfig = initializeSceneFromParams(
+      params,
+      'settings',
+      'productTemplate',
+      `${productType.category}-${productType.type}-${productType.option}`
+    );
+
+    if (!sceneConfig) {
+      console.error('[blueprintToSceneConfig] Failed to build scene from params');
+      return createDefaultSceneConfig(productType.category, dimensions.widthMm, dimensions.heightMm, 45);
+    }
+
+    console.log('[blueprintToSceneConfig] Output SceneConfig:', {
+      version: sceneConfig.version,
+      componentCount: sceneConfig.components.length,
+      materialCount: sceneConfig.materials.length,
+      hasLighting: !!sceneConfig.lighting,
+      hasCamera: !!sceneConfig.camera,
+      customDataExists: !!sceneConfig.customData,
+    });
+
+    return sceneConfig;
   };
 
   const toggleCategory = (categoryId: string) => {
