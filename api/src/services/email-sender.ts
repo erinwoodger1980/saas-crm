@@ -2,12 +2,19 @@
 import { prisma } from "../prisma";
 import { getGmailTokenForUser, getMs365TokenForUser, sendViaUserGmail, sendViaUserMs365 } from "./user-email";
 
+interface EmailAttachment {
+  filename: string;
+  contentType: string;
+  contentBase64: string;
+}
+
 interface EmailOptions {
   to: string;
   subject: string;
   body: string;
   html?: string;
   fromName?: string;
+  attachments?: EmailAttachment[];
 }
 
 /**
@@ -32,6 +39,15 @@ async function getUserEmailProvider(userId: string): Promise<'gmail' | 'ms365' |
  * Sends an email using the user's connected email provider (Gmail or MS365)
  */
 export async function sendEmailViaUser(userId: string, options: EmailOptions): Promise<void> {
+  if (process.env.EMAIL_PROVIDER === "mock" || process.env.NODE_ENV === "test") {
+    console.log("[email-sender] Mock provider enabled, email not sent:", {
+      to: options.to,
+      subject: options.subject,
+      attachmentCount: options.attachments?.length || 0,
+    });
+    return;
+  }
+
   const provider = await getUserEmailProvider(userId);
 
   if (!provider) {
@@ -96,6 +112,7 @@ async function sendViaGmail(userId: string, options: EmailOptions): Promise<void
     subject: options.subject,
     body: options.body,
     html: options.html,
+    attachments: options.attachments,
   });
 
   await sendViaUserGmail(userId, rfc822);
@@ -129,6 +146,14 @@ async function sendViaMs365(userId: string, options: EmailOptions): Promise<void
           },
         },
       ],
+      attachments: Array.isArray(options.attachments)
+        ? options.attachments.map((att) => ({
+            "@odata.type": "#microsoft.graph.fileAttachment",
+            name: att.filename,
+            contentType: att.contentType,
+            contentBytes: att.contentBase64,
+          }))
+        : undefined,
       from: {
         emailAddress: {
           address: fromEmail,
@@ -151,11 +176,56 @@ function buildRFC822Email(options: {
   subject: string;
   body: string;
   html?: string;
+  attachments?: EmailAttachment[];
 }): string {
+  const attachments = Array.isArray(options.attachments) ? options.attachments : [];
+  const hasAttachments = attachments.length > 0;
+
+  if (hasAttachments) {
+    const mixedBoundary = `----=_JoineryAI_Mixed_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const altBoundary = `----=_JoineryAI_Alt_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+
+    const alternativePart = (
+      `--${mixedBoundary}\r\n` +
+      `Content-Type: multipart/alternative; boundary="${altBoundary}"\r\n\r\n` +
+      `--${altBoundary}\r\n` +
+      `Content-Type: text/plain; charset="UTF-8"\r\n` +
+      `Content-Transfer-Encoding: 7bit\r\n\r\n` +
+      `${options.body}\r\n\r\n` +
+      `--${altBoundary}\r\n` +
+      `Content-Type: text/html; charset="UTF-8"\r\n` +
+      `Content-Transfer-Encoding: 7bit\r\n\r\n` +
+      `${options.html || options.body}\r\n\r\n` +
+      `--${altBoundary}--\r\n`
+    );
+
+    const attachmentParts = attachments
+      .map((att) => {
+        const safeName = att.filename.replace(/[\r\n]/g, "");
+        return (
+          `--${mixedBoundary}\r\n` +
+          `Content-Type: ${att.contentType}; name="${safeName}"\r\n` +
+          `Content-Transfer-Encoding: base64\r\n` +
+          `Content-Disposition: attachment; filename="${safeName}"\r\n\r\n` +
+          `${att.contentBase64}\r\n`
+        );
+      })
+      .join("");
+
+    return (
+      `From: ${options.from}\r\n` +
+      `To: ${options.to}\r\n` +
+      `Subject: ${options.subject}\r\n` +
+      `MIME-Version: 1.0\r\n` +
+      `Content-Type: multipart/mixed; boundary="${mixedBoundary}"\r\n\r\n` +
+      `${alternativePart}` +
+      `${attachmentParts}` +
+      `--${mixedBoundary}--\r\n`
+    );
+  }
+
   if (options.html) {
-    // Multipart email with both plain text and HTML
     const boundary = `----=_Part_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    
     return (
       `From: ${options.from}\r\n` +
       `To: ${options.to}\r\n` +
@@ -172,18 +242,17 @@ function buildRFC822Email(options: {
       `${options.html}\r\n\r\n` +
       `--${boundary}--\r\n`
     );
-  } else {
-    // Plain text email
-    return (
-      `From: ${options.from}\r\n` +
-      `To: ${options.to}\r\n` +
-      `Subject: ${options.subject}\r\n` +
-      `MIME-Version: 1.0\r\n` +
-      `Content-Type: text/plain; charset="UTF-8"\r\n` +
-      `Content-Transfer-Encoding: 7bit\r\n\r\n` +
-      `${options.body}\r\n`
-    );
   }
+
+  return (
+    `From: ${options.from}\r\n` +
+    `To: ${options.to}\r\n` +
+    `Subject: ${options.subject}\r\n` +
+    `MIME-Version: 1.0\r\n` +
+    `Content-Type: text/plain; charset="UTF-8"\r\n` +
+    `Content-Transfer-Encoding: 7bit\r\n\r\n` +
+    `${options.body}\r\n`
+  );
 }
 
 /**

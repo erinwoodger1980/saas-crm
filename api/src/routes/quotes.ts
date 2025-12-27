@@ -9,6 +9,8 @@ import { Prisma, FileKind } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import { env } from "../env";
 import { logOrderFlow } from "../lib/order-flow-log";
+import { buildQuoteEmailPayload } from "../services/quote-email";
+import { recalculateQuoteTotals, validateQuoteForEmail, validateQuoteForPdf } from "../services/quote-totals";
 
 import { callMlWithSignedUrl, callMlWithUpload, normaliseMlPayload } from "../lib/ml";
 import { fallbackParseSupplierPdf } from "../lib/pdf/fallback";
@@ -94,6 +96,11 @@ async function maybeTriggerFallbackAlert(fallbackCount: number) {
 async function getTenantId(req: any): Promise<string> {
   const tenantId = req.auth?.tenantId as string | undefined;
   if (tenantId) return tenantId;
+
+  const headerTenantId = req.headers?.["x-tenant-id"];
+  if (typeof headerTenantId === "string" && headerTenantId.trim()) {
+    return headerTenantId.trim();
+  }
 
   const isDev = process.env.NODE_ENV !== "production";
   const allowDevFallback = process.env.ALLOW_DEV_TENANT_FALLBACK === "true";
@@ -984,6 +991,23 @@ router.post("/:id/lines/save-processed", requireAuth, async (req: any, res) => {
       const supplierUnit = Number(ln.unit_price ?? (ln.total != null ? Number(ln.total) / qty : 0));
       const sellUnit = Number(ln.unit_price_marked_up ?? 0);
       const sellTotal = Number(ln.total_marked_up ?? sellUnit * qty);
+      const pricingBreakdown = {
+        method: "Supplier Markup",
+        inputs: {
+          qty,
+          supplierUnitGBP: Number.isFinite(supplierUnit) ? supplierUnit : 0,
+          markupPercent,
+          vatPercent,
+        },
+        outputs: {
+          sellUnitGBP: Number.isFinite(sellUnit) ? sellUnit : 0,
+          sellTotalGBP: Number.isFinite(sellTotal) ? sellTotal : 0,
+        },
+        assumptions: {
+          source: "client_quote",
+        },
+        timestamp: new Date().toISOString(),
+      };
 
       // CRITICAL: Preserve existing meta fields (especially imageFileId) from original parsed lines
       // Match by description to find the original line
@@ -1008,6 +1032,7 @@ router.post("/:id/lines/save-processed", requireAuth, async (req: any, res) => {
             vatPercent,
             sellUnitGBP: Number.isFinite(sellUnit) ? sellUnit : 0,
             sellTotalGBP: Number.isFinite(sellTotal) ? sellTotal : 0,
+            pricingBreakdown,
           } as any,
         },
       });
@@ -2530,7 +2555,7 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
         .json({ error: "render_failed", reason: "puppeteer_not_installed" });
     }
 
-    const tenantId = req.auth.tenantId as string;
+    const tenantId = await getTenantId(req);
     const id = String(req.params.id);
 
     const quote = await prisma.quote.findFirst({
@@ -2538,13 +2563,25 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
       include: { lines: true, tenant: true, lead: true },
     });
     if (!quote) return res.status(404).json({ error: "not_found" });
+    const renderStartedAt = Date.now();
+    console.log("[/quotes/:id/render-pdf] start", { tenantId, quoteId: quote.id });
 
     const ts = await prisma.tenantSettings.findUnique({ where: { tenantId } });
-    const quoteDefaults: any = (ts?.quoteDefaults as any) || {};
-    const cur = normalizeCurrency(quote.currency || quoteDefaults?.currency || "GBP");
-    const sym = currencySymbol(cur);
-    const vatRate = Number(quoteDefaults?.vatRate ?? 0.2);
-    const showVat = quoteDefaults?.showVat !== false; // default true for UK
+    const validation = validateQuoteForPdf(quote);
+    if (validation.issues.length) {
+      return res.status(400).json({ error: "invalid_quote", issues: validation.issues });
+    }
+    if (validation.warnings.length) {
+      console.warn("[/quotes/:id/render-pdf] warnings:", {
+        tenantId,
+        quoteId: quote.id,
+        warnings: validation.warnings,
+      });
+    }
+    const totals = recalculateQuoteTotals({ quote, tenantSettings: ts });
+    const cur = totals.currencyCode;
+    const sym = totals.currencySymbol;
+    const { subtotal, vatAmount, totalGBP, vatRate, showVat } = totals;
     
     // Log lead data for debugging
     if (!quote.lead || !quote.leadId) {
@@ -2557,54 +2594,13 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     const title =
       quote.title || `Estimate for ${client}`;
 
-    // Compute totals - CRITICAL: Use meta.sellTotalGBP when available
-    const marginDefault = Number(
-      quote.markupDefault ?? quoteDefaults?.defaultMargin ?? 0.25,
-    );
-    const rowsForTotals = quote.lines.map((ln) => {
-      const qty = Number(ln.qty || 1);
-      const metaAny: any = (ln.meta as any) || {};
-      
-      // CRITICAL FIX: If sellTotalGBP exists in meta, use it directly
-      let total: number;
-      if (metaAny?.sellTotalGBP != null && Number.isFinite(Number(metaAny.sellTotalGBP))) {
-        total = Number(metaAny.sellTotalGBP);
-      } else if (metaAny?.sellUnitGBP != null && Number.isFinite(Number(metaAny.sellUnitGBP))) {
-        total = Number(metaAny.sellUnitGBP) * qty;
-      } else {
-        // Fallback: unitPrice is in POUNDS, apply margin
-        const unitPriceGBP = Number(ln.unitPrice || 0);
-        const sellUnit = unitPriceGBP * (1 + marginDefault);
-        total = sellUnit * qty;
-      }
-      
-      return { total };
-    });
-
-    let subtotal = rowsForTotals.reduce(
-      (s, r) => s + (Number.isFinite(r.total) ? r.total : 0),
-      0,
-    );
-
-    // Fallback to quote.totalGBP if lines aren't priced yet
-    if (!(subtotal > 0)) {
-      const fallbackSubtotal = Number(quote.totalGBP ?? 0);
-      if (Number.isFinite(fallbackSubtotal) && fallbackSubtotal > 0) {
-        subtotal = fallbackSubtotal;
-      }
-    }
-
-    const vatAmount = showVat ? subtotal * vatRate : 0;
-    const totalGBP = subtotal + vatAmount;
-    
-    // Safety check: Log warning if totals seem unrealistic
     if (totalGBP > 10000000 || !Number.isFinite(totalGBP)) {
       console.warn("[/quotes/:id/render-pdf] Suspicious total detected:", {
         subtotal,
         vatAmount,
         totalGBP,
         quoteId: quote.id,
-        lineCount: quote.lines.length
+        lineCount: quote.lines.length,
       });
     }
 
@@ -2752,6 +2748,13 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
       } as any,
     });
 
+    console.log("[/quotes/:id/render-pdf] done", {
+      tenantId,
+      quoteId: quote.id,
+      sizeBytes: pdfBuffer.length,
+      ms: Date.now() - renderStartedAt,
+    });
+
     return res.json({ 
       ok: true, 
       fileId: fileRow.id, 
@@ -2784,7 +2787,7 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
         .json({ error: "render_failed", reason: "puppeteer_not_installed" });
     }
 
-    const tenantId = req.auth.tenantId as string;
+    const tenantId = await getTenantId(req);
     const id = String(req.params.id);
 
     const quote = await prisma.quote.findFirst({
@@ -2792,54 +2795,28 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
       include: { lines: true, tenant: true, lead: true },
     });
     if (!quote) return res.status(404).json({ error: "not_found" });
+    const renderStartedAt = Date.now();
+    console.log("[/quotes/:id/render-proposal] start", { tenantId, quoteId: quote.id });
 
     const ts = await prisma.tenantSettings.findUnique({ where: { tenantId } });
-    const quoteDefaults: any = (ts?.quoteDefaults as any) || {};
-    const cur = normalizeCurrency(quote.currency || quoteDefaults?.currency || "GBP");
-    const sym = currencySymbol(cur);
-    const vatRate = Number(quoteDefaults?.vatRate ?? 0.2);
-    const showVat = quoteDefaults?.showVat !== false;
+    const validation = validateQuoteForPdf(quote);
+    if (validation.issues.length) {
+      return res.status(400).json({ error: "invalid_quote", issues: validation.issues });
+    }
+    if (validation.warnings.length) {
+      console.warn("[/quotes/:id/render-proposal] warnings:", {
+        tenantId,
+        quoteId: quote.id,
+        warnings: validation.warnings,
+      });
+    }
+    const totals = recalculateQuoteTotals({ quote, tenantSettings: ts });
+    const cur = totals.currencyCode;
+    const sym = totals.currencySymbol;
+    const { subtotal, vatAmount, totalGBP, vatRate, showVat } = totals;
     const client = quote.lead?.contactName || quote.lead?.email || "Client";
     const title =
       quote.title || `Estimate for ${client}`;
-
-    const marginDefault = Number(
-      quote.markupDefault ?? quoteDefaults?.defaultMargin ?? 0.25,
-    );
-    const rowsForTotals = quote.lines.map((ln) => {
-      const qty = Number(ln.qty || 1);
-      const metaAny: any = (ln.meta as any) || {};
-      
-      // CRITICAL FIX: If sellTotalGBP exists in meta, use it directly
-      let total: number;
-      if (metaAny?.sellTotalGBP != null && Number.isFinite(Number(metaAny.sellTotalGBP))) {
-        total = Number(metaAny.sellTotalGBP);
-      } else if (metaAny?.sellUnitGBP != null && Number.isFinite(Number(metaAny.sellUnitGBP))) {
-        total = Number(metaAny.sellUnitGBP) * qty;
-      } else {
-        // Fallback: unitPrice is in POUNDS, apply margin
-        const unitPriceGBP = Number(ln.unitPrice || 0);
-        const sellUnit = unitPriceGBP * (1 + marginDefault);
-        total = sellUnit * qty;
-      }
-      
-      return { total };
-    });
-
-    let subtotal = rowsForTotals.reduce(
-      (s, r) => s + (Number.isFinite(r.total) ? r.total : 0),
-      0,
-    );
-
-    if (!(subtotal > 0)) {
-      const fallbackSubtotal = Number(quote.totalGBP ?? 0);
-      if (Number.isFinite(fallbackSubtotal) && fallbackSubtotal > 0) {
-        subtotal = fallbackSubtotal;
-      }
-    }
-
-    const vatAmount = showVat ? subtotal * vatRate : 0;
-    const totalGBP = subtotal + vatAmount;
     
     // Safety check: Log warning if totals seem unrealistic
     if (totalGBP > 10000000 || !Number.isFinite(totalGBP)) {
@@ -2972,16 +2949,33 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
       },
     });
 
+    const API_BASE = (
+      process.env.APP_API_URL ||
+      process.env.API_URL ||
+      process.env.RENDER_EXTERNAL_URL ||
+      `http://localhost:${process.env.PORT || 4000}`
+    ).replace(/\/$/, "");
+
+    const token = jwt.sign({ t: tenantId, q: quote.id }, env.APP_JWT_SECRET, { expiresIn: "7d" });
+    const proposalPdfUrl = `${API_BASE}/files/${encodeURIComponent(fileRow.id)}?jwt=${encodeURIComponent(token)}`;
+
     const meta0: any = (quote.meta as any) || {};
     await prisma.quote.update({
       where: { id: quote.id },
       data: {
         proposalPdfUrl: null,
-        meta: { ...(meta0 || {}), proposalFileId: fileRow.id } as any,
+        meta: { ...(meta0 || {}), proposalFileId: fileRow.id, proposalPdfUrl } as any,
       } as any,
     });
 
-    return res.json({ ok: true, fileId: fileRow.id, name: fileRow.name });
+    console.log("[/quotes/:id/render-proposal] done", {
+      tenantId,
+      quoteId: quote.id,
+      sizeBytes: pdfBuffer.length,
+      ms: Date.now() - renderStartedAt,
+    });
+
+    return res.json({ ok: true, fileId: fileRow.id, name: fileRow.name, proposalPdfUrl });
   } catch (e: any) {
     console.error("[/quotes/:id/render-proposal] failed:", e?.message || e);
     return res
@@ -4015,6 +4009,8 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
     if (!quote) return res.status(404).json({ error: "not_found" });
     const method = String(req.body?.method || "margin");
     const margin = Number(req.body?.margin ?? quote.markupDefault ?? 0.25);
+    const pricingStartedAt = Date.now();
+    console.log("[/quotes/:id/price] start", { tenantId, quoteId: quote.id, method, margin });
 
     if (method === "margin") {
       // apply simple margin over supplier unitPrice, but skip lines with manual overrides
@@ -4046,7 +4042,38 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
         const sellUnit = unitCostBase * (1 + margin);
         const sellTotal = sellUnit * parsedQty;
         totalGBP += sellTotal;
-        await prisma.quoteLine.update({ where: { id: ln.id }, data: { meta: { set: { ...(lineMeta || {}), sellUnitGBP: sellUnit, sellTotalGBP: sellTotal, pricingMethod: "margin", margin } } } as any });
+        const pricingBreakdown = {
+          method: "Margin",
+          inputs: {
+            qty: parsedQty,
+            unitCostGBP: unitCostBase,
+            margin,
+          },
+          outputs: {
+            sellUnitGBP: sellUnit,
+            sellTotalGBP: sellTotal,
+          },
+          assumptions: {
+            currency: quote.currency || "GBP",
+            source: lineMeta?.raw ? "supplier" : "manual",
+          },
+          timestamp: new Date().toISOString(),
+        };
+        await prisma.quoteLine.update({
+          where: { id: ln.id },
+          data: {
+            meta: {
+              set: {
+                ...(lineMeta || {}),
+                sellUnitGBP: sellUnit,
+                sellTotalGBP: sellTotal,
+                pricingMethod: "margin",
+                margin,
+                pricingBreakdown,
+              },
+            },
+          } as any,
+        });
       }
   const pricedSaved1 = await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP), markupDefault: new Prisma.Decimal(margin) } });
       try {
@@ -4063,6 +4090,13 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
       } catch (e) {
         console.warn("[/quotes/:id/price margin] field-link sync failed:", (e as any)?.message || e);
       }
+      console.log("[/quotes/:id/price] done", {
+        tenantId,
+        quoteId: quote.id,
+        method,
+        totalGBP,
+        ms: Date.now() - pricingStartedAt,
+      });
       return res.json({ ok: true, method, margin, totalGBP, skippedOverrides: skippedCount });
     }
 
@@ -4158,6 +4192,23 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
           // If there are no lines yet, create a single placeholder line so totals aren't £0
           if (!quote.lines || quote.lines.length === 0) {
             const desc = (quote.title && `Estimated: ${quote.title}`) || "Estimated item";
+            const pricingBreakdown = {
+              method: "ML",
+              inputs: {
+                qty: 1,
+                predictedTotal,
+                distribution: "placeholder",
+              },
+              outputs: {
+                sellUnitGBP: predictedTotal,
+                sellTotalGBP: predictedTotal,
+              },
+              assumptions: {
+                modelVersionId: productionModelId,
+                confidence,
+              },
+              timestamp: new Date().toISOString(),
+            };
             await prisma.quoteLine.create({
               data: {
                 quoteId: quote.id,
@@ -4175,6 +4226,7 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
                   sellTotalGBP: predictedTotal,
                   predictedTotal,
                   estimateModelVersionId: productionModelId,
+                  pricingBreakdown,
                 } as any,
               },
             });
@@ -4220,6 +4272,15 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
               },
             });
 
+            console.log("[/quotes/:id/price] done", {
+              tenantId,
+              quoteId: quote.id,
+              method,
+              totalGBP: predictedTotal,
+              cacheHit: true,
+              createdPlaceholderLine: true,
+              ms: Date.now() - pricingStartedAt,
+            });
             return res.json({ ok: true, method, predictedTotal, totalGBP: predictedTotal, cacheHit: true, createdPlaceholderLine: true });
           }
           // Always distribute predicted total by quantity when using questionnaire-only mode
@@ -4229,6 +4290,23 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
             const qty = Math.max(1, Number(ln.qty || 1));
             const sellTotal = predictedTotal > 0 ? (predictedTotal * qty) / Math.max(1, qtySum) : 0;
             const sellUnit = qty > 0 ? sellTotal / qty : 0;
+            const pricingBreakdown = {
+              method: "ML",
+              inputs: {
+                qty,
+                predictedTotal,
+                distribution: "quantity",
+              },
+              outputs: {
+                sellUnitGBP: sellUnit,
+                sellTotalGBP: sellTotal,
+              },
+              assumptions: {
+                modelVersionId: productionModelId,
+                confidence,
+              },
+              timestamp: new Date().toISOString(),
+            };
             totalGBP += sellTotal;
             await prisma.quoteLine.update({
               where: { id: ln.id },
@@ -4241,6 +4319,7 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
                     pricingMethod: "ml_distribute",
                     predictedTotal,
                     estimateModelVersionId: productionModelId,
+                    pricingBreakdown,
                   },
                 } as any,
               },
@@ -4294,6 +4373,14 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
             },
           });
 
+          console.log("[/quotes/:id/price] done", {
+            tenantId,
+            quoteId: quote.id,
+            method,
+            totalGBP,
+            cacheHit: true,
+            ms: Date.now() - pricingStartedAt,
+          });
           return res.json({ ok: true, method, predictedTotal, totalGBP, cacheHit: true });
         }
       }
@@ -4360,6 +4447,23 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
       if (!quote.lines || quote.lines.length === 0) {
         const currency = normalizeCurrency(ml?.currency || quote.currency || "GBP");
         const desc = (quote.title && `Estimated: ${quote.title}`) || "Estimated item";
+        const pricingBreakdown = {
+          method: "ML",
+          inputs: {
+            qty: 1,
+            predictedTotal: predictedTotalFinal,
+            distribution: "placeholder",
+          },
+          outputs: {
+            sellUnitGBP: predictedTotalFinal,
+            sellTotalGBP: predictedTotalFinal,
+          },
+          assumptions: {
+            modelVersionId,
+            confidence,
+          },
+          timestamp: new Date().toISOString(),
+        };
         await prisma.quoteLine.create({
           data: {
             quoteId: quote.id,
@@ -4377,6 +4481,7 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
               sellTotalGBP: predictedTotalFinal,
               predictedTotal: predictedTotalFinal,
               estimateModelVersionId: modelVersionId,
+              pricingBreakdown,
             } as any,
           },
         });
@@ -4403,6 +4508,23 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
           const qty = Math.max(1, Number(ln.qty || 1));
           const sellTotal = predictedTotalFinal > 0 ? (predictedTotalFinal * qty) / Math.max(1, qtySum2) : 0;
           const sellUnit = qty > 0 ? sellTotal / qty : 0;
+          const pricingBreakdown = {
+            method: "ML",
+            inputs: {
+              qty,
+              predictedTotal: predictedTotalFinal,
+              distribution: "quantity",
+            },
+            outputs: {
+              sellUnitGBP: sellUnit,
+              sellTotalGBP: sellTotal,
+            },
+            assumptions: {
+              modelVersionId,
+              confidence,
+            },
+            timestamp: new Date().toISOString(),
+          };
           totalGBP += sellTotal;
           await prisma.quoteLine.update({
             where: { id: ln.id },
@@ -4415,6 +4537,7 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
                   pricingMethod: "ml_distribute",
                   predictedTotal: predictedTotalFinal,
                   estimateModelVersionId: modelVersionId,
+                  pricingBreakdown,
                 },
               } as any,
             },
@@ -4470,7 +4593,15 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
         },
       });
 
-  return res.json({ ok: true, method, predictedTotal: predictedTotalFinal, totalGBP: totalGBPForReturn, fallbackFloor: usedFallbackFloor });
+      console.log("[/quotes/:id/price] done", {
+        tenantId,
+        quoteId: quote.id,
+        method,
+        totalGBP: totalGBPForReturn,
+        fallbackFloor: usedFallbackFloor,
+        ms: Date.now() - pricingStartedAt,
+      });
+      return res.json({ ok: true, method, predictedTotal: predictedTotalFinal, totalGBP: totalGBPForReturn, fallbackFloor: usedFallbackFloor });
     }
 
     return res.status(400).json({ error: "invalid_method" });
@@ -4612,6 +4743,12 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
     if (!quote) {
       return res.status(404).json({ error: "not_found" });
     }
+
+    console.log("[/quotes/:id/process-supplier] start", {
+      tenantId,
+      quoteId: quote.id,
+      supplierFiles: quote.supplierFiles?.length || 0,
+    });
 
     await normaliseQuoteSourceTypeColumn(quoteId);
     
@@ -4868,6 +5005,25 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
         const sellUnit = (line.unitPrice || 0) * (1 + markupPercent / 100);
         line.meta.sellUnitGBP = sellUnit;
         line.meta.sellTotalGBP = sellUnit * (line.qty || 1);
+        line.meta.pricingBreakdown = {
+          method: "Supplier Markup",
+          inputs: {
+            qty: line.qty || 1,
+            unitCostGBP: line.unitPrice || 0,
+            markupPercent,
+            deliveryShareGBP: line.meta?.deliveryDistributed || 0,
+            originalCurrency: line.meta?.originalCurrency || "GBP",
+          },
+          outputs: {
+            sellUnitGBP: line.meta.sellUnitGBP,
+            sellTotalGBP: line.meta.sellTotalGBP,
+          },
+          assumptions: {
+            currencyConverted: !!line.meta?.originalCurrency && line.meta?.originalCurrency !== "GBP",
+            deliveryDistributed: !!line.meta?.deliveryDistributed,
+          },
+          timestamp: new Date().toISOString(),
+        };
       }
     }
     
@@ -4964,6 +5120,13 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
         },
       },
     });
+
+    console.log("[/quotes/:id/process-supplier] done", {
+      tenantId,
+      quoteId: quote.id,
+      lineCount: cleanedLines.length,
+      gibberishSkipped: gibberishCount,
+    });
     
     // Fetch updated lines
     const updatedLines = await prisma.quoteLine.findMany({
@@ -5042,9 +5205,9 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
  */
 router.post("/:id/send-email", requireAuth, async (req: any, res) => {
   try {
-    const tenantId = req.auth.tenantId as string;
+    const tenantId = await getTenantId(req);
     const quoteId = String(req.params.id);
-    const userId = req.auth.userId as string;
+    const userId = req.auth?.userId as string | undefined;
     
     const quote = await prisma.quote.findFirst({
       where: { id: quoteId, tenantId },
@@ -5060,20 +5223,23 @@ router.post("/:id/send-email", requireAuth, async (req: any, res) => {
     }
     
     // Determine recipient email
-    const recipientEmail = req.body?.to || quote.lead?.email;
-    if (!recipientEmail) {
-      return res.status(400).json({ 
-        error: "no_email", 
-        message: "No email address found for this lead" 
+    const recipientEmail = req.body?.to || quote.lead?.email || null;
+    const emailValidation = validateQuoteForEmail({ quote, recipientEmail });
+    if (emailValidation.issues.length) {
+      return res.status(400).json({
+        error: "invalid_email_request",
+        issues: emailValidation.issues,
+        warnings: emailValidation.warnings,
       });
     }
     
     // Check if PDF exists
-    const pdfUrl = (quote.meta as any)?.proposalPdfUrl || null;
-    if (!pdfUrl && req.body?.includeAttachment !== false) {
-      return res.status(400).json({ 
-        error: "no_pdf", 
-        message: "Generate a PDF first before sending email" 
+    const includeAttachment = req.body?.includeAttachment !== false;
+    const proposalFileId = (quote.meta as any)?.proposalFileId || null;
+    if (!proposalFileId && includeAttachment) {
+      return res.status(400).json({
+        error: "no_pdf",
+        message: "Generate a PDF first before sending email",
       });
     }
     
@@ -5082,73 +5248,75 @@ router.post("/:id/send-email", requireAuth, async (req: any, res) => {
       where: { tenantId },
     });
     
-    const tenantName = quote.tenant?.name || "us";
-    const clientName = quote.lead?.contactName || recipientEmail.split("@")[0];
-    
-    // Calculate totals for email
-    const quoteDefaults: any = (tenantSettings?.quoteDefaults as any) || {};
-    const marginDefault = Number(quote.markupDefault ?? quoteDefaults?.defaultMargin ?? 0.25);
-    
-    const subtotal = quote.lines.reduce((sum, ln) => {
-      const lineMeta: any = (ln.meta as any) || {};
-      const sellTotal = Number(lineMeta?.sellTotalGBP ?? 0);
-      return sum + Math.max(0, sellTotal);
-    }, 0);
-    
-    const vatRate = Number(quoteDefaults?.vatRate ?? 0.2);
-    const showVat = quoteDefaults?.showVat !== false;
-    const vatAmount = showVat ? subtotal * vatRate : 0;
-    const totalGBP = subtotal + vatAmount;
-    
-    const currency = quote.currency || "GBP";
-    const sym = currency === "GBP" ? "£" : currency === "EUR" ? "€" : currency === "USD" ? "$" : currency;
-    
-    // Build email content
-    const subject = req.body?.subject || `Quote from ${tenantName}`;
-    
-    const bodyText = `
-Hi ${clientName},
+    const payload = buildQuoteEmailPayload({
+      quote,
+      tenantSettings,
+      recipientEmail,
+    });
+    const subject = req.body?.subject || payload.subject;
 
-Please find attached your quote from ${tenantName}.
+    const attachments = [];
+    if (includeAttachment && proposalFileId) {
+      const file = await prisma.uploadedFile.findFirst({
+        where: { id: proposalFileId, tenantId },
+      });
+      if (!file) {
+        return res.status(404).json({ error: "pdf_not_found" });
+      }
+      const absPath = path.isAbsolute(file.path) ? file.path : path.join(process.cwd(), file.path);
+      const buffer = await fs.promises.readFile(absPath);
+      attachments.push({
+        filename: file.name || "quote.pdf",
+        contentType: file.mimeType || "application/pdf",
+        contentBase64: buffer.toString("base64"),
+      });
+    }
 
-Quote Summary:
-- Total: ${sym}${totalGBP.toFixed(2)}
-- Line Items: ${quote.lines.length}
-- Valid Until: 30 days from today
+    const isDryRun = req.body?.dryRun === true;
 
-If you have any questions or would like to discuss this quote, please don't hesitate to contact us.
+    console.log("[/quotes/:id/send-email] attempt", {
+      tenantId,
+      quoteId: quote.id,
+      recipientEmail,
+      dryRun: isDryRun,
+      includeAttachment,
+    });
 
-Best regards,
-${tenantName}
-    `.trim();
-    
-    const bodyHtml = `
-      <p>Hi ${clientName},</p>
-      <p>Please find attached your quote from ${tenantName}.</p>
-      <h3>Quote Summary:</h3>
-      <ul>
-        <li><strong>Total:</strong> ${sym}${totalGBP.toFixed(2)}</li>
-        <li><strong>Line Items:</strong> ${quote.lines.length}</li>
-        <li><strong>Valid Until:</strong> 30 days from today</li>
-      </ul>
-      <p>If you have any questions or would like to discuss this quote, please don't hesitate to contact us.</p>
-      <p>Best regards,<br/>${tenantName}</p>
-    `;
+    if (isDryRun) {
+      return res.json({
+        ok: true,
+        dryRun: true,
+        payload,
+        attachmentCount: attachments.length,
+        warnings: emailValidation.warnings,
+      });
+    }
     
     // Send email using existing email service
-    const { sendEmailViaUser } = require("../services/email-sender");
+    const { sendEmailViaUser, sendEmailViaTenant } = require("../services/email-sender");
+
+    const sendFn = userId ? sendEmailViaUser : sendEmailViaTenant;
+    const sendArgs = userId ? [userId] : [tenantId];
     
-    await sendEmailViaUser(userId, {
+    await sendFn(...sendArgs, {
       to: recipientEmail,
       subject,
-      body: bodyText,
-      html: bodyHtml,
-      fromName: tenantName,
+      body: payload.bodyText,
+      html: payload.bodyHtml,
+      fromName: quote.tenant?.name || "JoineryAI",
+      attachments: attachments.length ? attachments : undefined,
     });
     
     // TODO: Log activity when proper activity model is available
     // Could use ActivityLog or create a QuoteActivity record
     
+    console.log("[/quotes/:id/send-email] sent", {
+      tenantId,
+      quoteId: quote.id,
+      recipientEmail,
+      attachmentCount: attachments.length,
+    });
+
     // Update quote status if this is first send
     if (quote.status === "DRAFT" || !quote.status) {
       await prisma.quote.update({
@@ -5170,6 +5338,7 @@ ${tenantName}
       success: true,
       sentTo: recipientEmail,
       sentAt: new Date().toISOString(),
+      summary: payload.summary,
     });
   } catch (e: any) {
     console.error("[/quotes/:id/send-email] failed:", e?.message || e);

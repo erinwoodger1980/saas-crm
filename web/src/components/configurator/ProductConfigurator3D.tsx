@@ -757,7 +757,7 @@ export function ProductConfigurator3D({
               };
           await updateQuoteLine(String(quoteId), String(lineId), {
             lineStandard,
-            meta: metaPatch,
+            meta: lineMetaPatch,
           });
         }
       } catch (e) {
