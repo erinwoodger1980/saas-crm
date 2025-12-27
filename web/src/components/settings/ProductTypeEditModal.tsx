@@ -184,12 +184,12 @@ export function ProductTypeEditModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-6xl h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Product Type Configuration</DialogTitle>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="generate">Generate with AI</TabsTrigger>
@@ -307,25 +307,24 @@ export function ProductTypeEditModal({
           </TabsContent>
 
           {/* 3D Components Tab */}
-          <TabsContent value="components" className="flex-1 overflow-hidden">
-            <div className="h-full flex flex-col">
-              <p className="text-sm text-muted-foreground mb-2">
-                Build, arrange, and edit components in 3D space. Click the menu button (⋮) for options.
-              </p>
-              <div className="flex-1 border rounded-lg overflow-hidden">
+          <TabsContent value="components" className="flex-1 flex flex-col min-h-0">
+            <p className="text-sm text-muted-foreground mb-2">
+              Build, arrange, and edit components in 3D space. Click the menu button (⋮) for options.
+            </p>
+            <div className="flex-1 min-h-0 border rounded-lg overflow-hidden">
               {isOpen && (
-                  <ProductConfigurator3D
-                    key={`configurator-${initialData?.optionId}`}
-                    tenantId="settings"
-                    entityType="productType"
-                    heroMode={true}
-                    settingsPreview={true}
-                    initialConfig={sceneConfig}
-                    onChange={(newConfig: any) => setSceneConfig(newConfig)}
-                    renderQuality="high"
-                  />
-                )}
-              </div>
+                <ProductConfigurator3D
+                  key={`configurator-${initialData?.optionId}`}
+                  tenantId="settings"
+                  entityType="productType"
+                  heroMode={true}
+                  settingsPreview={true}
+                  initialConfig={sceneConfig}
+                  onChange={(newConfig: any) => setSceneConfig(newConfig)}
+                  renderQuality="high"
+                  height="100%"
+                />
+              )}
             </div>
           </TabsContent>
 
