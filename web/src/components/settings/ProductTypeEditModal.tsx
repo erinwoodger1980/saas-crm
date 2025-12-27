@@ -12,6 +12,8 @@ import { ProductConfigurator3D } from '@/components/configurator/ProductConfigur
 import { createDefaultSceneConfig } from '@/lib/scene/config-validation';
 import { ProductPlanV1 } from '@/types/product-plan';
 import { compileProductPlanToProductParams } from '@/lib/scene/plan-compiler';
+import { ComponentPickerDialog } from './ComponentPickerDialog';
+import { apiFetch } from '@/lib/api';
 
 interface ProductTypeOption {
   id: string;
@@ -70,6 +72,10 @@ export function ProductTypeEditModal({
     )
   );
   const [show3DConfigurator, setShow3DConfigurator] = useState(false);
+  
+  // Component picker state
+  const [componentPickerOpen, setComponentPickerOpen] = useState(false);
+  const [selectedComponents, setSelectedComponents] = useState<any[]>([]);
 
   const handleAiImageUpload = (file: File) => {
     setAiImage(file);
@@ -146,6 +152,30 @@ export function ProductTypeEditModal({
     } finally {
       setIsEstimating(false);
     }
+  };
+
+  const handleComponentSelected = async (component: any) => {
+    // Add component to selected list
+    setSelectedComponents((prev) => {
+      // Check if already added
+      if (prev.some((c) => c.id === component.id)) {
+        toast({
+          title: 'Already added',
+          description: `${component.code} is already in the list`,
+        });
+        return prev;
+      }
+      return [...prev, component];
+    });
+    
+    toast({
+      title: 'Component added',
+      description: `${component.code} - ${component.name}`,
+    });
+  };
+  
+  const handleRemoveComponent = (componentId: string) => {
+    setSelectedComponents((prev) => prev.filter((c) => c.id !== componentId));
   };
 
   const handleSave = async () => {
@@ -460,26 +490,61 @@ export function ProductTypeEditModal({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="text-sm font-semibold">Selected Components</h4>
-                <Button size="sm" variant="outline">
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  onClick={() => setComponentPickerOpen(true)}
+                >
                   <Plus className="h-4 w-4 mr-1" />
                   Add Component from Catalog
                 </Button>
               </div>
 
-              {/* Component list placeholder */}
-              <div className="border rounded-lg p-8 text-center text-sm text-muted-foreground">
-                <Package className="h-12 w-12 mx-auto mb-3 text-slate-300" />
-                <p className="font-medium mb-1">No components added yet</p>
-                <p className="text-xs">Components are managed in Settings → Components</p>
-                <p className="text-xs mt-2">Each component includes:</p>
-                <ul className="text-xs mt-2 space-y-1">
-                  <li>✓ 3D Model (GLB/GLTF)</li>
-                  <li>✓ Profile (SVG/DXF) for extrusion</li>
-                  <li>✓ Parametric dimensions</li>
-                  <li>✓ Pricing & variants</li>
-                  <li>✓ Supplier & lead time</li>
-                </ul>
-              </div>
+              {/* Component list */}
+              {selectedComponents.length === 0 ? (
+                <div className="border rounded-lg p-8 text-center text-sm text-muted-foreground">
+                  <Package className="h-12 w-12 mx-auto mb-3 text-slate-300" />
+                  <p className="font-medium mb-1">No components added yet</p>
+                  <p className="text-xs">Components are managed in Settings → Components</p>
+                  <p className="text-xs mt-2">Each component includes:</p>
+                  <ul className="text-xs mt-2 space-y-1">
+                    <li>✓ 3D Model (GLB/GLTF)</li>
+                    <li>✓ Profile (SVG/DXF) for extrusion</li>
+                    <li>✓ Parametric dimensions</li>
+                    <li>✓ Pricing & variants</li>
+                    <li>✓ Supplier & lead time</li>
+                  </ul>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {selectedComponents.map((component) => (
+                    <div
+                      key={component.id}
+                      className="flex items-center justify-between p-3 border rounded-lg bg-white hover:bg-slate-50"
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 bg-slate-100 rounded text-xs font-medium text-slate-700">
+                            {component.componentType}
+                          </span>
+                          <span className="font-mono text-sm font-semibold">
+                            {component.code}
+                          </span>
+                        </div>
+                        <p className="text-sm text-slate-600 mt-1">{component.name}</p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleRemoveComponent(component.id)}
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="mt-auto p-3 bg-amber-50 border border-amber-200 rounded-lg">
@@ -507,6 +572,14 @@ export function ProductTypeEditModal({
           </Button>
         </DialogFooter>
       </DialogContent>
+      
+      {/* Component Picker Dialog */}
+      <ComponentPickerDialog
+        isOpen={componentPickerOpen}
+        onClose={() => setComponentPickerOpen(false)}
+        onSelect={handleComponentSelected}
+        productTypeId={initialData?.optionId}
+      />
     </Dialog>
   );
 }
