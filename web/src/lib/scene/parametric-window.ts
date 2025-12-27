@@ -12,6 +12,8 @@ import {
   EditableAttribute,
 } from '@/types/parametric-builder';
 import { ComponentNode, MaterialDefinition } from '@/types/scene-config';
+import { resolveWindowLayout } from '@/lib/scene/layout';
+import { deriveMaterialRoleMap, resolveMaterialId } from '@/lib/scene/material-role-map';
 
 /**
  * Window-specific defaults
@@ -33,7 +35,7 @@ const WINDOW_DEFAULTS = {
  * Build window component tree
  */
 export function buildWindowComponentTree(params: ProductParams): BuildResult {
-  const { dimensions, construction, productType } = params;
+  const { dimensions, construction } = params;
   const { width, height, depth } = dimensions;
   
   // Merge with defaults
@@ -45,9 +47,16 @@ export function buildWindowComponentTree(params: ProductParams): BuildResult {
   };
   
   const components: ComponentNode[] = [];
+  const roleMap = params.materialRoleMap || deriveMaterialRoleMap(params);
   const materials: MaterialDefinition[] = createWindowMaterials(config);
-  const roleMap = params.materialRoleMap || {};
+  const resolvedParams: ProductParams = {
+    ...params,
+    materialRoleMap: roleMap,
+  };
   const overrides = params.materialOverrides || {};
+  const layout = resolveWindowLayout(resolvedParams);
+  const layoutWidth = layout.width;
+  const layoutHeight = layout.height;
   
   // Root product node
   const product: ComponentNode = {
@@ -56,7 +65,7 @@ export function buildWindowComponentTree(params: ProductParams): BuildResult {
     type: 'group',
     geometry: {
       type: 'box',
-      dimensions: [width, height, config.frameDepth],
+      dimensions: [layoutWidth, layoutHeight, config.frameDepth],
       position: [0, 0, 0],
     },
     visible: true,
@@ -64,50 +73,50 @@ export function buildWindowComponentTree(params: ProductParams): BuildResult {
   };
   
   // Build outer frame
-  const outerFrame = buildWindowOuterFrame(width, height, config);
+  const outerFrame = buildWindowOuterFrame(layout, config, roleMap, overrides);
   product.children!.push(outerFrame);
   
   // Build sashes/casements based on layout
-  const layout = construction.layout || { mullions: 0, transoms: 0 };
-  const sashes = buildWindowSashes(width, height, config, layout);
+  const sashes = buildWindowSashes(layout, config, roleMap, overrides);
   product.children!.push(...sashes);
   
   // Build mullions if specified
-  if (layout.mullions > 0) {
-    const mullions = buildMullions(width, height, config, layout.mullions);
-    product.children!.push(...mullions);
-  }
+  const mullions = buildMullions(layout, config, roleMap, overrides);
+  if (mullions.length > 0) product.children!.push(...mullions);
   
   // Build transoms if specified
-  if (layout.transoms > 0) {
-    const transoms = buildTransoms(width, height, config, layout.transoms);
-    product.children!.push(...transoms);
-  }
+  const transoms = buildTransoms(layout, config, roleMap, overrides);
+  if (transoms.length > 0) product.children!.push(...transoms);
   
   components.push(product);
   
   // Calculate lighting bounds
   const lighting = {
-    boundsX: [-width / 2 * 1.5, width / 2 * 1.5] as [number, number],
+    boundsX: [-layoutWidth / 2 * 1.5, layoutWidth / 2 * 1.5] as [number, number],
     boundsZ: [-config.frameDepth / 2 * 1.5, config.frameDepth / 2 * 1.5] as [number, number],
-    shadowCatcherDiameter: Math.max(width, height) * 2,
+    shadowCatcherDiameter: Math.max(layoutWidth, layoutHeight) * 2,
   };
   
   return {
     components,
     materials,
     lighting,
-    params,
-    editableAttributes: buildEditableAttributes(params, components),
+    params: resolvedParams,
+    editableAttributes: buildEditableAttributes(resolvedParams, components),
   };
 }
 
 /**
  * Build outer window frame
  */
-function buildWindowOuterFrame(width: number, height: number, config: any): ComponentNode {
-  const { frameWidth, frameDepth } = config;
-  const frameMaterialId = (config.materialRoleMap?.FRAME_TIMBER) || 'timber';
+function buildWindowOuterFrame(
+  layout: ReturnType<typeof resolveWindowLayout>,
+  config: any,
+  roleMap: ProductParams['materialRoleMap'] | undefined,
+  overrides: Record<string, string>
+): ComponentNode {
+  const { frameWidth, width, height } = layout;
+  const frameDepth = config.frameDepth;
   
   const frame: ComponentNode = {
     id: 'outerFrame',
@@ -123,7 +132,7 @@ function buildWindowOuterFrame(width: number, height: number, config: any): Comp
     name: 'Head',
     type: 'frame',
     role: 'rail',
-    materialId: frameMaterialId,
+    materialId: resolveMaterialId('FRAME_TIMBER', 'frame_head', roleMap, overrides),
     geometry: {
       type: 'box',
       dimensions: [width, frameWidth, frameDepth],
@@ -138,7 +147,7 @@ function buildWindowOuterFrame(width: number, height: number, config: any): Comp
     name: 'Sill',
     type: 'frame',
     role: 'rail',
-    materialId: frameMaterialId,
+    materialId: resolveMaterialId('FRAME_TIMBER', 'frame_sill', roleMap, overrides),
     geometry: {
       type: 'box',
       dimensions: [width, frameWidth, frameDepth],
@@ -154,7 +163,7 @@ function buildWindowOuterFrame(width: number, height: number, config: any): Comp
     name: 'Left Jamb',
     type: 'frame',
     role: 'stile',
-    materialId: frameMaterialId,
+    materialId: resolveMaterialId('FRAME_TIMBER', 'frame_leftJamb', roleMap, overrides),
     geometry: {
       type: 'box',
       dimensions: [frameWidth, jambHeight, frameDepth],
@@ -169,7 +178,7 @@ function buildWindowOuterFrame(width: number, height: number, config: any): Comp
     name: 'Right Jamb',
     type: 'frame',
     role: 'stile',
-    materialId: frameMaterialId,
+    materialId: resolveMaterialId('FRAME_TIMBER', 'frame_rightJamb', roleMap, overrides),
     geometry: {
       type: 'box',
       dimensions: [frameWidth, jambHeight, frameDepth],
@@ -185,51 +194,27 @@ function buildWindowOuterFrame(width: number, height: number, config: any): Comp
  * Build window sashes
  */
 function buildWindowSashes(
-  width: number,
-  height: number,
+  layout: ReturnType<typeof resolveWindowLayout>,
   config: any,
-  layout: { mullions: number; transoms: number }
+  roleMap: ProductParams['materialRoleMap'] | undefined,
+  overrides: Record<string, string>
 ): ComponentNode[] {
-  const { frameWidth, sashStileWidth, sashRailHeight, sashDepth } = config;
-  
   const sashes: ComponentNode[] = [];
-  
-  // Calculate available space
-  const availableWidth = width - 2 * frameWidth - layout.mullions * config.mullionWidth;
-  const availableHeight = height - 2 * frameWidth - layout.transoms * config.transomHeight;
-  
-  // Number of sashes = (mullions + 1) * (transoms + 1)
-  const horizontalSashes = layout.mullions + 1;
-  const verticalSashes = layout.transoms + 1;
-  
-  const sashWidth = availableWidth / horizontalSashes;
-  const sashHeight = availableHeight / verticalSashes;
-  
-  // Generate sashes
-  for (let row = 0; row < verticalSashes; row++) {
-    for (let col = 0; col < horizontalSashes; col++) {
-      const sashId = `sash_r${row + 1}c${col + 1}`;
-      
-      // Calculate position
-      const xStart = -width / 2 + frameWidth;
-      const yStart = height / 2 - frameWidth;
-      
-      const xOffset = xStart + col * (sashWidth + config.mullionWidth) + sashWidth / 2;
-      const yOffset = yStart - row * (sashHeight + config.transomHeight) - sashHeight / 2;
-      
-      const sash = buildSingleSash(
-        sashId,
-        `Sash R${row + 1}C${col + 1}`,
-        sashWidth,
-        sashHeight,
-        config,
-        [xOffset, yOffset, 0]
-      );
-      
-      sashes.push(sash);
-    }
-  }
-  
+
+  layout.sashes.forEach((slot) => {
+    const sash = buildSingleSash(
+      slot.id,
+      `Sash ${slot.id}`,
+      slot.rect.width,
+      slot.rect.height,
+      config,
+      [slot.rect.x, slot.rect.y, 0],
+      roleMap,
+      overrides
+    );
+    sashes.push(sash);
+  });
+
   return sashes;
 }
 
@@ -242,11 +227,13 @@ function buildSingleSash(
   width: number,
   height: number,
   config: any,
-  position: [number, number, number]
+  position: [number, number, number],
+  roleMap: ProductParams['materialRoleMap'] | undefined,
+  overrides: Record<string, string>
 ): ComponentNode {
   const { sashStileWidth, sashRailHeight, sashDepth, glazingThickness, glazingGap, beadWidth } = config;
-  const frameMaterialId = (config.materialRoleMap?.FRAME_TIMBER) || 'timber';
-  const glassMaterialId = (config.materialRoleMap?.GLASS) || 'glass';
+  const frameMaterialId = resolveMaterialId('FRAME_TIMBER', `${id}_frame`, roleMap, overrides);
+  const glassMaterialId = resolveMaterialId('GLASS', `${id}_glass`, roleMap, overrides);
   
   const sash: ComponentNode = {
     id,
@@ -388,72 +375,52 @@ function buildSingleSash(
  * Build mullions (vertical dividers)
  */
 function buildMullions(
-  width: number,
-  height: number,
+  layout: ReturnType<typeof resolveWindowLayout>,
   config: any,
-  count: number
+  roleMap: ProductParams['materialRoleMap'] | undefined,
+  overrides: Record<string, string>
 ): ComponentNode[] {
-  const { frameWidth, mullionWidth, frameDepth } = config;
-  
-  const mullions: ComponentNode[] = [];
-  const availableWidth = width - 2 * frameWidth;
-  const spacing = availableWidth / (count + 1);
-  const mullionHeight = height - 2 * frameWidth;
-  
-  for (let i = 0; i < count; i++) {
-    const xPos = -width / 2 + frameWidth + (i + 1) * spacing;
-    
-    mullions.push({
-      id: `mullion_${i + 1}`,
-      name: `Mullion ${i + 1}`,
-      type: 'frame',
-      materialId: 'timber',
-      geometry: {
-        type: 'box',
-        dimensions: [mullionWidth, mullionHeight, frameDepth],
-        position: [xPos, 0, 0],
-      },
-      visible: true,
-    });
-  }
-  
-  return mullions;
+  const { frameDepth } = config;
+
+  return layout.mullions.map((slot) => ({
+    id: slot.id,
+    name: slot.id.replace(/_/g, ' '),
+    type: 'frame',
+    role: 'mullion',
+    materialId: resolveMaterialId('FRAME_TIMBER', slot.id, roleMap, overrides),
+    geometry: {
+      type: 'box',
+      dimensions: [slot.rect.width, slot.rect.height, frameDepth],
+      position: [slot.rect.x, slot.rect.y, 0],
+    },
+    visible: true,
+  }));
 }
 
 /**
  * Build transoms (horizontal dividers)
  */
 function buildTransoms(
-  width: number,
-  height: number,
+  layout: ReturnType<typeof resolveWindowLayout>,
   config: any,
-  count: number
+  roleMap: ProductParams['materialRoleMap'] | undefined,
+  overrides: Record<string, string>
 ): ComponentNode[] {
-  const { frameWidth, transomHeight, frameDepth } = config;
-  
-  const transoms: ComponentNode[] = [];
-  const availableHeight = height - 2 * frameWidth;
-  const spacing = availableHeight / (count + 1);
-  const transomWidth = width - 2 * frameWidth;
-  
-  for (let i = 0; i < count; i++) {
-    const yPos = height / 2 - frameWidth - (i + 1) * spacing;
-    
-    transoms.push({
-      id: `transom_${i + 1}`,
-      name: `Transom ${i + 1}`,
-      type: 'frame',
-      materialId: 'timber',
-      geometry: {
-        type: 'box',
-        dimensions: [transomWidth, transomHeight, frameDepth],
-        position: [0, yPos, 0],
-      },
-      visible: true,
-    });
-  }
-  
-  return transoms;
+  const { frameDepth } = config;
+
+  return layout.transoms.map((slot) => ({
+    id: slot.id,
+    name: slot.id.replace(/_/g, ' '),
+    type: 'frame',
+    role: 'transom',
+    materialId: resolveMaterialId('FRAME_TIMBER', slot.id, roleMap, overrides),
+    geometry: {
+      type: 'box',
+      dimensions: [slot.rect.width, slot.rect.height, frameDepth],
+      position: [slot.rect.x, slot.rect.y, 0],
+    },
+    visible: true,
+  }));
 }
 
 /**
@@ -463,10 +430,50 @@ function createWindowMaterials(config: any): MaterialDefinition[] {
   return [
     {
       id: 'timber',
-      name: config.timber || 'Sapele',
+      name: config.timber || 'Timber',
       type: 'wood',
       baseColor: '#8b5a3c',
       roughness: 0.7,
+      metalness: 0.0,
+    },
+    {
+      id: 'oak',
+      name: 'Oak',
+      type: 'wood',
+      baseColor: '#d4a574',
+      roughness: 0.7,
+      metalness: 0.0,
+    },
+    {
+      id: 'oak-veneer',
+      name: 'Oak Veneered Ply',
+      type: 'wood',
+      baseColor: '#c9a16b',
+      roughness: 0.75,
+      metalness: 0.0,
+    },
+    {
+      id: 'accoya',
+      name: 'Accoya',
+      type: 'wood',
+      baseColor: '#c7a47d',
+      roughness: 0.65,
+      metalness: 0.0,
+    },
+    {
+      id: 'painted-wood',
+      name: config.finish || 'Painted Timber',
+      type: 'painted',
+      baseColor: '#f2f2f2',
+      roughness: 0.4,
+      metalness: 0.0,
+    },
+    {
+      id: 'painted-accoya',
+      name: 'Painted Accoya',
+      type: 'painted',
+      baseColor: '#f0f0f0',
+      roughness: 0.4,
       metalness: 0.0,
     },
     {
@@ -478,11 +485,19 @@ function createWindowMaterials(config: any): MaterialDefinition[] {
       metalness: 0.0,
     },
     {
-      id: 'paint',
-      name: config.finish || 'White Paint',
-      type: 'painted',
-      baseColor: '#f8f8f8',
+      id: 'chrome',
+      name: 'Chrome',
+      type: 'metal',
+      baseColor: '#d9d9d9',
       roughness: 0.25,
+      metalness: 1.0,
+    },
+    {
+      id: 'rubber',
+      name: 'Rubber Seal',
+      type: 'default',
+      baseColor: '#2f2f2f',
+      roughness: 0.9,
       metalness: 0.0,
     },
   ];
@@ -496,8 +511,7 @@ function buildEditableAttributes(
   components: ComponentNode[]
 ): Record<string, EditableAttribute[]> {
   const attrs: Record<string, EditableAttribute[]> = {};
-  
-  const layout = params.construction.layout || { mullions: 0, transoms: 0 };
+  const layout = resolveWindowLayout(params);
   
   // Frame attributes
   attrs['outerFrame'] = [
@@ -562,7 +576,7 @@ function buildEditableAttributes(
       key: 'mullions',
       label: 'Mullions',
       type: 'number',
-      value: layout.mullions,
+      value: Math.max(0, layout.mullions.length),
       unit: 'count',
       min: 0,
       max: 4,
@@ -573,7 +587,7 @@ function buildEditableAttributes(
       key: 'transoms',
       label: 'Transoms',
       type: 'number',
-      value: layout.transoms,
+      value: Math.max(0, layout.transoms.length),
       unit: 'count',
       min: 0,
       max: 4,
@@ -657,6 +671,10 @@ export function applyWindowEdit(params: ProductParams, edit: ComponentEdit): Pro
       }
     }
   });
+
+  if (edit.changes.timber !== undefined || edit.changes.finish !== undefined) {
+    updated.materialRoleMap = deriveMaterialRoleMap(updated);
+  }
   
   return updated;
 }
@@ -708,7 +726,7 @@ export function getDefaultWindowParams(
     }
   }
   
-  return {
+  const base: ProductParams = {
     productType,
     dimensions,
     construction: {
@@ -719,8 +737,15 @@ export function getDefaultWindowParams(
       mullionWidth: WINDOW_DEFAULTS.mullionWidth,
       transomHeight: WINDOW_DEFAULTS.transomHeight,
       layout: { mullions, transoms },
+      timber: 'oak',
+      finish: 'clear',
+      glazingType: 'double',
     },
     addedParts: [],
+  };
+  return {
+    ...base,
+    materialRoleMap: deriveMaterialRoleMap(base),
   };
 }
 

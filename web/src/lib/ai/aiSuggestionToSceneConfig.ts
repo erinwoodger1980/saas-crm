@@ -7,6 +7,7 @@
 
 import type { SceneConfig } from '@/types/scene-config';
 import type { ProductParams, AddedPart } from '@/types/parametric-builder';
+import { parametricToSceneConfig } from '@/lib/scene/parametricToSceneConfig';
 
 export interface AIEstimateResponse {
   suggestedParamsPatch: Partial<ProductParams>;
@@ -57,12 +58,6 @@ export function aiSuggestionToSceneConfig({
     console.log('Added parts count:', suggestedAddedParts?.length || 0);
   }
 
-  // Import builders dynamically to avoid circular deps
-  const { initializeSceneFromParams, getBuilder } = require('@/lib/scene/builder-registry');
-  
-  // Get appropriate builder for product category
-  const builder = getBuilder(baseParams.productType.category);
-  
   if (isDev) {
     console.log('Builder selected:', baseParams.productType.category);
   }
@@ -94,12 +89,12 @@ export function aiSuggestionToSceneConfig({
   }
 
   // Generate complete SceneConfig using builder infrastructure
-  const sceneConfig: SceneConfig = initializeSceneFromParams(
-    mergedParams,
-    context.tenantId,
-    context.entityType,
-    context.entityId
-  );
+  const sceneConfig: SceneConfig = parametricToSceneConfig({
+    tenantId: context.tenantId,
+    entityType: context.entityType,
+    entityId: context.entityId,
+    productParams: mergedParams,
+  });
 
   // Store parametric source of truth in customData
   sceneConfig.customData = {
