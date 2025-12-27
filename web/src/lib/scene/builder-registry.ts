@@ -381,6 +381,11 @@ export function getOrCreateParams(lineItem: any): ProductParams | null {
   if (lineItem.configuredProduct?.customData) {
     return lineItem.configuredProduct.customData as ProductParams;
   }
+
+  // Fallback to params saved in line-item meta (instance overrides)
+  if (lineItem.meta?.configuredProductParams) {
+    return lineItem.meta.configuredProductParams as ProductParams;
+  }
   
   // Extract dimensions
   const width = lineItem.lineStandard?.widthMm || lineItem.meta?.widthMm || 914;

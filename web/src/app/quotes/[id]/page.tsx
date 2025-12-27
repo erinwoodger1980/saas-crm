@@ -45,6 +45,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { deriveLineMaterialAlerts, groupAlerts, type GroupedAlert } from "@/lib/materialAlerts";
 import { InstantQuoteGenerator } from "@/components/instant-quote/InstantQuoteGenerator";
+import { normalizeQuoteDraft } from "@/lib/quoteDraft";
 
 // Material cost alert types imported from helper; interface here intentionally omitted.
 
@@ -83,6 +84,7 @@ export default function QuoteBuilderPage() {
     isLoading: quoteLoading,
     mutate: mutateQuote,
   } = useSWR<QuoteDto>(quoteId ? ["quote", quoteId] : null, () => fetchQuote(quoteId), { revalidateOnFocus: false });
+
 
   const {
     data: linesData,
@@ -162,6 +164,7 @@ export default function QuoteBuilderPage() {
     const res = await apiFetch<{ lead: any }>(`/leads/${leadId}`);
     return res?.lead ?? res ?? null;
   });
+
 
   const [activeTab, setActiveTab] = useState<string>("details");
 
@@ -326,6 +329,11 @@ export default function QuoteBuilderPage() {
     },
     { revalidateOnFocus: false }
   );
+
+  const quoteDraft = useMemo(() => {
+    if (!quote) return null;
+    return normalizeQuoteDraft({ quote, lead, tenantSettings });
+  }, [quote, lead, tenantSettings]);
 
   useEffect(() => {
     if (tenantSettings?.productTypes && Array.isArray(tenantSettings.productTypes)) {
@@ -1197,6 +1205,43 @@ export default function QuoteBuilderPage() {
                     Core information about the client and project requirements
                   </p>
                 </div>
+
+                {quoteDraft && (
+                  <div className="rounded-xl border bg-muted/30 p-4 space-y-3">
+                    <div className="flex flex-wrap items-center gap-4 text-sm">
+                      <div>
+                        <div className="text-xs uppercase text-muted-foreground">Quote #</div>
+                        <div className="font-medium">{quoteDraft.quoteNumber}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs uppercase text-muted-foreground">Issue date</div>
+                        <div className="font-medium">{quoteDraft.issueDate}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs uppercase text-muted-foreground">Expiry date</div>
+                        <div className="font-medium">{quoteDraft.expiryDate}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs uppercase text-muted-foreground">Currency</div>
+                        <div className="font-medium">{quoteDraft.currency}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs uppercase text-muted-foreground">VAT</div>
+                        <div className="font-medium">
+                          {quoteDraft.showVat ? `${Math.round(quoteDraft.vatRate * 100)}%` : "VAT excluded"}
+                        </div>
+                      </div>
+                    </div>
+
+                    {quoteDraft.warnings.length > 0 && (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                        {quoteDraft.warnings.map((warning) => (
+                          <div key={warning}>⚠️ {warning}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <LeadDetailsCard 
                   lead={lead}
@@ -2574,4 +2619,3 @@ function formatCurrency(value?: number | null, currency?: string | null) {
     return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(value);
   }
 }
-
