@@ -16,7 +16,7 @@ import {
 import { doorBuilder } from './parametric-door';
 import { windowBuilder } from './parametric-window';
 import { SceneConfig } from '@/types/scene-config';
-import { ConfiguratorMode, ProductParams } from '@/types/parametric-builder';
+import { ConfiguratorMode } from '@/types/parametric-builder';
 import { calculateHeroCamera } from './fit-camera';
 import { normalizeLightingConfig } from './normalize-lighting';
 
@@ -380,6 +380,23 @@ export function getOrCreateParams(lineItem: any): ProductParams | null {
   // Try to load existing params from configuredProduct
   if (lineItem.configuredProduct?.customData) {
     return lineItem.configuredProduct.customData as ProductParams;
+  }
+
+  const templateParams =
+    lineItem.configuredProduct?.templateParams ||
+    lineItem.meta?.configuredProductTemplateParams;
+  const overrides = lineItem.meta?.configuredProductOverrides;
+
+  if (templateParams && overrides) {
+    return {
+      ...templateParams,
+      ...overrides,
+      productType: overrides.productType || templateParams.productType,
+      dimensions: overrides.dimensions ? { ...templateParams.dimensions, ...overrides.dimensions } : templateParams.dimensions,
+      construction: overrides.construction ? { ...templateParams.construction, ...overrides.construction } : templateParams.construction,
+      materialRoleMap: overrides.materialRoleMap || templateParams.materialRoleMap,
+      materialOverrides: overrides.materialOverrides || templateParams.materialOverrides,
+    } as ProductParams;
   }
   
   // Extract dimensions
