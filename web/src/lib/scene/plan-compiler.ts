@@ -5,6 +5,7 @@ import {
   ProfileSlot
 } from '@/types/product-plan';
 import { ProductParams } from '@/types/parametric-builder';
+import { deriveMaterialRoleMap } from '@/lib/scene/material-role-map';
 
 /**
  * compileProductPlanToProductParams(plan)
@@ -42,45 +43,56 @@ export function compileProductPlanToProductParams(
 
   // Build construction from plan dimensions
   const construction = {
-    stileWidth: plan.variables['stileW']?.defaultValue || 50,
-    stileDepth: plan.variables['railH']?.defaultValue || 50,
+    stileWidth: plan.variables['stileW']?.defaultValue || 114,
+    topRail: plan.variables['railH']?.defaultValue || 114,
+    midRail: plan.variables['midRailH']?.defaultValue || 200,
+    bottomRail: plan.variables['bottomRailH']?.defaultValue || 200,
+    thickness: sd,
     panelThickness: detectPanelThickness(plan),
-    frameDepth: sd,
+    timber: 'oak',
+    finish: 'clear',
+    glazingType: 'double',
     // Add more construction fields as needed based on detected type
-    ...extractConstructionFromPlan(plan)
+    ...extractConstructionFromPlan(plan),
   };
 
   // Store plan metadata in customData
-  const customData = {
+  const overrides = {
     plan,
     profileSlots: plan.profileSlots,
     componentMetadata: plan.components,
     variables: plan.variables,
     compiledAt: new Date().toISOString(),
-    source: context?.source || 'estimate'
+    source: context?.source || 'estimate',
   };
 
   const params: ProductParams = {
     productType: {
-      id: context?.templateId || 'generated',
-      category: plan.detected.category as any,
-      subcategory: plan.detected.type,
-      displayName: `${plan.detected.type} (${plan.detected.option || 'auto'})`,
-      defaultWidth: pw,
-      defaultHeight: ph,
-      defaultDepth: sd,
-      availableOptions: plan.detected.option ? [plan.detected.option] : [],
-      defaultOption: plan.detected.option || ''
+      category: plan.detected.category === 'window' ? 'windows' : 'doors',
+      type: plan.detected.type || 'standard',
+      option: plan.detected.option || 'E01',
     },
     dimensions: {
-      widthMm: pw,
-      heightMm: ph,
-      depthMm: sd
+      width: pw,
+      height: ph,
+      depth: sd,
     },
     construction,
-    materialRoleMap,
+    materialRoleMap: materialRoleMap || deriveMaterialRoleMap({
+      productType: {
+        category: plan.detected.category === 'window' ? 'windows' : 'doors',
+        type: plan.detected.type || 'standard',
+        option: plan.detected.option || 'E01',
+      },
+      dimensions: {
+        width: pw,
+        height: ph,
+        depth: sd,
+      },
+      construction,
+    } as ProductParams),
     materialOverrides: {},
-    customData
+    overrides,
   };
 
   // Log compilation summary
@@ -93,18 +105,41 @@ export function compileProductPlanToProductParams(
  * Build materialRoleMap from plan.materialRoles
  * Maps semantic roles (e.g., TIMBER_PRIMARY) to placeholder material IDs
  */
-function buildMaterialRoleMapFromPlan(plan: ProductPlanV1): Record<string, string> {
-  const roleMap: Record<string, string> = {};
+function buildMaterialRoleMapFromPlan(
+  plan: ProductPlanV1
+): ProductParams['materialRoleMap'] | undefined {
+  if (!plan.materialRoles) return undefined;
 
-  // Map plan.materialRoles (which has arbitrary keys like 'frame', 'panel')
-  // to standard material role names
+  const roleMap: ProductParams['materialRoleMap'] = {};
+
   for (const [key, value] of Object.entries(plan.materialRoles)) {
-    // key is semantic (frame, panel, glass, etc.)
-    // value is the MaterialRole enum (TIMBER_PRIMARY, PANEL_CORE, etc.)
-    
-    // Map to placeholder material IDs based on role
     const materialId = mapMaterialRoleToId(value);
-    roleMap[value] = materialId;
+
+    switch (key.toLowerCase()) {
+      case 'frame':
+      case 'stile':
+      case 'rail':
+        roleMap.FRAME_TIMBER = materialId;
+        break;
+      case 'panel':
+        roleMap.PANEL_TIMBER = materialId;
+        break;
+      case 'glass':
+      case 'glazing':
+        roleMap.GLASS = materialId;
+        break;
+      case 'hardware':
+        roleMap.HARDWARE_METAL = materialId;
+        break;
+      case 'seal':
+        roleMap.SEAL_RUBBER = materialId;
+        break;
+      case 'paint':
+        roleMap.PAINT = materialId;
+        break;
+      default:
+        break;
+    }
   }
 
   return roleMap;
@@ -207,9 +242,9 @@ function logCompilationSummary(
     source: context?.source || 'unknown',
     templateId: context?.templateId,
     dimensions: {
-      width: params.dimensions.widthMm,
-      height: params.dimensions.heightMm,
-      depth: params.dimensions.depthMm
+      width: params.dimensions.width,
+      height: params.dimensions.height,
+      depth: params.dimensions.depth
     },
     componentCounts: {
       total: plan.components.length,

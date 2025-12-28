@@ -1638,7 +1638,8 @@ export default function ProductTypesSection() {
                                   ? { 
                                       ...opt, 
                                       label: configData.label,
-                                      sceneConfig: configData.sceneConfig 
+                                      sceneConfig: configData.sceneConfig,
+                                      productParams: configData.productParams || opt.productParams,
                                     }
                                   : opt
                               ),
