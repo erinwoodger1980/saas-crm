@@ -5025,6 +5025,33 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
           timestamp: new Date().toISOString(),
         };
       }
+    } else {
+      // No markup: preserve original pricing as sell prices so the UI can render sell/unit + sell/total.
+      for (const line of parsedLines) {
+        line.meta = line.meta || {};
+        const qty = Number(line.qty || 1);
+        const unit = Number(line.unitPrice || 0);
+        const sellUnit = Number.isFinite(unit) ? unit : 0;
+        const sellTotal = sellUnit * (Number.isFinite(qty) && qty > 0 ? qty : 1);
+        line.meta.sellUnitGBP = sellUnit;
+        line.meta.sellTotalGBP = sellTotal;
+        line.meta.pricingMethod = "original";
+        line.meta.pricingBreakdown = {
+          method: "No Markup (Original)",
+          inputs: {
+            qty: Number.isFinite(qty) && qty > 0 ? qty : 1,
+            unitSellGBP: sellUnit,
+          },
+          outputs: {
+            sellUnitGBP: sellUnit,
+            sellTotalGBP: sellTotal,
+          },
+          assumptions: {
+            source: "own_quote",
+          },
+          timestamp: new Date().toISOString(),
+        };
+      }
     }
     
     // Save lines to database (with numeric sanitization to avoid overflow)

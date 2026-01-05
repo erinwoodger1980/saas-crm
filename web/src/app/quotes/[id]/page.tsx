@@ -983,14 +983,15 @@ export default function QuoteBuilderPage() {
       description: string;
       qty: number | null;
       unitPrice?: number | null;
-      lineStandard?: {
-        widthMm?: number | null;
-        heightMm?: number | null;
-        timber?: string;
-        finish?: string;
-        ironmongery?: string;
-        glazing?: string;
-      };
+      sellUnit?: number | null;
+      sellTotal?: number | null;
+      widthMm?: number | null;
+      heightMm?: number | null;
+      timber?: string;
+      finish?: string;
+      ironmongery?: string;
+      glazing?: string;
+      productOptionId?: string | null;
     }) => {
       if (!quoteId) return;
       try {
@@ -1001,10 +1002,42 @@ export default function QuoteBuilderPage() {
           unitPrice: newLine.unitPrice ?? 0,
         });
         
-        // Update with lineStandard if provided
+        // Update with lineStandard/meta if provided
         const lineId = (created as any)?.line?.id;
-        if (lineId && newLine.lineStandard && Object.keys(newLine.lineStandard).length > 0) {
-          await updateQuoteLine(quoteId, lineId, { lineStandard: newLine.lineStandard });
+        if (lineId) {
+          const lineStandard: any = {};
+          if (newLine.widthMm != null) lineStandard.widthMm = newLine.widthMm;
+          if (newLine.heightMm != null) lineStandard.heightMm = newLine.heightMm;
+          if (typeof newLine.timber === 'string') lineStandard.timber = newLine.timber;
+          if (typeof newLine.finish === 'string') lineStandard.finish = newLine.finish;
+          if (typeof newLine.ironmongery === 'string') lineStandard.ironmongery = newLine.ironmongery;
+          if (typeof newLine.glazing === 'string') lineStandard.glazing = newLine.glazing;
+          if (typeof newLine.productOptionId === 'string' && newLine.productOptionId) {
+            lineStandard.productOptionId = newLine.productOptionId;
+          }
+
+          const qty = Math.max(1, Number(newLine.qty ?? 1));
+          const meta: any = {};
+          const sellUnit = newLine.sellUnit != null ? Number(newLine.sellUnit) : null;
+          const sellTotal = newLine.sellTotal != null ? Number(newLine.sellTotal) : null;
+          if (sellUnit != null && Number.isFinite(sellUnit)) {
+            meta.sellUnitGBP = sellUnit;
+            meta.sellTotalGBP = sellTotal != null && Number.isFinite(sellTotal) ? sellTotal : sellUnit * qty;
+            meta.pricingMethod = 'manual';
+            meta.isOverridden = true;
+          } else if (sellTotal != null && Number.isFinite(sellTotal)) {
+            meta.sellTotalGBP = sellTotal;
+            meta.sellUnitGBP = sellTotal / qty;
+            meta.pricingMethod = 'manual';
+            meta.isOverridden = true;
+          }
+
+          const payload: any = {};
+          if (Object.keys(lineStandard).length > 0) payload.lineStandard = lineStandard;
+          if (Object.keys(meta).length > 0) payload.meta = meta;
+          if (Object.keys(payload).length > 0) {
+            await updateQuoteLine(quoteId, lineId, payload);
+          }
         }
         
         toast({ title: "Line item added", description: "New line item created successfully" });
@@ -1025,13 +1058,32 @@ export default function QuoteBuilderPage() {
       if (!quoteId) return;
       try {
         // Transform flat updates back to nested lineStandard structure
-        const lineStandardFields = ['widthMm', 'heightMm', 'timber', 'finish', 'ironmongery', 'glazing'];
+        const lineStandardFields = ['widthMm', 'heightMm', 'timber', 'finish', 'ironmongery', 'glazing', 'productOptionId'];
         const lineStandard: any = {};
         const directUpdates: any = {};
+        const meta: any = {};
         
         Object.entries(updates).forEach(([key, value]) => {
           if (lineStandardFields.includes(key)) {
             lineStandard[key] = value;
+          } else if (key === 'sellUnit') {
+            const n = value == null ? null : Number(value);
+            if (n != null && Number.isFinite(n)) {
+              meta.sellUnitGBP = n;
+              const qty = Math.max(1, Number((updates as any)?.qty ?? 1));
+              meta.sellTotalGBP = n * qty;
+              meta.pricingMethod = 'manual';
+              meta.isOverridden = true;
+            }
+          } else if (key === 'sellTotal') {
+            const n = value == null ? null : Number(value);
+            if (n != null && Number.isFinite(n)) {
+              meta.sellTotalGBP = n;
+              const qty = Math.max(1, Number((updates as any)?.qty ?? 1));
+              meta.sellUnitGBP = qty > 0 ? n / qty : n;
+              meta.pricingMethod = 'manual';
+              meta.isOverridden = true;
+            }
           } else {
             directUpdates[key] = value;
           }
@@ -1041,6 +1093,9 @@ export default function QuoteBuilderPage() {
         const payload: any = { ...directUpdates };
         if (Object.keys(lineStandard).length > 0) {
           payload.lineStandard = lineStandard;
+        }
+        if (Object.keys(meta).length > 0) {
+          payload.meta = meta;
         }
         
         await updateQuoteLine(quoteId, lineId, payload);
@@ -1324,6 +1379,7 @@ export default function QuoteBuilderPage() {
                       finish: line.lineStandard?.finish,
                       ironmongery: line.lineStandard?.ironmongery,
                       glazing: line.lineStandard?.glazing,
+                      productOptionId: line.lineStandard?.productOptionId,
                       unitPrice: line.unitPrice ?? undefined,
                       sellUnit: line.sellUnit ?? undefined,
                       sellTotal: line.sellTotal ?? undefined,

@@ -480,6 +480,17 @@ export default function ProductTypesSection() {
     }
   };
 
+  const persistProductTypes = async (nextProductTypes: ProductCategory[]) => {
+    await apiFetch("/tenant/settings", {
+      method: "PATCH",
+      json: { productTypes: nextProductTypes },
+    });
+    await apiFetch("/ml/train-product-types", {
+      method: "POST",
+      json: { productTypes: nextProductTypes },
+    });
+  };
+
   // Debounced save to prevent heavy writes on every configurator change
   const debouncedSaveProducts = () => {
     if (saveTimerRef.current) {
@@ -1611,36 +1622,38 @@ export default function ProductTypesSection() {
             setEditModalData(null);
           }}
           onSave={async (configData) => {
-            // Update the products state with the new configuration
-            setProducts((prev) =>
-              prev.map((cat) =>
-                cat.id === editModalData.categoryId
-                  ? {
-                      ...cat,
-                      types: cat.types.map((t, idx) =>
-                        idx === editModalData.typeIdx
-                          ? {
-                              ...t,
-                              options: t.options.map((opt) =>
-                                opt.id === editModalData.optionId
-                                  ? { 
-                                      ...opt, 
-                                      label: configData.label,
-                                      sceneConfig: configData.sceneConfig,
-                                      productParams: configData.productParams || opt.productParams,
-                                    }
-                                  : opt
-                              ),
-                            }
-                          : t
-                      ),
-                    }
-                  : cat
-              )
+            // Apply change locally
+            const current = productsRef.current;
+            const next = current.map((cat) =>
+              cat.id === editModalData.categoryId
+                ? {
+                    ...cat,
+                    types: cat.types.map((t, idx) =>
+                      idx === editModalData.typeIdx
+                        ? {
+                            ...t,
+                            options: t.options.map((opt) =>
+                              opt.id === editModalData.optionId
+                                ? {
+                                    ...opt,
+                                    label: configData.label,
+                                    sceneConfig: configData.sceneConfig,
+                                    productParams: configData.productParams || opt.productParams,
+                                  }
+                                : opt
+                            ),
+                          }
+                        : t
+                    ),
+                  }
+                : cat
             );
 
-            // TODO: Save to API/database
-            console.log('Product type configuration saved:', configData);
+            productsRef.current = next;
+            setProducts(next);
+
+            // Persist immediately (Save button implies durable write)
+            await persistProductTypes(next);
           }}
           initialData={editModalData}
           defaultDimensions={getDefaultDimensions(

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -50,6 +50,8 @@ export function ProductTypeEditModal({
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('overview');
   const [isSaving, setIsSaving] = useState(false);
+
+  const lastInitKeyRef = useRef<string | null>(null);
   
   // Overview tab state
   const [optionLabel, setOptionLabel] = useState(initialData?.label || '');
@@ -79,6 +81,33 @@ export function ProductTypeEditModal({
   // Component picker state
   const [componentPickerOpen, setComponentPickerOpen] = useState(false);
   const [selectedComponents, setSelectedComponents] = useState<any[]>([]);
+
+  // Re-initialize modal state when opening a different option.
+  useEffect(() => {
+    if (!isOpen) return;
+    const key = initialData ? `${initialData.categoryId}:${initialData.typeIdx}:${initialData.optionId}` : 'none';
+    if (lastInitKeyRef.current === key) return;
+    lastInitKeyRef.current = key;
+
+    setActiveTab('overview');
+    setOptionLabel(initialData?.label || '');
+    setOptionDescription('');
+    setAiDescription('');
+    setAiImage(null);
+    setAiImagePreview(null);
+    setProductPlan(null);
+    setPlanVariables({});
+    setSelectedComponents([]);
+    setShow3DConfigurator(false);
+    setCompiledParams(null);
+    setSceneConfig(
+      createDefaultSceneConfig(
+        initialData?.categoryId || 'doors',
+        defaultDimensions.widthMm,
+        defaultDimensions.heightMm
+      )
+    );
+  }, [isOpen, initialData, defaultDimensions.widthMm, defaultDimensions.heightMm]);
 
   const handleAiImageUpload = (file: File) => {
     setAiImage(file);
@@ -132,6 +161,9 @@ export function ProductTypeEditModal({
         throw new Error(`API error: ${response.statusText}`);
       }
 
+      const isFallback = response.headers.get('x-ai-fallback') === '1';
+      const fallbackReason = response.headers.get('x-ai-error');
+
       const plan = (await response.json()) as ProductPlanV1;
       console.log('[AI2SCENE] Generated ProductPlan:', plan);
       
@@ -145,8 +177,11 @@ export function ProductTypeEditModal({
       
       setActiveTab('plan');
       toast({
-        title: 'ProductPlan Generated',
-        description: `Detected: ${plan.detected.type} (${plan.detected.option || 'auto'}) - ${plan.components.length} components`,
+        title: isFallback ? 'Generated fallback plan' : 'ProductPlan Generated',
+        description: isFallback
+          ? `AI fell back (${fallbackReason || 'unknown'}). Generated ${plan.components.length} default components.`
+          : `Detected: ${plan.detected.type} (${plan.detected.option || 'auto'}) - ${plan.components.length} components`,
+        variant: isFallback ? 'destructive' : undefined,
       });
     } catch (error: any) {
       console.error('AI estimation error:', error);

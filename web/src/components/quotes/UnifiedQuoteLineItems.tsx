@@ -165,7 +165,7 @@ export function UnifiedQuoteLineItems({
   }, [onPreview3d]);
 
   const formatCurrency = (amount?: number) => {
-    if (!amount) return '—';
+    if (amount == null || Number.isNaN(Number(amount))) return '—';
     return new Intl.NumberFormat('en-GB', {
       style: 'currency',
       currency: currency,
@@ -188,12 +188,6 @@ export function UnifiedQuoteLineItems({
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Line Items</h3>
         <div className="flex flex-wrap gap-2 justify-end">
-          {onPreview3d && (
-            <Button size="sm" variant="outline" className="gap-2" onClick={() => handlePreview3d()}>
-              <Box className="h-4 w-4" />
-              3D Preview
-            </Button>
-          )}
           {onPhotoUpload && (
             <Button
               size="sm"
@@ -285,7 +279,7 @@ export function UnifiedQuoteLineItems({
                     })}
                   </select>
                 </td>
-                <td className="px-4 py-3 text-right">{formatCurrency(line.sellTotal || line.sellUnit)}</td>
+                <td className="px-4 py-3 text-right">{formatCurrency(line.sellTotal ?? line.sellUnit)}</td>
                 <td className="px-4 py-3 text-center space-x-2">
                   {onPhotoUpload && (
                     <Button
@@ -469,8 +463,12 @@ export function UnifiedQuoteLineItems({
                   <Input
                     type="number"
                     placeholder="0.00"
-                    value={newLine.sellUnit || ''}
-                    onChange={(e) => setNewLine({ ...newLine, sellUnit: Number(e.target.value) })}
+                    value={newLine.sellUnit ?? ''}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      const next = raw === '' ? undefined : Number(raw);
+                      setNewLine({ ...newLine, sellUnit: next });
+                    }}
                     className={numberInputClass}
                   />
                 </td>
@@ -536,8 +534,12 @@ export function UnifiedQuoteLineItems({
                   <label className="text-sm font-medium">Unit Price</label>
                   <Input
                     type="number"
-                    value={editingLine.sellUnit || ''}
-                    onChange={(e) => setEditingLine({ ...editingLine, sellUnit: Number(e.target.value) })}
+                    value={editingLine.sellUnit ?? ''}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      const next = raw === '' ? undefined : Number(raw);
+                      setEditingLine({ ...editingLine, sellUnit: next });
+                    }}
                     className={numberInputClass}
                   />
                 </div>

@@ -412,8 +412,9 @@ Return ONLY valid JSON matching the ProductPlanV1 schema. No markdown, no explan
 type AiCallResult = { plan: ProductPlanV1 | null; error?: string; detail?: any };
 
 async function callOpenAI(description: string, existingProductType?: any, existingDims?: any): Promise<AiCallResult> {
-  if (!process.env.OPENAI_API_KEY) {
-    console.error('[AI2SCENE] Missing OPENAI_API_KEY in server environment');
+  const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY || process.env.OPENAI_APIKEY;
+  if (!apiKey) {
+    console.error('[AI2SCENE] Missing OpenAI API key in server environment (OPENAI_API_KEY)');
     return { plan: null, error: 'missing_openai_api_key' };
   }
 
@@ -435,7 +436,7 @@ async function callOpenAI(description: string, existingProductType?: any, existi
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+        'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
@@ -443,7 +444,9 @@ async function callOpenAI(description: string, existingProductType?: any, existi
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userPrompt }
         ],
-        temperature: 0.7,
+        // Enforce JSON output to reduce fallback due to formatting.
+        response_format: { type: 'json_object' },
+        temperature: 0.4,
         max_tokens: 2000
       })
     });
@@ -469,15 +472,15 @@ async function callOpenAI(description: string, existingProductType?: any, existi
 
     const jsonText = data.choices?.[0]?.message?.content || '';
 
-    // Extract JSON from response (may have markdown code blocks)
-    const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      console.error('[AI2SCENE] No JSON found in OpenAI response', { contentSnippet: jsonText.slice(0, 500) });
+    // Extract JSON from response (defensive, though response_format should already enforce JSON)
+    const trimmed = typeof jsonText === 'string' ? jsonText.trim() : '';
+    const jsonCandidate = trimmed.startsWith('{') ? trimmed : (trimmed.match(/\{[\s\S]*\}/)?.[0] ?? '');
+    if (!jsonCandidate) {
+      console.error('[AI2SCENE] No JSON found in OpenAI response', { contentSnippet: String(jsonText).slice(0, 500) });
       return { plan: null, error: 'no_json_in_response' };
     }
 
-    const jsonText2 = jsonMatch[0];
-    const parsed = JSON.parse(jsonText2);
+    const parsed = JSON.parse(jsonCandidate);
     const validated = ProductPlanV1Schema.parse(parsed);
 
     return { plan: validated };
@@ -516,7 +519,9 @@ export async function POST(request: NextRequest) {
         detected: aiResult.plan.detected,
         numComponents: aiResult.plan.components.length,
       });
-      return NextResponse.json(aiResult.plan);
+      const res = NextResponse.json(aiResult.plan);
+      res.headers.set('x-ai-fallback', '0');
+      return res;
     }
 
     // Fallback to safe default
@@ -526,7 +531,10 @@ export async function POST(request: NextRequest) {
       existingDims
     );
 
-    return NextResponse.json(fallback);
+    const res = NextResponse.json(fallback);
+    res.headers.set('x-ai-fallback', '1');
+    if (aiResult.error) res.headers.set('x-ai-error', String(aiResult.error).slice(0, 200));
+    return res;
   } catch (error) {
     console.error('[AI2SCENE] Error in POST handler:', error);
     return NextResponse.json(
