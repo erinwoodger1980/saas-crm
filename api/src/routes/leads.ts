@@ -2328,7 +2328,7 @@ router.post("/:id/disqualify", async (req, res) => {
 
     // Send disqualification email
     try {
-      const { sendEmail } = await import("../services/gmail");
+      const { sendEmailViaTenant } = await import("../services/email-sender");
       const tenantSettings = await prisma.tenantSettings.findFirst({
         where: { tenantId: auth.tenantId },
         select: { brandName: true },
@@ -2336,7 +2336,7 @@ router.post("/:id/disqualify", async (req, res) => {
 
       const brandName = tenantSettings?.brandName || "Our team";
 
-      await sendEmail({
+      await sendEmailViaTenant(auth.tenantId, {
         to: lead.email,
         subject: "Your Project Enquiry",
         body: message || `Hi ${lead.contactName || "there"},
