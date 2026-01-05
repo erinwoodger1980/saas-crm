@@ -57,7 +57,7 @@ export default function FieldsPage() {
     setLoading(true);
     try {
       const response = await apiFetch<QuestionnaireField[]>(
-        `/api/flexible-fields?scope=${selectedScope}`,
+        `/api/flexible-fields/fields?scope=${selectedScope}`,
         {
           headers: authHeaders,
         }
@@ -79,7 +79,7 @@ export default function FieldsPage() {
     if (!confirm('Are you sure you want to delete this field?')) return;
 
     try {
-      await apiFetch(`/api/flexible-fields/${fieldId}`, {
+      await apiFetch(`/api/flexible-fields/fields/${fieldId}`, {
         method: 'DELETE',
         headers: authHeaders,
       });

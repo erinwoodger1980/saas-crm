@@ -89,7 +89,7 @@ export function FieldManager({ defaultScope, editingField, onSave, onClose }: Fi
 
       if (isEditMode && editingField) {
         // Edit existing field
-        await apiFetch(`/api/flexible-fields/${editingField.id}`, {
+        await apiFetch(`/api/flexible-fields/fields/${editingField.id}`, {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
@@ -109,7 +109,7 @@ export function FieldManager({ defaultScope, editingField, onSave, onClose }: Fi
         });
       } else {
         // Create new field
-        await apiFetch('/api/flexible-fields', {
+        await apiFetch('/api/flexible-fields/fields', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

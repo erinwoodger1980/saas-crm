@@ -2637,32 +2637,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         sortOrder: Number.MAX_SAFE_INTEGER - 5,
       });
     }
-    if (!existingKeys.has("estimatedValue")) {
-      extras.push({
-        id: "__estimatedValue",
-        key: "estimatedValue",
-        label: "Estimated Value",
-        required: false,
-        type: "number",
-        options: [],
-        askInQuestionnaire: false,
-        showOnLead: false,
-        sortOrder: Number.MAX_SAFE_INTEGER - 2,
-      });
-    }
-    if (!existingKeys.has("quotedValue")) {
-      extras.push({
-        id: "__quotedValue",
-        key: "quotedValue",
-        label: "Quoted Value",
-        required: false,
-        type: "number",
-        options: [],
-        askInQuestionnaire: false,
-        showOnLead: false,
-        sortOrder: Number.MAX_SAFE_INTEGER - 1,
-      });
-    }
     if (!existingKeys.has("dateQuoteSent")) {
       extras.push({
         id: "__dateQuoteSent",
@@ -3383,6 +3357,20 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         />
                       </div>
 
+                      {lead?.clientId && (
+                        <label className="text-sm">
+                          <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                            What type of client are they?
+                          </span>
+                          <input
+                            className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                            value={clientType || currentClientData?.type || ""}
+                            readOnly
+                            placeholder="Client type"
+                          />
+                        </label>
+                      )}
+
                       {/* Source field - moved to Client Details */}
                       <div className="col-span-full">
                         <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
@@ -3475,6 +3463,20 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                             .filter((field) => {
                               // Filter out address fields, source, notes, and date fields that belong in Order tab
                               const key = field.key.toLowerCase();
+                              const labelLc = (field.label || "").toLowerCase();
+                              const customOnly = [
+                                "clienttype",
+                                "what type of client",
+                                "jms",
+                                "site visit",
+                                "follow up",
+                                "quoted by",
+                                "manufactured",
+                                "estimated value",
+                                "quoted value",
+                              ].some((needle) => key.includes(needle) || labelLc.includes(needle));
+
+                              if (customOnly) return false;
                               return !(
                                 key.includes("address") ||
                                 key.includes("street") ||
@@ -3591,27 +3593,24 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         })}
                         </div>
                       )}
+
+                      {lead?.id && tenantId && (
+                        <div className="pt-2">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                            Custom Fields
+                          </div>
+                          <CustomFieldsPanel
+                            entityType="lead"
+                            entityId={lead.id}
+                            onSave={async () => {
+                              if (onUpdated) await onUpdated();
+                            }}
+                          />
+                        </div>
+                      )}
                     </div>
                   </section>
                 </div>
-
-                {/* Custom Fields Panel - Flexible Field System */}
-                {lead?.id && tenantId && (
-                  <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
-                      <span aria-hidden="true">⚙️</span>
-                      Custom Fields
-                    </div>
-                    <CustomFieldsPanel
-                      entityType="lead"
-                      entityId={lead.id}
-                      onSave={async () => {
-                        // Refresh lead data after save
-                        if (onUpdated) await onUpdated();
-                      }}
-                    />
-                  </section>
-                )}
               </div>
             </div>
           )}
