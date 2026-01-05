@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { API_BASE } from '@/lib/api-base';
 import { nanoid } from 'nanoid';
 
 /**
@@ -129,7 +130,7 @@ export async function POST(request: NextRequest) {
               const imageBase64 = base64Match ? base64Match[1] : origItem.photoUrl;
               
               // Call the vision analysis endpoint synchronously
-              const visionResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/public/vision/analyze-photo`, {
+              const visionResponse = await fetch(`${API_BASE}/public/vision/analyze-photo`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
