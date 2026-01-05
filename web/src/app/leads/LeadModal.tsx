@@ -3410,7 +3410,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                               <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
                                 Client Type
                               </span>
-                              <input
+                              <select
                                 className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-inner"
                                 value={clientType || ""}
                                 onChange={(e) => setClientType(e.target.value)}
@@ -3428,8 +3428,12 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                     }
                                   }
                                 }}
-                                placeholder="e.g., public, architect, builder"
-                              />
+                              >
+                                <option value="">Select type…</option>
+                                <option value="public">Public</option>
+                                <option value="trade">Trade</option>
+                                <option value="reseller">Reseller</option>
+                              </select>
                             </label>
 
                             <label className="text-sm">
@@ -3456,11 +3460,15 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                 }}
                               >
                                 <option value="">Unassigned</option>
-                                {tenantUsers.map((user) => (
-                                  <option key={user.id} value={user.id}>
-                                    {user.name || user.email}
-                                  </option>
-                                ))}
+                                {tenantUsers && tenantUsers.length > 0 ? (
+                                  tenantUsers.map((user) => (
+                                    <option key={user.id} value={user.id}>
+                                      {user.name || user.email}
+                                    </option>
+                                  ))
+                                ) : (
+                                  <option disabled>Loading users…</option>
+                                )}
                               </select>
                             </label>
                           </div>
@@ -5556,7 +5564,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                   <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
                     Type
                   </span>
-                  <input
+                  <select
                     className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
                     value={currentClientData.type || ""}
                     onChange={(e) => {
@@ -5576,7 +5584,12 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         }
                       }
                     }}
-                  />
+                  >
+                    <option value="">Select type…</option>
+                    <option value="public">Public</option>
+                    <option value="trade">Trade</option>
+                    <option value="reseller">Reseller</option>
+                  </select>
                 </label>
 
                 <label className="text-sm">
@@ -5603,11 +5616,15 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                     }}
                   >
                     <option value="">Unassigned</option>
-                    {tenantUsers.map((user) => (
-                      <option key={user.id} value={user.id}>
-                        {user.name || user.email}
-                      </option>
-                    ))}
+                    {tenantUsers && tenantUsers.length > 0 ? (
+                      tenantUsers.map((user) => (
+                        <option key={user.id} value={user.id}>
+                          {user.name || user.email}
+                        </option>
+                      ))
+                    ) : (
+                      <option disabled>Loading users…</option>
+                    )}
                   </select>
                 </label>
               </div>
