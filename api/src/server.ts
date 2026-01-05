@@ -274,24 +274,41 @@ const corsOptions: cors.CorsOptions = {
     "x-user-id",
   ],
 };
-app.use(cors(corsOptions));
-app.options(/.*/, cors(corsOptions)); // preflight for all routes
 
-// Fallback: add CORS headers to all responses as a safety net
-app.use((_req: any, res: any, next: any) => {
-  const origin = _req.get("origin");
+// CORS: Early middleware to handle preflight and add headers
+app.use(cors(corsOptions));
+
+// Explicit preflight handling for all routes
+app.options('*', cors(corsOptions));
+
+// Additional safety net: ensure CORS headers are always set for allowed origins
+app.use((req: any, res: any, next: any) => {
+  const origin = req.get("origin");
   if (origin) {
     const norm = origin.replace(/^https?:\/\//, "").replace(/\/$/, "");
-    const match = [...allowedOriginsSet].some(
+    const isAllowed = [...allowedOriginsSet].some(
       (o) => o.replace(/^https?:\/\//, "").replace(/\/$/, "") === norm
     );
-    if (match) {
-      res.header("Access-Control-Allow-Origin", origin);
-      res.header("Access-Control-Allow-Credentials", "true");
-      res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-      res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Tenant-Id, X-User-Id, X-Requested-With");
+    
+    if (isAllowed) {
+      // Explicitly set CORS headers for this response
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Tenant-Id, X-User-Id, X-Requested-With");
+      res.setHeader("Access-Control-Max-Age", "86400");
+      res.setHeader("Vary", "Origin");
+      
+      // Log successful CORS allowance
+      console.log(`[CORS Header] ✅ Set for origin: ${origin}`);
     }
   }
+  
+  // Always handle OPTIONS requests
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  
   next();
 });
 
