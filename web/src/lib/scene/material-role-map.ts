@@ -1,8 +1,7 @@
 import { ProductParams } from '@/types/parametric-builder';
 
-export type MaterialRoleKey = NonNullable<ProductParams['materialRoleMap']> extends Record<infer K, any>
-  ? K
-  : never;
+// Material role keys from the optional role map; fallback to string to avoid narrowing to undefined
+export type MaterialRoleKey = keyof NonNullable<ProductParams['materialRoleMap']>;
 
 export function deriveMaterialRoleMap(params: ProductParams): ProductParams['materialRoleMap'] {
   const timber = (params.construction?.timber || 'oak').toLowerCase();

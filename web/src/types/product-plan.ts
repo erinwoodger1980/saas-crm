@@ -101,6 +101,8 @@ export const ComponentInstanceSchema = z.object({
   profileSlot: z.string().optional() // if geometry.type='profileExtrude', this should match geometry.profileSlot
 });
 
+export type ComponentInstance = z.infer<typeof ComponentInstanceSchema>;
+
 export const VariableSchema = z.object({
   defaultValue: z.number(),
   unit: z.string(), // "mm", "count", etc
@@ -199,7 +201,10 @@ export function createFallbackDoorPlan(
         transform: {
           xExpr: '0',
           yExpr: '0',
-          zExpr: '0'
+          zExpr: '0',
+          rotXDeg: 0,
+          rotYDeg: 0,
+          rotZDeg: 0,
         },
         quantityExpr: '1',
         materialRole: 'TIMBER_PRIMARY'
@@ -216,7 +221,10 @@ export function createFallbackDoorPlan(
         transform: {
           xExpr: 'pw - stileW',
           yExpr: '0',
-          zExpr: '0'
+          zExpr: '0',
+          rotXDeg: 0,
+          rotYDeg: 0,
+          rotZDeg: 0,
         },
         quantityExpr: '1',
         materialRole: 'TIMBER_PRIMARY'
@@ -233,7 +241,10 @@ export function createFallbackDoorPlan(
         transform: {
           xExpr: '0',
           yExpr: 'ph - railH',
-          zExpr: '0'
+          zExpr: '0',
+          rotXDeg: 0,
+          rotYDeg: 0,
+          rotZDeg: 0,
         },
         quantityExpr: '1',
         materialRole: 'TIMBER_PRIMARY'
@@ -250,7 +261,10 @@ export function createFallbackDoorPlan(
         transform: {
           xExpr: '0',
           yExpr: '0',
-          zExpr: '0'
+          zExpr: '0',
+          rotXDeg: 0,
+          rotYDeg: 0,
+          rotZDeg: 0,
         },
         quantityExpr: '1',
         materialRole: 'TIMBER_PRIMARY'
@@ -268,7 +282,10 @@ export function createFallbackDoorPlan(
         transform: {
           xExpr: 'stileW',
           yExpr: 'railH',
-          zExpr: '0'
+          zExpr: '0',
+          rotXDeg: 0,
+          rotYDeg: 0,
+          rotZDeg: 0,
         },
         quantityExpr: '1',
         materialRole: 'PANEL_CORE'
@@ -338,7 +355,10 @@ export function createFallbackWindowPlan(
         transform: {
           xExpr: '0',
           yExpr: 'ph',
-          zExpr: '0'
+          zExpr: '0',
+          rotXDeg: 0,
+          rotYDeg: 0,
+          rotZDeg: 0,
         },
         quantityExpr: '1',
         materialRole: 'TIMBER_PRIMARY'
@@ -355,7 +375,10 @@ export function createFallbackWindowPlan(
         transform: {
           xExpr: 'frameW',
           yExpr: '0',
-          zExpr: '0'
+          zExpr: '0',
+          rotXDeg: 0,
+          rotYDeg: 0,
+          rotZDeg: 0,
         },
         quantityExpr: '1',
         materialRole: 'TIMBER_PRIMARY'
@@ -372,7 +395,10 @@ export function createFallbackWindowPlan(
         transform: {
           xExpr: 'frameW',
           yExpr: 'ph - railH',
-          zExpr: '0'
+          zExpr: '0',
+          rotXDeg: 0,
+          rotYDeg: 0,
+          rotZDeg: 0,
         },
         quantityExpr: '1',
         materialRole: 'TIMBER_PRIMARY'
@@ -390,7 +416,10 @@ export function createFallbackWindowPlan(
         transform: {
           xExpr: 'frameW + stileW',
           yExpr: 'railH',
-          zExpr: '0'
+          zExpr: '0',
+          rotXDeg: 0,
+          rotYDeg: 0,
+          rotZDeg: 0,
         },
         quantityExpr: '1',
         materialRole: 'GLASS_CLEAR'

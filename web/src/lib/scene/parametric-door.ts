@@ -579,7 +579,7 @@ function createDoorMaterials(config: any): MaterialDefinition[] {
     {
       id: 'rubber',
       name: 'Rubber Seal',
-      type: 'default',
+      type: 'painted',
       baseColor: '#2f2f2f',
       roughness: 0.9,
       metalness: 0.0,

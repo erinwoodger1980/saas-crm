@@ -4,6 +4,11 @@
  * Based on product type and dimensions
  */
 
+// Re-export detailed layout resolvers used by parametric builders
+export { resolveDoorLayout } from './layout/door-layout-resolver';
+export { resolveWindowLayout } from './layout/window-layout-resolver';
+export * from './layout/layout-types';
+
 export interface LayoutParams {
   productType: string; // E01, E02, E03, etc.
   width: number; // Overall width in mm

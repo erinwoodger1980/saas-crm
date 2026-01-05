@@ -844,7 +844,7 @@ function ConfiguratorModal({
     setIsGenerating(true);
     try {
       // Extract product type from line item
-      const productType = line.configuredProduct?.productType || {
+      const productType = (line as any).configuredProduct?.productType || {
         category: 'doors',
         type: 'entrance',
         option: 'E01',

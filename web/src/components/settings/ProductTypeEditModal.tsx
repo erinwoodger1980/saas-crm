@@ -624,7 +624,7 @@ export function ProductTypeEditModal({
       isOpen={componentPickerOpen}
       onClose={() => setComponentPickerOpen(false)}
       onSelect={handleComponentSelected}
-      productTypeId={initialData?.optionId}
+      productTypeId={initialData?.optionId ?? ''}
     />
     </>
   );

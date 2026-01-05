@@ -386,7 +386,7 @@ function buildMullions(
     id: slot.id,
     name: slot.id.replace(/_/g, ' '),
     type: 'frame',
-    role: 'mullion',
+    role: 'other',
     materialId: resolveMaterialId('FRAME_TIMBER', slot.id, roleMap, overrides),
     geometry: {
       type: 'box',
@@ -412,7 +412,7 @@ function buildTransoms(
     id: slot.id,
     name: slot.id.replace(/_/g, ' '),
     type: 'frame',
-    role: 'transom',
+    role: 'other',
     materialId: resolveMaterialId('FRAME_TIMBER', slot.id, roleMap, overrides),
     geometry: {
       type: 'box',
@@ -495,7 +495,7 @@ function createWindowMaterials(config: any): MaterialDefinition[] {
     {
       id: 'rubber',
       name: 'Rubber Seal',
-      type: 'default',
+      type: 'painted',
       baseColor: '#2f2f2f',
       roughness: 0.9,
       metalness: 0.0,

@@ -96,17 +96,17 @@ function buildComponentNode(
 ): ComponentNode | null {
   try {
     // Compute transform (position and rotation)
-    const position = {
-      x: evaluateExpression(planComponent.transform.xExpr, varValues),
-      y: evaluateExpression(planComponent.transform.yExpr, varValues),
-      z: evaluateExpression(planComponent.transform.zExpr, varValues)
-    };
+    const position: [number, number, number] = [
+      evaluateExpression(planComponent.transform.xExpr, varValues),
+      evaluateExpression(planComponent.transform.yExpr, varValues),
+      evaluateExpression(planComponent.transform.zExpr, varValues)
+    ];
 
-    const rotation = {
-      x: planComponent.transform.rotXDeg || 0,
-      y: planComponent.transform.rotYDeg || 0,
-      z: planComponent.transform.rotZDeg || 0
-    };
+    const rotation: [number, number, number] = [
+      ((planComponent.transform.rotXDeg || 0) * Math.PI) / 180,
+      ((planComponent.transform.rotYDeg || 0) * Math.PI) / 180,
+      ((planComponent.transform.rotZDeg || 0) * Math.PI) / 180
+    ];
 
     // Build geometry based on type
     let geometry: any = null;
@@ -127,20 +127,14 @@ function buildComponentNode(
     const node: ComponentNode = {
       id: `${planComponent.id}_${index}`,
       parentId: 'root',
-      type: 'mesh',
+      type: 'group',
       name: planComponent.id,
+      visible: true,
       position,
       rotation,
-      geometry,
+      geometry: geometry as any,
       materialId: planComponent.materialRole, // will be mapped to real material ID later
-      role: planComponent.role as any,
-      parametric: planComponent.parametric,
-      metadata: {
-        planComponentId: planComponent.id,
-        planRole: planComponent.role,
-        materialRole: planComponent.materialRole,
-        instanceIndex: index
-      }
+      role: 'other'
     };
 
     return node;

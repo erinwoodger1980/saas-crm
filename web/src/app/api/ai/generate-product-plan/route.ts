@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ProductPlanV1Schema, createFallbackDoorPlan, createFallbackWindowPlan } from '@/types/product-plan';
+import { ProductPlanV1Schema, createFallbackDoorPlan, createFallbackWindowPlan, ProductPlanV1 } from '@/types/product-plan';
 
 /**
  * POST /api/ai/generate-product-plan

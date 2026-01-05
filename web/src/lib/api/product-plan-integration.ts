@@ -89,9 +89,9 @@ export async function updateLineWithPlan(
             option: plan.detected.option
           },
           dimensions: {
-            widthMm: plan.dimensions.widthMm || params.dimensions.widthMm,
-            heightMm: plan.dimensions.heightMm || params.dimensions.heightMm,
-            depthMm: plan.dimensions.depthMm || params.dimensions.depthMm
+            widthMm: plan.dimensions.widthMm ?? params.dimensions.width,
+            heightMm: plan.dimensions.heightMm ?? params.dimensions.height,
+            depthMm: plan.dimensions.depthMm ?? params.dimensions.depth
           }
         },
         customData: {
