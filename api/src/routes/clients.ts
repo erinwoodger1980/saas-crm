@@ -53,6 +53,7 @@ router.get("/", async (req, res) => {
         postcode: true,
         notes: true,
         tags: true,
+        userId: true,
         createdAt: true,
         contacts: {
           select: {
@@ -137,6 +138,7 @@ router.get("/:id", async (req, res) => {
         tags: true,
         contactPerson: true,
         country: true,
+        userId: true,
         createdAt: true,
         updatedAt: true,
         contacts: {

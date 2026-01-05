@@ -881,7 +881,7 @@ export default function LeadModal({
         // Fetch tenant users for assignment dropdown
         if (tenantId) {
           try {
-            const usersData = await apiFetch<any[]>(`/tenants/${tenantId}/users`, { headers: authHeaders });
+            const usersData = await apiFetch<any[]>(`/users`, { headers: authHeaders });
             if (usersData) {
               setTenantUsers(usersData.map((u: any) => ({ id: u.id, name: u.name || u.firstName || u.email, email: u.email })));
             }
