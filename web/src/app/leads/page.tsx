@@ -229,6 +229,11 @@ function LeadsPageContent() {
   // Next task tracking
   const [nextTask, setNextTask] = useState<any>(null);
   const [nextTaskLead, setNextTaskLead] = useState<Lead | null>(null);
+  
+  // New lead description modal
+  const [newLeadModalOpen, setNewLeadModalOpen] = useState(false);
+  const [newLeadDescription, setNewLeadDescription] = useState("");
+  const [creatingLead, setCreatingLead] = useState(false);
 
   // Load column config for current tab
   useEffect(() => {
@@ -545,11 +550,10 @@ function LeadsPageContent() {
     return filtered;
   }, [grouped, tab]);
 
-  async function handleCreateLead() {
-    const input = prompt("Enter lead description:");
-    const description = input?.trim();
-    if (!description) return;
+  async function handleCreateLeadWithDescription(description: string) {
+    if (!description?.trim()) return;
     
+    setCreatingLead(true);
     let leadCreated = false;
     let leadId: string | null = null;
     
@@ -557,7 +561,7 @@ function LeadsPageContent() {
       const lead = await apiFetch<any>("/leads", {
         method: "POST",
         headers: buildAuthHeaders(),
-        json: { contactName: "Manual Lead", email: "", description, custom: { provider: "manual" } },
+        json: { contactName: "Manual Lead", email: "", description: description.trim(), custom: { provider: "manual" } },
       });
       
       leadCreated = true;
@@ -610,7 +614,16 @@ function LeadsPageContent() {
         description: cleaned || "Please try again.",
         variant: "destructive",
       });
+    } finally {
+      setCreatingLead(false);
+      setNewLeadModalOpen(false);
+      setNewLeadDescription("");
     }
+  }
+  
+  function handleCreateLead() {
+    setNewLeadModalOpen(true);
+    setNewLeadDescription("");
   }
 
   /* ------------------------------ Email Upload Functions ------------------------------ */
@@ -1211,6 +1224,58 @@ function LeadsPageContent() {
           currentColors={customColors}
           onSave={(options, colors) => handleSaveDropdownOptions(editingField, options, colors)}
         />
+      )}
+
+      {/* New Lead Description Modal */}
+      {newLeadModalOpen && (
+        <div 
+          className="fixed inset-0 z-[70] bg-black/20 backdrop-blur flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => !creatingLead && setNewLeadModalOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-lg p-6 max-w-lg w-full border border-slate-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-semibold text-slate-800 mb-4">Create New Lead</h2>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Lead Description
+                </label>
+                <textarea
+                  autoFocus
+                  placeholder="Enter lead details, project description, or notes..."
+                  value={newLeadDescription}
+                  onChange={(e) => setNewLeadDescription(e.target.value)}
+                  disabled={creatingLead}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-500 min-h-[100px] resize-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4">
+                <button
+                  type="button"
+                  onClick={() => !creatingLead && setNewLeadModalOpen(false)}
+                  disabled={creatingLead}
+                  className="px-4 py-2 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleCreateLeadWithDescription(newLeadDescription)}
+                  disabled={creatingLead || !newLeadDescription.trim()}
+                  className="px-4 py-2 rounded-lg bg-blue-600 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                >
+                  {creatingLead ? "Creating..." : "Create Lead"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
