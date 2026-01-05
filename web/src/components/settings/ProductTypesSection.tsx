@@ -14,6 +14,8 @@ import { getAssignedComponents, getAvailableComponents, assignComponent, deleteA
 import { ComponentPickerDialog } from "./ComponentPickerDialog";
 import { parametricToSceneConfig } from "@/lib/scene/parametricToSceneConfig";
 import type { ProductParams } from "@/types/parametric-builder";
+import { compileProductPlanToProductParams } from "@/lib/scene/plan-compiler";
+import type { ProductPlanV1 } from "@/types/product-plan";
 
 const DEFAULT_SVG_PROMPT =
   "Provide a detailed elevation with correct timber/glass fills, rails, stiles, panels, muntins, and dimension lines (800mm top, 2025mm left).";
@@ -193,6 +195,7 @@ const INITIAL_PRODUCTS: ProductCategory[] = [
 export default function ProductTypesSection() {
   const { toast } = useToast();
   const [products, setProducts] = useState<ProductCategory[]>(INITIAL_PRODUCTS);
+  const productsRef = useRef<ProductCategory[]>(INITIAL_PRODUCTS);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const [expandedTypes, setExpandedTypes] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
@@ -235,17 +238,25 @@ export default function ProductTypesSection() {
   
   // Debounce timer for auto-save
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Keep latest products in a ref so debounced saves persist the newest state.
+  useEffect(() => {
+    productsRef.current = products;
+  }, [products]);
   
   // Handle dialog state changes in useEffect to prevent render-time setState
   useEffect(() => {
     if (isConfiguratorOpen && capturedDialogInfo) {
+      const expectedKey = `${capturedDialogInfo.categoryId}-${capturedDialogInfo.type}-${capturedDialogInfo.optionId}`;
+
       // Dialog opened - capture and normalize config
       const option = products
         .find(c => c.id === capturedDialogInfo.categoryId)
         ?.types[capturedDialogInfo.typeIdx]
         ?.options.find(o => o.id === capturedDialogInfo.optionId);
 
-      const rawConfig = option?.sceneConfig;
+      const useExistingCaptured = Boolean(capturedConfig) && configuratorKey === expectedKey;
+      const rawConfig = useExistingCaptured ? capturedConfig : option?.sceneConfig;
       const normalizedConfig = normalizeSceneConfig(rawConfig);
 
       let finalConfig = normalizedConfig;
@@ -308,7 +319,7 @@ export default function ProductTypesSection() {
         }
       }, 0);
     }
-  }, [isConfiguratorOpen, capturedDialogInfo, products]);
+  }, [isConfiguratorOpen, capturedDialogInfo, products, capturedConfig, configuratorKey]);
 
   
   const [aiEstimateDialog, setAiEstimateDialog] = useState<{
@@ -442,15 +453,16 @@ export default function ProductTypesSection() {
   const saveProducts = async () => {
     setSaving(true);
     try {
+      const currentProducts = productsRef.current;
       await apiFetch("/tenant/settings", {
         method: "PATCH",
-        json: { productTypes: products },
+        json: { productTypes: currentProducts },
       });
       
       // Train ML model with updated product types
       await apiFetch("/ml/train-product-types", {
         method: "POST",
-        json: { productTypes: products },
+        json: { productTypes: currentProducts },
       });
 
       toast({
@@ -504,6 +516,9 @@ export default function ProductTypesSection() {
               : cat
           )
         );
+
+        // Persist image change
+        debouncedSaveProducts();
       };
       reader.readAsDataURL(file);
     } catch (err) {
@@ -788,27 +803,25 @@ export default function ProductTypesSection() {
         console.log('[AI Estimation] Image attached, size:', aiImage.size);
       }
 
-      console.log('[AI Estimation] Sending request to /api/ai/estimate-components...');
+      console.log('[AI2SCENE] Sending request to /api/ai/generate-product-plan...');
 
-      // Use parametric API response format
-      const result = await fetch('/api/ai/estimate-components', {
+      const result = await fetch('/api/ai/generate-product-plan', {
         method: 'POST',
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          tenantId: 'current', // TODO: get from session
           description: aiDescription || 'Product from image',
-          productType: {
+          image: aiImagePreview || undefined,
+          existingProductType: {
             category: aiEstimateDialog.categoryId,
             type: aiEstimateDialog.type,
-            option: aiEstimateDialog.optionId,
           },
-          existingDimensions: {
+          existingDims: {
             widthMm: dims.widthMm,
             heightMm: dims.heightMm,
-            thicknessMm: aiEstimateDialog.categoryId === 'doors' ? 45 : 100,
+            depthMm: aiEstimateDialog.categoryId === 'doors' ? 45 : 100,
           },
         }),
       });
@@ -819,40 +832,10 @@ export default function ProductTypesSection() {
         throw new Error(`API error: ${result.statusText}`);
       }
 
-      const aiData = await result.json();
-      console.log('[AI Estimation] Result:', {
-        hasParamsPatch: !!aiData.suggestedParamsPatch,
-        addedPartsCount: aiData.suggestedAddedParts?.length || 0,
-        rationale: aiData.rationale,
+      const plan = (await result.json()) as ProductPlanV1;
+      const mergedParams = compileProductPlanToProductParams(plan, {
+        source: plan?.detected?.confidence && plan.detected.confidence < 0.3 ? 'fallback' : 'estimate',
       });
-
-      // Convert AI result to canonical ProductParams
-      const { getBuilder } = require('@/lib/scene/builder-registry');
-      const builder = getBuilder(aiEstimateDialog.categoryId);
-      const baseParams = builder.getDefaults(
-        {
-          category: aiEstimateDialog.categoryId,
-          type: aiEstimateDialog.type,
-          option: aiEstimateDialog.optionId,
-        },
-        {
-          width: dims.widthMm,
-          height: dims.heightMm,
-          depth: aiData.suggestedParamsPatch?.construction?.thickness || (aiEstimateDialog.categoryId === 'doors' ? 45 : 100),
-        }
-      );
-
-      const mergedParams: ProductParams = {
-        ...baseParams,
-        ...aiData.suggestedParamsPatch,
-        productType: aiData.suggestedParamsPatch?.productType || baseParams.productType,
-        dimensions: baseParams.dimensions,
-        construction: {
-          ...baseParams.construction,
-          ...aiData.suggestedParamsPatch?.construction,
-        },
-        addedParts: aiData.suggestedAddedParts || [],
-      };
 
       const sceneConfig = parametricToSceneConfig({
         tenantId: 'settings',
@@ -884,6 +867,9 @@ export default function ProductTypesSection() {
         )
       );
 
+      // Persist AI-generated template
+      debouncedSaveProducts();
+
       const componentCount = sceneConfig?.components?.length || 0;
       toast({
         title: "Product generated!",
@@ -906,6 +892,7 @@ export default function ProductTypesSection() {
       };
       setCapturedDialogInfo(dialogInfo);
       setConfiguratorKey(`${aiEstimateDialog.categoryId}-${aiEstimateDialog.type}-${aiEstimateDialog.optionId}`);
+      setCapturedConfig(sceneConfig);
       setIsConfiguratorOpen(true);
     } catch (error: any) {
       console.error('[AI Estimation] Error:', error);
@@ -1386,8 +1373,9 @@ export default function ProductTypesSection() {
                     type: capturedDialogInfo.type,
                     option: capturedDialogInfo.optionId,
                   }}
-                  settingsPreview={false}
+                  settingsPreview={true}
                   renderQuality="low"
+                  mode="TEMPLATE"
                   onChange={(sceneConfig) => {
                     // Update the option's sceneConfig as user makes changes
                     const params = sceneConfig?.customData as ProductParams | undefined;

@@ -61,6 +61,8 @@ import { toast } from 'sonner';
 import { fitCameraToBox } from '@/lib/scene/fit-camera';
 import { Box3, Vector3 } from 'three';
 import { diffProductParams } from '@/lib/scene/parametric-overrides';
+import { compileProductPlanToProductParams } from '@/lib/scene/plan-compiler';
+import type { ProductPlanV1 } from '@/types/product-plan';
 
 interface ProductConfigurator3DProps {
   /** Tenant ID for multi-tenancy */
@@ -289,6 +291,7 @@ export function ProductConfigurator3D({
   const [showAIDescriptionDialog, setShowAIDescriptionDialog] = useState(false);
   const [showAddComponentDialog, setShowAddComponentDialog] = useState(false);
   const [aiDescription, setAiDescription] = useState('');
+  const [aiGenerating, setAiGenerating] = useState(false);
   const [wireframeMode, setWireframeMode] = useState(false);
   const [frameTrigger, setFrameTrigger] = useState(0);
   
@@ -1085,146 +1088,114 @@ export function ProductConfigurator3D({
     setShowAIDescriptionDialog(true);
   }, []);
 
-  // Process AI description when user submits
-  const handleAIDescriptionSubmit = useCallback(() => {
-    if (!config || !aiDescription.trim()) {
-      setShowAIDescriptionDialog(false);
-      setAiDescription('');
-      return;
-    }
-
-    const params = (config.customData || {}) as ProductParams;
-    const text = aiDescription.toLowerCase();
-
-    // Ensure productType has all required properties
-    let next = { ...params } as ProductParams;
-    if (!next.productType || !next.productType.category) {
-      toast.error('Invalid product configuration');
-      setShowAIDescriptionDialog(false);
-      setAiDescription('');
-      return;
-    }
-    next.construction = { ...(next.construction || {}) };
-
-    // Option detection
-    if (text.match(/4\s*panels|two\s*x\s*two|2x2/)) {
-      next.productType = { ...next.productType, option: 'E02' };
-    } else if (text.match(/glazed.*top|fanlight|glass.*top/)) {
-      next.productType = { ...next.productType, option: 'E03' };
-    } else if (text.match(/2\s*panels|one\s*x\s*two|1x2/)) {
-      next.productType = { ...next.productType, option: 'E01' };
-    }
-
-    // Parse explicit dimensions (e.g., "stile 120mm", "top rail 90mm")
-    const stileDimMatch = text.match(/stile\s+(\d+)\s*mm/);
-    const topRailMatch = text.match(/top\s*rail\s+(\d+)\s*mm/);
-    const bottomRailMatch = text.match(/bottom\s*rail\s+(\d+)\s*mm/);
-    const midRailMatch = text.match(/mid\s*rail\s+(\d+)\s*mm/);
-
-    if (stileDimMatch) {
-      next.construction.stileWidth = parseInt(stileDimMatch[1], 10);
-    } else if (text.includes('stile')) {
-      next.construction.stileWidth = next.construction.stileWidth || Math.round(next.dimensions.width * 0.08);
-    }
-
-    if (topRailMatch) {
-      next.construction.topRail = parseInt(topRailMatch[1], 10);
-    } else if (text.includes('top rail')) {
-      next.construction.topRail = next.construction.topRail || Math.round(next.dimensions.height * 0.08);
-    }
-
-    if (bottomRailMatch) {
-      next.construction.bottomRail = parseInt(bottomRailMatch[1], 10);
-    } else if (text.includes('bottom rail')) {
-      next.construction.bottomRail = next.construction.bottomRail || Math.round(next.dimensions.height * 0.1);
-    }
-
-    if (midRailMatch) {
-      next.construction.midRail = parseInt(midRailMatch[1], 10);
-    } else if (text.includes('mid rail')) {
-      next.construction.midRail = next.construction.midRail || Math.round(next.dimensions.height * 0.1);
-    }
-
-    // Layout overrides (e.g., "mid rail at 900mm" or "mid rail at 45%")
-    const layoutMmMatch = text.match(/mid\s*rail\s*at\s*(\d+)\s*mm/);
-    const layoutPercentMatch = text.match(/mid\s*rail\s*at\s*(\d+)\s*%/);
-    if (layoutMmMatch) {
-      const mm = parseInt(layoutMmMatch[1], 10);
-      next.construction.layoutOverrides = { ...(next.construction.layoutOverrides || {}), midRailY: mm };
-    } else if (layoutPercentMatch) {
-      const pct = parseInt(layoutPercentMatch[1], 10);
-      const mm = Math.round((pct / 100) * next.dimensions.height);
-      next.construction.layoutOverrides = { ...(next.construction.layoutOverrides || {}), midRailY: mm };
-    }
-
-    // Auto-attach profiles by keyword (e.g., "ogee stile", "bead profile")
-    const profileMap: Record<string, string> = {};
-    const profiles = (next.profiles || []) as any[];
-    
-    // Build keyword -> profile ID map
-    if (text.includes('ogee')) {
-      const ogeeProfile = profiles.find(p => (p.name || '').toLowerCase().includes('ogee'));
-      if (ogeeProfile) profileMap['stile'] = ogeeProfile.id;
-    }
-    if (text.includes('bead')) {
-      const beadProfile = profiles.find(p => (p.name || '').toLowerCase().includes('bead'));
-      if (beadProfile) profileMap['stile'] = beadProfile.id;
-    }
-    if (text.includes('bolection')) {
-      const bolectionProfile = profiles.find(p => (p.name || '').toLowerCase().includes('bolection'));
-      if (bolectionProfile) {
-        profileMap['stile'] = bolectionProfile.id;
-        profileMap['topRail'] = bolectionProfile.id;
-        profileMap['bottomRail'] = bolectionProfile.id;
+  const applyGeneratedPlan = useCallback(
+    async (plan: ProductPlanV1) => {
+      if (!config) return;
+      const params = compileProductPlanToProductParams(plan, {
+        source: plan.detected.confidence < 0.3 ? 'fallback' : 'estimate',
+      });
+      const fresh = initializeSceneFromParams(params, tenantId, entityType, safeEntityId);
+      if (!fresh) {
+        toast.error('Failed to build scene from AI plan');
+        return;
       }
+      const normalized = normalizeSceneConfig(fresh);
+      setConfig(normalized);
+      await persistConfig(normalized);
+      onChange?.(normalized);
+
+      if ((plan as any)?.rationale?.toLowerCase?.().includes('fallback') || plan.detected.confidence <= 0.25) {
+        toast('AI used a fallback plan (check OPENAI_API_KEY / description detail)', { duration: 5000 });
+      } else {
+        toast.success(`Generated ${plan.components?.length || 0} components`);
+      }
+    },
+    [config, entityType, onChange, persistConfig, safeEntityId, tenantId]
+  );
+
+  const generatePlanFromAI = useCallback(
+    async (payload: { description: string; image?: string }) => {
+      if (!config) return;
+      const params = (config.customData || {}) as ProductParams;
+
+      if (!params.productType || !params.productType.category) {
+        toast.error('Invalid product configuration');
+        return;
+      }
+
+      setAiGenerating(true);
+      try {
+        const res = await fetch('/api/ai/generate-product-plan', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            description: payload.description,
+            image: payload.image,
+            existingProductType: {
+              category: params.productType.category,
+              type: params.productType.type,
+            },
+            existingDims: {
+              widthMm: Number(params.dimensions?.width) || 914,
+              heightMm: Number(params.dimensions?.height) || 2032,
+              depthMm: Number(params.dimensions?.depth) || (params.productType.category === 'windows' ? 80 : 45),
+            },
+          }),
+        });
+
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || res.statusText);
+        }
+
+        const plan = (await res.json()) as ProductPlanV1;
+        await applyGeneratedPlan(plan);
+      } catch (e: any) {
+        toast.error(e?.message || 'AI generation failed');
+      } finally {
+        setAiGenerating(false);
+      }
+    },
+    [applyGeneratedPlan, config]
+  );
+
+  // Process AI description when user submits
+  const handleAIDescriptionSubmit = useCallback(async () => {
+    if (!aiDescription.trim()) {
+      setShowAIDescriptionDialog(false);
+      setAiDescription('');
+      return;
     }
 
-    // Apply profile mappings
-    if (Object.keys(profileMap).length > 0) {
-      next.construction.profileIds = {
-        ...(next.construction.profileIds || {}),
-        ...profileMap,
-      };
-    }
-
-    const rebuilt = rebuildSceneConfig(config, next);
-    setConfig(rebuilt);
-    persistConfig(rebuilt);
-    onChange?.(rebuilt);
-    toast.success('Parametric components generated');
-    
-    // Close dialog and clear input
+    // Close dialog first to avoid UI feeling stuck
     setShowAIDescriptionDialog(false);
+    const text = aiDescription.trim();
     setAiDescription('');
-  }, [config, aiDescription, onChange, persistConfig]);
+
+    await generatePlanFromAI({ description: text });
+  }, [aiDescription, generatePlanFromAI]);
 
   const handleGenerateFromPhoto = useCallback(() => {
-    if (!config) {
-      toast.error('No configuration available');
-      return;
-    }
-    
-    const params = (config.customData || {}) as ProductParams;
-    
-    // Ensure productType exists
-    if (!params.productType || !params.productType.category) {
-      toast.error('Invalid product configuration');
-      return;
-    }
-    
-    // Placeholder inference: choose E03 (glazed top) for photo-based generation
-    const next: ProductParams = {
-      ...params,
-      productType: { ...params.productType, option: 'E03' },
-      construction: { ...(params.construction || {}) },
+    // Minimal file picker -> base64 -> AI endpoint
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const dataUrl = String(reader.result || '');
+        await generatePlanFromAI({
+          description: 'Product from photo',
+          image: dataUrl,
+        });
+      };
+      reader.readAsDataURL(file);
     };
-    
-    const rebuilt = rebuildSceneConfig(config, next);
-    setConfig(rebuilt);
-    persistConfig(rebuilt);
-    onChange?.(rebuilt);
-    toast.success('Generated components from photo (glazed top design)');
-  }, [config, onChange, persistConfig]);
+    input.click();
+  }, [generatePlanFromAI]);
 
   if (isLoading) {
     return (
@@ -1647,10 +1618,10 @@ export function ProductConfigurator3D({
             <p className="text-xs text-muted-foreground">
               Describe your product or upload a photo to automatically generate components
             </p>
-            <Button variant="outline" className="w-full" size="sm" onClick={handleGenerateFromDescription}>
+            <Button variant="outline" className="w-full" size="sm" onClick={handleGenerateFromDescription} disabled={aiGenerating}>
               Generate from Description
             </Button>
-            <Button variant="outline" className="w-full" size="sm" onClick={handleGenerateFromPhoto}>
+            <Button variant="outline" className="w-full" size="sm" onClick={handleGenerateFromPhoto} disabled={aiGenerating}>
               Generate from Photo
             </Button>
           </div>
@@ -1765,7 +1736,7 @@ export function ProductConfigurator3D({
             <Button variant="outline" onClick={() => setShowAIDescriptionDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleAIDescriptionSubmit} disabled={!aiDescription.trim()}>
+            <Button onClick={handleAIDescriptionSubmit} disabled={aiGenerating || !aiDescription.trim()}>
               Generate
             </Button>
           </DialogFooter>
