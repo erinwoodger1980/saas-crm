@@ -135,9 +135,10 @@ export function InstantQuoteGenerator(props: InstantQuoteGeneratorProps) {
     try {
       // Use existing AI component estimator route (no new routes)
       const payload = {
+        tenantId: 'current',
+        description: description || 'Instant quote generation',
         productType: productTypeHint || { category: 'doors', type: 'standard', option: 'GEN' },
-        dimensions: { widthMm: dimensions.width, heightMm: dimensions.height, depthMm: dimensions.depth },
-        description,
+        existingDimensions: { widthMm: dimensions.width, heightMm: dimensions.height, thicknessMm: dimensions.depth },
         imageBase64,
       };
       const response = await fetch('/api/ai/estimate-components', {
