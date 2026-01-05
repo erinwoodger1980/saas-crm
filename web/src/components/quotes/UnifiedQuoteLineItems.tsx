@@ -181,12 +181,6 @@ export function UnifiedQuoteLineItems({
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Line Items</h3>
         <div className="flex flex-wrap gap-2 justify-end">
-          {onSelectProductType && (
-            <Button size="sm" variant="outline" className="gap-2" onClick={() => onSelectProductType?.()}>
-              <Package className="h-4 w-4" />
-              Select Product Type
-            </Button>
-          )}
           {onPreview3d && (
             <Button size="sm" variant="outline" className="gap-2" onClick={() => handlePreview3d()}>
               <Box className="h-4 w-4" />
