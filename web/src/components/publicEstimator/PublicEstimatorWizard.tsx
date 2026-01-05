@@ -123,6 +123,8 @@ export default function PublicEstimatorWizard({
     setProjectInfo(info);
     setCurrentStep('lineitems');
   }, []);
+
+  const handleLineItemsNext = useCallback((items: LineItemData[]) => {
     setLineItems(items);
     setCurrentStep('review');
   }, []);
