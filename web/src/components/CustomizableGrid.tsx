@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import React from "react";
 
 interface ColumnConfig {
   field: string;
@@ -8,9 +9,10 @@ interface ColumnConfig {
   visible: boolean;
   width?: number;
   frozen?: boolean;
-  type?: 'text' | 'date' | 'dropdown' | 'number' | 'email' | 'phone' | 'currency' | 'boolean' | 'progress';
+  type?: 'text' | 'date' | 'dropdown' | 'number' | 'email' | 'phone' | 'currency' | 'boolean' | 'progress' | 'custom';
   dropdownOptions?: string[];
   dropdownColors?: Record<string, string>;
+  render?: (row: any) => React.ReactNode;
 }
 
 interface CustomizableGridProps {
@@ -96,6 +98,10 @@ export function CustomizableGrid({
   const renderCell = (row: any, column: ColumnConfig) => {
     const value = row[column.field];
     const rowId = row[rowIdField];
+
+    if (column.type === 'custom' && typeof column.render === 'function') {
+      return <div className="px-3">{column.render(row)}</div>;
+    }
 
     if (column.type === 'progress') {
       // Get process percentage from processPercentages object

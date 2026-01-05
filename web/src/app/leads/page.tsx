@@ -65,7 +65,7 @@ import { getAuthIdsFromJwt } from "@/lib/auth";
 import { useToast } from "@/components/ui/use-toast";
 import { DeskSurface } from "@/components/DeskSurface";
 import { useTenantBrand } from "@/lib/use-tenant-brand";
-import { NextTaskBar } from "@/components/leads/NextTaskBar";
+import { LatestTaskCell } from "@/components/leads/LatestTaskCell";
 
 /* -------------------------------- Types -------------------------------- */
 
@@ -107,6 +107,7 @@ const AVAILABLE_LEAD_FIELDS = [
   { field: 'email', label: 'Email', type: 'email' },
   { field: 'phone', label: 'Phone', type: 'phone' },
   { field: 'number', label: 'Lead #', type: 'text' },
+  { field: 'latestTask', label: 'Latest task', type: 'custom' },
   {
     field: 'status',
     label: 'Status',
@@ -225,10 +226,9 @@ function LeadsPageContent() {
   });
 
   const [editingField, setEditingField] = useState<string | null>(null);
-  
-  // Next task tracking
-  const [nextTask, setNextTask] = useState<any>(null);
-  const [nextTaskLead, setNextTaskLead] = useState<Lead | null>(null);
+
+  // Per-lead latest task (for grid column)
+  const [latestTaskByLeadId, setLatestTaskByLeadId] = useState<Record<string, any | null>>({});
   
   // New lead description modal
   const [newLeadModalOpen, setNewLeadModalOpen] = useState(false);
@@ -247,6 +247,7 @@ function LeadsPageContent() {
             { field: 'contactName', label: 'Contact Name', visible: true, frozen: true, width: 200 },
             { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
             { field: 'phone', label: 'Phone', visible: true, frozen: false, width: 150 },
+            { field: 'latestTask', label: 'Latest task', visible: true, frozen: false, width: 320, type: 'custom' },
             { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown' },
           ]);
         }
@@ -255,6 +256,7 @@ function LeadsPageContent() {
           { field: 'contactName', label: 'Contact Name', visible: true, frozen: true, width: 200 },
           { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
           { field: 'phone', label: 'Phone', visible: true, frozen: false, width: 150 },
+          { field: 'latestTask', label: 'Latest task', visible: true, frozen: false, width: 320, type: 'custom' },
           { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown' },
         ]);
       }
@@ -313,36 +315,6 @@ function LeadsPageContent() {
       const normalised = normaliseToNewStatuses(data);
       setGrouped(normalised);
       setError(null);
-      
-      // Find first lead in NEW_ENQUIRY to get its next task
-      const firstLead = normalised.NEW_ENQUIRY?.[0];
-      if (firstLead?.id) {
-        try {
-          const leadDetails = await apiFetch<any>(`/leads/${firstLead.id}`, {
-            headers: buildAuthHeaders(),
-          });
-          if (leadDetails) {
-            setNextTaskLead(firstLead);
-            // Get the tasks for this lead
-            const tasksResp = await apiFetch<any>(`/tasks?relatedType=LEAD&relatedId=${encodeURIComponent(firstLead.id)}&mine=false`, {
-              headers: buildAuthHeaders(),
-            });
-            const openTask = tasksResp?.items?.find((t: any) => t.status !== "DONE" && t.status !== "CANCELLED");
-            if (openTask) {
-              setNextTask(openTask);
-            } else {
-              setNextTask(null);
-            }
-          }
-        } catch (err) {
-          console.error("Failed to fetch next task:", err);
-          setNextTask(null);
-          setNextTaskLead(null);
-        }
-      } else {
-        setNextTask(null);
-        setNextTaskLead(null);
-      }
     } catch (e: any) {
       setError(`Failed to load: ${e?.message ?? "unknown"}`);
     } finally {
@@ -549,6 +521,55 @@ function LeadsPageContent() {
     });
     return filtered;
   }, [grouped, tab]);
+
+  // Fetch latest tasks for the currently visible rows (grid column)
+  useEffect(() => {
+    if (viewMode !== 'grid') return;
+    const ids = rows.map((r) => r.id).filter(Boolean);
+    if (ids.length === 0) {
+      setLatestTaskByLeadId({});
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await apiFetch<any>(
+          `/tasks/latest?relatedType=LEAD&relatedIds=${encodeURIComponent(ids.join(','))}&mine=false`,
+          { headers: buildAuthHeaders() }
+        );
+        if (cancelled) return;
+        setLatestTaskByLeadId(resp?.byRelatedId || {});
+      } catch (e) {
+        if (cancelled) return;
+        console.warn('[leads] latest task fetch failed:', e);
+        setLatestTaskByLeadId({});
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [rows, viewMode]);
+
+  const gridColumns = useMemo(() => {
+    return (columnConfig || []).map((c: any) => {
+      if (c?.field === 'latestTask') {
+        return {
+          ...c,
+          type: 'custom',
+          render: (row: any) => (
+            <LatestTaskCell
+              task={latestTaskByLeadId?.[row.id]}
+              lead={row}
+              onChanged={refreshGrouped}
+            />
+          ),
+        };
+      }
+      return c;
+    });
+  }, [columnConfig, latestTaskByLeadId, refreshGrouped]);
 
   async function handleCreateLeadWithDescription(description: string) {
     if (!description?.trim()) return;
@@ -957,17 +978,6 @@ function LeadsPageContent() {
           {/* Removed manual quotes toggle */}
         </div>
 
-        {/* Next Task Bar */}
-        {tab === "NEW_ENQUIRY" && nextTask && nextTaskLead && (
-          <NextTaskBar
-            nextTask={nextTask}
-            leadId={nextTaskLead.id}
-            leadEmail={nextTaskLead.email}
-            leadName={nextTaskLead.contactName}
-            onTaskComplete={refreshGrouped}
-          />
-        )}
-
         <SectionCard
           title="Inbox"
           action={
@@ -1012,7 +1022,7 @@ function LeadsPageContent() {
           ) : viewMode === 'grid' ? (
             <CustomizableGrid
               data={rows}
-              columns={columnConfig}
+              columns={gridColumns}
               onRowClick={openLead}
               onCellChange={handleCellChange}
               customColors={customColors}

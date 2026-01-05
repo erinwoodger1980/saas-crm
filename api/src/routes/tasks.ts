@@ -210,6 +210,85 @@ router.post("/", async (req, res) => {
 
 // GET /tasks – list with filters
 // ?status=OPEN&mine=true&unassigned=true&due=today|overdue|upcoming&relatedType=LEAD&relatedId=abc123&search=foo&includeDone=true
+// GET /tasks/latest – get next open task per relatedId (batch)
+// ?relatedType=LEAD&relatedIds=abc,def,ghi&includeDone=false
+router.get("/latest", async (req, res) => {
+  try {
+    const tenantId = resolveTenantId(req);
+    if (!tenantId) return res.status(400).json({ error: "Missing tenantId" });
+
+    const { relatedType, relatedIds, includeDone = "false" } = req.query as Record<string, string>;
+    if (!relatedType) return res.status(400).json({ error: "relatedType required" });
+    if (!relatedIds) return res.status(400).json({ error: "relatedIds required" });
+
+    const ids = String(relatedIds)
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 250);
+    if (ids.length === 0) return res.json({ byRelatedId: {} });
+
+    const where: any = {
+      tenantId,
+      relatedType,
+      relatedId: { in: ids },
+    };
+    if (includeDone !== "true") {
+      where.status = { notIn: ["DONE", "CANCELLED"] as any };
+    }
+
+    const tasks = await prisma.task.findMany({
+      where,
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        status: true,
+        priority: true,
+        dueAt: true,
+        relatedType: true,
+        relatedId: true,
+        meta: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      take: Math.min(ids.length * 15, 2000),
+      orderBy: [{ updatedAt: "desc" }],
+    });
+
+    const byRelatedId: Record<string, any | null> = {};
+    for (const id of ids) byRelatedId[id] = null;
+
+    const score = (t: any) => {
+      const dueAt = t?.dueAt ? new Date(t.dueAt).getTime() : Number.POSITIVE_INFINITY;
+      const dueBucket = Number.isFinite(dueAt) ? 0 : 1;
+      const createdAt = t?.createdAt ? new Date(t.createdAt).getTime() : 0;
+      return { dueBucket, dueAt, createdAt };
+    };
+    const better = (a: any, b: any) => {
+      const sa = score(a);
+      const sb = score(b);
+      if (sa.dueBucket !== sb.dueBucket) return sa.dueBucket < sb.dueBucket;
+      if (sa.dueAt !== sb.dueAt) return sa.dueAt < sb.dueAt;
+      return sa.createdAt > sb.createdAt;
+    };
+
+    for (const t of tasks) {
+      const rid = t.relatedId;
+      if (!rid) continue;
+      const current = byRelatedId[rid];
+      if (!current || better(t, current)) {
+        byRelatedId[rid] = t;
+      }
+    }
+
+    return res.json({ byRelatedId });
+  } catch (e: any) {
+    console.error("[tasks] GET /latest failed:", e);
+    return res.status(500).json({ error: "internal_error", detail: e?.message || String(e) });
+  }
+});
+
 router.get("/", async (req, res) => {
   try {
     const tenantId = resolveTenantId(req);
