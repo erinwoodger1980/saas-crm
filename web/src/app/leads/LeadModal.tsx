@@ -690,8 +690,6 @@ export default function LeadModal({
     }
   ];
 
-  // Legacy product type selection (now driven by quote lines); keep empty to avoid undefined references
-  const selectedProductTypes: string[] = [];
 
   // Load suppliers when modal opens
   useEffect(() => {
