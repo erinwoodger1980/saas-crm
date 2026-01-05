@@ -482,6 +482,17 @@ export function ProductTypeEditModal({
                         entityId: initialData?.optionId || 'preview',
                         productParams: params,
                       });
+                      
+                      if (!config) {
+                        console.error('[ProductTypeEditModal] Failed to generate scene config from params');
+                        toast({
+                          title: 'Error',
+                          description: 'Failed to compile 3D model from description. Check console for details.',
+                          variant: 'destructive'
+                        });
+                        return;
+                      }
+                      
                       setCompiledParams(params);
                       setSceneConfig(config);
                       setActiveTab('components');

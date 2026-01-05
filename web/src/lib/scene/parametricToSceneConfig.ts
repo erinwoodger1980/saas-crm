@@ -105,7 +105,7 @@ export function parametricToSceneConfig(args: ParametricToSceneConfigArgs): Scen
       dimensions: mergedParams.dimensions,
       components: [],
       materials: [],
-    customData: resolvedParams,
+      customData: resolvedParams,
     }) as SceneConfig;
     sceneCache.set(cacheKey, fallback);
     return fallback;

@@ -30,10 +30,25 @@ export function compileProductPlanToProductParams(
   plan: ProductPlanV1,
   context?: PlanCompileContext
 ): ProductParams {
-  // Extract dimensions from variables
-  const pw = plan.variables['pw']?.defaultValue || plan.dimensions.widthMm || 914;
-  const ph = plan.variables['ph']?.defaultValue || plan.dimensions.heightMm || 2032;
-  const sd = plan.variables['sd']?.defaultValue || plan.dimensions.depthMm || 45;
+  // Extract dimensions from variables, with clamping for valid ranges
+  let pw = plan.variables['pw']?.defaultValue || plan.dimensions.widthMm || 914;
+  let ph = plan.variables['ph']?.defaultValue || plan.dimensions.heightMm || 2032;
+  let sd = plan.variables['sd']?.defaultValue || plan.dimensions.depthMm || 45;
+
+  // Clamp dimensions to valid builder ranges
+  // Windows: width 400-4000, height 400-3000, depth 60-200
+  // Doors: width 400-1200, height 1800-2400, depth 40-100
+  const isWindow = plan.detected.category === 'window';
+  
+  if (isWindow) {
+    pw = Math.max(400, Math.min(4000, pw));
+    ph = Math.max(400, Math.min(3000, ph));
+    sd = Math.max(60, Math.min(200, sd));
+  } else {
+    pw = Math.max(400, Math.min(1200, pw));
+    ph = Math.max(1800, Math.min(2400, ph));
+    sd = Math.max(40, Math.min(100, sd));
+  }
 
   // Build materialRoleMap from plan.materialRoles
   // plan.materialRoles is a dict like { frame: 'TIMBER_PRIMARY', panel: 'PANEL_CORE' }
@@ -197,13 +212,29 @@ function extractConstructionFromPlan(plan: ProductPlanV1): Partial<any> {
     construction.hasGlazing = plan.components.some(c => c.role === 'GLASS');
     construction.hasMidRail = !!railMidComponent;
   } else if (plan.detected.category === 'window') {
-    const mullionCount = plan.components.filter(c => c.role === 'GLAZING_BAR').length;
+    // Extract glazing bar/mullion count to determine layout
+    const glazingBars = plan.components.filter(c => c.role === 'GLAZING_BAR');
     const transom = plan.components.find(c => c.role === 'RAIL_MID');
 
+    // Estimate mullions/transoms from glazing bar count
+    // For sash windows with 2x2 glazing: expect 3 horizontal bars (2 per sash) + 1 vertical = 4 total
+    // For simple casement 2x2: expect 1 vertical + 1 horizontal = 2 total
+    let mullions = 0;
+    let transoms = 0;
+    
+    if (glazingBars.length > 0) {
+      // Estimate based on glazing bars (rough heuristic)
+      // More bars typically means more mullions/transoms
+      mullions = Math.min(Math.max(0, Math.floor(glazingBars.length / 2) - 1), 4);
+      transoms = transom ? 1 : 0;
+    }
+
     construction.windowType = plan.detected.type || 'casement';
-    construction.mullionCount = mullionCount;
-    construction.hasTransom = !!transom;
-    construction.glassThickness = 3.2; // standard float glass
+    construction.layout = {
+      mullions: Math.max(0, Math.min(mullions, 4)), // Clamp 0-4
+      transoms: Math.max(0, Math.min(transoms, 4))   // Clamp 0-4
+    };
+    construction.glassThickness = 24; // Double-glazed unit (3mm + 18mm + 3mm)
   }
 
   return construction;

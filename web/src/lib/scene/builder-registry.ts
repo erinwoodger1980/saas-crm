@@ -54,13 +54,29 @@ export function buildScene(params: ProductParams): BuildResult | null {
   // Validate params
   const errors = builder.validate(params);
   if (errors && errors.length > 0) {
-    console.error('Parameter validation failed:', errors);
-    console.error('Failed params:', JSON.stringify(params, null, 2));
+    console.error('[buildScene] Parameter validation failed:', errors);
+    console.error('[buildScene] Failed params:', {
+      productType: params.productType,
+      dimensions: params.dimensions,
+      construction: params.construction,
+      errors
+    });
     return null;
   }
   
   // Build
-  return builder.build(params);
+  try {
+    const result = builder.build(params);
+    console.log('[buildScene] Build successful:', {
+      componentCount: result.components.length,
+      materialCount: result.materials.length
+    });
+    return result;
+  } catch (error) {
+    console.error('[buildScene] Build threw error:', error);
+    console.error('[buildScene] Params:', params);
+    return null;
+  }
 }
 
 /**
