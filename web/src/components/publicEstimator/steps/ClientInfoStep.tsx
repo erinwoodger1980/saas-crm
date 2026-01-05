@@ -21,18 +21,15 @@ export default function ClientInfoStep({ initialData, onNext }: ClientInfoStepPr
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
+    // Only Name and Email are required
     if (!data.name.trim()) newErrors.name = 'Name is required';
     if (!data.email.trim()) newErrors.email = 'Email is required';
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email))
       newErrors.email = 'Invalid email format';
 
-    if (!data.phone.trim()) newErrors.phone = 'Phone is required';
-    else if (!/^[\d+\s\-()]{10,}$/.test(data.phone.replace(/\s/g, '')))
+    // Optional fields - only validate if provided
+    if (data.phone.trim() && !/^[\d+\s\-()]{10,}$/.test(data.phone.replace(/\s/g, '')))
       newErrors.phone = 'Invalid phone format';
-
-    if (!data.address.trim()) newErrors.address = 'Address is required';
-    if (!data.city.trim()) newErrors.city = 'City is required';
-    if (!data.postcode.trim()) newErrors.postcode = 'Postcode is required';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -96,10 +93,11 @@ export default function ClientInfoStep({ initialData, onNext }: ClientInfoStepPr
         {/* Phone */}
         <div>
           <Label htmlFor="phone" className="font-semibold mb-2 block">
-            Phone Number *
+            Phone Number (Optional)
           </Label>
           <Input
             id="phone"
+            type="tel"
             value={data.phone}
             onChange={e => handleChange('phone', e.target.value)}
             placeholder="+44 1234 567890"
@@ -126,7 +124,7 @@ export default function ClientInfoStep({ initialData, onNext }: ClientInfoStepPr
         {/* Address */}
         <div>
           <Label htmlFor="address" className="font-semibold mb-2 block">
-            Address *
+            Address (Optional)
           </Label>
           <Input
             id="address"
@@ -143,7 +141,7 @@ export default function ClientInfoStep({ initialData, onNext }: ClientInfoStepPr
         {/* City */}
         <div>
           <Label htmlFor="city" className="font-semibold mb-2 block">
-            City/Town *
+            City/Town (Optional)
           </Label>
           <Input
             id="city"
@@ -160,7 +158,7 @@ export default function ClientInfoStep({ initialData, onNext }: ClientInfoStepPr
         {/* Postcode */}
         <div>
           <Label htmlFor="postcode" className="font-semibold mb-2 block">
-            Postcode *
+            Postcode (Optional)
           </Label>
           <Input
             id="postcode"

@@ -2051,11 +2051,9 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
   }
 
   // Open the public estimator (lead magnet) for this lead in a new tab.
-  // For now it shares the /q/:tenant/:lead route used by the legacy questionnaire.
-  // Later we may split paths or add mode parameters; keeping simple for initial dual-mode.
   function openEstimator() {
     if (!lead?.id || !settings?.slug) return;
-    const url = `${window.location.origin}/tenant/${settings.slug}/estimate`;
+    const url = `${window.location.origin}/tenant/${settings.slug}/estimate?leadId=${lead.id}`;
     window.open(url, "_blank", "noopener,noreferrer");
   }
 

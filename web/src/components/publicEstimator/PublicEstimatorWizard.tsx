@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import ClientInfoStep from './steps/ClientInfoStep';
@@ -77,6 +77,33 @@ export default function PublicEstimatorWizard({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
 
+  // Fetch lead data if leadId is provided
+  useEffect(() => {
+    if (leadId && tenantSlug) {
+      const fetchLeadData = async () => {
+        try {
+          const response = await fetch(`/api/leads/${leadId}`);
+          if (response.ok) {
+            const lead = await response.json();
+            // Pre-fill form with lead data
+            setClientInfo(prev => ({
+              ...prev,
+              name: lead.contactName || prev.name,
+              email: lead.email || prev.email,
+              phone: lead.phone || prev.phone,
+              address: lead.address || prev.address,
+              city: lead.city || prev.city,
+              postcode: lead.postcode || prev.postcode,
+            }));
+          }
+        } catch (error) {
+          console.warn('Failed to fetch lead data for pre-fill:', error);
+        }
+      };
+      fetchLeadData();
+    }
+  }, [leadId, tenantSlug]);
+
   const stepIndex: Record<WizardStep, number> = {
     client: 0,
     project: 1,
@@ -96,8 +123,6 @@ export default function PublicEstimatorWizard({
     setProjectInfo(info);
     setCurrentStep('lineitems');
   }, []);
-
-  const handleLineItemsNext = useCallback((items: LineItemData[]) => {
     setLineItems(items);
     setCurrentStep('review');
   }, []);
