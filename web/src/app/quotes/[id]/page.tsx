@@ -669,49 +669,21 @@ export default function QuoteBuilderPage() {
     setIsEstimating(true);
     setIsPricing(true);
     try {
-      // Call questionnaire pricing endpoint (server-calculated)
-      const res = await priceQuoteFromQuestionnaire(quoteId);
-      // Update lightweight estimate state from response
-      const est = {
-        estimatedTotal: res.total,
-        predictedTotal: res.total,
-        totalGBP: res.total,
-        confidence: res.confidence ?? null,
-        currency: quote?.currency ?? currency ?? "GBP",
-        modelVersionId: null,
-        meta: {},
-      } as any;
-      setEstimate(est);
+      const response = await generateMlEstimate(quoteId);
+      setEstimate(response);
       setLastEstimateAt(new Date().toISOString());
       setEstimatedLineRevision(lineRevision);
-      setPricingBreakdown(res.breakdown ?? null);
-      toast({
-        title: "Questionnaire pricing complete",
-        description: `Total ${formatCurrency(res.total, currency)}${res.confidence != null ? ` · conf ${Math.round(res.confidence * 100)}%` : ""}`,
-      });
+      setPricingBreakdown(null);
+      toast({ title: "Estimate ready", description: `Predicted total ${formatCurrency(response.estimatedTotal, currency)}.` });
 
-      // Refresh data before rendering proposal
       await Promise.all([mutateQuote(), mutateLines()]);
-
-      // Auto-render proposal (optional convenience)
-      setIsRendering(true);
-      try {
-        await new Promise((r) => setTimeout(r, 500));
-        await apiFetch(`/quotes/${encodeURIComponent(quoteId)}/render-proposal`, { method: "POST" });
-        const signed = await apiFetch<{ url: string }>(`/quotes/${encodeURIComponent(quoteId)}/proposal/signed`);
-        if (signed?.url) window.open(signed.url, "_blank");
-      } catch (renderErr: any) {
-        toast({ title: "Estimate saved, but proposal render failed", description: renderErr?.message || "Try 'Render proposal'", variant: "destructive" });
-      } finally {
-        setIsRendering(false);
-      }
     } catch (err: any) {
-      toast({ title: "Pricing failed", description: err?.message || "Unable to price from questionnaire", variant: "destructive" });
+      toast({ title: "Estimate failed", description: err?.message || "Unable to generate ML estimate", variant: "destructive" });
     } finally {
       setIsEstimating(false);
       setIsPricing(false);
     }
-  }, [quoteId, mutateQuote, mutateLines, toast, currency, lineRevision, quote?.currency]);
+  }, [quoteId, mutateQuote, mutateLines, toast, currency, lineRevision, leadId]);
 
   const handleQuestionnaireSave = useCallback(
     async (changes: Record<string, any>) => {
@@ -1361,7 +1333,7 @@ export default function QuoteBuilderPage() {
                     onAddLine={handleAddLineItem}
                     onUpdateLine={handleUpdateLineItem}
                     onDeleteLine={handleDeleteLineItem}
-                    onPreview3d={(lineId, productOptionId) => {
+                    onPreview3d={async (_lineId, productOptionId) => {
                       if (productOptionId) {
                         setModalProductOptionId(productOptionId);
                         setShow3dModal(true);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,14 +11,67 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Plus, Trash2, AlertCircle, Upload } from 'lucide-react';
 import { LineItemData } from '../PublicEstimatorWizard';
 
+type ProductOption = {
+  id: string;
+  label: string;
+};
+
+type ProductType = {
+  type: string;
+  label: string;
+  options: ProductOption[];
+};
+
+type ProductCategory = {
+  id: string;
+  label: string;
+  types: ProductType[];
+};
+
 interface LineItemsStepProps {
   projectType: string;
   items: LineItemData[];
+  productTypes?: ProductCategory[];
   onNext: (items: LineItemData[]) => void;
   onBack: () => void;
 }
 
-export default function LineItemsStep({ projectType, items, onNext, onBack }: LineItemsStepProps) {
+export default function LineItemsStep({ projectType, items, productTypes, onNext, onBack }: LineItemsStepProps) {
+  const hasTenantProductTypes = Array.isArray(productTypes) && productTypes.length > 0;
+
+  const eligibleTenantCategories = useMemo(() => {
+    const cats = Array.isArray(productTypes) ? productTypes : [];
+    if (!hasTenantProductTypes) return [];
+
+    const wantDoors = projectType === 'doors';
+    const wantWindows = projectType === 'windows';
+    if (!wantDoors && !wantWindows) return cats;
+
+    const targetId = wantDoors ? 'doors' : 'windows';
+    const filtered = cats.filter((c) => c?.id === targetId);
+    return filtered.length ? filtered : cats;
+  }, [hasTenantProductTypes, productTypes, projectType]);
+
+  const tenantTypeOptions = useMemo(() => {
+    if (!hasTenantProductTypes) return [] as Array<{ value: string; label: string }>;
+
+    const out: Array<{ value: string; label: string }> = [];
+    eligibleTenantCategories.forEach((cat) => {
+      (Array.isArray(cat.types) ? cat.types : []).forEach((t) => {
+        const value = `${cat.id}-${t.type}`;
+        const label = `${cat.label} · ${t.label}`;
+        out.push({ value, label });
+      });
+    });
+    return out;
+  }, [eligibleTenantCategories, hasTenantProductTypes]);
+
+  const defaultTenantTypeValue = useMemo(() => {
+    if (!hasTenantProductTypes) return undefined;
+    const first = tenantTypeOptions[0];
+    return first?.value;
+  }, [hasTenantProductTypes, tenantTypeOptions]);
+
   const [lineItems, setLineItems] = useState<LineItemData[]>(
     items.length > 0 ? items : [generateNewItem()]
   );
@@ -29,9 +82,31 @@ export default function LineItemsStep({ projectType, items, onNext, onBack }: Li
       id: Math.random().toString(36).substr(2, 9),
       description: '',
       quantity: 1,
-      productType: projectType === 'doors' ? 'doors' : projectType === 'windows' ? 'windows' : undefined,
+      productType: hasTenantProductTypes
+        ? defaultTenantTypeValue
+        : projectType === 'doors'
+          ? 'doors'
+          : projectType === 'windows'
+            ? 'windows'
+            : undefined,
     };
   }
+
+  // If tenant product types load after mount, set a sensible default for any blank items.
+  useEffect(() => {
+    if (!hasTenantProductTypes) return;
+    if (!defaultTenantTypeValue) return;
+
+    setLineItems((prev) => {
+      let changed = false;
+      const next = prev.map((it) => {
+        if (it.productType) return it;
+        changed = true;
+        return { ...it, productType: defaultTenantTypeValue };
+      });
+      return changed ? next : prev;
+    });
+  }, [defaultTenantTypeValue, hasTenantProductTypes]);
 
   const validateItems = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -202,11 +277,21 @@ export default function LineItemsStep({ projectType, items, onNext, onBack }: Li
                     <SelectValue placeholder="Select product type" />
                   </SelectTrigger>
                   <SelectContent>
-                    {(projectType === 'doors' || projectType === 'both') && (
-                      <SelectItem value="doors">Doors</SelectItem>
-                    )}
-                    {(projectType === 'windows' || projectType === 'both') && (
-                      <SelectItem value="windows">Windows</SelectItem>
+                    {hasTenantProductTypes ? (
+                      tenantTypeOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <>
+                        {(projectType === 'doors' || projectType === 'both') && (
+                          <SelectItem value="doors">Doors</SelectItem>
+                        )}
+                        {(projectType === 'windows' || projectType === 'both') && (
+                          <SelectItem value="windows">Windows</SelectItem>
+                        )}
+                      </>
                     )}
                   </SelectContent>
                 </Select>

@@ -516,6 +516,7 @@ export default function LeadModal({
 
   // Quote lines state
   const [quoteLines, setQuoteLines] = useState<any[]>([]);
+  const addQuoteLineInFlightRef = useRef(false);
 
   // Material tracking state
   type MaterialDates = {
@@ -965,15 +966,8 @@ export default function LeadModal({
               // Internal fields set now references project_details (same data, different name)
               setInternalFields((projectDetailsMerged || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, internalOnly: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
               
-              // Fetch product types for dropdown
-              try {
-                const types = await apiFetch<any[]>(`/product-types`, { headers: authHeaders }).catch(() => []);
-                if (Array.isArray(types)) {
-                  setProductTypes(types);
-                }
-              } catch (e) {
-                console.debug("[LeadModal] failed loading product types", e);
-              }
+              // Product types for dropdown (from tenant settings)
+              setProductTypes(Array.isArray((s as any)?.productTypes) ? (s as any).productTypes : []);
             }
           } catch (e) {
             console.debug("[LeadModal] failed loading scoped fields", e);
@@ -2438,14 +2432,18 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     description: string;
     qty: number | null;
     unitPrice?: number | null;
+    sellUnit?: number | null;
     widthMm?: number | null;
     heightMm?: number | null;
     timber?: string;
     finish?: string;
     ironmongery?: string;
     glazing?: string;
+    productOptionId?: string;
   }) {
     if (!lead?.id) return;
+    if (addQuoteLineInFlightRef.current) return;
+    addQuoteLineInFlightRef.current = true;
     setSaving(true);
     try {
       // Ensure a draft quote exists
@@ -2470,7 +2468,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       const created = await createQuoteLine(qid, {
         description: newLine.description,
         quantity: newLine.qty ?? 1,
-        unitPrice: newLine.unitPrice ?? 0,
+        unitPrice: newLine.unitPrice ?? newLine.sellUnit ?? 0,
       });
       const lineId = (created as any)?.line?.id;
       if (!lineId) throw new Error("Line was not created");
@@ -2483,6 +2481,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       if (newLine.finish) lineStandard.finish = newLine.finish;
       if (newLine.ironmongery) lineStandard.ironmongery = newLine.ironmongery;
       if (newLine.glazing) lineStandard.glazing = newLine.glazing;
+      if (newLine.productOptionId) lineStandard.productOptionId = newLine.productOptionId;
       if (Object.keys(lineStandard).length > 0) {
         await updateQuoteLine(qid, lineId, { lineStandard });
       }
@@ -2494,6 +2493,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       alert(e?.message || "Failed to add line");
     } finally {
       setSaving(false);
+      addQuoteLineInFlightRef.current = false;
     }
   }
 
@@ -2502,7 +2502,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     setSaving(true);
     try {
       // Transform flat updates to nested lineStandard
-      const lineStandardFields = ['widthMm', 'heightMm', 'timber', 'finish', 'ironmongery', 'glazing'];
+      const lineStandardFields = ['widthMm', 'heightMm', 'timber', 'finish', 'ironmongery', 'glazing', 'productOptionId'];
       const lineStandard: any = {};
       const directUpdates: any = {};
       
@@ -3751,42 +3751,20 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       finish: line.lineStandard?.finish,
                       ironmongery: line.lineStandard?.ironmongery,
                       glazing: line.lineStandard?.glazing,
+                      productOptionId: line.lineStandard?.productOptionId,
                       unitPrice: line.unitPrice ?? undefined,
                       sellUnit: line.sellUnit ?? undefined,
                       sellTotal: line.sellTotal ?? undefined,
                       photoUrl: line.lineStandard?.photoDataUri || line.lineStandard?.photoUrl,
                     }))}
-                    productCategories={(() => {
-                      if (productTypes.length === 0) return [];
-                      
-                      // Build hierarchy: categories -> types -> options
-                      const categories = productTypes.filter((pt: any) => pt.level === 'category');
-                      
-                      return categories.map((cat: any) => {
-                        const types = productTypes.filter((pt: any) => pt.level === 'type' && pt.parentId === cat.id);
-                        
-                        return {
-                          label: cat.name,
-                          types: types.map((type: any) => {
-                            const options = productTypes.filter((pt: any) => pt.level === 'option' && pt.parentId === type.id);
-                            
-                            return {
-                              label: type.name,
-                              options: options.map((opt: any) => ({
-                                id: opt.id,
-                                label: opt.name
-                              }))
-                            };
-                          })
-                        };
-                      });
-                    })()}
+                    productCategories={Array.isArray(productTypes) ? productTypes : []}
                     currency="GBP"
                     onAddLine={handleAddQuoteLine}
                     onUpdateLine={handleUpdateQuoteLine}
                     onDeleteLine={handleDeleteQuoteLine}
                     onPhotoUpload={handlePhotoUpload}
                     onPreview3d={handlePreview3d}
+                    isLoading={saving}
                   />
                 </section>
 

@@ -4,7 +4,7 @@ import { useState, useCallback, useRef, ChangeEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Trash2, Plus, Upload, Wand2, Package, Box } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -212,7 +212,7 @@ export function UnifiedQuoteLineItems({
               AI Generate
             </Button>
           )}
-          <Button size="sm" onClick={() => setIsAddingLine(true)} className="gap-2">
+          <Button size="sm" onClick={() => setIsAddingLine(true)} className="gap-2" disabled={isLoading || isAddingLine}>
             <Plus className="h-4 w-4" />
             Add Line Item
           </Button>
@@ -509,6 +509,9 @@ export function UnifiedQuoteLineItems({
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Edit Line Item</DialogTitle>
+              <DialogDescription>
+                Update description, dimensions, materials, and product type.
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div>
@@ -555,7 +558,6 @@ export function UnifiedQuoteLineItems({
                     type="number"
                     value={editingLine.heightMm || ''}
                     onChange={(e) => setEditingLine({ ...editingLine, heightMm: Number(e.target.value) })}
-                    className={numberInputClass}
                     className={numberInputClass}
                   />
                 </div>

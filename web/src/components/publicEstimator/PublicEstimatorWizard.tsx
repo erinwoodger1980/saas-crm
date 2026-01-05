@@ -37,7 +37,7 @@ export interface LineItemData {
   quantity: number;
   widthMm?: number;
   heightMm?: number;
-  productType?: 'doors' | 'windows';
+  productType?: string;
   productOption?: string;
   timber?: string;
   ironmongery?: string;
@@ -45,6 +45,23 @@ export interface LineItemData {
   photoUrl?: string;
   estimatedPrice?: number;
 }
+
+type ProductOption = {
+  id: string;
+  label: string;
+};
+
+type ProductType = {
+  type: string;
+  label: string;
+  options: ProductOption[];
+};
+
+type ProductCategory = {
+  id: string;
+  label: string;
+  types: ProductType[];
+};
 
 type WizardStep = 'client' | 'project' | 'lineitems' | 'review' | 'thankyou';
 
@@ -76,6 +93,7 @@ export default function PublicEstimatorWizard({
   const [lineItems, setLineItems] = useState<LineItemData[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const [tenantProductTypes, setTenantProductTypes] = useState<ProductCategory[]>([]);
 
   // Fetch lead data if leadId is provided
   useEffect(() => {
@@ -103,6 +121,29 @@ export default function PublicEstimatorWizard({
       fetchLeadData();
     }
   }, [leadId, tenantSlug]);
+
+  // Fetch tenant product types for dropdowns (public-safe)
+  useEffect(() => {
+    if (!tenantSlug) return;
+
+    const ctrl = new AbortController();
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/public/tenant-product-types?slug=${encodeURIComponent(tenantSlug)}`,
+          { signal: ctrl.signal }
+        );
+        if (!res.ok) return;
+        const data = (await res.json()) as { productTypes?: ProductCategory[] };
+        const next = Array.isArray(data.productTypes) ? data.productTypes : [];
+        setTenantProductTypes(next);
+      } catch {
+        // ignore
+      }
+    })();
+
+    return () => ctrl.abort();
+  }, [tenantSlug]);
 
   const stepIndex: Record<WizardStep, number> = {
     client: 0,
@@ -227,6 +268,7 @@ export default function PublicEstimatorWizard({
                   <LineItemsStep
                     projectType={projectInfo.projectType}
                     items={lineItems}
+                    productTypes={tenantProductTypes}
                     onNext={handleLineItemsNext}
                     onBack={handleBack}
                   />

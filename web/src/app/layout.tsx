@@ -50,6 +50,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     pathname?.startsWith("/policy") ||
     pathname?.startsWith("/wealden-landing") ||
     pathname?.startsWith("/wealden-joinery");
+  const isPublicEstimatorRoute =
+    pathname === "/estimate" ||
+    pathname?.startsWith("/estimate-demo") ||
+    Boolean(pathname?.match(/^\/tenant\/[^/]+\/estimate(\/|$)/));
   const isTenantLandingPage = pathname?.match(/^\/tenant\/[^/]+\/landing(\/|$)/);
   const isVanityTenantLandingPage = pathname?.match(/^\/[A-Za-z0-9-]+\/landing(\/|$)/);
   const isEarlyAccessRoute = pathname?.startsWith("/early-access");
@@ -61,6 +65,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     isPublicQuestionnaire ||
     isPublicThankYou ||
     isMarketingRoute ||
+    isPublicEstimatorRoute ||
     isTenantLandingPage ||
     isVanityTenantLandingPage ||
     isEarlyAccessRoute
@@ -74,6 +79,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     isPublicQuestionnaire ||
     isPublicThankYou ||
     isMarketingRoute ||
+    isPublicEstimatorRoute ||
     isTenantLandingPage ||
     isVanityTenantLandingPage ||
     isEarlyAccessRoute ||
@@ -86,6 +92,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     isPublicQuestionnaire ||
     isPublicThankYou ||
     isMarketingRoute ||
+    isPublicEstimatorRoute ||
     isTenantLandingPage ||
     isVanityTenantLandingPage ||
     isEarlyAccessRoute
@@ -94,6 +101,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     isPublicQuestionnaire ||
     isPublicThankYou ||
     isMarketingRoute ||
+    isPublicEstimatorRoute ||
     isTenantLandingPage ||
     isVanityTenantLandingPage ||
     isEarlyAccessRoute
