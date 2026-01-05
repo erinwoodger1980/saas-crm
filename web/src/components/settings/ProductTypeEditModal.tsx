@@ -102,6 +102,9 @@ export function ProductTypeEditModal({
     setIsEstimating(true);
     try {
       // NEW: Call generate-product-plan instead of estimate-components
+      const category = initialData?.categoryId || 'door';
+      const defaultDepth = category === 'window' ? 80 : 45;
+      
       const response = await fetch('/api/ai/generate-product-plan', {
         method: 'POST',
         credentials: 'include',
@@ -112,13 +115,13 @@ export function ProductTypeEditModal({
           description: aiDescription || 'Product from image',
           image: aiImagePreview || undefined,
           existingProductType: {
-            category: initialData?.categoryId || 'door',
+            category: category,
             type: initialData?.type || 'timber'
           },
           existingDims: {
             widthMm: defaultDimensions.widthMm,
             heightMm: defaultDimensions.heightMm,
-            depthMm: 45,
+            depthMm: defaultDepth,
           },
         }),
       });

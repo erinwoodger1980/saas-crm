@@ -31,6 +31,11 @@ A ProductPlanV1 specifies EXACTLY what components are needed, their dimensions, 
 
 1. **Return ONLY valid JSON matching the ProductPlanV1 schema. No markdown, no explanations, no arrays of objects.**
 
+2. **If an existing product category is provided (doors or windows), ALWAYS generate a plan for that category.** For example:
+   - If "existing product type: category=windows", generate a WINDOW plan with frame, leaf(ves), glass panes, mullions/transoms as needed.
+   - If "existing product type: category=doors", generate a DOOR plan with frame, stiles, rails, panels/glass, hardware.
+   - Do NOT override the provided category based on the description alone.
+
 2. **Component roles must be one of:**
    STILE, RAIL_TOP, RAIL_MID, RAIL_BOTTOM, PANEL, GLASS, BEAD, FRAME_JAMB_L, FRAME_JAMB_R, FRAME_HEAD, CILL, SEAL, LOCK, HANDLE, HINGE, GLAZING_BAR, MOULDING, THRESHOLD, WEATHERBOARD
 
@@ -272,6 +277,8 @@ Given the product description (and optional image), generate a ProductPlanV1 JSO
 const EXAMPLE_USER_PROMPT = `Product Description: {description}
 
 {existingInfo}
+
+CRITICAL: If an existing product category is specified above, you MUST generate a plan for that category only. Do not override it based on the description.
 
 Return ONLY valid JSON matching the ProductPlanV1 schema. No markdown, no explanations.`;
 
