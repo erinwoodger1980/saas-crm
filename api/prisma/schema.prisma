@@ -805,6 +805,7 @@ model User {
   devTimeEntries             DevTimeEntry[]
   supplier                   Supplier?                   @relation(fields: [supplierId], references: [id])
   tenant                     Tenant                      @relation(fields: [tenantId], references: [id])
+  clients                    Client[]
 }
 
 model SignupToken {
@@ -821,6 +822,7 @@ model SignupToken {
 model Client {
   id            String          @id @default(cuid())
   tenantId      String
+  userId        String?
   name          String
   email         String?
   phone         String?
@@ -838,6 +840,7 @@ model Client {
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user          User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
   leads         Lead[]
   opportunities Opportunity[]
   contacts      ClientContact[]
@@ -847,6 +850,7 @@ model Client {
   @@index([tenantId, name])
   @@index([tenantId, email])
   @@index([tenantId, type])
+  @@index([userId])
 }
 
 model ClientContact {

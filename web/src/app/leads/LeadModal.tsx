@@ -424,6 +424,8 @@ export default function LeadModal({
   const [customDraft, setCustomDraft] = useState<Record<string, string>>({});
   const [clientType, setClientType] = useState<string>("public");
   const [currentClientData, setCurrentClientData] = useState<any>(null);
+  const [tenantUsers, setTenantUsers] = useState<Array<{ id: string; name: string | null; email: string }>>([]);
+  const [showClientModal, setShowClientModal] = useState(false);
 
   // Communication logging
   const [newNote, setNewNote] = useState("");
@@ -875,6 +877,18 @@ export default function LeadModal({
         };
         setLead(normalized);
         setUiStatus(sUi);
+
+        // Fetch tenant users for assignment dropdown
+        if (tenantId) {
+          try {
+            const usersData = await apiFetch<any[]>(`/tenants/${tenantId}/users`, { headers: authHeaders });
+            if (usersData) {
+              setTenantUsers(usersData.map((u: any) => ({ id: u.id, name: u.name || u.firstName || u.email, email: u.email })));
+            }
+          } catch (err) {
+            console.error("Failed to fetch tenant users:", err);
+          }
+        }
 
         // If lead has a client, fetch client data including type
         if ((row as any)?.clientId) {
@@ -3299,7 +3313,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
 
                       {/* Client Linking */}
                       <div className="col-span-full">
-                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
                           Client
                         </span>
                         <ClientSelector
@@ -3390,43 +3404,103 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         />
                       </div>
 
-                      {lead?.clientId && (
-                        <label className="text-sm">
-                          <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
-                            What type of client are they?
-                          </span>
-                          <input
-                            className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
-                            value={clientType || currentClientData?.type || ""}
-                            readOnly
-                            placeholder="Client type"
-                          />
-                        </label>
+                      {lead?.clientId && currentClientData && (
+                        <>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <label className="text-sm">
+                              <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                                Client Type
+                              </span>
+                              <input
+                                className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                                value={clientType || ""}
+                                onChange={(e) => setClientType(e.target.value)}
+                                onBlur={async () => {
+                                  if (lead?.clientId && clientType) {
+                                    try {
+                                      await apiFetch(`/clients/${lead.clientId}`, {
+                                        method: "PATCH",
+                                        json: { type: clientType },
+                                        headers: authHeaders,
+                                      });
+                                      setCurrentClientData((prev: any) => ({ ...prev, type: clientType }));
+                                    } catch (error) {
+                                      console.error("Failed to update client type:", error);
+                                    }
+                                  }
+                                }}
+                                placeholder="e.g., public, architect, builder"
+                              />
+                            </label>
+
+                            <label className="text-sm">
+                              <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                                Assigned User
+                              </span>
+                              <select
+                                className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                                value={currentClientData?.userId || ""}
+                                onChange={async (e) => {
+                                  const newUserId = e.target.value || null;
+                                  if (lead?.clientId) {
+                                    try {
+                                      await apiFetch(`/clients/${lead.clientId}`, {
+                                        method: "PATCH",
+                                        json: { userId: newUserId },
+                                        headers: authHeaders,
+                                      });
+                                      setCurrentClientData((prev: any) => ({ ...prev, userId: newUserId }));
+                                    } catch (error) {
+                                      console.error("Failed to assign user:", error);
+                                    }
+                                  }
+                                }}
+                              >
+                                <option value="">Unassigned</option>
+                                {tenantUsers.map((user) => (
+                                  <option key={user.id} value={user.id}>
+                                    {user.name || user.email}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setShowClientModal(true)}
+                            className="text-sm text-sky-600 hover:text-sky-700 font-medium"
+                          >
+                            View Full Client Details →
+                          </button>
+                        </>
                       )}
 
-                      {/* Source field - moved to Client Details */}
-                      <div className="col-span-full">
-                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                      {/* Source field - with consistent styling */}
+                      <label className="text-sm">
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
                           Source
                         </span>
-                        <LeadSourcePicker
-                          leadId={lead?.id}
-                          value={typeof customData?.source === "string" ? customData.source : null}
-                          onSaved={(next) => {
-                            const nextStr = next ?? "";
-                            setCustomDraft((prev) => ({ ...prev, source: nextStr }));
-                            setLead((current) => {
-                              if (!current) return current;
-                              const prevCustom =
-                                current.custom && typeof current.custom === "object"
-                                  ? { ...(current.custom as Record<string, any>) }
-                                  : {};
-                              prevCustom.source = next ?? null;
-                              return { ...current, custom: prevCustom };
-                            });
-                          }}
-                        />
-                      </div>
+                        <div className="w-full rounded-xl border border-slate-200 bg-white/90 shadow-inner">
+                          <LeadSourcePicker
+                            leadId={lead?.id}
+                            value={typeof customData?.source === "string" ? customData.source : null}
+                            onSaved={(next) => {
+                              const nextStr = next ?? "";
+                              setCustomDraft((prev) => ({ ...prev, source: nextStr }));
+                              setLead((current) => {
+                                if (!current) return current;
+                                const prevCustom =
+                                  current.custom && typeof current.custom === "object"
+                                    ? { ...(current.custom as Record<string, any>) }
+                                    : {};
+                                prevCustom.source = next ?? null;
+                                return { ...current, custom: prevCustom };
+                              });
+                            }}
+                          />
+                        </div>
+                      </label>
                     </div>
                   </section>
 
@@ -5386,6 +5460,237 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         to={emailPreviewTo}
         recipientName={lead.contactName || undefined}
       />
+
+      {/* Client Details Modal */}
+      {showClientModal && currentClientData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-slate-900">Client Details</h2>
+              <button
+                onClick={() => setShowClientModal(false)}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <label className="text-sm">
+                  <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                    Name
+                  </span>
+                  <input
+                    className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                    value={currentClientData.name || ""}
+                    onChange={(e) => setCurrentClientData({ ...currentClientData, name: e.target.value })}
+                    onBlur={async () => {
+                      if (lead?.clientId) {
+                        try {
+                          await apiFetch(`/clients/${lead.clientId}`, {
+                            method: "PATCH",
+                            json: { name: currentClientData.name },
+                            headers: authHeaders,
+                          });
+                        } catch (error) {
+                          console.error("Failed to update client name:", error);
+                        }
+                      }
+                    }}
+                  />
+                </label>
+
+                <label className="text-sm">
+                  <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                    Email
+                  </span>
+                  <input
+                    type="email"
+                    className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                    value={currentClientData.email || ""}
+                    onChange={(e) => setCurrentClientData({ ...currentClientData, email: e.target.value })}
+                    onBlur={async () => {
+                      if (lead?.clientId) {
+                        try {
+                          await apiFetch(`/clients/${lead.clientId}`, {
+                            method: "PATCH",
+                            json: { email: currentClientData.email },
+                            headers: authHeaders,
+                          });
+                        } catch (error) {
+                          console.error("Failed to update client email:", error);
+                        }
+                      }
+                    }}
+                  />
+                </label>
+
+                <label className="text-sm">
+                  <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                    Phone
+                  </span>
+                  <input
+                    type="tel"
+                    className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                    value={currentClientData.phone || ""}
+                    onChange={(e) => setCurrentClientData({ ...currentClientData, phone: e.target.value })}
+                    onBlur={async () => {
+                      if (lead?.clientId) {
+                        try {
+                          await apiFetch(`/clients/${lead.clientId}`, {
+                            method: "PATCH",
+                            json: { phone: currentClientData.phone },
+                            headers: authHeaders,
+                          });
+                        } catch (error) {
+                          console.error("Failed to update client phone:", error);
+                        }
+                      }
+                    }}
+                  />
+                </label>
+
+                <label className="text-sm">
+                  <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                    Type
+                  </span>
+                  <input
+                    className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                    value={currentClientData.type || ""}
+                    onChange={(e) => {
+                      setCurrentClientData({ ...currentClientData, type: e.target.value });
+                      setClientType(e.target.value);
+                    }}
+                    onBlur={async () => {
+                      if (lead?.clientId) {
+                        try {
+                          await apiFetch(`/clients/${lead.clientId}`, {
+                            method: "PATCH",
+                            json: { type: currentClientData.type },
+                            headers: authHeaders,
+                          });
+                        } catch (error) {
+                          console.error("Failed to update client type:", error);
+                        }
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+
+              <label className="text-sm">
+                <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                  Address
+                </span>
+                <input
+                  className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                  value={currentClientData.address || ""}
+                  onChange={(e) => setCurrentClientData({ ...currentClientData, address: e.target.value })}
+                  onBlur={async () => {
+                    if (lead?.clientId) {
+                      try {
+                        await apiFetch(`/clients/${lead.clientId}`, {
+                          method: "PATCH",
+                          json: { address: currentClientData.address },
+                          headers: authHeaders,
+                        });
+                      } catch (error) {
+                        console.error("Failed to update client address:", error);
+                      }
+                    }
+                  }}
+                />
+              </label>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <label className="text-sm">
+                  <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                    City
+                  </span>
+                  <input
+                    className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                    value={currentClientData.city || ""}
+                    onChange={(e) => setCurrentClientData({ ...currentClientData, city: e.target.value })}
+                    onBlur={async () => {
+                      if (lead?.clientId) {
+                        try {
+                          await apiFetch(`/clients/${lead.clientId}`, {
+                            method: "PATCH",
+                            json: { city: currentClientData.city },
+                            headers: authHeaders,
+                          });
+                        } catch (error) {
+                          console.error("Failed to update client city:", error);
+                        }
+                      }
+                    }}
+                  />
+                </label>
+
+                <label className="text-sm">
+                  <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                    Postcode
+                  </span>
+                  <input
+                    className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                    value={currentClientData.postcode || ""}
+                    onChange={(e) => setCurrentClientData({ ...currentClientData, postcode: e.target.value })}
+                    onBlur={async () => {
+                      if (lead?.clientId) {
+                        try {
+                          await apiFetch(`/clients/${lead.clientId}`, {
+                            method: "PATCH",
+                            json: { postcode: currentClientData.postcode },
+                            headers: authHeaders,
+                          });
+                        } catch (error) {
+                          console.error("Failed to update client postcode:", error);
+                        }
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+
+              <label className="text-sm">
+                <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                  Notes
+                </span>
+                <textarea
+                  className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner min-h-24"
+                  value={currentClientData.notes || ""}
+                  onChange={(e) => setCurrentClientData({ ...currentClientData, notes: e.target.value })}
+                  onBlur={async () => {
+                    if (lead?.clientId) {
+                      try {
+                        await apiFetch(`/clients/${lead.clientId}`, {
+                          method: "PATCH",
+                          json: { notes: currentClientData.notes },
+                          headers: authHeaders,
+                        });
+                      } catch (error) {
+                        console.error("Failed to update client notes:", error);
+                      }
+                    }
+                  }}
+                />
+              </label>
+
+              <div className="flex justify-end pt-4">
+                <button
+                  onClick={() => setShowClientModal(false)}
+                  className="px-4 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
