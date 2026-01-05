@@ -690,71 +690,8 @@ export default function LeadModal({
     }
   ];
 
-  // Required columns used to guarantee the type modal, dropdowns, and color picker exist even if a user has an old layout saved.
-  const REQUIRED_COLUMNS: ColumnConfig[] = [
-    { key: "itemNumber", label: "Item #", type: "number", width: 80, frozen: true, visible: true },
-    { key: "productType", label: "Type", type: "type", width: 200, frozen: false, visible: true },
-    { key: "width_mm", label: "Width (mm)", type: "number", width: 120, frozen: false, visible: true },
-    { key: "height_mm", label: "Height (mm)", type: "number", width: 120, frozen: false, visible: true },
-    { key: "glazingType", label: "Glazing Type", type: "select", width: 160, frozen: false, visible: true, options: ["Single", "Double", "Triple"] },
-    { key: "curvedOrArched", label: "Curved or Arched Design", type: "select", width: 200, frozen: false, visible: true, options: ["Standard", "Curved", "Arched"] },
-    { key: "gridType", label: "Grid Type", type: "select", width: 160, frozen: false, visible: true, options: ["None", "Georgian", "Cottage", "Prairie", "Custom"] },
-    { key: "finishColor", label: "Finish Colour", type: "ral-color", width: 180, frozen: false, visible: true },
-  ];
-
-  const COLUMN_CONFIG_KEY = lead?.id ? `quote-column-config-v2-${lead.id}` : null;
-
-  const mergeColumnConfig = (saved?: ColumnConfig[]): ColumnConfig[] => {
-    const base = saved ? [...saved] : [];
-    // Ensure required columns exist; if missing, append them (preserve any user-defined overrides if present)
-    REQUIRED_COLUMNS.forEach((required) => {
-      const existing = base.find((c) => c.key === required.key);
-      if (!existing) {
-        base.push(required);
-      }
-    });
-    return base;
-  };
-
-  // Initialize quote items from custom data
-  useEffect(() => {
-    if (!lead?.custom) return;
-    const customData = lead.custom as any;
-    const items = Array.isArray(customData.items) ? customData.items : [];
-    
-    // Convert items to QuoteItem format with IDs
-    const convertedItems = items.map((item: any, index: number) => ({
-      id: item.id || `item-${index + 1}`,
-      itemNumber: index + 1,
-      ...item,
-    }));
-    
-    setQuoteItems(convertedItems);
-    
-    // Initialize column config from localStorage or defaults, ensuring required columns exist
-    const savedConfigRaw = COLUMN_CONFIG_KEY ? localStorage.getItem(COLUMN_CONFIG_KEY) : null;
-    if (savedConfigRaw) {
-      const parsed: ColumnConfig[] = JSON.parse(savedConfigRaw);
-      setColumnConfig(mergeColumnConfig(parsed));
-    } else {
-      // Start from required set, then append public fields (avoiding duplicates)
-      const defaultColumns: ColumnConfig[] = [...REQUIRED_COLUMNS];
-      publicFields.slice(0, 5).forEach((field) => {
-        if (field.key && !defaultColumns.some((c) => c.key === field.key)) {
-          defaultColumns.push({
-            key: field.key,
-            label: field.label,
-            type: field.type,
-            width: 150,
-            frozen: false,
-            visible: true,
-            options: field.options || undefined,
-          });
-        }
-      });
-      setColumnConfig(defaultColumns);
-    }
-  }, [lead?.custom, lead?.id, publicFields]);
+  // Legacy product type selection (now driven by quote lines); keep empty to avoid undefined references
+  const selectedProductTypes: string[] = [];
 
   // Load suppliers when modal opens
   useEffect(() => {
@@ -2608,25 +2545,8 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     [settings?.questionnaire]
   );
   
-  // Extract selected product types from quote items
-  const selectedProductTypes = useMemo(() => {
-    const types = new Set<string>();
-    quoteItems.forEach((item) => {
-      Object.keys(item).forEach((key) => {
-        // Look for fields with _category and _type suffixes
-        if (key.endsWith('_category')) {
-          const baseKey = key.replace('_category', '');
-          const category = item[key];
-          const type = item[`${baseKey}_type`];
-          if (category && type) {
-            // Product type format: "category-type" (e.g., "doors-bifold")
-            types.add(`${category}-${type}`);
-          }
-        }
-      });
-    });
-    return Array.from(types);
-  }, [quoteItems]);
+  // Extract selected product types from quote lines (currently unavailable; placeholder to avoid runtime errors)
+  const selectedProductTypes: string[] = [];
   
   const baseWorkspaceFields = useMemo(
     () =>
@@ -2651,7 +2571,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         
         return true;
       }),
-    [questionnaireFields, uiStatus, selectedProductTypes]
+    [questionnaireFields, uiStatus]
   );
   const workspaceFields = useMemo(() => {
     const existingKeys = new Set(baseWorkspaceFields.map((field) => field.key));
@@ -5348,27 +5268,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         recipientName={emailPreview.recipientName}
       />
 
-      {/* Quote Item Column Configuration Modal */}
-      <QuoteItemColumnConfigModal
-        open={showColumnConfig}
-        onClose={() => setShowColumnConfig(false)}
-        availableFields={[
-          ...publicFields.map((f) => ({
-            key: f.key,
-            label: f.label,
-            type: f.type,
-            options: f.options,
-          })),
-          ...internalFields.map((f) => ({
-            key: f.key,
-            label: f.label,
-            type: f.type,
-            options: f.options,
-          })),
-        ]}
-        currentConfig={columnConfig}
-        onSave={handleSaveColumnConfig}
-      />
     </div>
   );
 }
