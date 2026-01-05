@@ -2294,6 +2294,84 @@ router.post("/public", async (req, res) => {
   }
 });
 
+// POST /leads/:id/disqualify - Disqualify a lead and send notification email
+router.post("/:id/disqualify", async (req, res) => {
+  try {
+    const auth = getAuth(req);
+    if (!auth.tenantId) return res.status(401).json({ error: "Unauthorized" });
+
+    const { id } = req.params;
+    const { message, taskId } = req.body;
+
+    if (!id) return res.status(400).json({ error: "Lead ID required" });
+
+    // Fetch the lead
+    const lead = await prisma.lead.findUnique({
+      where: { id, tenantId: auth.tenantId },
+      select: {
+        id: true,
+        email: true,
+        contactName: true,
+        status: true,
+      },
+    });
+
+    if (!lead) return res.status(404).json({ error: "Lead not found" });
+    if (!lead.email) return res.status(400).json({ error: "Lead has no email address" });
+
+    // Update lead status to DISQUALIFIED
+    const updatedLead = await prisma.lead.update({
+      where: { id },
+      data: { status: "DISQUALIFIED" },
+      select: { id: true, status: true },
+    });
+
+    // Send disqualification email
+    try {
+      const { sendEmail } = await import("../services/gmail");
+      const tenantSettings = await prisma.tenantSettings.findFirst({
+        where: { tenantId: auth.tenantId },
+        select: { brandName: true },
+      });
+
+      const brandName = tenantSettings?.brandName || "Our team";
+
+      await sendEmail({
+        to: lead.email,
+        subject: "Your Project Enquiry",
+        body: message || `Hi ${lead.contactName || "there"},
+
+Thank you for reaching out to us with your project enquiry. We appreciate the opportunity.
+
+After reviewing your project details, we've determined that this type of work falls outside our current scope. We're unable to provide a quote at this time.
+
+Best regards,
+${brandName}`,
+      });
+    } catch (emailError) {
+      console.error("Failed to send disqualification email:", emailError);
+      // Don't fail the request if email fails
+    }
+
+    // Mark related task as done if provided
+    if (taskId) {
+      try {
+        await prisma.task.update({
+          where: { id: taskId },
+          data: { status: "DONE", completedAt: new Date() },
+        });
+      } catch (taskError) {
+        console.error("Failed to mark task complete:", taskError);
+      }
+    }
+
+    return res.json({ ok: true, lead: updatedLead });
+  } catch (err: any) {
+    console.error("POST /leads/:id/disqualify error", err);
+    return res.status(500).json({ error: "server_error", message: err?.message });
+  }
+});
+
 // Align React versions to Next supported
 // Downgrade React to version 18.2.0
 // Redeploy the application

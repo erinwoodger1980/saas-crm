@@ -65,6 +65,7 @@ import { getAuthIdsFromJwt } from "@/lib/auth";
 import { useToast } from "@/components/ui/use-toast";
 import { DeskSurface } from "@/components/DeskSurface";
 import { useTenantBrand } from "@/lib/use-tenant-brand";
+import { NextTaskBar } from "@/components/leads/NextTaskBar";
 
 /* -------------------------------- Types -------------------------------- */
 
@@ -224,6 +225,10 @@ function LeadsPageContent() {
   });
 
   const [editingField, setEditingField] = useState<string | null>(null);
+  
+  // Next task tracking
+  const [nextTask, setNextTask] = useState<any>(null);
+  const [nextTaskLead, setNextTaskLead] = useState<Lead | null>(null);
 
   // Load column config for current tab
   useEffect(() => {
@@ -300,8 +305,39 @@ function LeadsPageContent() {
       const data = await apiFetch<Grouped>("/leads/grouped", {
         headers: buildAuthHeaders(),
       });
-      setGrouped(normaliseToNewStatuses(data));
+      const normalised = normaliseToNewStatuses(data);
+      setGrouped(normalised);
       setError(null);
+      
+      // Find first lead in NEW_ENQUIRY to get its next task
+      const firstLead = normalised.NEW_ENQUIRY?.[0];
+      if (firstLead?.id) {
+        try {
+          const leadDetails = await apiFetch<any>(`/leads/${firstLead.id}`, {
+            headers: buildAuthHeaders(),
+          });
+          if (leadDetails) {
+            setNextTaskLead(firstLead);
+            // Get the tasks for this lead
+            const tasksResp = await apiFetch<any>(`/tasks?relatedType=LEAD&relatedId=${encodeURIComponent(firstLead.id)}&mine=false`, {
+              headers: buildAuthHeaders(),
+            });
+            const openTask = tasksResp?.items?.find((t: any) => t.status !== "DONE" && t.status !== "CANCELLED");
+            if (openTask) {
+              setNextTask(openTask);
+            } else {
+              setNextTask(null);
+            }
+          }
+        } catch (err) {
+          console.error("Failed to fetch next task:", err);
+          setNextTask(null);
+          setNextTaskLead(null);
+        }
+      } else {
+        setNextTask(null);
+        setNextTaskLead(null);
+      }
     } catch (e: any) {
       setError(`Failed to load: ${e?.message ?? "unknown"}`);
     } finally {
@@ -907,6 +943,17 @@ function LeadsPageContent() {
             })}
           {/* Removed manual quotes toggle */}
         </div>
+
+        {/* Next Task Bar */}
+        {tab === "NEW_ENQUIRY" && nextTask && nextTaskLead && (
+          <NextTaskBar
+            nextTask={nextTask}
+            leadId={nextTaskLead.id}
+            leadEmail={nextTaskLead.email}
+            leadName={nextTaskLead.contactName}
+            onTaskComplete={refreshGrouped}
+          />
+        )}
 
         <SectionCard
           title="Inbox"
