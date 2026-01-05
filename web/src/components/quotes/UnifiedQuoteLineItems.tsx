@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, ChangeEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Trash2, Plus, Upload, Wand2, Package } from 'lucide-react';
+import { Trash2, Plus, Upload, Wand2, Package, Box } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 // Standard dropdowns
@@ -47,7 +48,8 @@ interface UnifiedQuoteLineItemsProps {
   onDeleteLine: (lineId: string) => Promise<void>;
   onPhotoUpload?: (file: File, lineId?: string) => Promise<void>;
   onAIGenerate?: (description: string, dimensions: { widthMm: number; heightMm: number }) => Promise<void>;
-  onSelectProductType?: (productTypeId: string) => Promise<void>;
+  onSelectProductType?: (productTypeId?: string) => Promise<void>;
+  onPreview3d?: (lineId?: string) => Promise<void>;
   currency?: string;
   isLoading?: boolean;
 }
@@ -60,6 +62,7 @@ export function UnifiedQuoteLineItems({
   onPhotoUpload,
   onAIGenerate,
   onSelectProductType,
+  onPreview3d,
   currency = 'GBP',
   isLoading = false,
 }: UnifiedQuoteLineItemsProps) {
@@ -74,7 +77,9 @@ export function UnifiedQuoteLineItems({
   const [editingLine, setEditingLine] = useState<QuoteLineItem | null>(null);
   const [isAddingLine, setIsAddingLine] = useState(false);
   const [photoUploadingFor, setPhotoUploadingFor] = useState<string | null>(null);
+  const [pendingPhotoLineId, setPendingPhotoLineId] = useState<string | null>(null);
   const [aiGenerating, setAiGenerating] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleAddLine = useCallback(async () => {
     if (!newLine.description.trim()) {
@@ -113,6 +118,43 @@ export function UnifiedQuoteLineItems({
     }
   }, [onDeleteLine]);
 
+  const handleTriggerPhotoUpload = useCallback((lineId?: string) => {
+    if (!onPhotoUpload) return;
+    setPendingPhotoLineId(lineId ?? null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  }, [onPhotoUpload]);
+
+  const handlePhotoSelected = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    if (!onPhotoUpload) return;
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const targetLineId = pendingPhotoLineId || undefined;
+    setPhotoUploadingFor(targetLineId ?? 'new');
+    try {
+      await onPhotoUpload(file, targetLineId);
+    } catch (error) {
+      console.error('Failed to upload photo:', error);
+      alert('Failed to upload photo');
+    } finally {
+      setPhotoUploadingFor(null);
+      setPendingPhotoLineId(null);
+      event.target.value = '';
+    }
+  }, [onPhotoUpload, pendingPhotoLineId]);
+
+  const handlePreview3d = useCallback(async (lineId?: string) => {
+    if (!onPreview3d) return;
+    try {
+      await onPreview3d(lineId);
+    } catch (error) {
+      console.error('Failed to open preview:', error);
+      alert('Failed to open preview');
+    }
+  }, [onPreview3d]);
+
   const formatCurrency = (amount?: number) => {
     if (!amount) return '—';
     return new Intl.NumberFormat('en-GB', {
@@ -122,22 +164,43 @@ export function UnifiedQuoteLineItems({
     }).format(amount);
   };
 
+  const numberInputClass = 'text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none';
+
   return (
     <div className="space-y-4">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handlePhotoSelected}
+      />
       {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Line Items</h3>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 justify-end">
           {onSelectProductType && (
-            <Button size="sm" variant="outline" className="gap-2">
+            <Button size="sm" variant="outline" className="gap-2" onClick={() => onSelectProductType?.()}>
               <Package className="h-4 w-4" />
               Select Product Type
             </Button>
           )}
+          {onPreview3d && (
+            <Button size="sm" variant="outline" className="gap-2" onClick={() => handlePreview3d()}>
+              <Box className="h-4 w-4" />
+              3D Preview
+            </Button>
+          )}
           {onPhotoUpload && (
-            <Button size="sm" variant="outline" className="gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2"
+              onClick={() => handleTriggerPhotoUpload()}
+              disabled={!!photoUploadingFor}
+            >
               <Upload className="h-4 w-4" />
-              Upload Photo
+              {photoUploadingFor ? 'Uploading…' : 'Upload Photo'}
             </Button>
           )}
           {onAIGenerate && (
@@ -183,6 +246,27 @@ export function UnifiedQuoteLineItems({
                 <td className="px-4 py-3 text-center text-sm">{line.glazing || '—'}</td>
                 <td className="px-4 py-3 text-right">{formatCurrency(line.sellTotal || line.sellUnit)}</td>
                 <td className="px-4 py-3 text-center space-x-2">
+                  {onPhotoUpload && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleTriggerPhotoUpload(line.id || idx.toString())}
+                      disabled={photoUploadingFor === (line.id || idx.toString())}
+                      title="Upload photo for this line"
+                    >
+                      <Upload className="h-4 w-4" />
+                    </Button>
+                  )}
+                  {onPreview3d && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handlePreview3d(line.id || idx.toString())}
+                      title="3D preview"
+                    >
+                      <Box className="h-4 w-4" />
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="ghost"
@@ -209,11 +293,11 @@ export function UnifiedQuoteLineItems({
             {isAddingLine && (
               <tr className="bg-blue-50 border-2 border-blue-200">
                 <td className="px-4 py-3">
-                  <Input
+                  <Textarea
                     placeholder="e.g., Oak door"
                     value={newLine.description}
                     onChange={(e) => setNewLine({ ...newLine, description: e.target.value })}
-                    className="text-sm"
+                    className="text-sm min-h-[60px]"
                   />
                 </td>
                 <td className="px-4 py-3">
@@ -222,7 +306,7 @@ export function UnifiedQuoteLineItems({
                     min="1"
                     value={newLine.qty}
                     onChange={(e) => setNewLine({ ...newLine, qty: Number(e.target.value) })}
-                    className="text-sm"
+                    className={numberInputClass}
                   />
                 </td>
                 <td className="px-4 py-3">
@@ -230,7 +314,7 @@ export function UnifiedQuoteLineItems({
                     type="number"
                     value={newLine.widthMm || ''}
                     onChange={(e) => setNewLine({ ...newLine, widthMm: Number(e.target.value) })}
-                    className="text-sm"
+                    className={numberInputClass}
                   />
                 </td>
                 <td className="px-4 py-3">
@@ -238,7 +322,7 @@ export function UnifiedQuoteLineItems({
                     type="number"
                     value={newLine.heightMm || ''}
                     onChange={(e) => setNewLine({ ...newLine, heightMm: Number(e.target.value) })}
-                    className="text-sm"
+                    className={numberInputClass}
                   />
                 </td>
                 <td className="px-4 py-3">
@@ -306,7 +390,7 @@ export function UnifiedQuoteLineItems({
                     placeholder="0.00"
                     value={newLine.sellUnit || ''}
                     onChange={(e) => setNewLine({ ...newLine, sellUnit: Number(e.target.value) })}
-                    className="text-sm"
+                    className={numberInputClass}
                   />
                 </td>
                 <td className="px-4 py-3">
@@ -348,9 +432,10 @@ export function UnifiedQuoteLineItems({
             <div className="space-y-4">
               <div>
                 <label className="text-sm font-medium">Description</label>
-                <Input
+                <Textarea
                   value={editingLine.description}
                   onChange={(e) => setEditingLine({ ...editingLine, description: e.target.value })}
+                  className="min-h-[80px]"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -360,6 +445,7 @@ export function UnifiedQuoteLineItems({
                     type="number"
                     value={editingLine.qty}
                     onChange={(e) => setEditingLine({ ...editingLine, qty: Number(e.target.value) })}
+                    className={numberInputClass}
                   />
                 </div>
                 <div>
@@ -368,6 +454,7 @@ export function UnifiedQuoteLineItems({
                     type="number"
                     value={editingLine.sellUnit || ''}
                     onChange={(e) => setEditingLine({ ...editingLine, sellUnit: Number(e.target.value) })}
+                    className={numberInputClass}
                   />
                 </div>
               </div>
@@ -378,6 +465,7 @@ export function UnifiedQuoteLineItems({
                     type="number"
                     value={editingLine.widthMm || ''}
                     onChange={(e) => setEditingLine({ ...editingLine, widthMm: Number(e.target.value) })}
+                    className={numberInputClass}
                   />
                 </div>
                 <div>
@@ -386,6 +474,8 @@ export function UnifiedQuoteLineItems({
                     type="number"
                     value={editingLine.heightMm || ''}
                     onChange={(e) => setEditingLine({ ...editingLine, heightMm: Number(e.target.value) })}
+                    className={numberInputClass}
+                    className={numberInputClass}
                   />
                 </div>
               </div>

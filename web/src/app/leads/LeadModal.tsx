@@ -2476,6 +2476,34 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     }
   }
 
+  async function handleSelectProductType() {
+    // Navigate to full quote builder for product type selection
+    if (!lead?.quoteId) return;
+    window.open(`/quotes/${lead.quoteId}?tab=product-config`, '_blank');
+  }
+
+  async function handlePhotoUpload(file: File, lineId?: string) {
+    if (!lead?.quoteId) return;
+    setSaving(true);
+    try {
+      // For now, just log - in a real implementation you'd upload the file
+      // and trigger AI analysis on the photo
+      console.log('Photo uploaded for line:', lineId, file.name);
+      toast("Photo uploaded - AI analysis would start here");
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || "Failed to upload photo");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handlePreview3d(lineId?: string) {
+    // Navigate to full quote builder for 3D preview
+    if (!lead?.quoteId) return;
+    window.open(`/quotes/${lead.quoteId}?tab=product-config`, '_blank');
+  }
+
   async function loadQuoteLines() {
     if (!lead?.quoteId) {
       setQuoteLines([]);
@@ -3596,6 +3624,9 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                     onAddLine={handleAddQuoteLine}
                     onUpdateLine={handleUpdateQuoteLine}
                     onDeleteLine={handleDeleteQuoteLine}
+                    onSelectProductType={handleSelectProductType}
+                    onPhotoUpload={handlePhotoUpload}
+                    onPreview3d={handlePreview3d}
                   />
                 </section>
 

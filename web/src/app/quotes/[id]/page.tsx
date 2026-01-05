@@ -1332,101 +1332,68 @@ export default function QuoteBuilderPage() {
             <TabsContent value="product-config" className="space-y-6">
               <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
                 <div>
-                  <h2 className="text-2xl font-semibold text-foreground mb-2">Product Configuration</h2>
+                  <h2 className="text-2xl font-semibold text-foreground mb-2">Product Configuration & Line Items</h2>
                   <p className="text-sm text-muted-foreground">
-                    Select a product type and answer configuration questions
+                    Select a product type, upload photos for AI analysis, and manage all your line items with integrated preview
                   </p>
                 </div>
 
-                {/* Instant product from photo (AI) */}
-                <div className="rounded-xl border bg-muted/20 p-4">
-                  <h3 className="text-sm font-medium text-foreground mb-2">Instant product from photo</h3>
-                  <p className="text-xs text-muted-foreground mb-3">Upload a photo or paste a description to auto-build a product with 3D, BOM and pricing.</p>
-                  <InstantQuoteGenerator
-                    productTypeHint={(() => {
-                      if (!selectedProductOptionId || !productCategories?.length) return null;
-                      for (const cat of productCategories) {
-                        if (!cat.types) continue;
-                        for (const type of cat.types) {
-                          if (!type.options) continue;
-                          const opt = type.options.find((o: any) => o.id === selectedProductOptionId);
-                          if (opt) {
-                            return {
-                              category: cat.value || 'doors',
-                              type: type.value || 'standard',
-                              option: opt.value || 'GEN',
-                            };
-                          }
-                        }
-                      }
-                      return null;
-                    })()}
-                    onAddToQuote={async (data, dims) => {
-                      // Create a single product line using the AI total price; attach sceneConfig for later editing
-                      const created = await createQuoteLine(quoteId, {
-                        description: data.analysis.description || `AI ${data.analysis.productType}`,
-                        quantity: 1,
-                        unitPrice: data.pricing.totalPrice,
-                      });
-                      const newLineId = (created as any)?.line?.id;
-                      if (newLineId) {
-                        await updateQuoteLine(quoteId, newLineId, {
-                          lineStandard: {
-                            widthMm: Math.round(dims.width),
-                            heightMm: Math.round(dims.height),
-                          },
-                          meta: {
-                            aiInstantQuote: data,
-                            sceneConfig: data.sceneConfig,
-                          } as any,
-                        });
-                        await mutateLines();
-                        setActiveTab("quote-lines");
-                      } else {
-                        throw new Error("Line ID not returned");
+                {/* Product line items - Unified component with integrated actions */}
+                <div className="space-y-3">
+                  <div className="text-sm font-medium text-foreground">Line Items</div>
+                  <UnifiedQuoteLineItems
+                    lines={lines.map(line => ({
+                      id: line.id,
+                      description: line.description || '',
+                      qty: line.qty || 1,
+                      widthMm: line.lineStandard?.widthMm,
+                      heightMm: line.lineStandard?.heightMm,
+                      timber: line.lineStandard?.timber,
+                      finish: line.lineStandard?.finish,
+                      ironmongery: line.lineStandard?.ironmongery,
+                      glazing: line.lineStandard?.glazing,
+                      unitPrice: line.unitPrice ?? undefined,
+                      sellUnit: line.sellUnit ?? undefined,
+                      sellTotal: line.sellTotal ?? undefined,
+                    }))}
+                    currency={currency}
+                    onAddLine={handleAddLineItem}
+                    onUpdateLine={handleUpdateLineItem}
+                    onDeleteLine={handleDeleteLineItem}
+                    onSelectProductType={() => setShowTypeSelector(true)}
+                    onPreview3d={(lineId) => {
+                      if (lineId && selectedProductOptionId) {
+                        setModalProductOptionId(selectedProductOptionId);
+                        setShow3dModal(true);
+                      } else if (selectedProductOptionId) {
+                        setModalProductOptionId(selectedProductOptionId);
+                        setShow3dModal(true);
                       }
                     }}
                   />
                 </div>
 
-                {/* Product option selector with 3D preview button */}
-                <div className="space-y-3">
-                  <div className="flex items-end gap-3">
-                    <div className="flex-1">
-                      <label className="block text-sm font-medium text-foreground mb-2">Select Product Type/Option</label>
-                      <select
-                        className="w-full rounded-lg border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                        value={selectedProductOptionId || ""}
-                        onChange={(e) => setSelectedProductOptionId(e.target.value || null)}
-                      >
-                        <option value="">— Select a product —</option>
-                        {productCategories.map((cat: any) => {
-                          if (!cat.types || !Array.isArray(cat.types)) return null;
-                          return cat.types.map((type: any) => {
-                            if (!type.options || !Array.isArray(type.options)) return null;
-                            return type.options.map((opt: any) => (
-                              <option key={opt.id} value={opt.id}>
-                                {cat.label} › {type.label} › {opt.label}
-                              </option>
-                            ));
-                          });
-                        })}
-                      </select>
-                    </div>
-                    {selectedProductOptionId && productCategories && (
-                      <Button
-                        variant="outline"
-                        className="gap-2"
-                        onClick={() => {
-                          setModalProductOptionId(selectedProductOptionId);
-                          setShow3dModal(true);
-                        }}
-                      >
-                        <Box className="h-4 w-4" />
-                        3D Preview
-                      </Button>
-                    )}
-                  </div>
+                {/* Product option selector */}
+                <div className="space-y-3 rounded-lg bg-muted/30 p-4">
+                  <label className="block text-sm font-medium text-foreground mb-2">Select Product Type/Option</label>
+                  <select
+                    className="w-full rounded-lg border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    value={selectedProductOptionId || ""}
+                    onChange={(e) => setSelectedProductOptionId(e.target.value || null)}
+                  >
+                    <option value="">— Select a product —</option>
+                    {productCategories.map((cat: any) => {
+                      if (!cat.types || !Array.isArray(cat.types)) return null;
+                      return cat.types.map((type: any) => {
+                        if (!type.options || !Array.isArray(type.options)) return null;
+                        return type.options.map((opt: any) => (
+                          <option key={opt.id} value={opt.id}>
+                            {cat.label} › {type.label} › {opt.label}
+                          </option>
+                        ));
+                      });
+                    })}
+                  </select>
                 </div>
 
                 {/* Configuration questions - Grid layout */}
@@ -1484,31 +1451,6 @@ export default function QuoteBuilderPage() {
                     <p className="text-sm text-muted-foreground">Select a product type to view configuration questions.</p>
                   </div>
                 )}
-
-                {/* Product line items - Unified component */}
-                <div className="space-y-3">
-                  <div className="text-sm font-medium text-foreground">Line Items</div>
-                  <UnifiedQuoteLineItems
-                    lines={lines.map(line => ({
-                      id: line.id,
-                      description: line.description || '',
-                      qty: line.qty || 1,
-                      widthMm: line.lineStandard?.widthMm,
-                      heightMm: line.lineStandard?.heightMm,
-                      timber: line.lineStandard?.timber,
-                      finish: line.lineStandard?.finish,
-                      ironmongery: line.lineStandard?.ironmongery,
-                      glazing: line.lineStandard?.glazing,
-                      unitPrice: line.unitPrice ?? undefined,
-                      sellUnit: line.sellUnit ?? undefined,
-                      sellTotal: line.sellTotal ?? undefined,
-                    }))}
-                    currency={currency}
-                    onAddLine={handleAddLineItem}
-                    onUpdateLine={handleUpdateLineItem}
-                    onDeleteLine={handleDeleteLineItem}
-                  />
-                </div>
 
                 {/* Type Selector Modal */}
                 {showTypeSelector && (
