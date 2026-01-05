@@ -7,9 +7,9 @@ import ClientInfoStep from './steps/ClientInfoStep';
 import ProjectInfoStep from './steps/ProjectInfoStep';
 import LineItemsStep from './steps/LineItemsStep';
 import ReviewSubmitStep from './steps/ReviewSubmitStep';
-import ThankYouStep from './steps/ThankYouStep';
-import ProgressBar from './ProgressBar';
-import SocialProofPanel from './SocialProofPanel';
+import { ThankYouStep } from './steps/ThankYouStep';
+import { ProgressBar } from './ProgressBar';
+import { SocialProofPanel } from './SocialProofPanel';
 
 export interface ClientInfo {
   name: string;
@@ -208,7 +208,12 @@ export default function PublicEstimatorWizard() {
                 )}
 
                 {currentStep === 'thankyou' && (
-                  <ThankYouStep email={clientInfo.email} />
+                  <ThankYouStep 
+                    companyName="Custom Joinery"
+                    contactEmail="estimates@example.com"
+                    contactPhone="+44 1234 567890"
+                    estimatedResponseTime="24 hours"
+                  />
                 )}
               </CardContent>
             </Card>
