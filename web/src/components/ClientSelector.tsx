@@ -5,7 +5,6 @@ import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Users, Plus, Check, X, Search, ExternalLink } from "lucide-react";
-import Link from "next/link";
 
 type ClientContact = {
   id: string;
@@ -31,6 +30,7 @@ type ClientSelectorProps = {
   contactName?: string | null;
   onSelect: (clientId: string | null) => void;
   onCreateNew?: (data: { name: string; email: string; phone?: string }) => Promise<string>;
+  onOpenDetails?: () => void;
 };
 
 export function ClientSelector({
@@ -39,6 +39,7 @@ export function ClientSelector({
   contactName,
   onSelect,
   onCreateNew,
+  onOpenDetails,
 }: ClientSelectorProps) {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(false);
@@ -209,11 +210,14 @@ export function ClientSelector({
               </div>
             </div>
             <div className="flex gap-2">
-              <Link href={`/clients/${selectedClient.id}`} target="_blank">
-                <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-                  <ExternalLink className="h-4 w-4" />
-                </Button>
-              </Link>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={onOpenDetails}
+                className="h-8 w-8 p-0"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </Button>
               <Button
                 size="sm"
                 variant="ghost"

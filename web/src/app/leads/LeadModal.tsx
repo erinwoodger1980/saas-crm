@@ -1996,11 +1996,11 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     }
   }
 
-  async function sendQuestionnaireEmail() {
+  async function sendQuestionnaireEmail(editedSubject: string, editedBody: string) {
     if (!lead?.id) return;
     setBusyTask(true);
     try {
-      // Send with custom subject and body
+      // Send with custom subject and body (using edited values from modal)
       await apiFetch(
         `/leads/${encodeURIComponent(lead.id)}/request-info`,
         {
@@ -2008,8 +2008,8 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
           headers: { ...authHeaders, "Content-Type": "application/json" },
           body: JSON.stringify({
             sendEmail: true,
-            subject: emailPreviewSubject,
-            body: emailPreviewBody,
+            subject: editedSubject,
+            body: editedBody,
           }),
         }
       );
@@ -3399,6 +3399,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                               throw error;
                             }
                           }}
+                          onOpenDetails={() => setShowClientModal(true)}
                         />
                       </div>
 
@@ -5576,6 +5577,38 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       }
                     }}
                   />
+                </label>
+
+                <label className="text-sm">
+                  <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                    Assigned User
+                  </span>
+                  <select
+                    className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-inner"
+                    value={currentClientData?.userId || ""}
+                    onChange={async (e) => {
+                      const newUserId = e.target.value || null;
+                      setCurrentClientData({ ...currentClientData, userId: newUserId });
+                      if (lead?.clientId) {
+                        try {
+                          await apiFetch(`/clients/${lead.clientId}`, {
+                            method: "PATCH",
+                            json: { userId: newUserId },
+                            headers: authHeaders,
+                          });
+                        } catch (error) {
+                          console.error("Failed to update assigned user:", error);
+                        }
+                      }
+                    }}
+                  >
+                    <option value="">Unassigned</option>
+                    {tenantUsers.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name || user.email}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               </div>
 
