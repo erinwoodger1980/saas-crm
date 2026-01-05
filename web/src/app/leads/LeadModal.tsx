@@ -3631,7 +3631,31 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       sellTotal: line.sellTotal ?? undefined,
                       photoUrl: line.lineStandard?.photoDataUri || line.lineStandard?.photoUrl,
                     }))}
-                    productCategories={productTypes.length > 0 ? [{ label: 'Products', types: [{ label: 'Types', options: productTypes.map((pt: any) => ({ id: pt.id, label: pt.name })) }] }] : []}
+                    productCategories={(() => {
+                      if (productTypes.length === 0) return [];
+                      
+                      // Build hierarchy: categories -> types -> options
+                      const categories = productTypes.filter((pt: any) => pt.level === 'category');
+                      
+                      return categories.map((cat: any) => {
+                        const types = productTypes.filter((pt: any) => pt.level === 'type' && pt.parentId === cat.id);
+                        
+                        return {
+                          label: cat.name,
+                          types: types.map((type: any) => {
+                            const options = productTypes.filter((pt: any) => pt.level === 'option' && pt.parentId === type.id);
+                            
+                            return {
+                              label: type.name,
+                              options: options.map((opt: any) => ({
+                                id: opt.id,
+                                label: opt.name
+                              }))
+                            };
+                          })
+                        };
+                      });
+                    })()}
                     currency="GBP"
                     onAddLine={handleAddQuoteLine}
                     onUpdateLine={handleUpdateQuoteLine}
