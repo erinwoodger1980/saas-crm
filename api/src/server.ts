@@ -142,6 +142,7 @@ import componentProcessesRouter from "./routes/component-processes";
 import componentAttributesRouter from "./routes/component-attributes";
 import componentVariantsRouter from "./routes/component-variants";
 import productTypeComponentsRouter from "./routes/product-type-components";
+import productTypesRouter from "./routes/product-types";
 import materialsRouter from "./routes/materials";
 import sceneStateRouter from "./routes/scene-state";
 import assetsRouter from "./routes/assets";
@@ -747,6 +748,8 @@ app.use("/api/lookup", requireAuth, lookupRouter);
 app.use("/lipping-lookup", requireAuth, lippingLookupRouter);
 // Component catalog and product type configuration
 app.use("/components", requireAuth, componentsRouter);
+// Product types (categories, types, options tree)
+app.use("/product-types", requireAuth, productTypesRouter);
 // Product type component assignments (assign specific components to product types)
 app.use("/product-type-components", requireAuth, productTypeComponentsRouter);
 // Component process tracking, ML timing predictions, and cost calculations
