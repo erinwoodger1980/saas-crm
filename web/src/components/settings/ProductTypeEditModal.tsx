@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, Sparkles, Image as ImageIcon, Trash2, Plus, Box, Package, AlertCircle } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
@@ -228,6 +228,9 @@ export function ProductTypeEditModal({
       <DialogContent className="max-w-6xl h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Product Type Configuration</DialogTitle>
+          <DialogDescription>
+            Configure product types, generate with AI, set up component plans, and manage components
+          </DialogDescription>
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
