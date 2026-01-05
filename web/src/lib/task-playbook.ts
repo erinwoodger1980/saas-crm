@@ -56,6 +56,15 @@ const STATUS_KEYS: UiStatus[] = [
 const DEFAULT_STATUS_RECIPES: Record<UiStatus, TaskRecipe[]> = {
   NEW_ENQUIRY: [
     {
+      id: "status:qualify-enquiry",
+      title: "Qualify Enquiry",
+      dueInDays: 0,
+      priority: "HIGH",
+      relatedType: "LEAD",
+      active: true,
+      autoAssign: "ACTOR",
+    },
+    {
       id: "status:new-review",
       title: "Review enquiry",
       dueInDays: 1,
