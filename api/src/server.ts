@@ -260,7 +260,7 @@ const corsOptions: cors.CorsOptions = {
       normalized: norm,
       isProd
     });
-    cb(new Error(`CORS: origin not allowed: ${origin}`));
+    return cb(new Error(`CORS: origin not allowed: ${origin}`));
   },
   credentials: true, // ✅ allow cookies
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
