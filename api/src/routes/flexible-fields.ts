@@ -39,7 +39,7 @@ router.get('/fields', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'tenantId is required for /api/flexible-fields' });
     }
 
-    const where: any = { tenantId };
+    const where: any = { tenantId, isActive: true };
     if (scope) where.scope = scope as string;
 
     let fields = await prisma.questionnaireField.findMany({
@@ -189,15 +189,27 @@ router.patch('/fields/:fieldId', async (req: Request, res: Response) => {
 
 /**
  * DELETE /api/fields/:fieldId
- * Delete a field (soft delete by marking inactive)
+ * Delete a field (hard delete - permanently removes the field)
  */
 router.delete('/fields/:fieldId', async (req: Request, res: Response) => {
   try {
     const { fieldId } = req.params;
 
-    await prisma.questionnaireField.update({
+    // Check if field has any answers/data
+    const answerCount = await prisma.questionnaireAnswer.count({
+      where: { fieldId },
+    });
+
+    if (answerCount > 0) {
+      // If field has data, delete answers first
+      await prisma.questionnaireAnswer.deleteMany({
+        where: { fieldId },
+      });
+    }
+
+    // Delete the field
+    await prisma.questionnaireField.delete({
       where: { id: fieldId },
-      data: { isActive: false },
     });
 
     return res.json({ success: true, message: 'Field deleted' });
