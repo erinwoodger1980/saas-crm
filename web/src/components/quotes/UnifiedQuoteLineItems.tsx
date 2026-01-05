@@ -39,29 +39,30 @@ export type QuoteLineItem = {
   unitPrice?: number;
   sellUnit?: number;
   sellTotal?: number;
+  productOptionId?: string;
 };
 
 interface UnifiedQuoteLineItemsProps {
   lines: QuoteLineItem[];
+  productCategories?: any[];
   onAddLine: (line: QuoteLineItem) => Promise<void>;
   onUpdateLine: (lineId: string, updates: Partial<QuoteLineItem>) => Promise<void>;
   onDeleteLine: (lineId: string) => Promise<void>;
   onPhotoUpload?: (file: File, lineId?: string) => Promise<void>;
   onAIGenerate?: (description: string, dimensions: { widthMm: number; heightMm: number }) => Promise<void>;
-  onSelectProductType?: (productTypeId?: string) => Promise<void>;
-  onPreview3d?: (lineId?: string) => Promise<void>;
+  onPreview3d?: (lineId?: string, productOptionId?: string) => Promise<void>;
   currency?: string;
   isLoading?: boolean;
 }
 
 export function UnifiedQuoteLineItems({
   lines,
+  productCategories = [],
   onAddLine,
   onUpdateLine,
   onDeleteLine,
   onPhotoUpload,
   onAIGenerate,
-  onSelectProductType,
   onPreview3d,
   currency = 'GBP',
   isLoading = false,
@@ -79,6 +80,7 @@ export function UnifiedQuoteLineItems({
   const [photoUploadingFor, setPhotoUploadingFor] = useState<string | null>(null);
   const [pendingPhotoLineId, setPendingPhotoLineId] = useState<string | null>(null);
   const [aiGenerating, setAiGenerating] = useState(false);
+  const [lineProductTypes, setLineProductTypes] = useState<Record<string, string | undefined>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleAddLine = useCallback(async () => {
@@ -145,10 +147,10 @@ export function UnifiedQuoteLineItems({
     }
   }, [onPhotoUpload, pendingPhotoLineId]);
 
-  const handlePreview3d = useCallback(async (lineId?: string) => {
+  const handlePreview3d = useCallback(async (lineId?: string, productOptionId?: string) => {
     if (!onPreview3d) return;
     try {
-      await onPreview3d(lineId);
+      await onPreview3d(lineId, productOptionId);
     } catch (error) {
       console.error('Failed to open preview:', error);
       alert('Failed to open preview');
@@ -229,6 +231,7 @@ export function UnifiedQuoteLineItems({
               <th className="px-4 py-3 text-center font-semibold whitespace-nowrap">Finish</th>
               <th className="px-4 py-3 text-center font-semibold whitespace-nowrap">Ironmongery</th>
               <th className="px-4 py-3 text-center font-semibold whitespace-nowrap">Glazing</th>
+              <th className="px-4 py-3 text-center font-semibold whitespace-nowrap">Product Type</th>
               <th className="px-4 py-3 text-right font-semibold whitespace-nowrap">Price</th>
               <th className="px-4 py-3 text-center font-semibold whitespace-nowrap">Actions</th>
             </tr>
@@ -244,6 +247,35 @@ export function UnifiedQuoteLineItems({
                 <td className="px-4 py-3 text-center text-sm">{line.finish || '—'}</td>
                 <td className="px-4 py-3 text-center text-sm">{line.ironmongery || '—'}</td>
                 <td className="px-4 py-3 text-center text-sm">{line.glazing || '—'}</td>
+                <td className="px-4 py-3 text-center">
+                  <select
+                    className="text-sm px-2 py-1 rounded border border-input bg-white"
+                    value={lineProductTypes[line.id || idx.toString()] || line.productOptionId || ''}
+                    onChange={(e) => {
+                      const newValue = e.target.value || undefined;
+                      setLineProductTypes(prev => ({
+                        ...prev,
+                        [line.id || idx.toString()]: newValue
+                      }));
+                      if (line.id) {
+                        onUpdateLine(line.id, { productOptionId: newValue });
+                      }
+                    }}
+                  >
+                    <option value="">— Select —</option>
+                    {productCategories.map((cat: any) => {
+                      if (!cat.types || !Array.isArray(cat.types)) return null;
+                      return cat.types.map((type: any) => {
+                        if (!type.options || !Array.isArray(type.options)) return null;
+                        return type.options.map((opt: any) => (
+                          <option key={opt.id} value={opt.id}>
+                            {cat.label} › {type.label} › {opt.label}
+                          </option>
+                        ));
+                      });
+                    })}
+                  </select>
+                </td>
                 <td className="px-4 py-3 text-right">{formatCurrency(line.sellTotal || line.sellUnit)}</td>
                 <td className="px-4 py-3 text-center space-x-2">
                   {onPhotoUpload && (
@@ -261,7 +293,7 @@ export function UnifiedQuoteLineItems({
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => handlePreview3d(line.id || idx.toString())}
+                      onClick={() => handlePreview3d(line.id || idx.toString(), lineProductTypes[line.id || idx.toString()] || line.productOptionId)}
                       title="3D preview"
                     >
                       <Box className="h-4 w-4" />

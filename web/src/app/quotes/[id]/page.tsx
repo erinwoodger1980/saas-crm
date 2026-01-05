@@ -1356,101 +1356,20 @@ export default function QuoteBuilderPage() {
                       sellUnit: line.sellUnit ?? undefined,
                       sellTotal: line.sellTotal ?? undefined,
                     }))}
+                    productCategories={productCategories}
                     currency={currency}
                     onAddLine={handleAddLineItem}
                     onUpdateLine={handleUpdateLineItem}
                     onDeleteLine={handleDeleteLineItem}
-                    onSelectProductType={() => setShowTypeSelector(true)}
-                    onPreview3d={(lineId) => {
-                      if (lineId && selectedProductOptionId) {
-                        setModalProductOptionId(selectedProductOptionId);
-                        setShow3dModal(true);
-                      } else if (selectedProductOptionId) {
-                        setModalProductOptionId(selectedProductOptionId);
+                    onPreview3d={(lineId, productOptionId) => {
+                      if (productOptionId) {
+                        setModalProductOptionId(productOptionId);
                         setShow3dModal(true);
                       }
                     }}
                   />
                 </div>
 
-                {/* Product option selector */}
-                <div className="space-y-3 rounded-lg bg-muted/30 p-4">
-                  <label className="block text-sm font-medium text-foreground mb-2">Select Product Type/Option</label>
-                  <select
-                    className="w-full rounded-lg border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    value={selectedProductOptionId || ""}
-                    onChange={(e) => setSelectedProductOptionId(e.target.value || null)}
-                  >
-                    <option value="">— Select a product —</option>
-                    {productCategories.map((cat: any) => {
-                      if (!cat.types || !Array.isArray(cat.types)) return null;
-                      return cat.types.map((type: any) => {
-                        if (!type.options || !Array.isArray(type.options)) return null;
-                        return type.options.map((opt: any) => (
-                          <option key={opt.id} value={opt.id}>
-                            {cat.label} › {type.label} › {opt.label}
-                          </option>
-                        ));
-                      });
-                    })}
-                  </select>
-                </div>
-
-                {/* Configuration questions - Grid layout */}
-                {selectedProductOptionId && configQuestions.length > 0 && (
-                  <div className="space-y-3">
-                    <div className="text-sm font-medium text-foreground">Configuration Questions</div>
-                    <div className="overflow-x-auto border rounded-lg">
-                      <table className="w-full border-collapse">
-                        <thead>
-                          <tr className="bg-muted/50 border-b">
-                            {configQuestions.map((q: any, idx: number) => {
-                              const label = q.label || (q.source === "legacy" ? (q as any).fieldKey : (q as any).attributeName);
-                              return (
-                                <th key={idx} className="px-4 py-2 text-left text-xs font-semibold text-foreground whitespace-nowrap border-r last:border-r-0">
-                                  {label}
-                                  {q.required && <span className="text-red-500 ml-1">*</span>}
-                                </th>
-                              );
-                            })}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr className="border-b last:border-b-0">
-                            {configQuestions.map((q: any, idx: number) => {
-                              const key = q.source === "legacy" ? (q as any).fieldKey : `${(q as any).componentType}:${(q as any).attributeName}`;
-                              return (
-                                <td key={idx} className="px-4 py-2 border-r last:border-r-0">
-                                  <Input
-                                    type="text"
-                                    value={configAnswers[key] || ""}
-                                    onChange={(e) =>
-                                      setConfigAnswers((prev) => ({ ...prev, [key]: e.target.value }))
-                                    }
-                                    placeholder="—"
-                                    className="h-8 text-sm"
-                                  />
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {selectedProductOptionId && configQuestions.length === 0 && (
-                  <div className="rounded-lg bg-muted/50 p-4">
-                    <p className="text-sm text-muted-foreground">No questions configured for this product type.</p>
-                  </div>
-                )}
-
-                {!selectedProductOptionId && (
-                  <div className="rounded-lg bg-muted/50 p-4">
-                    <p className="text-sm text-muted-foreground">Select a product type to view configuration questions.</p>
-                  </div>
-                )}
 
                 {/* Type Selector Modal */}
                 {showTypeSelector && (
