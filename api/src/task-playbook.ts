@@ -236,12 +236,17 @@ export async function ensureTaskFromRecipe(opts: {
   actorId?: string | null;
 }) {
   const { tenantId, recipe, relatedId } = opts;
-  if (!recipe || recipe.active === false) return null;
+  if (!recipe || recipe.active === false) {
+    console.log(`[task-playbook] ensureTaskFromRecipe skipped: active=${recipe?.active ?? 'undefined'}`);
+    return null;
+  }
 
   const relatedType = opts.relatedType ?? recipe.relatedType ?? "LEAD";
   const key = opts.uniqueKey ?? `${recipe.id}:${relatedType}:${relatedId}`;
 
   try {
+    console.log(`[task-playbook] ensureTaskFromRecipe: title="${recipe.title}", key="${key}"`);
+
     const where: any = {
       tenantId,
       relatedType: relatedType as any,
@@ -254,7 +259,10 @@ export async function ensureTaskFromRecipe(opts: {
     }
 
     const existing = await prisma.task.findFirst({ where });
-    if (existing) return existing;
+    if (existing) {
+      console.log(`[task-playbook] ensureTaskFromRecipe: task already exists, id=${existing.id}`);
+      return existing;
+    }
 
     let dueAt: Date | undefined;
     const dueInDays = typeof recipe.dueInDays === "number" ? recipe.dueInDays : undefined;
@@ -290,12 +298,17 @@ export async function ensureTaskFromRecipe(opts: {
         relatedId,
         status: "OPEN" as any,
         priority: (recipe.priority ?? "MEDIUM") as any,
+        taskType: "MANUAL" as any,
+        createdById: opts.actorId ?? undefined,
         dueAt,
         meta,
       },
     });
 
+    console.log(`[task-playbook] ensureTaskFromRecipe: created task id=${task.id}, title="${task.title}"`);
+
     if (recipe.autoAssign === "ACTOR" && opts.actorId) {
+      console.log(`[task-playbook] ensureTaskFromRecipe: assigning to actor ${opts.actorId}`);
       await prisma.taskAssignee.upsert({
         where: { taskId_userId: { taskId: task.id, userId: opts.actorId } },
         update: {},

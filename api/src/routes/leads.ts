@@ -771,6 +771,10 @@ async function handleStatusTransition(opts: {
   const playbook = opts.playbook ?? (await loadTaskPlaybook(tenantId));
   const recipes = playbook.status[nextUi] || [];
 
+  console.log(`[task-playbook] handleStatusTransition: status=${nextUi}, recipes=${recipes.length}`, {
+    activeRecipes: recipes.filter(r => r.active !== false).map(r => r.title),
+  });
+
   for (const recipe of recipes) {
     await ensureTaskFromRecipe({
       tenantId,
