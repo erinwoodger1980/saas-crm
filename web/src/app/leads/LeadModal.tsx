@@ -488,6 +488,12 @@ export default function LeadModal({
   const [quoteDeadlineDays, setQuoteDeadlineDays] = useState("7");
   const [quoteNotes, setQuoteNotes] = useState("");
 
+  // Email preview modal state
+  const [showEmailPreviewModal, setShowEmailPreviewModal] = useState(false);
+  const [emailPreviewSubject, setEmailPreviewSubject] = useState("");
+  const [emailPreviewBody, setEmailPreviewBody] = useState("");
+  const [emailPreviewTo, setEmailPreviewTo] = useState("");
+
   // ---- Workshop Processes (WON flow) ----
   type ProcDef = { id: string; code: string; name: string; sortOrder?: number|null; requiredByDefault?: boolean; estimatedHours?: number|null };
   type ProcUser = { id: string; name?: string|null; email: string };
@@ -1951,15 +1957,53 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     if (!lead?.id) return;
     setBusyTask(true);
     try {
-      // Delegate to backend to send an invite email with signed token + link
-      const resp = await apiFetch<{ ok: boolean; url: string }>(`/leads/${encodeURIComponent(lead.id)}/request-info`, {
-        method: "POST",
-        headers: authHeaders,
-      });
+      // First, get email preview without sending
+      const resp = await apiFetch<{ ok: boolean; url: string; preview: { subject: string; body: string; to: string; from: string } }>(
+        `/leads/${encodeURIComponent(lead.id)}/request-info`,
+        {
+          method: "POST",
+          headers: { ...authHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({ sendEmail: false }),
+        }
+      );
+
+      if (resp.preview) {
+        // Show preview modal for user to edit
+        setEmailPreviewSubject(resp.preview.subject);
+        setEmailPreviewBody(resp.preview.body);
+        setEmailPreviewTo(resp.preview.to);
+        setShowEmailPreviewModal(true);
+      }
+    } catch (e) {
+      console.error("send questionnaire failed", e);
+      toast("Failed to generate questionnaire preview");
+    } finally {
+      setBusyTask(false);
+    }
+  }
+
+  async function sendQuestionnaireEmail() {
+    if (!lead?.id) return;
+    setBusyTask(true);
+    try {
+      // Send with custom subject and body
+      await apiFetch(
+        `/leads/${encodeURIComponent(lead.id)}/request-info`,
+        {
+          method: "POST",
+          headers: { ...authHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sendEmail: true,
+            subject: emailPreviewSubject,
+            body: emailPreviewBody,
+          }),
+        }
+      );
 
       // Move to Info Requested locally as well
       setUiStatus("INFO_REQUESTED");
       await reloadTasks();
+      setShowEmailPreviewModal(false);
       toast("Questionnaire invite sent");
     } catch (e) {
       console.error("send questionnaire failed", e);
@@ -5330,6 +5374,17 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         body={emailPreview.body}
         to={emailPreview.to}
         recipientName={emailPreview.recipientName}
+      />
+
+      {/* Questionnaire Email Preview Modal */}
+      <EmailPreviewModal
+        isOpen={showEmailPreviewModal}
+        onClose={() => setShowEmailPreviewModal(false)}
+        onSend={sendQuestionnaireEmail}
+        subject={emailPreviewSubject}
+        body={emailPreviewBody}
+        to={emailPreviewTo}
+        recipientName={lead.contactName || undefined}
       />
 
     </div>

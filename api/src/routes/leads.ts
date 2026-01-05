@@ -1627,17 +1627,30 @@ router.post("/:id/request-info", async (req, res) => {
     const WEB_ORIGIN = pickWebOrigin();
     const ts = await prisma.tenantSettings.findUnique({ where: { tenantId } });
     const slug = ts?.slug || ("tenant-" + tenantId.slice(0, 6));
+    
     // Sign an invite token to switch estimator into INVITE mode
     const token = jwt.sign({ t: tenantId, l: id, scope: "public-invite" }, env.APP_JWT_SECRET, { expiresIn: "90d" });
-    const qUrl = `${WEB_ORIGIN}/q/${encodeURIComponent(slug)}/${encodeURIComponent(id)}?token=${encodeURIComponent(token)}`;
+    
+    // Use NEW public estimator route instead of old questionnaire
+    const qUrl = `${WEB_ORIGIN}/tenant/${encodeURIComponent(slug)}/estimate?leadId=${encodeURIComponent(id)}&token=${encodeURIComponent(token)}`;
 
+    // Allow custom subject and body from request, or use defaults
+    const customSubject = req.body?.subject;
+    const customBody = req.body?.body;
+    
     const fromHeader = fromEmail || "me";
-    const subject = `More details needed – ${lead.contactName || "your enquiry"}`;
-    const body =
+    const subject = customSubject || `More details needed – ${lead.contactName || "your enquiry"}`;
+    const body = customBody || (
       `Hi ${lead.contactName || ""},\n\n` +
       `To prepare an accurate quote we need a few more details.\n` +
       `Please fill in this short form: ${qUrl}\n\n` +
-      `Thanks,\n${fromEmail || "CRM"}`;
+      `Thanks,\n${fromEmail || "CRM"}`
+    );
+
+    // If sendEmail is false, just return the preview without sending
+    if (req.body?.sendEmail === false) {
+      return res.json({ ok: true, url: qUrl, token, preview: { subject, body, to: lead.email, from: fromHeader } });
+    }
 
     const rfc822 =
       `From: ${fromHeader}\r\n` +

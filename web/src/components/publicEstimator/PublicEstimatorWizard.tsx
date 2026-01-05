@@ -48,7 +48,17 @@ export interface LineItemData {
 
 type WizardStep = 'client' | 'project' | 'lineitems' | 'review' | 'thankyou';
 
-export default function PublicEstimatorWizard() {
+interface PublicEstimatorWizardProps {
+  tenantSlug?: string;
+  leadId?: string;
+  token?: string;
+}
+
+export default function PublicEstimatorWizard({ 
+  tenantSlug, 
+  leadId, 
+  token 
+}: PublicEstimatorWizardProps = {}) {
   const [currentStep, setCurrentStep] = useState<WizardStep>('client');
   const [clientInfo, setClientInfo] = useState<ClientInfo>({
     name: '',
