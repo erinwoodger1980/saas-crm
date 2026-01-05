@@ -1182,6 +1182,25 @@ router.post("/import", async (req, res) => {
           createdLead = true;
           classification.leadId = leadId;
 
+          // Seed playbook tasks for NEW_ENQUIRY (best-effort only)
+          try {
+            const { loadTaskPlaybook, ensureTaskFromRecipe } = await import("../task-playbook");
+            const playbook = await loadTaskPlaybook(tenantId);
+            const recipes = playbook.status?.NEW_ENQUIRY || [];
+            for (const recipe of recipes) {
+              await ensureTaskFromRecipe({
+                tenantId,
+                recipe,
+                relatedId: created.id,
+                relatedType: recipe.relatedType ?? "LEAD",
+                uniqueKey: `${recipe.id}:${created.id}`,
+                actorId: userId,
+              });
+            }
+          } catch (e) {
+            console.warn("[gmail] task seed failed:", (e as any)?.message || e);
+          }
+
           // TEMP: Commented out until schema fields are fixed
           // Use conversational follow-up system instead of generic task
           // await handleNewLeadFromEmail({

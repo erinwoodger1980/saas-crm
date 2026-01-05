@@ -655,6 +655,21 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
             custom,
           },
         });
+
+        // Proactively seed playbook tasks for the imported status (best-effort)
+        try {
+          const playbook = await loadTaskPlaybook(tenantId);
+          await handleStatusTransition({
+            tenantId,
+            leadId: lead.id,
+            prevUi: null,
+            nextUi: uiStatus,
+            actorId: userId,
+            playbook,
+          });
+        } catch (e) {
+          console.warn("[Import] task seed failed:", (e as any)?.message || e);
+        }
         
         // Create opportunity if requested and status is WON
         if (shouldCreateOpportunities && uiStatus === 'WON') {

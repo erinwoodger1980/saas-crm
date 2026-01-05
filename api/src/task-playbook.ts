@@ -266,7 +266,7 @@ export async function ensureTaskFromRecipe(opts: {
 
     let dueAt: Date | undefined;
     const dueInDays = typeof recipe.dueInDays === "number" ? recipe.dueInDays : undefined;
-    if (typeof dueInDays === "number" && dueInDays > 0) {
+    if (typeof dueInDays === "number" && dueInDays >= 0) {
       dueAt = new Date(Date.now() + dueInDays * 86_400_000);
     }
 

@@ -1431,17 +1431,19 @@ router.post("/tenant/:slug/leads", async (req, res) => {
       }).catch(() => {});
     } catch {}
 
-    // Seed initial follow-up task per tenant playbook
+    // Seed initial follow-up tasks per tenant playbook (NEW_ENQUIRY)
+    // Best-effort only: public intake shouldn't fail if task creation fails.
     try {
       const playbook = await loadTaskPlaybook(tenantId);
-      const recipe = playbook.manual?.new_enquiry_review ?? null;
-      if (recipe) {
+      const recipes = playbook.status?.NEW_ENQUIRY || [];
+      for (const recipe of recipes) {
         await ensureTaskFromRecipe({
           tenantId,
           recipe,
           relatedId: lead.id,
           relatedType: recipe.relatedType ?? "LEAD",
-          uniqueKey: `manual:new_enquiry_review:${lead.id}`,
+          uniqueKey: `${recipe.id}:${lead.id}`,
+          actorId: createdById,
         });
       }
     } catch (e) {
