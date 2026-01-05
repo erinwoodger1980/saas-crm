@@ -2476,12 +2476,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     }
   }
 
-  async function handleSelectProductType() {
-    // Navigate to full quote builder for product type selection
-    if (!lead?.quoteId) return;
-    window.open(`/quotes/${lead.quoteId}?tab=product-config`, '_blank');
-  }
-
   async function handlePhotoUpload(file: File, lineId?: string) {
     if (!lead?.quoteId) return;
     setSaving(true);
@@ -3624,7 +3618,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                     onAddLine={handleAddQuoteLine}
                     onUpdateLine={handleUpdateQuoteLine}
                     onDeleteLine={handleDeleteQuoteLine}
-                    onSelectProductType={handleSelectProductType}
                     onPhotoUpload={handlePhotoUpload}
                     onPreview3d={handlePreview3d}
                   />
