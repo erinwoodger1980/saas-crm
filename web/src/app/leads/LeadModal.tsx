@@ -3412,7 +3412,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                 Client Type
                               </span>
                               <input
-                                className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                                className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-inner"
                                 value={clientType || ""}
                                 onChange={(e) => setClientType(e.target.value)}
                                 onBlur={async () => {
@@ -3438,7 +3438,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                 Assigned User
                               </span>
                               <select
-                                className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                                className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-inner"
                                 value={currentClientData?.userId || ""}
                                 onChange={async (e) => {
                                   const newUserId = e.target.value || null;
@@ -3469,7 +3469,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           <button
                             type="button"
                             onClick={() => setShowClientModal(true)}
-                            className="text-sm text-sky-600 hover:text-sky-700 font-medium"
+                            className="w-full text-center py-2 px-3 rounded-xl border border-sky-200 bg-sky-50 hover:bg-sky-100 text-sky-700 font-medium text-sm transition-colors"
                           >
                             View Full Client Details →
                           </button>
@@ -3481,7 +3481,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
                           Source
                         </span>
-                        <div className="w-full rounded-xl border border-slate-200 bg-white/90 shadow-inner">
+                        <div className="rounded-xl border border-slate-200 bg-white/90 shadow-inner p-2">
                           <LeadSourcePicker
                             leadId={lead?.id}
                             value={typeof customData?.source === "string" ? customData.source : null}
