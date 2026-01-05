@@ -23,9 +23,30 @@ import { ProductPlanV1Schema, createFallbackDoorPlan, createFallbackWindowPlan, 
  * (2-panel door or single-casement window) with confidence=0.2. This prevents failures.
  */
 
-const SYSTEM_PROMPT = `You are a master joinery and fabrication expert. Your task is to produce a precise, component-level assembly plan (ProductPlanV1) for timber doors and windows.
+const SYSTEM_PROMPT = `You are a master joinery and fabrication expert. Your task is to produce a precise, component-level assembly plan (ProductPlanV1) for timber doors and windows based on detailed product descriptions.
 
 A ProductPlanV1 specifies EXACTLY what components are needed, their dimensions, materials, and geometric relationships—suitable for 3D rendering, cutting lists, BOMs, and pricing.
+
+# CRITICAL: Description Parsing
+
+**You MUST carefully analyze the product description for specific details and generate components that match those details exactly.** Do NOT generate generic defaults. Examples:
+
+- If description mentions "6-panel door" → generate exactly 6 panels with appropriate rail structure (typically 3 rails for 6 panels)
+- If description mentions "4-panel door" → generate 2 stiles, 3 rails, 4 distinct panels
+- If description mentions "glazed" or "glass" → include glass panes with beading, not solid panels
+- If description mentions "Georgian bars" or "muntin bars" → include glazing bars dividing panes
+- If description mentions "french door" → generate frame around glass with mullions/transoms
+- If description mentions "hardwood oak" vs "pine" → assign appropriate timber material roles
+- If description mentions "brass hardware" vs "chrome" → use matching metal material roles
+- If description mentions specific hardware like "mortice lock" or "lever handle" → include in components
+
+**Key Detail Extraction Rules:**
+1. **Panel Count**: Look for numbers (2-panel, 4-panel, 6-panel, 10-panel, etc.) and generate the exact rail/panel structure
+2. **Glazing**: Look for keywords: glass, glazed, pane, french, georgian, leaded, frosted, etc.
+3. **Glazing Pattern**: Georgian bars split glass into multiple panes. Count mentioned panes (e.g., "6 pane" = 2×3 grid of glass)
+4. **Hardware Type**: Look for lock type, handle style, hinge count, etc.
+5. **Material**: Extract timber type (oak, pine, sapele, etc.) and finish (painted, stained, natural, etc.)
+6. **Special Features**: Muntins, mullions, transoms, threshold, weatherboard, seals, etc.
 
 # Constraints
 
@@ -36,13 +57,13 @@ A ProductPlanV1 specifies EXACTLY what components are needed, their dimensions, 
    - If "existing product type: category=doors", generate a DOOR plan with frame, stiles, rails, panels/glass, hardware.
    - Do NOT override the provided category based on the description alone.
 
-2. **Component roles must be one of:**
+3. **Component roles must be one of:**
    STILE, RAIL_TOP, RAIL_MID, RAIL_BOTTOM, PANEL, GLASS, BEAD, FRAME_JAMB_L, FRAME_JAMB_R, FRAME_HEAD, CILL, SEAL, LOCK, HANDLE, HINGE, GLAZING_BAR, MOULDING, THRESHOLD, WEATHERBOARD
 
-3. **Material roles must be one of:**
+4. **Material roles must be one of:**
    TIMBER_PRIMARY, TIMBER_SECONDARY, PANEL_CORE, SEAL_RUBBER, SEAL_FOAM, METAL_CHROME, METAL_STEEL, GLASS_CLEAR, GLASS_LEADED, GLASS_FROSTED, PAINT_FINISH, STAIN_FINISH
 
-4. **Every component must have:**
+5. **Every component must have:**
    - id (unique: e.g. "stile_left", "rail_top", "panel_001", "handle_main")
    - role (enum from list above)
    - geometry.type: "profileExtrude" | "box" | "gltf"
@@ -52,24 +73,27 @@ A ProductPlanV1 specifies EXACTLY what components are needed, their dimensions, 
    - quantityExpr (e.g. "1", "2", "(nMullions + 1)")
    - materialRole (one of the enums above)
 
-5. **Expressions use plain identifiers:** pw, ph, sd, stileW, railTop, railBottom, etc. Do NOT use #pw syntax.
+6. **Expressions use plain identifiers:** pw, ph, sd, stileW, railTop, railBottom, etc. Do NOT use #pw syntax.
 
-6. **Always include minimum components:**
-   - For doors: at least 2 stiles, 1 top rail, 1 bottom rail, infill (panels or glass), and if glazing: beads
-   - For windows: outer frame, leaf frame (stiles/rails), glass, and if multiple panes: mullions/transoms
+7. **Rail Structure Rules:**
+   - 2-panel door: 2 stiles, 2 rails (top + bottom) = 1 rail between panels, creates 2 vertical areas
+   - 4-panel door: 2 stiles, 3 rails (top, middle, bottom) = 2 rails between panels, creates 2×2 grid
+   - 6-panel door: 2 stiles, 3 rails (top, upper-middle, lower-middle, bottom) = 3 rails between panels (2 used), creates 2×3 grid
+   - 10-panel door: 2 stiles, 5 rails needed to create 2×5 grid of panels
+   - **Calculate: For N panels in 2 columns: need (N/2 + 1) horizontal rails**
 
-7. **Profile slots** (if profileExtrude is used) hint the profile type:
+8. **Profile slots** (if profileExtrude is used) hint the profile type:
    - FRAME_JAMB: outer frame, e.g. "hardwood_3x2"
    - LEAF_STILE: leaf frame vertical, e.g. "hardwood_2x1"
    - LEAF_RAIL: leaf frame horizontal, e.g. "hardwood_2x1"
    - BEADING: glass beading, e.g. "softwood_1x0_5"
    - MOULDING_OVOLO, MOULDING_OGEE, etc.
 
-8. **Hardware as gltf placeholders:** Include LOCK, HANDLE, HINGE with geometry.type='gltf' and gltfRef=null (no models available yet).
+9. **Hardware as gltf placeholders:** Include LOCK, HANDLE, HINGE with geometry.type='gltf' and gltfRef=null (no models available yet). Include appropriate quantities (e.g., 3 hinges for standard doors).
 
-9. **Variables dictionary:** Define pw (product width), ph (product height), sd (standard depth), plus any custom ones used in expressions.
+10. **Variables dictionary:** Define pw (product width), ph (product height), sd (standard depth), plus any custom ones used in expressions (e.g., nPanels, railH, stileW, etc.).
 
-10. **Reasonable ranges (mm):**
+11. **Reasonable ranges (mm):**
     - Stile width: 35–100
     - Rail height: 35–100
     - Panel thickness: 12–25
@@ -260,6 +284,15 @@ A ProductPlanV1 specifies EXACTLY what components are needed, their dimensions, 
 }
 \`\`\`
 
+**Another example: 6-panel door structure**
+
+For a 6-panel timber door (2 columns × 3 rows), you need:
+- 2 stiles (left/right)
+- 3 rails: top, middle (separating upper 2 panels), middle-lower (separating middle 2 from lower 2), bottom = creates 2×3 grid
+- 6 panels (organized in 2 columns, 3 rows)
+- 3 hinges, 1 handle, 1 lock
+- The middle rail splits the door into upper-middle and lower-middle sections
+
 ---
 
 # Task
@@ -274,9 +307,19 @@ Given the product description (and optional image), generate a ProductPlanV1 JSO
 
 **Output ONLY valid JSON. No other text.**`;
 
+
 const EXAMPLE_USER_PROMPT = `Product Description: {description}
 
 {existingInfo}
+
+CRITICAL ANALYSIS INSTRUCTIONS:
+1. Parse the description for specific details: panel count, glazing, hardware type, material, finish
+2. If you see "6-panel" generate 6 distinct panels with appropriate rail structure (3 rails minimum)
+3. If you see "4-panel" generate 4 panels with 3 rails in a 2×2 arrangement
+4. If you see "glazed" or "glass" generate glass panes with beading, NOT solid panels
+5. If you see material type (oak, pine, sapele) reflect it in the component materials
+6. If you see hardware type (brass, chrome, stainless) reflect it in the hardware material roles
+7. Generate components that EXACTLY match the description, not generic defaults
 
 CRITICAL: If an existing product category is specified above, you MUST generate a plan for that category only. Do not override it based on the description.
 
@@ -349,72 +392,61 @@ async function callOpenAI(description: string, existingProductType?: any, existi
       return { plan: null, error: 'no_json_in_response' };
     }
 
-    const parsed = JSON.parse(jsonMatch[0]);
+    const jsonText2 = jsonMatch[0];
+    const parsed = JSON.parse(jsonText2);
     const validated = ProductPlanV1Schema.parse(parsed);
+
     return { plan: validated };
-  } catch (error) {
-    console.error('[AI2SCENE] Error calling OpenAI or parsing response:', error);
-    return { plan: null, error: 'exception', detail: String(error) };
+  } catch (error: any) {
+    console.error('[AI2SCENE] Error in callOpenAI:', error.message || String(error));
+    return { plan: null, error: error.message || 'unknown_error', detail: error };
   }
 }
 
-export async function POST(req: NextRequest) {
+// Fallback generators if OpenAI fails
+function createFallback(category: string, existingDims?: any): ProductPlanV1 {
+  if (category === 'windows') {
+    return createFallbackWindowPlan(existingDims);
+  }
+  return createFallbackDoorPlan(existingDims);
+}
+
+export async function POST(request: NextRequest) {
   try {
-    const body = await req.json();
+    const body = await request.json();
     const { description, image, existingProductType, existingDims } = body;
 
-    if (!description || typeof description !== 'string') {
-      return NextResponse.json(
-        { error: 'description is required and must be a string' },
-        { status: 400 }
-      );
-    }
-
-    if (!process.env.OPENAI_API_KEY) {
-      console.error('[AI2SCENE] Missing OPENAI_API_KEY in server environment (POST handler)');
-      return NextResponse.json(
-        { error: 'OPENAI_API_KEY is not configured on the server' },
-        { status: 500 }
-      );
-    }
-
-    // Attempt to generate plan via OpenAI
-    const aiResult = await callOpenAI(description, existingProductType, existingDims);
-    let plan = aiResult.plan;
-
-    // Fallback if AI fails or returns null
-    if (!plan) {
-      console.warn('[AI2SCENE] Falling back to default plan', { reason: aiResult.error, detail: aiResult.detail });
-      const category = existingProductType?.category || 'door';
-      const w = existingDims?.widthMm || 914;
-      const h = existingDims?.heightMm || 2032;
-      const d = existingDims?.depthMm || (category === 'window' ? 80 : 45);
-
-      if (category === 'window') {
-        plan = createFallbackWindowPlan(w, h, d);
-      } else {
-        plan = createFallbackDoorPlan(w, h, d);
-      }
-    }
-
-    // Log summary
-    console.log('[AI2SCENE] Generated ProductPlan:', {
-      kind: plan.kind,
-      detected: plan.detected,
-      componentCount: plan.components.length,
-      componentsByRole: plan.components.reduce((acc, c) => {
-        acc[c.role] = (acc[c.role] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>),
-      profilesEstimated: Object.values(plan.profileSlots).filter(p => p.source === 'estimated').length,
-      profilesUploaded: Object.values(plan.profileSlots).filter(p => p.source === 'uploaded').length
+    console.log('[AI2SCENE] POST /api/ai/generate-product-plan', {
+      hasDescription: !!description,
+      hasImage: !!image,
+      existingProductType,
+      existingDims,
     });
 
-    return NextResponse.json(plan);
+    // Call OpenAI to generate ProductPlan
+    const aiResult = await callOpenAI(description, existingProductType, existingDims);
+
+    if (aiResult.plan) {
+      console.log('[AI2SCENE] Generated ProductPlan:', {
+        kind: aiResult.plan.kind,
+        detected: aiResult.plan.detected,
+        numComponents: aiResult.plan.components.length,
+      });
+      return NextResponse.json(aiResult.plan);
+    }
+
+    // Fallback to safe default
+    console.log('[AI2SCENE] Falling back to default plan, error:', aiResult.error);
+    const fallback = createFallback(
+      existingProductType?.category || 'doors',
+      existingDims
+    );
+
+    return NextResponse.json(fallback);
   } catch (error) {
-    console.error('[AI2SCENE] generate-product-plan error:', error);
+    console.error('[AI2SCENE] Error in POST handler:', error);
     return NextResponse.json(
-      { error: 'Failed to generate product plan' },
+      { error: String(error) },
       { status: 500 }
     );
   }
