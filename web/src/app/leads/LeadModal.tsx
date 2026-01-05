@@ -447,6 +447,9 @@ export default function LeadModal({
   const [creatingPhoneTask, setCreatingPhoneTask] = useState(false);
   const [creatingSequence, setCreatingSequence] = useState(false);
   
+  // Product types for dropdown (e.g., Door, Window, Arch Opening)
+  const [productTypes, setProductTypes] = useState<any[]>([]);
+
   // Unified questionnaire fields by scope
   const [clientFields, setClientFields] = useState<NormalizedQuestionnaireField[]>([]);
   const [quoteDetailsFields, setQuoteDetailsFields] = useState<NormalizedQuestionnaireField[]>([]);
@@ -941,6 +944,16 @@ export default function LeadModal({
               setPublicFields((pub || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: true, showOnLead: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
               // Internal fields set now references project_details (same data, different name)
               setInternalFields((projectDetailsMerged || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, internalOnly: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
+              
+              // Fetch product types for dropdown
+              try {
+                const types = await apiFetch<any[]>(`/product-types`, { headers: authHeaders }).catch(() => []);
+                if (Array.isArray(types)) {
+                  setProductTypes(types);
+                }
+              } catch (e) {
+                console.debug("[LeadModal] failed loading product types", e);
+              }
             }
           } catch (e) {
             console.debug("[LeadModal] failed loading scoped fields", e);
@@ -3613,7 +3626,9 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       unitPrice: line.unitPrice ?? undefined,
                       sellUnit: line.sellUnit ?? undefined,
                       sellTotal: line.sellTotal ?? undefined,
+                      photoUrl: line.lineStandard?.photoDataUri || line.lineStandard?.photoUrl,
                     }))}
+                    productCategories={productTypes.length > 0 ? [{ label: 'Products', types: [{ label: 'Types', options: productTypes.map((pt: any) => ({ id: pt.id, label: pt.name })) }] }] : []}
                     currency="GBP"
                     onAddLine={handleAddQuoteLine}
                     onUpdateLine={handleUpdateQuoteLine}

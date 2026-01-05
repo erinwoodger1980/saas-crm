@@ -110,24 +110,93 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Trigger AI photo dimension extraction for items with photos (background job)
-    // This will be handled by a background job/webhook that:
-    // 1. Calls the AI component estimator with the base64 photo
-    // 2. Extracts dimensions and updates the quote line
-    // 3. Updates the lead with vision inferences for display in the modal
+    // Perform AI photo dimension extraction synchronously for instant results
+    // Calls POST /public/vision/analyze-photo for each photo
     const itemsWithPhotos = lineItems.filter((item: any) => item.photoUrl);
     if (itemsWithPhotos.length > 0) {
-      // Queue background job to analyze photos
-      // In production, this would use a job queue like Bull, RQ, or AWS SQS
-      // For now, we'll make a best-effort attempt
       try {
-        // Trigger analysis asynchronously (fire and forget)
-        console.log('[estimate-submit] Queuing photo analysis for', itemsWithPhotos.length, 'items');
-        // Background job would call: POST /api/ai/estimate-components
-        // with the photo data and dimensions for each line item
+        console.log('[estimate-submit] Analyzing photos for', itemsWithPhotos.length, 'items');
+        
+        // Update each quote line item with AI-extracted dimensions
+        for (let i = 0; i < quote.lineItems.length; i++) {
+          const lineItem = quote.lineItems[i];
+          const origItem = lineItems[i];
+          
+          if (origItem.photoUrl && origItem.photoUrl.startsWith('data:image')) {
+            try {
+              // Extract base64 from data URL
+              const base64Match = origItem.photoUrl.match(/base64,(.+)$/);
+              const imageBase64 = base64Match ? base64Match[1] : origItem.photoUrl;
+              
+              // Call the vision analysis endpoint synchronously
+              const visionResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/public/vision/analyze-photo`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  imageBase64,
+                  fileName: `line-item-${i + 1}.jpg`,
+                  openingType: origItem.productType || 'opening',
+                  aspectRatio: origItem.aspectRatio,
+                }),
+              });
+              
+              if (visionResponse.ok) {
+                const visionResult = await visionResponse.json();
+                
+                // Update line item with extracted dimensions and analysis
+                await prisma.quoteLine.update({
+                  where: { id: lineItem.id },
+                  data: {
+                    widthMm: visionResult.width_mm || origItem.widthMm,
+                    heightMm: visionResult.height_mm || origItem.heightMm,
+                    lineStandard: {
+                      ...lineItem.lineStandard,
+                      photoDataUri: origItem.photoUrl,
+                      photoAnalysisStatus: 'completed',
+                      visionAnalysis: {
+                        description: visionResult.description,
+                        width_mm: visionResult.width_mm,
+                        height_mm: visionResult.height_mm,
+                        confidence: visionResult.confidence,
+                      },
+                    },
+                  },
+                });
+                
+                console.log(`[estimate-submit] Photo analysis completed for line item ${i + 1}`);
+              } else {
+                console.warn(`[estimate-submit] Vision analysis failed for line item ${i + 1}:`, visionResponse.status);
+                // Store photo but mark as failed analysis
+                await prisma.quoteLine.update({
+                  where: { id: lineItem.id },
+                  data: {
+                    lineStandard: {
+                      ...lineItem.lineStandard,
+                      photoDataUri: origItem.photoUrl,
+                      photoAnalysisStatus: 'failed',
+                    },
+                  },
+                });
+              }
+            } catch (itemError) {
+              console.warn(`[estimate-submit] Error processing photo for line item ${i + 1}:`, itemError);
+              // Mark as failed but don't break the flow
+              await prisma.quoteLine.update({
+                where: { id: lineItem.id },
+                data: {
+                  lineStandard: {
+                    ...lineItem.lineStandard,
+                    photoDataUri: origItem.photoUrl,
+                    photoAnalysisStatus: 'failed',
+                  },
+                },
+              });
+            }
+          }
+        }
       } catch (analysisError) {
-        console.warn('[estimate-submit] Failed to queue photo analysis:', analysisError);
-        // Don't fail the main request if background job fails
+        console.warn('[estimate-submit] Failed to process photo analysis:', analysisError);
+        // Don't fail the main request if analysis fails
       }
     }
 
@@ -168,7 +237,7 @@ export async function POST(request: NextRequest) {
       leadId: lead.id,
       quoteId: quote.id,
       quoteNumber: quote.quoteNumber,
-      message: 'Estimate submission received. We will analyze your photos and send a detailed estimate within 24 hours.',
+      message: 'Estimate submission received. Photos analyzed using AI vision. Your detailed estimate will be prepared shortly.',
     });
   } catch (error) {
     console.error('[estimate-submit] Error:', error);

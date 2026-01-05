@@ -40,6 +40,7 @@ export type QuoteLineItem = {
   sellUnit?: number;
   sellTotal?: number;
   productOptionId?: string;
+  photoUrl?: string;
 };
 
 interface UnifiedQuoteLineItemsProps {
@@ -218,6 +219,7 @@ export function UnifiedQuoteLineItems({
           <thead>
             <tr className="bg-slate-100 border-b">
               <th className="px-4 py-3 text-left font-semibold whitespace-nowrap">Description</th>
+              <th className="px-4 py-3 text-center font-semibold whitespace-nowrap">Photo</th>
               <th className="px-4 py-3 text-center font-semibold whitespace-nowrap">Qty</th>
               <th className="px-4 py-3 text-center font-semibold whitespace-nowrap">Width (mm)</th>
               <th className="px-4 py-3 text-center font-semibold whitespace-nowrap">Height (mm)</th>
@@ -234,6 +236,13 @@ export function UnifiedQuoteLineItems({
             {lines.map((line, idx) => (
               <tr key={line.id || idx} className="hover:bg-slate-50">
                 <td className="px-4 py-3 max-w-xs truncate">{line.description}</td>
+                <td className="px-4 py-3 text-center">
+                  {line.photoUrl ? (
+                    <img src={line.photoUrl} alt="photo" className="h-10 w-10 rounded object-cover mx-auto" />
+                  ) : (
+                    <span className="text-slate-400">—</span>
+                  )}
+                </td>
                 <td className="px-4 py-3 text-center">{line.qty}</td>
                 <td className="px-4 py-3 text-center">{line.widthMm || '—'}</td>
                 <td className="px-4 py-3 text-center">{line.heightMm || '—'}</td>
