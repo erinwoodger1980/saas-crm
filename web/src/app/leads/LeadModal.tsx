@@ -1961,6 +1961,9 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       setUiStatus("INFO_REQUESTED");
       await reloadTasks();
       toast("Questionnaire invite sent");
+    } catch (e) {
+      console.error("send questionnaire failed", e);
+      toast("Failed to send questionnaire invite");
     } finally {
       setBusyTask(false);
     }
@@ -1994,7 +1997,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
   // Later we may split paths or add mode parameters; keeping simple for initial dual-mode.
   function openEstimator() {
     if (!lead?.id || !settings?.slug) return;
-    const url = `${window.location.origin}/q/${settings.slug}/${encodeURIComponent(lead.id)}?view=estimator`;
+    const url = `${window.location.origin}/tenant/${settings.slug}/estimate`;
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
