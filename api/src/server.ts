@@ -168,46 +168,10 @@ if (env.BILLING_ENABLED) {
 
 const app = express();
 
-/* ------------------------------------------------------
- * Health check endpoint (early setup for debugging)
- * ---------------------------------------------------- */
-app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString(),
-    env: process.env.NODE_ENV || 'development',
-    port: env.PORT,
-    uptime: process.uptime()
-  });
-});
-
-/* ------------------------------------------------------
- * Core app setup
- * ---------------------------------------------------- */
-
-// Allow ?jwt=<token> on attachment fetches (for ML server)
-app.use((req, _res, next) => {
-  const forAttachment =
-    req.path.startsWith("/gmail/message/") && req.path.includes("/attachments/");
-  if (!forAttachment) return next();
-
-  if ((req as any).auth) return next();
-
-  const qJwt = (req.query.jwt as string | undefined) || undefined;
-  if (qJwt) {
-    try {
-      (req as any).auth = jwt.verify(qJwt, env.APP_JWT_SECRET);
-    } catch {
-      // ignore; request will 401 in the handler like normal
-    }
-  }
-  next();
-});
-
 /** Trust proxy so Secure cookies work behind Render/Cloudflare */
 app.set("trust proxy", 1);
 
-/** ---------- CORS (allow localhost + prod, WITH cookies) ---------- */
+/** ---------- CORS - MUST BE FIRST ---------- */
 const rawConfiguredOrigins =
   (Array.isArray((env as any).WEB_ORIGIN)
     ? (env as any).WEB_ORIGIN
@@ -275,10 +239,8 @@ const corsOptions: cors.CorsOptions = {
   ],
 };
 
-// CORS: Early middleware to handle preflight and add headers
+// CORS: Apply BEFORE all routes and endpoints
 app.use(cors(corsOptions));
-
-// Explicit preflight handling for all routes
 app.options('*', cors(corsOptions));
 
 // Additional safety net: ensure CORS headers are always set for allowed origins
@@ -298,9 +260,6 @@ app.use((req: any, res: any, next: any) => {
       res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Tenant-Id, X-User-Id, X-Requested-With");
       res.setHeader("Access-Control-Max-Age", "86400");
       res.setHeader("Vary", "Origin");
-      
-      // Log successful CORS allowance
-      console.log(`[CORS Header] ✅ Set for origin: ${origin}`);
     }
   }
   
@@ -309,6 +268,40 @@ app.use((req: any, res: any, next: any) => {
     return res.sendStatus(200);
   }
   
+  next();
+});
+
+/* -------------------------------------------------------
+ * Health check endpoint (after CORS setup)
+ * ------------------------------------------------------ */
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    env: process.env.NODE_ENV || 'development',
+    port: env.PORT,
+    uptime: process.uptime()
+  });
+});
+
+/* -------------------------------------------------------
+ * Attachment JWT query param (for ML server)
+ * ------------------------------------------------------ */
+app.use((req, _res, next) => {
+  const forAttachment =
+    req.path.startsWith("/gmail/message/") && req.path.includes("/attachments/");
+  if (!forAttachment) return next();
+
+  if ((req as any).auth) return next();
+
+  const qJwt = (req.query.jwt as string | undefined) || undefined;
+  if (qJwt) {
+    try {
+      (req as any).auth = jwt.verify(qJwt, env.APP_JWT_SECRET);
+    } catch {
+      // ignore; request will 401 in the handler like normal
+    }
+  }
   next();
 });
 
