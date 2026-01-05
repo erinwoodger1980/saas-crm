@@ -242,9 +242,11 @@ const corsOptions: cors.CorsOptions = {
 // CORS: Apply BEFORE all routes and endpoints
 app.use(cors(corsOptions));
 
-// Additional safety net: ensure CORS headers are always set for allowed origins
+// Safety net: Explicitly set CORS headers on all responses
 app.use((req: any, res: any, next: any) => {
   const origin = req.get("origin");
+  const isOptions = req.method === "OPTIONS";
+  
   if (origin) {
     const norm = origin.replace(/^https?:\/\//, "").replace(/\/$/, "");
     const isAllowed = [...allowedOriginsSet].some(
@@ -252,19 +254,27 @@ app.use((req: any, res: any, next: any) => {
     );
     
     if (isAllowed) {
-      // Explicitly set CORS headers for this response
+      // Set CORS headers on ALL responses (including OPTIONS)
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Access-Control-Allow-Credentials", "true");
       res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD");
       res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Tenant-Id, X-User-Id, X-Requested-With");
       res.setHeader("Access-Control-Max-Age", "86400");
       res.setHeader("Vary", "Origin");
+      
+      if (isOptions) {
+        console.log(`[CORS] ✅ Preflight (OPTIONS) handled for origin: ${origin}`);
+        return res.sendStatus(200);
+      }
+    } else {
+      // Log rejections for debugging
+      if (isOptions) {
+        console.warn(`[CORS] ⚠️ Preflight (OPTIONS) rejected for origin: ${origin}`, {
+          normalized: norm,
+          allowed: [...allowedOriginsSet].map(o => o.replace(/^https?:\/\//, "").replace(/\/$/, ""))
+        });
+      }
     }
-  }
-  
-  // Always handle OPTIONS requests
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(200);
   }
   
   next();
