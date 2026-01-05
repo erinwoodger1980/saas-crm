@@ -27,8 +27,7 @@ import { TaskCenter } from "@/components/tasks/TaskCenter";
 import { EmailPreviewModal } from "@/components/EmailPreviewModal";
 import { UnifiedFieldRenderer } from "@/components/fields/UnifiedFieldRenderer";
 import { fetchQuestionnaireFields } from "@/lib/questionnaireFields";
-import { QuoteItemsGrid, QuoteItem, ColumnConfig } from "@/components/QuoteItemsGrid";
-import { QuoteItemColumnConfigModal } from "@/components/QuoteItemColumnConfigModal";
+import { UnifiedQuoteLineItems } from "@/components/quotes/UnifiedQuoteLineItems";
 import { ClientSelector } from "@/components/ClientSelector";
 import { CustomFieldsPanel } from "@/components/fields/CustomFieldsPanel";
 
@@ -504,21 +503,8 @@ export default function LeadModal({
   const [wkAssignments, setWkAssignments] = useState<ProcAssignment[]>([]);
   const [wkSavingId, setWkSavingId] = useState<string | null>(null);
 
-  // Quote items grid state
-  const [quoteItems, setQuoteItems] = useState<QuoteItem[]>([]);
-  const [showColumnConfig, setShowColumnConfig] = useState(false);
-  const [columnConfig, setColumnConfig] = useState<ColumnConfig[]>([]);
-
-  // Add Product Line (standard fields) draft state
-  const [newLineDesc, setNewLineDesc] = useState<string>("");
-  const [newLineQty, setNewLineQty] = useState<number>(1);
-  const [newLineUnitPrice, setNewLineUnitPrice] = useState<number>(0);
-  const [stdWidthMm, setStdWidthMm] = useState<number | null>(null);
-  const [stdHeightMm, setStdHeightMm] = useState<number | null>(null);
-  const [stdTimber, setStdTimber] = useState<string>("");
-  const [stdFinish, setStdFinish] = useState<string>("");
-  const [stdIronmongery, setStdIronmongery] = useState<string>("");
-  const [stdGlazing, setStdGlazing] = useState<string>("");
+  // Quote lines state
+  const [quoteLines, setQuoteLines] = useState<any[]>([]);
 
   // Material tracking state
   type MaterialDates = {
@@ -1645,26 +1631,14 @@ export default function LeadModal({
     await savePatch(payload);
   }
 
-  async function handleQuoteItemsChange(items: QuoteItem[]) {
-    setQuoteItems(items);
-    
-    // Save to lead custom data
-    const itemsData = items.map(({ id, ...rest }) => rest);
-    await savePatch({
-      questionnaire: {
-        items: itemsData,
-      },
-    });
-  }
-
-  function handleSaveColumnConfig(config: ColumnConfig[]) {
-    setColumnConfig(config);
-    if (lead?.id) {
-      if (COLUMN_CONFIG_KEY) {
-        localStorage.setItem(COLUMN_CONFIG_KEY, JSON.stringify(config));
-      }
+  // Load quote lines when lead or quoteId changes
+  useEffect(() => {
+    if (lead?.quoteId) {
+      loadQuoteLines();
+    } else {
+      setQuoteLines([]);
     }
-  }
+  }, [lead?.quoteId]);
 
   async function reloadTasks() {
     if (!lead?.id) return;
@@ -2452,13 +2426,19 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
   }
 
   // Create a product line on the underlying Quote and attach standard fields
-  async function saveProductConfiguration() {
+  // Callbacks for UnifiedQuoteLineItems
+  async function handleAddQuoteLine(newLine: {
+    description: string;
+    qty: number | null;
+    unitPrice?: number | null;
+    widthMm?: number | null;
+    heightMm?: number | null;
+    timber?: string;
+    finish?: string;
+    ironmongery?: string;
+    glazing?: string;
+  }) {
     if (!lead?.id) return;
-    const desc = (newLineDesc || "").trim();
-    if (!desc) {
-      toast("Please enter a line description");
-      return;
-    }
     setSaving(true);
     try {
       // Ensure a draft quote exists
@@ -2477,49 +2457,102 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
           setLead((prev) => (prev ? { ...prev, quoteId: qid } : prev));
         }
       }
-      if (!qid) {
-        alert("Couldn't create a draft quote.");
-        return;
-      }
+      if (!qid) throw new Error("Couldn't create a draft quote.");
 
       // Create the line
       const created = await createQuoteLine(qid, {
-        description: desc,
-        quantity: Number.isFinite(newLineQty) ? newLineQty : 1,
-        unitPrice: Number.isFinite(newLineUnitPrice) ? newLineUnitPrice : 0,
+        description: newLine.description,
+        quantity: newLine.qty ?? 1,
+        unitPrice: newLine.unitPrice ?? 0,
       });
       const lineId = (created as any)?.line?.id;
       if (!lineId) throw new Error("Line was not created");
 
       // Attach standard fields to the line
       const lineStandard: Record<string, any> = {};
-      if (stdWidthMm != null) lineStandard.widthMm = stdWidthMm;
-      if (stdHeightMm != null) lineStandard.heightMm = stdHeightMm;
-      if (stdTimber) lineStandard.timber = stdTimber;
-      if (stdFinish) lineStandard.finish = stdFinish;
-      if (stdIronmongery) lineStandard.ironmongery = stdIronmongery;
-      if (stdGlazing) lineStandard.glazing = stdGlazing;
+      if (newLine.widthMm != null) lineStandard.widthMm = newLine.widthMm;
+      if (newLine.heightMm != null) lineStandard.heightMm = newLine.heightMm;
+      if (newLine.timber) lineStandard.timber = newLine.timber;
+      if (newLine.finish) lineStandard.finish = newLine.finish;
+      if (newLine.ironmongery) lineStandard.ironmongery = newLine.ironmongery;
+      if (newLine.glazing) lineStandard.glazing = newLine.glazing;
       if (Object.keys(lineStandard).length > 0) {
         await updateQuoteLine(qid, lineId, { lineStandard });
       }
 
-      // Reset form
-      setNewLineDesc("");
-      setNewLineQty(1);
-      setNewLineUnitPrice(0);
-      setStdWidthMm(null);
-      setStdHeightMm(null);
-      setStdTimber("");
-      setStdFinish("");
-      setStdIronmongery("");
-      setStdGlazing("");
-
       toast("Line added to quote");
+      await loadQuoteLines();
     } catch (e: any) {
       console.error(e);
       alert(e?.message || "Failed to add line");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleUpdateQuoteLine(lineId: string, updates: any) {
+    if (!lead?.quoteId) return;
+    setSaving(true);
+    try {
+      // Transform flat updates to nested lineStandard
+      const lineStandardFields = ['widthMm', 'heightMm', 'timber', 'finish', 'ironmongery', 'glazing'];
+      const lineStandard: any = {};
+      const directUpdates: any = {};
+      
+      Object.entries(updates).forEach(([key, value]) => {
+        if (lineStandardFields.includes(key)) {
+          lineStandard[key] = value;
+        } else {
+          directUpdates[key] = value;
+        }
+      });
+      
+      const payload: any = { ...directUpdates };
+      if (Object.keys(lineStandard).length > 0) {
+        payload.lineStandard = lineStandard;
+      }
+      
+      await updateQuoteLine(lead.quoteId, lineId, payload);
+      toast("Line updated");
+      await loadQuoteLines();
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || "Failed to update line");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteQuoteLine(lineId: string) {
+    if (!lead?.quoteId) return;
+    setSaving(true);
+    try {
+      await apiFetch(`/quotes/${encodeURIComponent(lead.quoteId)}/lines/${encodeURIComponent(lineId)}`, {
+        method: "DELETE",
+        headers: authHeaders,
+      });
+      toast("Line deleted");
+      await loadQuoteLines();
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || "Failed to delete line");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function loadQuoteLines() {
+    if (!lead?.quoteId) {
+      setQuoteLines([]);
+      return;
+    }
+    try {
+      const data = await apiFetch<any>(`/quotes/${encodeURIComponent(lead.quoteId)}/lines`, {
+        headers: authHeaders,
+      });
+      setQuoteLines(data?.lines || []);
+    } catch (e) {
+      console.error("Failed to load quote lines:", e);
     }
   }
 
@@ -3619,131 +3652,32 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
           {currentStage === "quote" && (
             <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 min-h-[60vh]">
               <div className="max-w-4xl mx-auto space-y-6">
-                {/* Add Product Line (standard fields) */}
-                <section className="rounded-2xl border border-indigo-100 bg-white/85 p-5 shadow-sm backdrop-blur">
-                  <div className="flex items-center justify-between gap-2 mb-4">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                      <span aria-hidden="true">➕</span>
-                      Add Product Line
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <label className="text-sm">
-                      <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
-                        Description
-                      </span>
-                      <input
-                        className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-200"
-                        value={newLineDesc}
-                        onChange={(e) => setNewLineDesc(e.target.value)}
-                        placeholder="e.g., Oak entrance door"
-                      />
-                    </label>
-                    <div className="grid grid-cols-3 gap-3">
-                      <label className="text-sm">
-                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Qty</span>
-                        <input
-                          type="number"
-                          min={1}
-                          className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-200"
-                          value={newLineQty}
-                          onChange={(e) => setNewLineQty(Number(e.target.value) || 1)}
-                        />
-                      </label>
-                      <label className="text-sm col-span-2">
-                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Unit price</span>
-                        <input
-                          type="number"
-                          min={0}
-                          className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-200"
-                          value={newLineUnitPrice}
-                          onChange={(e) => setNewLineUnitPrice(Number(e.target.value) || 0)}
-                        />
-                      </label>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3 sm:col-span-2">
-                      <label className="text-sm">
-                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Width (mm)</span>
-                        <input
-                          type="number"
-                          min={0}
-                          className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-200"
-                          value={stdWidthMm ?? ""}
-                          onChange={(e) => {
-                            const v = e.target.value.trim();
-                            setStdWidthMm(v === "" ? null : Number(v));
-                          }}
-                        />
-                      </label>
-                      <label className="text-sm">
-                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Height (mm)</span>
-                        <input
-                          type="number"
-                          min={0}
-                          className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-200"
-                          value={stdHeightMm ?? ""}
-                          onChange={(e) => {
-                            const v = e.target.value.trim();
-                            setStdHeightMm(v === "" ? null : Number(v));
-                          }}
-                        />
-                      </label>
-                    </div>
-                    <label className="text-sm">
-                      <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Timber</span>
-                      <input
-                        className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-200"
-                        value={stdTimber}
-                        onChange={(e) => setStdTimber(e.target.value)}
-                        placeholder="e.g., Oak"
-                      />
-                    </label>
-                    <label className="text-sm">
-                      <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Finish</span>
-                      <input
-                        className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-200"
-                        value={stdFinish}
-                        onChange={(e) => setStdFinish(e.target.value)}
-                        placeholder="e.g., RAL 7016"
-                      />
-                    </label>
-                    <label className="text-sm">
-                      <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Ironmongery</span>
-                      <input
-                        className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-200"
-                        value={stdIronmongery}
-                        onChange={(e) => setStdIronmongery(e.target.value)}
-                        placeholder="e.g., Satin chrome"
-                      />
-                    </label>
-                    <label className="text-sm">
-                      <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Glazing</span>
-                      <input
-                        className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-200"
-                        value={stdGlazing}
-                        onChange={(e) => setStdGlazing(e.target.value)}
-                        placeholder="e.g., Double glazed"
-                      />
-                    </label>
-                  </div>
-                  <div className="mt-4 flex justify-end">
-                    <Button onClick={saveProductConfiguration} disabled={saving || !newLineDesc.trim()}>
-                      {saving ? "Saving…" : "Add line"}
-                    </Button>
-                  </div>
-                </section>
-                {/* Quote Items Grid - Line items with dimensions, materials, etc */}
+                {/* Quote Line Items - Unified Component */}
                 <section className="rounded-2xl border border-indigo-100 bg-white/85 p-5 shadow-sm backdrop-blur">
                   <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
                     <span aria-hidden="true">📝</span>
                     Quote Line Items
                   </div>
 
-                  <QuoteItemsGrid
-                    items={quoteItems}
-                    columns={columnConfig}
-                    onItemsChange={handleQuoteItemsChange}
-                    onColumnConfigOpen={() => setShowColumnConfig(true)}
+                  <UnifiedQuoteLineItems
+                    lines={quoteLines.map((line: any) => ({
+                      id: line.id,
+                      description: line.description || '',
+                      qty: line.qty || 1,
+                      widthMm: line.lineStandard?.widthMm,
+                      heightMm: line.lineStandard?.heightMm,
+                      timber: line.lineStandard?.timber,
+                      finish: line.lineStandard?.finish,
+                      ironmongery: line.lineStandard?.ironmongery,
+                      glazing: line.lineStandard?.glazing,
+                      unitPrice: line.unitPrice ?? undefined,
+                      sellUnit: line.sellUnit ?? undefined,
+                      sellTotal: line.sellTotal ?? undefined,
+                    }))}
+                    currency="GBP"
+                    onAddLine={handleAddQuoteLine}
+                    onUpdateLine={handleUpdateQuoteLine}
+                    onDeleteLine={handleDeleteQuoteLine}
                   />
                 </section>
 

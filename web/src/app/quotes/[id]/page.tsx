@@ -9,6 +9,7 @@ import { SupplierFilesCard } from "@/components/quotes/SupplierFilesCard";
 import { TemplatePickerDialog } from "@/components/quotes/TemplatePickerDialog";
 import { LeadDetailsCard } from "@/components/quotes/LeadDetailsCard";
 import { ClientQuoteUploadCard } from "@/components/quotes/ClientQuoteUploadCard";
+import { UnifiedQuoteLineItems } from "@/components/quotes/UnifiedQuoteLineItems";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
@@ -54,16 +55,6 @@ export default function QuoteBuilderPage() {
   const quoteId = String(params?.id ?? "");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { toast } = useToast();
-  // Product tab: standard field draft state
-  const [newLineDesc, setNewLineDesc] = useState("");
-  const [newLineQty, setNewLineQty] = useState<number | null>(1);
-  const [newLineUnitPrice, setNewLineUnitPrice] = useState<number | null>(0);
-  const [stdWidthMm, setStdWidthMm] = useState<number | null>(null);
-  const [stdHeightMm, setStdHeightMm] = useState<number | null>(null);
-  const [stdTimber, setStdTimber] = useState<string>("");
-  const [stdFinish, setStdFinish] = useState<string>("");
-  const [stdIronmongery, setStdIronmongery] = useState<string>("");
-  const [stdGlazing, setStdGlazing] = useState<string>("");
   
   // Product type picker state
   const [showTypeSelector, setShowTypeSelector] = useState(false);
@@ -426,75 +417,6 @@ export default function QuoteBuilderPage() {
       toast({ title: "Save failed", description: err?.message || "Unknown error", variant: "destructive" });
     }
   }, [quoteId, quote, selectedProductOptionId, configAnswers, mutateQuote, toast]);
-
-  // Add a new line item with standard fields (and save config first)
-  const handleAddLineItem = useCallback(async () => {
-    if (!quoteId || !quote) {
-      toast({ title: "Error", description: "Quote not loaded", variant: "destructive" });
-      return;
-    }
-    
-    // Validate description is provided
-    if (!newLineDesc.trim()) {
-      toast({ title: "Description required", description: "Please enter a description for the line item", variant: "destructive" });
-      return;
-    }
-
-    try {
-      // First save configuration to quote metadata
-      const nextMeta = {
-        ...((quote?.meta as any) || {}),
-        selectedProductOptionId,
-        configAnswers,
-      };
-      console.log('[Product Config] Saving to quote.meta:', { selectedProductOptionId, configAnswers });
-      await apiFetch(`/quotes/${encodeURIComponent(quoteId)}`, {
-        method: "PATCH",
-        json: { meta: nextMeta },
-      });
-      await mutateQuote();
-
-      // Now create the line item
-      const created = await createQuoteLine(quoteId, {
-        description: newLineDesc.trim(),
-        quantity: newLineQty ?? 1,
-        unitPrice: newLineUnitPrice ?? 0,
-      });
-      const lineId = (created as any)?.line?.id;
-      if (lineId) {
-        const lineStandard: Record<string, any> = {};
-        if (stdWidthMm != null) lineStandard.widthMm = stdWidthMm;
-        if (stdHeightMm != null) lineStandard.heightMm = stdHeightMm;
-        if (stdTimber) lineStandard.timber = stdTimber;
-        if (stdFinish) lineStandard.finish = stdFinish;
-        if (stdIronmongery) lineStandard.ironmongery = stdIronmongery;
-        if (stdGlazing) lineStandard.glazing = stdGlazing;
-        if (selectedProductOptionId) lineStandard.productOptionId = selectedProductOptionId;
-        if (Object.keys(lineStandard).length > 0) {
-          await updateQuoteLine(quoteId, lineId, { lineStandard });
-        }
-        await mutateLines();
-        // Reset drafts
-        setNewLineDesc("");
-        setNewLineQty(1);
-        setNewLineUnitPrice(0);
-        setStdWidthMm(null);
-        setStdHeightMm(null);
-        setStdTimber("");
-        setStdFinish("");
-        setStdIronmongery("");
-        setStdGlazing("");
-        setActiveTab("quote-lines");
-        toast({ title: "Line added", description: "Product line created and saved." });
-      } else {
-        toast({ title: "Line created but no ID returned", description: "Could not attach specifications", variant: "destructive" });
-      }
-    } catch (err: any) {
-      console.error("Failed to add line item:", err);
-      toast({ title: "Line creation failed", description: err?.message || "Unable to create line item", variant: "destructive" });
-    }
-  }, [quoteId, quote, selectedProductOptionId, configAnswers, mutateQuote, newLineDesc, newLineQty, newLineUnitPrice, stdWidthMm, stdHeightMm, stdTimber, stdFinish, stdIronmongery, stdGlazing, mutateLines, toast]);
-
   const reestimateNeeded = estimate && estimatedLineRevision !== null && estimatedLineRevision !== lineRevision;
 
   const runSupplierProcessing = useCallback(async () => {
@@ -1013,10 +935,15 @@ export default function QuoteBuilderPage() {
 
   // Handle product type selection from type selector modal
   const handleTypeSelection = useCallback((selection: { category: string; type: string; option: string }) => {
-    setNewLineDesc(`${selection.category === "doors" ? "Door" : "Window"} - ${selection.type} - ${selection.option}`);
+    // Product type selection now happens within UnifiedQuoteLineItems component
+    // This closes the modals after selection
     setShowTypeSelector(false);
     setShowAiSearch(false);
-  }, []);
+    toast({
+      title: "Product type selected",
+      description: `${selection.category === "doors" ? "Door" : "Window"} - ${selection.type} - ${selection.option}`,
+    });
+  }, [toast]);
 
   // Handle AI search for product type
   const handleAiSearch = useCallback(async () => {
@@ -1077,6 +1004,107 @@ export default function QuoteBuilderPage() {
       option: opt.option,
     });
   }, [handleTypeSelection]);
+
+  // Callbacks for UnifiedQuoteLineItems component
+  const handleAddLineItem = useCallback(
+    async (newLine: {
+      description: string;
+      qty: number | null;
+      unitPrice?: number | null;
+      lineStandard?: {
+        widthMm?: number | null;
+        heightMm?: number | null;
+        timber?: string;
+        finish?: string;
+        ironmongery?: string;
+        glazing?: string;
+      };
+    }) => {
+      if (!quoteId) return;
+      try {
+        // Create the line item first
+        const created = await createQuoteLine(quoteId, {
+          description: newLine.description,
+          quantity: newLine.qty ?? 1,
+          unitPrice: newLine.unitPrice ?? 0,
+        });
+        
+        // Update with lineStandard if provided
+        const lineId = (created as any)?.line?.id;
+        if (lineId && newLine.lineStandard && Object.keys(newLine.lineStandard).length > 0) {
+          await updateQuoteLine(quoteId, lineId, { lineStandard: newLine.lineStandard });
+        }
+        
+        toast({ title: "Line item added", description: "New line item created successfully" });
+        await mutateLines();
+      } catch (err: any) {
+        toast({
+          title: "Failed to add line item",
+          description: err?.message || "Unable to create line item",
+          variant: "destructive",
+        });
+      }
+    },
+    [quoteId, mutateLines, toast],
+  );
+
+  const handleUpdateLineItem = useCallback(
+    async (lineId: string, updates: any) => {
+      if (!quoteId) return;
+      try {
+        // Transform flat updates back to nested lineStandard structure
+        const lineStandardFields = ['widthMm', 'heightMm', 'timber', 'finish', 'ironmongery', 'glazing'];
+        const lineStandard: any = {};
+        const directUpdates: any = {};
+        
+        Object.entries(updates).forEach(([key, value]) => {
+          if (lineStandardFields.includes(key)) {
+            lineStandard[key] = value;
+          } else {
+            directUpdates[key] = value;
+          }
+        });
+        
+        // Prepare the update payload
+        const payload: any = { ...directUpdates };
+        if (Object.keys(lineStandard).length > 0) {
+          payload.lineStandard = lineStandard;
+        }
+        
+        await updateQuoteLine(quoteId, lineId, payload);
+        toast({ title: "Line item updated", description: "Changes saved successfully" });
+        await mutateLines();
+      } catch (err: any) {
+        toast({
+          title: "Failed to update line item",
+          description: err?.message || "Unable to update line item",
+          variant: "destructive",
+        });
+      }
+    },
+    [quoteId, mutateLines, toast],
+  );
+
+  const handleDeleteLineItem = useCallback(
+    async (lineId: string) => {
+      if (!quoteId) return;
+      try {
+        // Assuming there's a deleteQuoteLine API (if not, we'll need to add it)
+        await apiFetch(`/quotes/${encodeURIComponent(quoteId)}/lines/${encodeURIComponent(lineId)}`, {
+          method: "DELETE",
+        });
+        toast({ title: "Line item deleted", description: "Line item removed successfully" });
+        await mutateLines();
+      } catch (err: any) {
+        toast({
+          title: "Failed to delete line item",
+          description: err?.message || "Unable to delete line item",
+          variant: "destructive",
+        });
+      }
+    },
+    [quoteId, mutateLines, toast],
+  );
 
   // UI state for collapsible sections (defined earlier in state section)
 
@@ -1457,216 +1485,59 @@ export default function QuoteBuilderPage() {
                   </div>
                 )}
 
-                {/* Product line items - 9 column spreadsheet layout */}
+                {/* Product line items - Unified component */}
                 <div className="space-y-3">
                   <div className="text-sm font-medium text-foreground">Line Items</div>
-                  <div className="overflow-x-auto border rounded-lg">
-                    <table className="w-full border-collapse text-sm">
-                      <thead>
-                        <tr className="bg-muted/50 border-b">
-                          <th className="px-3 py-2 text-left text-xs font-semibold text-foreground whitespace-nowrap border-r">Description</th>
-                          <th className="px-3 py-2 text-left text-xs font-semibold text-foreground whitespace-nowrap border-r">Qty</th>
-                          <th className="px-3 py-2 text-left text-xs font-semibold text-foreground whitespace-nowrap border-r">Width (mm)</th>
-                          <th className="px-3 py-2 text-left text-xs font-semibold text-foreground whitespace-nowrap border-r">Height (mm)</th>
-                          <th className="px-3 py-2 text-left text-xs font-semibold text-foreground whitespace-nowrap border-r">Timber</th>
-                          <th className="px-3 py-2 text-left text-xs font-semibold text-foreground whitespace-nowrap border-r">Finish</th>
-                          <th className="px-3 py-2 text-left text-xs font-semibold text-foreground whitespace-nowrap border-r">Ironmongery</th>
-                          <th className="px-3 py-2 text-left text-xs font-semibold text-foreground whitespace-nowrap border-r">Glazing</th>
-                          <th className="px-3 py-2 text-center text-xs font-semibold text-foreground">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {/* Add row (new line item input) */}
-                        <tr className="border-b hover:bg-muted/20">
-                          <td className="px-3 py-2 border-r">
-                            <div className="flex gap-2 items-center">
-                              <Input
-                                value={newLineDesc}
-                                onChange={(e) => setNewLineDesc(e.target.value)}
-                                placeholder="e.g. Oak door"
-                                className="h-8 text-sm flex-1"
-                              />
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-8 px-2"
-                                onClick={() => setShowTypeSelector(true)}
-                                title="Browse product types"
-                              >
-                                📦
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-8 px-2"
-                                onClick={() => setShowAiSearch(true)}
-                                title="AI search"
-                              >
-                                <Wand2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 border-r">
-                            <Input
-                              type="number"
-                              inputMode="decimal"
-                              value={newLineQty ?? ''}
-                              min={1}
-                              onChange={(e) => setNewLineQty(e.target.value ? Number(e.target.value) : null)}
-                              placeholder="1"
-                              className="h-8 text-sm"
-                            />
-                          </td>
-                          <td className="px-3 py-2 border-r">
-                            <Input
-                              type="number"
-                              inputMode="decimal"
-                              value={stdWidthMm ?? ''}
-                              onChange={(e) => setStdWidthMm(e.target.value ? Number(e.target.value) : null)}
-                              placeholder="900"
-                              className="h-8 text-sm"
-                            />
-                          </td>
-                          <td className="px-3 py-2 border-r">
-                            <Input
-                              type="number"
-                              inputMode="decimal"
-                              value={stdHeightMm ?? ''}
-                              onChange={(e) => setStdHeightMm(e.target.value ? Number(e.target.value) : null)}
-                              placeholder="2100"
-                              className="h-8 text-sm"
-                            />
-                          </td>
-                          <td className="px-3 py-2 border-r">
-                            <select
-                              className="w-full rounded border border-input bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                              value={stdTimber || ''}
-                              onChange={(e) => setStdTimber(e.target.value || '')}
-                            >
-                              <option value="">—</option>
-                              <option value="oak">Oak</option>
-                              <option value="sapele">Sapele</option>
-                              <option value="accoya">Accoya</option>
-                              <option value="iroko">Iroko</option>
-                              <option value="pine">Pine</option>
-                              <option value="hemlock">Hemlock</option>
-                              <option value="mdf">MDF</option>
-                              <option value="other">Other</option>
-                            </select>
-                          </td>
-                          <td className="px-3 py-2 border-r">
-                            <select
-                              className="w-full rounded border border-input bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                              value={stdFinish || ''}
-                              onChange={(e) => setStdFinish(e.target.value || '')}
-                            >
-                              <option value="">—</option>
-                              <option value="primed">Primed</option>
-                              <option value="painted">Painted</option>
-                              <option value="stained">Stained</option>
-                              <option value="clear_lacquer">Clear Lacquer</option>
-                              <option value="wax">Wax</option>
-                              <option value="oiled">Oiled</option>
-                              <option value="unfinished">Unfinished</option>
-                            </select>
-                          </td>
-                          <td className="px-3 py-2 border-r">
-                            <select
-                              className="w-full rounded border border-input bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                              value={stdIronmongery || ''}
-                              onChange={(e) => setStdIronmongery(e.target.value || '')}
-                            >
-                              <option value="">—</option>
-                              <option value="none">None</option>
-                              <option value="hinges">Hinges</option>
-                              <option value="handles">Handles</option>
-                              <option value="locks">Locks</option>
-                              <option value="full_set">Full Set</option>
-                              <option value="fire_rated">Fire Rated</option>
-                            </select>
-                          </td>
-                          <td className="px-3 py-2">
-                            <select
-                              className="w-full rounded border border-input bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                              value={stdGlazing || ''}
-                              onChange={(e) => setStdGlazing(e.target.value || '')}
-                            >
-                              <option value="">—</option>
-                              <option value="none">None</option>
-                              <option value="clear">Clear</option>
-                              <option value="obscure">Obscure</option>
-                              <option value="double_glazed">Double</option>
-                              <option value="fire_rated">Fire Rated</option>
-                              <option value="georgian">Georgian</option>
-                            </select>
-                          </td>
-                        </tr>
+                  <UnifiedQuoteLineItems
+                    lines={lines.map(line => ({
+                      id: line.id,
+                      description: line.description || '',
+                      qty: line.qty || 1,
+                      widthMm: line.lineStandard?.widthMm,
+                      heightMm: line.lineStandard?.heightMm,
+                      timber: line.lineStandard?.timber,
+                      finish: line.lineStandard?.finish,
+                      ironmongery: line.lineStandard?.ironmongery,
+                      glazing: line.lineStandard?.glazing,
+                      unitPrice: line.unitPrice ?? undefined,
+                      sellUnit: line.sellUnit ?? undefined,
+                      sellTotal: line.sellTotal ?? undefined,
+                    }))}
+                    currency={currency}
+                    onAddLine={handleAddLineItem}
+                    onUpdateLine={handleUpdateLineItem}
+                    onDeleteLine={handleDeleteLineItem}
+                  />
+                </div>
 
-                        {/* Existing line items */}
-                        {lines && lines.length > 0 && lines.map((line, idx) => (
-                          <tr key={line.id} className="border-b hover:bg-muted/20">
-                            <td className="px-3 py-2 border-r">{line.description}</td>
-                            <td className="px-3 py-2 border-r text-right">{line.qty || '—'}</td>
-                            <td className="px-3 py-2 border-r text-right">
-                              {line.lineStandard?.widthMm || '—'}
-                            </td>
-                            <td className="px-3 py-2 border-r text-right">
-                              {line.lineStandard?.heightMm || '—'}
-                            </td>
-                            <td className="px-3 py-2 border-r">{line.lineStandard?.timber || '—'}</td>
-                            <td className="px-3 py-2 border-r">{line.lineStandard?.finish || '—'}</td>
-                            <td className="px-3 py-2 border-r">{line.lineStandard?.ironmongery || '—'}</td>
-                            <td className="px-3 py-2 border-r">{line.lineStandard?.glazing || '—'}</td>
-                            <td className="px-3 py-2 text-center">
-                              <Link href={`/quotes/${quoteId}/lines/${line.id}`} className="text-blue-600 hover:text-blue-800 text-sm underline">
-                                Edit
-                              </Link>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                {/* Type Selector Modal */}
+                {showTypeSelector && (
+                  <TypeSelectorModal
+                    isOpen={true}
+                    onClose={() => setShowTypeSelector(false)}
+                    onSelect={(selection) =>
+                      handleTypeSelection(selection)
+                    }
+                  />
+                )}
 
-                  <div className="flex justify-end gap-2">
-                    <Button onClick={saveProductConfiguration} variant="outline" className="gap-2">
-                      <Save className="h-4 w-4" />
-                      Save Configuration
-                    </Button>
-                    <Button onClick={handleAddLineItem} className="gap-2">
-                      <Box className="h-4 w-4" />
-                      Add Line Item
-                    </Button>
-                  </div>
-
-                  {/* Type Selector Modal */}
-                  {showTypeSelector && (
-                    <TypeSelectorModal
-                      isOpen={true}
-                      onClose={() => setShowTypeSelector(false)}
-                      onSelect={(selection) =>
-                        handleTypeSelection(selection)
-                      }
-                    />
-                  )}
-
-                  {/* AI Product Type Search Modal */}
-                  {showAiSearch && (
-                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 space-y-4">
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-lg font-semibold">AI Product Type Search</h3>
-                          <button
-                            onClick={() => {
-                              setShowAiSearch(false);
-                              setAiClarifications(null);
-                            }}
-                            className="text-slate-400 hover:text-slate-600 text-2xl leading-none"
-                          >
-                            ×
-                          </button>
-                        </div>
-                        {!aiClarifications && (
+                {/* AI Product Type Search Modal */}
+                {showAiSearch && (
+                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-semibold">AI Product Type Search</h3>
+                        <button
+                          onClick={() => {
+                            setShowAiSearch(false);
+                            setAiClarifications(null);
+                          }}
+                          className="text-slate-400 hover:text-slate-600 text-2xl leading-none"
+                        >
+                          ×
+                        </button>
+                      </div>
+                      {!aiClarifications && (
                           <>
                             <p className="text-sm text-slate-600">
                               Describe the product in plain English, or paste an AI-generated description from a photo.
@@ -1744,7 +1615,6 @@ export default function QuoteBuilderPage() {
                       </div>
                     </div>
                   )}
-                </div>
 
                 {/* 3D Preview Modal */}
                 {show3dModal && (
@@ -1775,15 +1645,15 @@ export default function QuoteBuilderPage() {
                               })(),
                             },
                             lineStandard: {
-                              widthMm: stdWidthMm && stdWidthMm >= 500 ? stdWidthMm : 914,
-                              heightMm: stdHeightMm && stdHeightMm >= 1500 ? stdHeightMm : 2032,
+                              widthMm: 914,
+                              heightMm: 2032,
                             },
                             meta: {
                               depthMm: 45,
                             },
-                            description: newLineDesc || 'New Product',
+                            description: 'Product Preview',
                           }}
-                          description={newLineDesc}
+                          description="Product Preview"
                           onClose={() => {
                             setShow3dModal(false);
                             setModalProductOptionId(null);
