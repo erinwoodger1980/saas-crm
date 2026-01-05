@@ -282,7 +282,14 @@ CRITICAL: If an existing product category is specified above, you MUST generate 
 
 Return ONLY valid JSON matching the ProductPlanV1 schema. No markdown, no explanations.`;
 
-async function callOpenAI(description: string, existingProductType?: any, existingDims?: any): Promise<ProductPlanV1 | null> {
+type AiCallResult = { plan: ProductPlanV1 | null; error?: string; detail?: any };
+
+async function callOpenAI(description: string, existingProductType?: any, existingDims?: any): Promise<AiCallResult> {
+  if (!process.env.OPENAI_API_KEY) {
+    console.error('[AI2SCENE] Missing OPENAI_API_KEY in server environment');
+    return { plan: null, error: 'missing_openai_api_key' };
+  }
+
   try {
     // Build user prompt
     let existingInfo = '';
@@ -315,26 +322,39 @@ async function callOpenAI(description: string, existingProductType?: any, existi
     });
 
     if (!response.ok) {
-      console.error('[AI2SCENE] OpenAI API error:', response.status, response.statusText);
-      return null;
+      const errText = await response.text().catch(() => '');
+      console.error('[AI2SCENE] OpenAI API error:', {
+        status: response.status,
+        statusText: response.statusText,
+        bodySnippet: errText?.slice(0, 500) ?? '',
+      });
+      return { plan: null, error: 'openai_response_not_ok', detail: { status: response.status, statusText: response.statusText } };
     }
 
-    const data = await response.json();
+    const raw = await response.text();
+    let data: any = null;
+    try {
+      data = JSON.parse(raw);
+    } catch (e) {
+      console.error('[AI2SCENE] Failed to parse OpenAI JSON response', { error: String(e), rawSnippet: raw.slice(0, 500) });
+      return { plan: null, error: 'openai_json_parse_failed' };
+    }
+
     const jsonText = data.choices?.[0]?.message?.content || '';
 
     // Extract JSON from response (may have markdown code blocks)
     const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      console.error('[AI2SCENE] No JSON found in OpenAI response');
-      return null;
+      console.error('[AI2SCENE] No JSON found in OpenAI response', { contentSnippet: jsonText.slice(0, 500) });
+      return { plan: null, error: 'no_json_in_response' };
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
     const validated = ProductPlanV1Schema.parse(parsed);
-    return validated;
+    return { plan: validated };
   } catch (error) {
     console.error('[AI2SCENE] Error calling OpenAI or parsing response:', error);
-    return null;
+    return { plan: null, error: 'exception', detail: String(error) };
   }
 }
 
@@ -350,12 +370,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (!process.env.OPENAI_API_KEY) {
+      console.error('[AI2SCENE] Missing OPENAI_API_KEY in server environment (POST handler)');
+      return NextResponse.json(
+        { error: 'OPENAI_API_KEY is not configured on the server' },
+        { status: 500 }
+      );
+    }
+
     // Attempt to generate plan via OpenAI
-    let plan = await callOpenAI(description, existingProductType, existingDims);
+    const aiResult = await callOpenAI(description, existingProductType, existingDims);
+    let plan = aiResult.plan;
 
     // Fallback if AI fails or returns null
     if (!plan) {
-      console.warn('[AI2SCENE] Falling back to default plan');
+      console.warn('[AI2SCENE] Falling back to default plan', { reason: aiResult.error, detail: aiResult.detail });
       const category = existingProductType?.category || 'door';
       const w = existingDims?.widthMm || 914;
       const h = existingDims?.heightMm || 2032;
