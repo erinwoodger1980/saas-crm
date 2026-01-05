@@ -12,6 +12,8 @@ import { ProductConfigurator3D } from '@/components/configurator/ProductConfigur
 import { createDefaultSceneConfig } from '@/lib/scene/config-validation';
 import { ProductPlanV1 } from '@/types/product-plan';
 import { compileProductPlanToProductParams } from '@/lib/scene/plan-compiler';
+import { parametricToSceneConfig } from '@/lib/scene/parametricToSceneConfig';
+import type { ProductParams } from '@/types/parametric-builder';
 import { ComponentPickerDialog } from './ComponentPickerDialog';
 import { apiFetch } from '@/lib/api';
 
@@ -72,6 +74,7 @@ export function ProductTypeEditModal({
     )
   );
   const [show3DConfigurator, setShow3DConfigurator] = useState(false);
+  const [compiledParams, setCompiledParams] = useState<ProductParams | null>(null);
   
   // Component picker state
   const [componentPickerOpen, setComponentPickerOpen] = useState(false);
@@ -195,6 +198,7 @@ export function ProductTypeEditModal({
         label: optionLabel,
         description: optionDescription,
         sceneConfig,
+        productParams: compiledParams,
       });
 
       toast({
@@ -216,6 +220,7 @@ export function ProductTypeEditModal({
   };
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-6xl h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
@@ -465,10 +470,18 @@ export function ProductTypeEditModal({
                         source: 'estimate'
                       });
                       console.log('[AI2SCENE] Compiled params:', params);
+                      const config = parametricToSceneConfig({
+                        tenantId: 'settings',
+                        entityType: 'productTemplate',
+                        entityId: initialData?.optionId || 'preview',
+                        productParams: params,
+                      });
+                      setCompiledParams(params);
+                      setSceneConfig(config);
                       setActiveTab('components');
                       toast({
                         title: 'Plan compiled',
-                        description: 'Ready to proceed with component configuration'
+                        description: '3D preview is ready to edit'
                       });
                     }
                   }}
@@ -480,6 +493,16 @@ export function ProductTypeEditModal({
             )}
           </TabsContent>
           <TabsContent value="components" className="flex-1 flex flex-col min-h-0 space-y-4">
+            {compiledParams && (
+              <div className="rounded-lg border bg-slate-50 p-3 text-sm text-slate-700">
+                <div className="flex items-center justify-between gap-3">
+                  <span>Parametric model compiled. Open the 3D builder to refine layout and materials.</span>
+                  <Button size="sm" onClick={() => setShow3DConfigurator(true)}>
+                    Open 3D Builder
+                  </Button>
+                </div>
+              </div>
+            )}
             <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
               <p className="text-sm text-blue-900">
                 <strong>Component-Based Configuration:</strong> Select components from your catalog (Settings → Components).
@@ -556,7 +579,7 @@ export function ProductTypeEditModal({
           </TabsContent>
         </Tabs>
 
-        <DialogFooter className="flex gap-2 justify-end">
+      <DialogFooter className="flex gap-2 justify-end">
           <Button variant="outline" onClick={onClose} disabled={isSaving}>
             Cancel
           </Button>
@@ -570,16 +593,39 @@ export function ProductTypeEditModal({
               'Save Product Type'
             )}
           </Button>
-        </DialogFooter>
+      </DialogFooter>
       </DialogContent>
-      
-      {/* Component Picker Dialog */}
-      <ComponentPickerDialog
-        isOpen={componentPickerOpen}
-        onClose={() => setComponentPickerOpen(false)}
-        onSelect={handleComponentSelected}
-        productTypeId={initialData?.optionId}
-      />
     </Dialog>
+    {/* 3D Configurator Modal */}
+    {show3DConfigurator && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="w-full max-w-6xl bg-white rounded-2xl shadow-xl overflow-hidden h-[90vh] flex flex-col min-h-0">
+          <ProductConfigurator3D
+            tenantId="settings"
+            entityType="productTemplate"
+            entityId={initialData?.optionId || 'preview'}
+            initialConfig={sceneConfig}
+            productType={{
+              category: initialData?.categoryId || 'doors',
+              type: initialData?.type || 'standard',
+              option: initialData?.optionId || 'E01',
+            }}
+            onChange={(config) => setSceneConfig(config)}
+            height="calc(90vh - 40px)"
+            onClose={() => setShow3DConfigurator(false)}
+            renderQuality="low"
+          />
+        </div>
+      </div>
+    )}
+
+    {/* Component Picker Dialog */}
+    <ComponentPickerDialog
+      isOpen={componentPickerOpen}
+      onClose={() => setComponentPickerOpen(false)}
+      onSelect={handleComponentSelected}
+      productTypeId={initialData?.optionId}
+    />
+    </>
   );
 }
