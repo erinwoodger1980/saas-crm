@@ -102,8 +102,8 @@ export function ProductTypeEditModal({
     setIsEstimating(true);
     try {
       // NEW: Call generate-product-plan instead of estimate-components
-      const category = initialData?.categoryId || 'door';
-      const defaultDepth = category === 'window' ? 80 : 45;
+      const category = initialData?.categoryId || 'doors';
+      const defaultDepth = category === 'windows' ? 80 : 45;
       
       const response = await fetch('/api/ai/generate-product-plan', {
         method: 'POST',
