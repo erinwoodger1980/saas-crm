@@ -241,7 +241,6 @@ const corsOptions: cors.CorsOptions = {
 
 // CORS: Apply BEFORE all routes and endpoints
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
 
 // Additional safety net: ensure CORS headers are always set for allowed origins
 app.use((req: any, res: any, next: any) => {
