@@ -73,6 +73,12 @@ export function UnifiedQuoteLineItems({
     qty: 1,
     widthMm: 900,
     heightMm: 2100,
+    timber: undefined,
+    finish: undefined,
+    ironmongery: undefined,
+    glazing: undefined,
+    productOptionId: undefined,
+    photoUrl: undefined,
   });
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -91,7 +97,7 @@ export function UnifiedQuoteLineItems({
     }
     try {
       await onAddLine(newLine);
-      setNewLine({ description: '', qty: 1, widthMm: 900, heightMm: 2100 });
+      setNewLine({ description: '', qty: 1, widthMm: 900, heightMm: 2100, timber: undefined, finish: undefined, ironmongery: undefined, glazing: undefined, productOptionId: undefined, photoUrl: undefined });
       setIsAddingLine(false);
     } catch (error) {
       console.error('Failed to add line:', error);
@@ -335,6 +341,23 @@ export function UnifiedQuoteLineItems({
                     className="text-sm min-h-[60px]"
                   />
                 </td>
+                <td className="px-4 py-3 text-center">
+                  {onPhotoUpload && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setPendingPhotoLineId('new');
+                        setPhotoUploadingFor('new');
+                        fileInputRef.current?.click();
+                      }}
+                      disabled={photoUploadingFor === 'new'}
+                      title="Upload photo"
+                    >
+                      <Upload className="h-4 w-4" />
+                    </Button>
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   <Input
                     type="number"
@@ -419,6 +442,29 @@ export function UnifiedQuoteLineItems({
                     </SelectContent>
                   </Select>
                 </td>
+                <td className="px-4 py-3 text-center">
+                  <select
+                    className="text-sm px-2 py-1 rounded border border-input bg-white"
+                    value={newLine.productOptionId || ''}
+                    onChange={(e) => {
+                      const newValue = e.target.value || undefined;
+                      setNewLine({ ...newLine, productOptionId: newValue });
+                    }}
+                  >
+                    <option value="">— Select —</option>
+                    {productCategories.map((cat: any) => {
+                      if (!cat.types || !Array.isArray(cat.types)) return null;
+                      return cat.types.map((type: any) => {
+                        if (!type.options || !Array.isArray(type.options)) return null;
+                        return type.options.map((opt: any) => (
+                          <option key={opt.id} value={opt.id}>
+                            {cat.label} › {type.label} › {opt.label}
+                          </option>
+                        ));
+                      });
+                    })}
+                  </select>
+                </td>
                 <td className="px-4 py-3 text-right">
                   <Input
                     type="number"
@@ -443,7 +489,7 @@ export function UnifiedQuoteLineItems({
                       variant="outline"
                       onClick={() => {
                         setIsAddingLine(false);
-                        setNewLine({ description: '', qty: 1, widthMm: 900, heightMm: 2100 });
+                        setNewLine({ description: '', qty: 1, widthMm: 900, heightMm: 2100, timber: undefined, finish: undefined, ironmongery: undefined, glazing: undefined, productOptionId: undefined, photoUrl: undefined });
                       }}
                       className="text-xs"
                     >
