@@ -123,8 +123,7 @@ export default function CustomerPortalJobsPage() {
         {clientAccountId && (
           <FireDoorSchedulePage 
             isCustomerPortal={true} 
-            // Temporarily removed client filter to test
-            // clientAccountId={clientAccountId}
+            clientAccountId={clientAccountId}
           />
         )}
       </div>
