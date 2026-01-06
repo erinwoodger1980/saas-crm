@@ -47,11 +47,15 @@ interface Stats {
     signedOff: number;
   };
   production: {
-    inProduction: number;
   };
 }
 
-export default function FireDoorSchedulePage() {
+interface FireDoorScheduleProps {
+  isCustomerPortal?: boolean;
+  clientAccountId?: string;
+}
+
+export default function FireDoorSchedulePage({ isCustomerPortal = false, clientAccountId }: FireDoorScheduleProps = {}) {
   const router = useRouter();
   const { user } = useCurrentUser();
   const [projects, setProjects] = useState<FireDoorProject[]>([]);
@@ -469,22 +473,27 @@ export default function FireDoorSchedulePage() {
     try {
       const now = new Date();
       
+      // Build query params for client filter
+      const queryParams = clientAccountId ? `?clientAccountId=${clientAccountId}` : '';
+      
       // Load projects and stats (critical)
       const [projectsData, statsData] = await Promise.all([
-        apiFetch<{ projects: FireDoorProject[] }>("/fire-door-schedule"),
-        apiFetch<Stats>("/fire-door-schedule/stats/summary"),
+        apiFetch<{ projects: FireDoorProject[] }>(`/fire-door-schedule${queryParams}`),
+        apiFetch<Stats>(`/fire-door-schedule/stats/summary${queryParams}`),
       ]);
       
       setProjects(projectsData.projects);
       setStats(statsData);
       
-      // Load monthly value (optional - don't fail if it errors)
-      try {
-        const monthlyData = await apiFetch<any>(`/fire-door-production/stats/monthly-value?year=${now.getFullYear()}&month=${now.getMonth() + 1}`);
-        setMonthlyValue(monthlyData);
-      } catch (monthlyError) {
-        console.warn("Failed to load monthly value (non-critical):", monthlyError);
-        setMonthlyValue({ totalManufacturingValue: '0', logCount: 0, projectCount: 0 });
+      // Load monthly value (optional - don't fail if it errors) - skip for customer portal
+      if (!isCustomerPortal) {
+        try {
+          const monthlyData = await apiFetch<any>(`/fire-door-production/stats/monthly-value?year=${now.getFullYear()}&month=${now.getMonth() + 1}`);
+          setMonthlyValue(monthlyData);
+        } catch (monthlyError) {
+          console.warn("Failed to load monthly value (non-critical):", monthlyError);
+          setMonthlyValue({ totalManufacturingValue: '0', logCount: 0, projectCount: 0 });
+        }
       }
     } catch (error) {
       console.error("Error loading fire door schedule:", error);

@@ -98,6 +98,7 @@ router.get("/", async (req: any, res: Response) => {
       jobLocation,
       signOffStatus,
       scheduledBy,
+      clientAccountId,
       limit = "1000",
       offset = "0",
       sortBy = "dateRequired",
@@ -109,6 +110,13 @@ router.get("/", async (req: any, res: Response) => {
     if (jobLocation) where.jobLocation = jobLocation;
     if (signOffStatus) where.signOffStatus = signOffStatus;
     if (scheduledBy) where.scheduledBy = scheduledBy;
+    
+    // Filter by client account through project relation
+    if (clientAccountId) {
+      where.project = {
+        clientAccountId: clientAccountId
+      };
+    }
 
     const orderBy: any = {};
     orderBy[sortBy as string] = sortOrder === "desc" ? "desc" : "asc";
@@ -617,6 +625,15 @@ router.get("/stats/summary", async (req: any, res: Response) => {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
+    // Optional client filter
+    const { clientAccountId } = req.query;
+    const baseWhere: any = { tenantId };
+    if (clientAccountId) {
+      baseWhere.project = {
+        clientAccountId: clientAccountId
+      };
+    }
+
     const [
       totalProjects,
       redFolderCount,
@@ -629,34 +646,34 @@ router.get("/stats/summary", async (req: any, res: Response) => {
       // Total Current Projects: exclude CANCELLED and COMPLETE & DELIVERED
       prisma.fireDoorScheduleProject.count({ 
         where: { 
-          tenantId,
+          ...baseWhere,
           jobLocation: { notIn: ["CANCELLED", "COMPLETE & DELIVERED"] }
         } 
       }),
       prisma.fireDoorScheduleProject.count({
-        where: { tenantId, jobLocation: "RED FOLDER" },
+        where: { ...baseWhere, jobLocation: "RED FOLDER" },
       }),
       prisma.fireDoorScheduleProject.count({
-        where: { tenantId, jobLocation: "IN PROGRESS" },
+        where: { ...baseWhere, jobLocation: "IN PROGRESS" },
       }),
       // Complete in Factory only
       prisma.fireDoorScheduleProject.count({
         where: { 
-          tenantId, 
+          ...baseWhere, 
           jobLocation: "COMPLETE IN FACTORY"
         },
       }),
       prisma.fireDoorScheduleProject.count({
         where: {
-          tenantId,
+          ...baseWhere,
           signOffStatus: { in: ["AWAITING SCHEDULE", "WORKING ON SCHEDULE"] },
         },
       }),
       prisma.fireDoorScheduleProject.count({
-        where: { tenantId, signOffStatus: "SCHEDULE SIGNED OFF" },
+        where: { ...baseWhere, signOffStatus: "SCHEDULE SIGNED OFF" },
       }),
       prisma.fireDoorScheduleProject.count({
-        where: { tenantId, overallProgress: { gt: 0, lt: 100 } },
+        where: { ...baseWhere, overallProgress: { gt: 0, lt: 100 } },
       }),
     ]);
 
