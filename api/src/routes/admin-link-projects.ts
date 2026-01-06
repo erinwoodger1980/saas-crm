@@ -57,9 +57,10 @@ router.get('/link-lloyd-worrall', async (req, res) => {
           data: {
             tenantId: client.tenantId,
             clientAccountId: client.id,
-            name: `Fire Door Project - ${projectLabel}`,
+            contactName: `Fire Door Project - ${projectLabel}`,
             email: client.email || 'noemail@example.com',
-            status: 'WON'
+            status: 'WON',
+            createdById: 'system' // System-generated lead
           }
         });
 
