@@ -138,6 +138,8 @@ model Tenant {
   holidayRequests            HolidayRequest[]
   productTypeComponentAssignments ProductTypeComponentAssignment[] @relation("ProductTypeComponentAssignmentsTenant")
   profiles                   Profile[]                   @relation("TenantProfiles")
+  accountingConnections      TenantAccountingConnection[] @relation("AccountingConnections")
+  accountingDocuments        AccountingDocument[]        @relation("AccountingDocuments")
 }
 
 model LippingLookup {
@@ -4658,4 +4660,86 @@ model HolidayRequest {
   @@index([tenantId, userId])
   @@index([tenantId, status])
   @@index([userId, status])
+}
+
+// ============================================================================
+// Sage Business Cloud Accounting Integration
+// ============================================================================
+
+model TenantAccountingConnection {
+  id           String   @id @default(cuid())
+  tenantId     String   
+  provider     String   // 'sage', 'xero', 'quickbooks' etc
+  status       String   @default("active") // 'active', 'disconnected', 'error'
+  
+  // OAuth tokens
+  accessToken  String?  
+  refreshToken String?
+  expiresAt    DateTime?
+  
+  // Sage-specific fields
+  scope        String?
+  region       String?  // e.g. 'uk', 'us', 'ca'
+  businessId   String?  // Sage business/company ID
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  lastSyncAt   DateTime?
+  
+  tenant       Tenant   @relation("AccountingConnections", fields: [tenantId], references: [id], onDelete: Cascade)
+  documents    AccountingDocument[]
+  
+  @@unique([tenantId, provider])
+  @@index([tenantId])
+  @@index([status])
+}
+
+model AccountingDocument {
+  id                   String    @id @default(cuid())
+  tenantId             String
+  connectionId         String
+  provider             String    // 'sage'
+  
+  // External reference
+  externalId           String    // Sage invoice/bill ID
+  externalType         String    // 'sales_invoice', 'sales_credit', 'purchase_invoice', 'purchase_credit'
+  
+  // Document details
+  documentNumber       String?
+  referenceText        String?   // Where we look for order/project ref
+  contactName          String?
+  currency             String    @default("GBP")
+  
+  // Amounts
+  total                Decimal   @default(0)
+  tax                  Decimal   @default(0)
+  net                  Decimal   @default(0)
+  
+  // Dates
+  issueDate            DateTime?
+  dueDate              DateTime?
+  updatedAtExternal    DateTime?
+  
+  // Linking to JoineryAI entities
+  linkedEntityType     String?   // 'opportunity', 'lead', null
+  linkedEntityId       String?   // Opportunity.id or Lead.id
+  autoLinked           Boolean   @default(false) // Was it auto-linked or manual?
+  
+  // Status from sage
+  status               String?   // 'draft', 'posted', 'void' etc
+  
+  // Raw JSON for debugging
+  rawJson              Json?
+  
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  
+  connection           TenantAccountingConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  tenant               Tenant    @relation("AccountingDocuments", fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  @@unique([tenantId, provider, externalId])
+  @@index([tenantId, linkedEntityId])
+  @@index([tenantId, externalType])
+  @@index([tenantId, linkedEntityType, linkedEntityId])
+  @@index([connectionId])
 }

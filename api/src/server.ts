@@ -147,6 +147,7 @@ import materialsRouter from "./routes/materials";
 import sceneStateRouter from "./routes/scene-state";
 import assetsRouter from "./routes/assets";
 import profilesRouter from "./routes/profiles";
+import accountingSageRouter from "./routes/accounting-sage";
 
 type BillingModule = typeof import("./routes/billing");
 type PublicSignupModule = typeof import("./routes/public-signup");
@@ -666,6 +667,7 @@ app.use("/mail", mailRouter);
 app.use("/gmail", gmailRouter);
 app.use("/leads/ai", leadsAiRouter);
 app.use("/ms365", ms365Router);
+app.use("/accounting/sage", accountingSageRouter);
 app.use("/ai/followup", aiFollowupRouter);
 app.use("/opportunities", opportunitiesRouter);
 app.use("/settings/inbox", requireAuth, settingsInboxRouter);

@@ -8,6 +8,7 @@ import { DEFAULT_EMAIL_TEMPLATES } from "@/lib/constants";
 import SourceCosts from "./SourceCosts";
 import { TenantImageImport } from "@/components/settings/TenantImageImport";
 import SuppliersSection from "@/components/settings/SuppliersSection";
+import { AccountingIntegrationSection } from "@/components/settings/AccountingIntegrationSection";
 import SoftwareProfilesSection from "@/components/settings/SoftwareProfilesSection";
 import PdfTemplatesSection from "@/components/settings/PdfTemplatesSection";
 import MaterialCostDebugPanel from "@/components/settings/MaterialCostDebugPanel";
@@ -2591,6 +2592,10 @@ export default function SettingsPage() {
       <>
       <Section title="Suppliers" description="Manage your supplier contacts for outsourcing quote requests">
         <SuppliersSection />
+      </Section>
+      
+      <Section title="Accounting" description="Integrate with accounting software for WIP tracking">
+        <AccountingIntegrationSection />
       </Section>
       </>
       )}

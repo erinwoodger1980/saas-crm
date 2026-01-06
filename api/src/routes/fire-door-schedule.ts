@@ -111,11 +111,19 @@ router.get("/", async (req: any, res: Response) => {
     if (signOffStatus) where.signOffStatus = signOffStatus;
     if (scheduledBy) where.scheduledBy = scheduledBy;
     
-    // Filter by client account through project relation
+    // Filter by client account - need to get matching project IDs first
     if (clientAccountId) {
-      where.project = {
-        clientAccountId: clientAccountId
-      };
+      const matchingProjects = await prisma.project.findMany({
+        where: {
+          tenantId,
+          clientAccountId: clientAccountId as string,
+        },
+        select: { id: true },
+      });
+      const projectIds = matchingProjects.map(p => p.id);
+      
+      // Find FireDoorScheduleProjects that reference these projects
+      where.projectId = { in: projectIds };
     }
 
     const orderBy: any = {};
