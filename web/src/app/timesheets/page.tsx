@@ -13,6 +13,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/components/ui/use-toast";
 import { Clock, Check, X, Download, Calendar, Users, ChevronLeft, ChevronRight, Upload } from "lucide-react";
 
 type Timesheet = {
@@ -68,12 +71,23 @@ type Project = {
 };
 
 export default function TimesheetsPage() {
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<string>("overview");
   const [timesheets, setTimesheets] = useState<Timesheet[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterUser, setFilterUser] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+
+  const [signOffDialog, setSignOffDialog] = useState<{ open: boolean; timesheetId: string | null }>({
+    open: false,
+    timesheetId: null,
+  });
+  const [rejectDialog, setRejectDialog] = useState<{ open: boolean; timesheetId: string | null; notes: string }>({
+    open: false,
+    timesheetId: null,
+    notes: "",
+  });
 
   // Team activity state
   const [activityLoading, setActivityLoading] = useState(false);
@@ -144,39 +158,52 @@ export default function TimesheetsPage() {
     }
   }
 
-  async function signOff(timesheetId: string) {
-    const confirmed = confirm("Sign off this timesheet?");
-    if (!confirmed) return;
+  function signOff(timesheetId: string) {
+    setSignOffDialog({ open: true, timesheetId });
+  }
+
+  async function confirmSignOff() {
+    const timesheetId = signOffDialog.timesheetId;
+    if (!timesheetId) return;
 
     try {
-      const data = await apiFetch<{ ok: boolean }>(
-        `/timesheets/${timesheetId}/sign-off`,
-        { method: "POST" }
-      );
-
+      const data = await apiFetch<{ ok: boolean }>(`/timesheets/${timesheetId}/sign-off`, { method: "POST" });
       if (data.ok) {
+        toast({ title: "Timesheet signed off" });
+        setSignOffDialog({ open: false, timesheetId: null });
         loadTimesheets();
       }
     } catch (e: any) {
-      alert("Failed to sign off: " + (e?.message || "Unknown error"));
+      toast({ title: "Failed to sign off", description: e?.message || "Unknown error", variant: "destructive" });
     }
   }
 
-  async function reject(timesheetId: string) {
-    const notes = prompt("Reason for rejection:");
-    if (!notes) return;
+  function reject(timesheetId: string) {
+    setRejectDialog({ open: true, timesheetId, notes: "" });
+  }
+
+  async function confirmReject() {
+    const timesheetId = rejectDialog.timesheetId;
+    const notes = (rejectDialog.notes || "").trim();
+    if (!timesheetId) return;
+    if (!notes) {
+      toast({ title: "Reason required", description: "Enter a reason for rejection.", variant: "destructive" });
+      return;
+    }
 
     try {
-      const data = await apiFetch<{ ok: boolean }>(
-        `/timesheets/${timesheetId}/reject`,
-        { method: "POST", json: { notes } }
-      );
+      const data = await apiFetch<{ ok: boolean }>(`/timesheets/${timesheetId}/reject`, {
+        method: "POST",
+        json: { notes },
+      });
 
       if (data.ok) {
+        toast({ title: "Timesheet rejected" });
+        setRejectDialog({ open: false, timesheetId: null, notes: "" });
         loadTimesheets();
       }
     } catch (e: any) {
-      alert("Failed to reject: " + (e?.message || "Unknown error"));
+      toast({ title: "Failed to reject", description: e?.message || "Unknown error", variant: "destructive" });
     }
   }
 
@@ -184,7 +211,7 @@ export default function TimesheetsPage() {
     try {
       window.open("/api/timesheets/export/payroll", "_blank");
     } catch (e: any) {
-      alert("Failed to export: " + (e?.message || "Unknown error"));
+      toast({ title: "Failed to export", description: e?.message || "Unknown error", variant: "destructive" });
     }
   }
 
@@ -204,7 +231,7 @@ export default function TimesheetsPage() {
       };
       reader.readAsDataURL(file);
     } catch (e: any) {
-      alert("Failed to upload: " + (e?.message || "Unknown error"));
+      toast({ title: "Failed to upload", description: e?.message || "Unknown error", variant: "destructive" });
     }
   }
 
@@ -398,7 +425,60 @@ export default function TimesheetsPage() {
   }
 
   return (
-    <div className="p-8 space-y-6 bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
+    <>
+      <Dialog
+        open={signOffDialog.open}
+        onOpenChange={(open) =>
+          setSignOffDialog((prev) => ({ open, timesheetId: open ? prev.timesheetId : null }))
+        }
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Sign off timesheet?</DialogTitle>
+            <DialogDescription>This will mark the timesheet as signed off.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSignOffDialog({ open: false, timesheetId: null })}>
+              Cancel
+            </Button>
+            <Button onClick={confirmSignOff}>Sign Off</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={rejectDialog.open}
+        onOpenChange={(open) =>
+          setRejectDialog((prev) => ({ ...prev, open, timesheetId: open ? prev.timesheetId : null }))
+        }
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reject timesheet</DialogTitle>
+            <DialogDescription>Add a reason so the team member knows what to fix.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Textarea
+              value={rejectDialog.notes}
+              onChange={(e) => setRejectDialog((prev) => ({ ...prev, notes: e.target.value }))}
+              placeholder="Reason for rejection"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRejectDialog({ open: false, timesheetId: null, notes: "" })}
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmReject}>
+              Reject
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <div className="p-8 space-y-6 bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-3 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
@@ -1222,6 +1302,7 @@ export default function TimesheetsPage() {
           )}
         </TabsContent>
       </Tabs>
-    </div>
+      </div>
+    </>
   );
 }
