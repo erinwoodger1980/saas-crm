@@ -833,6 +833,7 @@ model Client {
   contactPerson String?
   companyName   String?
   type          String?         @default("public")
+  source        String?
   isActive      Boolean         @default(true)
   notes         String?
   tags          String[]        @default([])
@@ -850,6 +851,7 @@ model Client {
   @@index([tenantId, name])
   @@index([tenantId, email])
   @@index([tenantId, type])
+  @@index([tenantId, source])
   @@index([userId])
 }
 

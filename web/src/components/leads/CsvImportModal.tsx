@@ -152,7 +152,7 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
             if (normalizedHeader.includes('phone') && field.key === 'phone') return true;
             if (normalizedHeader.includes('company') && field.key === 'company') return true;
             if (normalizedHeader.includes('description') && field.key === 'description') return true;
-            if (normalizedHeader.includes('source') && field.key === 'source') return true;
+            if (normalizedHeader.includes('source') && field.key === 'client.source') return true;
             if (normalizedHeader.includes('status') && field.key === 'status') return true;
             
             // Questionnaire field patterns
@@ -316,8 +316,8 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
                 <ul className="text-sm text-blue-700 space-y-1">
                   <li>• First row should contain column headers</li>
                   <li>• Contact Name or Number column is required</li>
-                  <li>• <strong>Basic fields:</strong> Number, Name, Email, Phone, Company, Description, Source, Status</li>
-                  <li>• <strong>Client fields:</strong> Map columns to Client (e.g., Client: Email, Client: Address) to link/create clients</li>
+                  <li>• <strong>Basic fields:</strong> Number, Name, Email, Phone, Company, Description, Status</li>
+                  <li>• <strong>Client fields:</strong> Map columns to Client (e.g., Client: Email, Client: Lead Source) to link/create clients</li>
                   <li>• <strong>Task fields:</strong> Map a column to Task: Title (and optional Due Date / Communication Type) to create tasks from your CRM export</li>
                   <li>• <strong>Production fields:</strong> Start Date, Delivery Date, Quoted Value, Customer Date</li>
                   <li>• <strong>Questionnaire fields:</strong> Import directly into any of your questionnaire questions</li>

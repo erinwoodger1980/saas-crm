@@ -470,6 +470,7 @@ async function upsertClientForImport(opts: {
     contactPerson: (clientData.contactPerson ?? leadData.contactName ?? null) as any,
     companyName: companyName || null,
     type: clientData.type ?? undefined,
+    source: clientData.source ?? undefined,
     notes: clientData.notes ?? undefined,
     tags: parseTagList(clientData.tags),
     custom: Object.keys(clientCustomData || {}).length > 0 ? clientCustomData : undefined,
@@ -498,6 +499,7 @@ async function upsertClientForImport(opts: {
     setIfEmpty("contactPerson", candidate.contactPerson);
     setIfEmpty("companyName", candidate.companyName);
     setIfEmpty("type", candidate.type);
+    setIfEmpty("source", candidate.source);
     setIfEmpty("notes", candidate.notes);
 
     if (candidate.tags.length > 0) {
@@ -531,6 +533,7 @@ async function upsertClientForImport(opts: {
       contactPerson: candidate.contactPerson ? String(candidate.contactPerson).trim() : null,
       companyName: candidate.companyName,
       type: candidate.type ? String(candidate.type).trim() : undefined,
+      source: candidate.source ? String(candidate.source).trim() : undefined,
       notes: candidate.notes ? String(candidate.notes).trim() : undefined,
       tags: candidate.tags,
       ...(candidate.custom ? { custom: candidate.custom } : {}),
@@ -600,7 +603,6 @@ router.post("/import/preview", upload.single('csvFile'), async (req, res) => {
       { key: 'address', label: 'Address', required: false },
       { key: 'company', label: 'Company', required: false },
       { key: 'description', label: 'Project Description', required: false },
-      { key: 'source', label: 'Lead Source', required: false },
       { key: 'status', label: 'Status', required: false },
       { key: 'capturedAt', label: 'Date Created / Enquiry Date', required: false },
       { key: 'nextAction', label: 'Next Action', required: false },
@@ -622,6 +624,7 @@ router.post("/import/preview", upload.single('csvFile'), async (req, res) => {
       { key: 'client.contactPerson', label: 'Client: Contact Person', required: false },
       { key: 'client.companyName', label: 'Client: Company Name', required: false },
       { key: 'client.type', label: 'Client: Type', required: false },
+      { key: 'client.source', label: 'Client: Lead Source', required: false },
       { key: 'client.notes', label: 'Client: Notes', required: false },
       { key: 'client.tags', label: 'Client: Tags (comma separated)', required: false },
 
