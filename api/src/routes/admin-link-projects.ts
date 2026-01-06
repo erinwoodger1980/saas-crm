@@ -9,7 +9,7 @@ router.get('/link-lloyd-worrall', async (req, res) => {
     // Find Lloyd Worrall client account
     const client = await prisma.clientAccount.findFirst({
       where: {
-        name: { contains: 'LLOYD WORRALL', mode: 'insensitive' }
+        companyName: { contains: 'LLOYD WORRALL', mode: 'insensitive' }
       }
     });
 
@@ -19,7 +19,7 @@ router.get('/link-lloyd-worrall', async (req, res) => {
 
     const results = {
       clientId: client.id,
-      clientName: client.name,
+      clientName: client.companyName,
       tenantId: client.tenantId,
       opportunitiesCreated: 0,
       projectsLinked: 0,
@@ -34,28 +34,42 @@ router.get('/link-lloyd-worrall', async (req, res) => {
       },
       select: {
         id: true,
-        mjsJobNumber: true,
-        customer: true
+        mjsNumber: true,
+        clientName: true,
+        jobName: true
       }
     });
 
     for (const fdp of fireDoorProjects) {
+      const projectLabel = fdp.mjsNumber || fdp.jobName || fdp.clientName || fdp.id.substring(0, 8);
+      
       // Create or find an Opportunity for this fire door project
       let opportunity = await prisma.opportunity.findFirst({
         where: {
           clientAccountId: client.id,
-          name: `Fire Door Project - ${fdp.mjsJobNumber || fdp.customer || fdp.id.substring(0, 8)}`
+          title: `Fire Door Project - ${projectLabel}`
         }
       });
 
       if (!opportunity) {
+        // Create a lead first (required for opportunity)
+        const lead = await prisma.lead.create({
+          data: {
+            tenantId: client.tenantId,
+            clientAccountId: client.id,
+            name: `Fire Door Project - ${projectLabel}`,
+            email: client.email || 'noemail@example.com',
+            status: 'Won'
+          }
+        });
+
         opportunity = await prisma.opportunity.create({
           data: {
             tenantId: client.tenantId,
             clientAccountId: client.id,
-            name: `Fire Door Project - ${fdp.mjsJobNumber || fdp.customer || fdp.id.substring(0, 8)}`,
-            stage: 'Won',
-            status: 'Active'
+            leadId: lead.id,
+            title: `Fire Door Project - ${projectLabel}`,
+            stage: 'WON'
           }
         });
         results.opportunitiesCreated++;
@@ -65,9 +79,10 @@ router.get('/link-lloyd-worrall', async (req, res) => {
       const project = await prisma.project.create({
         data: {
           tenantId: client.tenantId,
+          projectType: 'FIRE_DOOR_SCHEDULE',
           opportunityId: opportunity.id,
           fireDoorScheduleId: fdp.id,
-          name: `Fire Door Project - ${fdp.mjsJobNumber || fdp.customer || fdp.id.substring(0, 8)}`,
+          projectName: `Fire Door Project - ${projectLabel}`,
           status: 'Active'
         }
       });
@@ -75,8 +90,9 @@ router.get('/link-lloyd-worrall', async (req, res) => {
       results.projectsLinked++;
       results.details.push({
         fireDoorId: fdp.id,
-        mjsJobNumber: fdp.mjsJobNumber,
-        customer: fdp.customer,
+        mjsNumber: fdp.mjsNumber,
+        clientName: fdp.clientName,
+        jobName: fdp.jobName,
         opportunityId: opportunity.id,
         projectId: project.id
       });
