@@ -6,6 +6,7 @@
  */
 
 import { Router } from "express";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { findOrCreateClientAccount } from "../lib/clientAccount";
 
@@ -141,13 +142,13 @@ router.post("/:tenantSlug/jobs", async (req, res) => {
           projectReference: jobDetails.projectReference,
           siteAddress: jobDetails.siteAddress,
           deliveryAddress: jobDetails.deliveryAddress,
-          contactName: jobDetails.contactName,
+          contactPerson: jobDetails.contactName,
           contactPhone: jobDetails.contactPhone,
           contactEmail: jobDetails.contactEmail,
           poNumber: jobDetails.poNumber,
           quoteReference: jobDetails.quoteReference,
           dateRequired: jobDetails.dateRequired ? new Date(jobDetails.dateRequired) : null,
-          specialInstructions: jobDetails.specialInstructions,
+          clientNotes: jobDetails.specialInstructions,
           status: "PENDING_REVIEW",
           submittedAt: new Date(),
         },
@@ -155,71 +156,39 @@ router.post("/:tenantSlug/jobs", async (req, res) => {
 
       // Create all door items (bulk insert is more efficient but this is clearer)
       const doorItemPromises = doorItems.map((item, index) => {
+        const quantityNumber = (() => {
+          if (item.quantity == null || item.quantity === "") return null;
+          const n = Number.parseInt(String(item.quantity), 10);
+          return Number.isFinite(n) ? n : null;
+        })();
+
+        const masterLeafWidthDecimal = (() => {
+          if (item.masterLeafWidth == null || item.masterLeafWidth === "") return undefined;
+          const n = Number(item.masterLeafWidth);
+          return Number.isFinite(n) ? new Prisma.Decimal(String(n)) : undefined;
+        })();
+
+        const rawRowJson = item.rawRowJson ?? item;
+
         return tx.fireDoorClientDoorItem.create({
           data: {
-            jobId: newJob.id,
-            sequence: item.sequence ?? index + 1,
+            tenantId: tenant.id,
+            fireDoorClientJobId: newJob.id,
+            rowNumber: item.rowNumber ?? index + 1,
+            sequence: String(item.sequence ?? index + 1),
             doorRef: item.doorRef,
             location: item.location,
-            quantity: item.quantity,
+            quantity: quantityNumber ?? undefined,
             type: item.type,
             coreType: item.coreType,
             fireRating: item.fireRating,
             acousticRating: item.acousticRating,
-            thresholdSealType: item.thresholdSealType,
-            doorsetLeafFrame: item.doorsetLeafFrame,
             configuration: item.configuration,
-            masterLeafWidth: item.masterLeafWidth,
-            soH: item.soH,
-            soW: item.soW,
-            ofH: item.ofH,
-            ofW: item.ofW,
-            wallThickness: item.wallThickness,
-            frameMaterial: item.frameMaterial,
-            frameFinish: item.frameFinish,
-            frameType: item.frameType,
-            architraveMaterial: item.architraveMaterial,
-            architraveWidth: item.architraveWidth,
-            architraveDepth: item.architraveDepth,
-            doorFacing: item.doorFacing,
-            doorFinish: item.doorFinish,
-            doorColour: item.doorColour,
-            doorLipping: item.doorLipping,
-            doorAction: item.doorAction,
-            doorUndercut: item.doorUndercut,
-            apertureWidth: item.apertureWidth,
-            apertureHeight: item.apertureHeight,
-            vistamaticSupply: item.vistamaticSupply,
-            hardwareSide1: item.hardwareSide1,
-            hardwareSide2: item.hardwareSide2,
-            beadType: item.beadType,
-            beadMaterial: item.beadMaterial,
-            glassType: item.glassType,
-            hingeSupplyType: item.hingeSupplyType,
-            hingeFitting: item.hingeFitting,
+            masterLeafWidth: masterLeafWidthDecimal,
             hingeType: item.hingeType,
-            hingeConfiguration: item.hingeConfiguration,
-            hingeHanding: item.hingeHanding,
-            lock1Height: item.lock1Height,
-            lock1SupplyPrep: item.lock1SupplyPrep,
-            lock1SpindleCylinderPrep: item.lock1SpindleCylinderPrep,
-            lock2Height: item.lock2Height,
-            lock2SupplyPrep: item.lock2SupplyPrep,
-            lock2SpindleCylinderPrep: item.lock2SpindleCylinderPrep,
-            closers: item.closers,
-            flushBolts: item.flushBolts,
-            leadLining: item.leadLining,
-            overpanel: item.overpanel,
-            screen: item.screen,
-            airTransferGrilleSize: item.airTransferGrilleSize,
-            airTransferGrillePosition: item.airTransferGrillePosition,
-            edgeProtection: item.edgeProtection,
-            kickPlates: item.kickPlates,
-            pvc: item.pvc,
-            wiringCablePrep: item.wiringCablePrep,
-            ironmongeryPackRef: item.ironmongeryPackRef,
+            handing: item.hingeHanding,
             comments: item.comments,
-            rawRowJson: item.rawRowJson,
+            rawRowJson,
           },
         });
       });

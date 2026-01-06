@@ -282,14 +282,19 @@ function serializeLeadRow(lead: any, extras: Record<string, any> = {}) {
 
   const payload: any = {
     id: lead.id,
+    number: lead.number ?? null,
     contactName: lead.contactName,
     email: lead.email,
+    phone: lead.phone ?? null,
+    address: lead.address ?? null,
+    deliveryAddress: lead.deliveryAddress ?? null,
     description: lead.description,
     status: (lead.custom as any)?.uiStatus || dbToUi(lead.status),
     custom: baseCustom,
     estimatedValue: toMaybeNumber(lead.estimatedValue),
     quotedValue: toMaybeNumber(lead.quotedValue),
     dateQuoteSent: lead.dateQuoteSent ? lead.dateQuoteSent.toISOString() : null,
+    clientId: lead.clientId ?? null,
     computed: buildComputedValues(lead),
     ...extras,
   };
