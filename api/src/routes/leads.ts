@@ -406,6 +406,139 @@ function validateLeadData(data: any): { valid: boolean; errors: string[] } {
   return { valid: errors.length === 0, errors };
 }
 
+function parseTagList(raw: any): string[] {
+  if (raw === undefined || raw === null) return [];
+  if (Array.isArray(raw)) {
+    return raw
+      .map((t) => String(t).trim())
+      .filter((t) => t.length > 0);
+  }
+  const value = String(raw).trim();
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+}
+
+function parseMaybeDate(raw: any): Date | null {
+  if (raw === undefined || raw === null) return null;
+  if (raw instanceof Date) return Number.isNaN(raw.getTime()) ? null : raw;
+  const value = String(raw).trim();
+  if (!value) return null;
+  const parsed = parseFlexibleDate(value);
+  return parsed && !Number.isNaN(parsed.getTime()) ? parsed : null;
+}
+
+function mergeJsonObjects(a: any, b: any): any {
+  const ao = a && typeof a === "object" && !Array.isArray(a) ? a : {};
+  const bo = b && typeof b === "object" && !Array.isArray(b) ? b : {};
+  return { ...ao, ...bo };
+}
+
+async function upsertClientForImport(opts: {
+  tenantId: string;
+  userId: string;
+  leadData: any;
+  clientData: any;
+  clientCustomData: any;
+}): Promise<string | null> {
+  const { tenantId, userId, leadData, clientData, clientCustomData } = opts;
+
+  const emailRaw = (clientData.email ?? leadData.email ?? null) as any;
+  const phoneRaw = (clientData.phone ?? leadData.phone ?? null) as any;
+  const companyNameRaw = (clientData.companyName ?? leadData.company ?? null) as any;
+  const nameRaw = (clientData.name ?? companyNameRaw ?? leadData.contactName ?? null) as any;
+
+  const email = typeof emailRaw === "string" ? emailRaw.trim() : emailRaw ? String(emailRaw).trim() : null;
+  const phone = typeof phoneRaw === "string" ? phoneRaw.trim() : phoneRaw ? String(phoneRaw).trim() : null;
+  const companyName = typeof companyNameRaw === "string" ? companyNameRaw.trim() : companyNameRaw ? String(companyNameRaw).trim() : null;
+  const name = typeof nameRaw === "string" ? nameRaw.trim() : nameRaw ? String(nameRaw).trim() : null;
+  // Per CRM-import expectations: only link Clients by email.
+  // If we don't have an email, we skip Client linkage rather than guessing.
+  if (!email) return null;
+  if (!name) return null;
+
+  const candidate = {
+    name,
+    email: email || null,
+    phone: phone || null,
+    address: (clientData.address ?? leadData.address ?? null) as any,
+    city: clientData.city ?? null,
+    postcode: clientData.postcode ?? null,
+    country: clientData.country ?? undefined,
+    contactPerson: (clientData.contactPerson ?? leadData.contactName ?? null) as any,
+    companyName: companyName || null,
+    type: clientData.type ?? undefined,
+    notes: clientData.notes ?? undefined,
+    tags: parseTagList(clientData.tags),
+    custom: Object.keys(clientCustomData || {}).length > 0 ? clientCustomData : undefined,
+  };
+
+  let existing: any = null;
+  if (candidate.email) existing = await prisma.client.findFirst({ where: { tenantId, email: candidate.email } });
+
+  if (existing) {
+    const updateData: any = {};
+    const setIfEmpty = (key: string, value: any) => {
+      if (value === undefined) return;
+      if (value === null) return;
+      const current = (existing as any)[key];
+      if (current === undefined || current === null || (typeof current === "string" && !current.trim())) {
+        updateData[key] = typeof value === "string" ? value.trim() : value;
+      }
+    };
+
+    setIfEmpty("email", candidate.email);
+    setIfEmpty("phone", candidate.phone);
+    setIfEmpty("address", candidate.address);
+    setIfEmpty("city", candidate.city);
+    setIfEmpty("postcode", candidate.postcode);
+    setIfEmpty("country", candidate.country);
+    setIfEmpty("contactPerson", candidate.contactPerson);
+    setIfEmpty("companyName", candidate.companyName);
+    setIfEmpty("type", candidate.type);
+    setIfEmpty("notes", candidate.notes);
+
+    if (candidate.tags.length > 0) {
+      const existingTags = Array.isArray(existing.tags) ? existing.tags : [];
+      const merged = Array.from(new Set([...existingTags, ...candidate.tags]));
+      if (merged.length !== existingTags.length) updateData.tags = merged;
+    }
+
+    if (candidate.custom) {
+      updateData.custom = mergeJsonObjects(existing.custom, candidate.custom);
+    }
+
+    if (Object.keys(updateData).length > 0) {
+      const updated = await prisma.client.update({ where: { id: existing.id }, data: updateData });
+      return updated.id;
+    }
+    return existing.id;
+  }
+
+  const created = await prisma.client.create({
+    data: {
+      tenantId,
+      userId,
+      name: candidate.name,
+      email: candidate.email,
+      phone: candidate.phone,
+      address: candidate.address ? String(candidate.address).trim() : null,
+      city: candidate.city ? String(candidate.city).trim() : null,
+      postcode: candidate.postcode ? String(candidate.postcode).trim() : null,
+      country: candidate.country ? String(candidate.country).trim() : undefined,
+      contactPerson: candidate.contactPerson ? String(candidate.contactPerson).trim() : null,
+      companyName: candidate.companyName,
+      type: candidate.type ? String(candidate.type).trim() : undefined,
+      notes: candidate.notes ? String(candidate.notes).trim() : undefined,
+      tags: candidate.tags,
+      ...(candidate.custom ? { custom: candidate.custom } : {}),
+    },
+  });
+  return created.id;
+}
+
 /* ------------------------------------------------------------------ */
 /* CSV Import Endpoints                                                */
 /* ------------------------------------------------------------------ */
@@ -425,6 +558,27 @@ router.post("/import/preview", upload.single('csvFile'), async (req, res) => {
     
     // Return first few rows as preview
     const preview = rows.slice(0, 5);
+
+    // Provide distinct value samples per column (helps UI map status values)
+    const columnValueSamples: Record<string, string[]> = {};
+    const MAX_DISTINCT = 20;
+    for (let h = 0; h < headers.length; h++) {
+      const header = headers[h];
+      const distinct: string[] = [];
+      const seen = new Set<string>();
+      for (let r = 0; r < rows.length; r++) {
+        const raw = rows[r]?.[h];
+        if (!raw) continue;
+        const val = String(raw).trim();
+        if (!val) continue;
+        const key = val.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        distinct.push(val);
+        if (distinct.length >= MAX_DISTINCT) break;
+      }
+      if (distinct.length > 0) columnValueSamples[header] = distinct;
+    }
     
     // Get questionnaire fields for this tenant (client, public, and internal scopes for import)
     const questionnaireFields = await prisma.questionnaireField.findMany({
@@ -443,16 +597,46 @@ router.post("/import/preview", upload.single('csvFile'), async (req, res) => {
       { key: 'contactName', label: 'Contact Name', required: false },
       { key: 'email', label: 'Email', required: false },
       { key: 'phone', label: 'Phone', required: false },
+      { key: 'address', label: 'Address', required: false },
       { key: 'company', label: 'Company', required: false },
       { key: 'description', label: 'Project Description', required: false },
       { key: 'source', label: 'Lead Source', required: false },
       { key: 'status', label: 'Status', required: false },
       { key: 'capturedAt', label: 'Date Created / Enquiry Date', required: false },
+      { key: 'nextAction', label: 'Next Action', required: false },
+      { key: 'nextActionAt', label: 'Next Action Due Date', required: false },
       { key: 'startDate', label: 'Start Date (Production)', required: false },
       { key: 'deliveryDate', label: 'Delivery Date', required: false },
       { key: 'quotedValue', label: 'Quoted Value (£)', required: false },
       { key: 'estimatedValue', label: 'Estimated Value (£)', required: false },
       { key: 'dateQuoteSent', label: 'Date Quote Sent', required: false },
+
+      // Client fields (creates/updates Client and links Lead.clientId)
+      { key: 'client.name', label: 'Client: Name', required: false },
+      { key: 'client.email', label: 'Client: Email', required: false },
+      { key: 'client.phone', label: 'Client: Phone', required: false },
+      { key: 'client.address', label: 'Client: Address', required: false },
+      { key: 'client.city', label: 'Client: City', required: false },
+      { key: 'client.postcode', label: 'Client: Postcode', required: false },
+      { key: 'client.country', label: 'Client: Country', required: false },
+      { key: 'client.contactPerson', label: 'Client: Contact Person', required: false },
+      { key: 'client.companyName', label: 'Client: Company Name', required: false },
+      { key: 'client.type', label: 'Client: Type', required: false },
+      { key: 'client.notes', label: 'Client: Notes', required: false },
+      { key: 'client.tags', label: 'Client: Tags (comma separated)', required: false },
+
+      // Task fields (creates one task per imported row when provided)
+      { key: 'task.title', label: 'Task: Title', required: false },
+      { key: 'task.dueAt', label: 'Task: Due Date', required: false },
+      { key: 'task.startedAt', label: 'Task: Started Date', required: false },
+      { key: 'task.completedAt', label: 'Task: Completed Date', required: false },
+      { key: 'task.description', label: 'Task: Description', required: false },
+      { key: 'task.priority', label: 'Task: Priority (LOW/MEDIUM/HIGH/URGENT)', required: false },
+      { key: 'task.status', label: 'Task: Status (OPEN/IN_PROGRESS/BLOCKED/DONE/CANCELLED)', required: false },
+      { key: 'task.communicationChannel', label: 'Task: Communication Channel', required: false },
+      { key: 'task.communicationDirection', label: 'Task: Communication Direction (INBOUND/OUTBOUND)', required: false },
+      { key: 'task.communicationType', label: 'Task: Communication Type (EMAIL/PHONE/MEETING/SMS/OTHER)', required: false },
+      { key: 'task.communicationNotes', label: 'Task: Communication Notes', required: false },
       // Add questionnaire fields
       ...questionnaireFields.map(field => ({
         key: `custom.${field.key}`,
@@ -465,7 +649,8 @@ router.post("/import/preview", upload.single('csvFile'), async (req, res) => {
       headers,
       preview,
       totalRows: rows.length,
-      availableFields
+      availableFields,
+      columnValueSamples,
     });
   } catch (error: any) {
     res.status(400).json({ error: error.message || 'Failed to parse CSV file' });
@@ -481,7 +666,7 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
     return res.status(400).json({ error: "CSV file is required" });
   }
   
-  const { fieldMapping, defaultStatus, createOpportunities } = req.body;
+  const { fieldMapping, defaultStatus, createOpportunities, statusValueMap } = req.body;
   if (!fieldMapping) {
     return res.status(400).json({ error: "Field mapping is required" });
   }
@@ -491,6 +676,18 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
     mapping = typeof fieldMapping === 'string' ? JSON.parse(fieldMapping) : fieldMapping;
   } catch {
     return res.status(400).json({ error: "Invalid field mapping format" });
+  }
+
+  let statusMapFromCsv: Record<string, UiStatus> = {};
+  if (statusValueMap) {
+    try {
+      const parsed = typeof statusValueMap === 'string' ? JSON.parse(statusValueMap) : statusValueMap;
+      if (parsed && typeof parsed === 'object') {
+        statusMapFromCsv = parsed as Record<string, UiStatus>;
+      }
+    } catch {
+      return res.status(400).json({ error: 'Invalid status value mapping format' });
+    }
   }
   
   const defaultUiStatus: UiStatus = (defaultStatus as UiStatus) || "NEW_ENQUIRY";
@@ -512,8 +709,11 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
       const row = rows[i];
       const leadData: any = {};
       const customData: any = {};
+      const clientData: any = {};
+      const clientCustomData: any = {};
+      const taskData: any = {};
       
-      // Map CSV columns to lead fields
+      // Map CSV columns to lead/client/task fields
       const mappedColumns = new Set<string>();
       for (const [csvColumn, leadField] of Object.entries(mapping)) {
         mappedColumns.add(csvColumn);
@@ -523,6 +723,30 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
           if (!rawValue) continue;
           const config = lookupCsvField(csvColumn);
           const transformed = config?.transform ? config.transform(rawValue) ?? rawValue : rawValue;
+
+          // Client mapping
+          if (leadField.startsWith('client.custom.')) {
+            const key = leadField.substring('client.custom.'.length);
+            clientCustomData[key] = transformed;
+            continue;
+          }
+          if (leadField.startsWith('client.')) {
+            const key = leadField.substring('client.'.length);
+            clientData[key] = transformed;
+            continue;
+          }
+
+          // Task mapping
+          if (leadField.startsWith('task.')) {
+            const key = leadField.substring('task.'.length);
+            if (key === 'dueAt' || key === 'startedAt' || key === 'completedAt') {
+              const parsed = parseMaybeDate(transformed);
+              if (parsed) taskData[key] = parsed;
+              continue;
+            }
+            taskData[key] = transformed;
+            continue;
+          }
 
           if (leadField.startsWith('custom.')) {
             const questionKey = leadField.substring(7);
@@ -537,6 +761,13 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
             }
             customData[questionKey] = transformed;
           } else {
+            // Special-case: these are real Lead columns but not in CANONICAL_FIELD_CONFIG
+            if (leadField === 'nextActionAt') {
+              const parsed = parseMaybeDate(transformed);
+              if (parsed) leadData.nextActionAt = parsed;
+              continue;
+            }
+
             const canonical = normalizeCanonicalValue(leadField, transformed);
             if (canonical !== undefined) {
               leadData[leadField] = canonical ?? null;
@@ -605,6 +836,14 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
         // Determine status - use from CSV if provided, otherwise use default from import options
         let uiStatus: UiStatus = defaultUiStatus;
         if (leadData.status) {
+          const rawStatus = String(leadData.status);
+          const statusLower = rawStatus.toLowerCase().trim();
+
+          // If UI supplied explicit mapping for this raw status, use it.
+          const mapped = statusMapFromCsv[statusLower] as UiStatus | undefined;
+          if (mapped) {
+            uiStatus = mapped;
+          } else {
           const statusMap: Record<string, UiStatus> = {
             'new': 'NEW_ENQUIRY',
             'new_enquiry': 'NEW_ENQUIRY',
@@ -620,8 +859,8 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
             'disqualified': 'DISQUALIFIED',
             'completed': 'COMPLETED'
           };
-          const statusLower = leadData.status.toLowerCase().trim();
           uiStatus = statusMap[statusLower] || defaultUiStatus;
+          }
         }
         
         // Create custom data object with standard fields and questionnaire responses
@@ -638,16 +877,54 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
         if (leadData.company) custom.company = leadData.company;
         if (leadData.source) custom.source = leadData.source;
 
+        // Upsert/link Client (best-effort). We link if we have any meaningful client/contact data.
+        let clientId: string | null = null;
+        const hasClientSignal =
+          Object.keys(clientData).length > 0 ||
+          Object.keys(clientCustomData).length > 0 ||
+          !!leadData.email;
+        if (hasClientSignal) {
+          try {
+            clientId = await upsertClientForImport({
+              tenantId,
+              userId,
+              leadData,
+              clientData,
+              clientCustomData,
+            });
+          } catch (e) {
+            console.warn("[Import] client upsert failed:", (e as any)?.message || e);
+          }
+        }
+
+        // If importing an open communication task (next action) but the Lead doesn't
+        // explicitly specify nextAction/nextActionAt, default them from the task.
+        if (!leadData.nextAction && taskData.title) {
+          const statusRaw = taskData.status ? String(taskData.status).trim().toUpperCase() : "OPEN";
+          const isClosed = statusRaw === "DONE" || statusRaw === "CANCELLED";
+          if (!isClosed) {
+            leadData.nextAction = String(taskData.title).trim();
+            if (!leadData.nextActionAt && taskData.dueAt instanceof Date) {
+              leadData.nextActionAt = taskData.dueAt;
+            }
+          }
+        }
+
         // Create the lead
         const lead = await prisma.lead.create({
           data: {
             tenantId,
             createdById: userId,
+            ...(clientId ? { clientId } : {}),
             number: leadData.number || null,
             contactName: leadData.contactName || null,
             email: leadData.email || "",
+            phone: leadData.phone || null,
+            address: leadData.address || null,
             status: uiToDb(uiStatus),
             description: leadData.description || null,
+            nextAction: leadData.nextAction || null,
+            ...(leadData.nextActionAt ? { nextActionAt: leadData.nextActionAt } : {}),
             ...(leadData.estimatedValue !== undefined ? { estimatedValue: leadData.estimatedValue } : {}),
             ...(leadData.quotedValue !== undefined ? { quotedValue: leadData.quotedValue } : {}),
             ...(leadData.dateQuoteSent !== undefined ? { dateQuoteSent: leadData.dateQuoteSent } : {}),
@@ -655,6 +932,62 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
             custom,
           },
         });
+
+        // Optional: create a task per row if task fields are provided
+        const hasTask = Object.keys(taskData).length > 0;
+        if (hasTask) {
+          const title = (taskData.title ? String(taskData.title).trim() : "").trim();
+          if (title) {
+            const priorityRaw = taskData.priority ? String(taskData.priority).trim().toUpperCase() : undefined;
+            const statusRaw = taskData.status ? String(taskData.status).trim().toUpperCase() : undefined;
+            const directionRaw = taskData.communicationDirection
+              ? String(taskData.communicationDirection).trim().toUpperCase()
+              : undefined;
+            const typeRaw = taskData.communicationType
+              ? String(taskData.communicationType).trim().toUpperCase()
+              : undefined;
+
+            const normalizedStatus = (statusRaw || "OPEN") as any;
+            const completedAt =
+              taskData.completedAt instanceof Date
+                ? taskData.completedAt
+                : normalizedStatus === "DONE" && taskData.dueAt instanceof Date
+                  ? taskData.dueAt
+                  : normalizedStatus === "DONE"
+                    ? new Date()
+                    : undefined;
+
+            const taskType =
+              taskData.communicationChannel || taskData.communicationNotes || typeRaw || directionRaw
+                ? ("COMMUNICATION" as any)
+                : ("MANUAL" as any);
+
+            await prisma.task.create({
+              data: {
+                tenantId,
+                title,
+                description: taskData.description ? String(taskData.description) : null,
+                relatedType: "LEAD" as any,
+                relatedId: lead.id,
+                autocreated: false,
+                taskType,
+                ...(taskData.dueAt instanceof Date ? { dueAt: taskData.dueAt } : {}),
+                ...(taskData.startedAt instanceof Date ? { startedAt: taskData.startedAt } : {}),
+                ...(completedAt ? { completedAt } : {}),
+                ...(priorityRaw ? { priority: priorityRaw as any } : {}),
+                ...(normalizedStatus ? { status: normalizedStatus } : {}),
+                communicationChannel: taskData.communicationChannel
+                  ? String(taskData.communicationChannel)
+                  : null,
+                communicationDirection: directionRaw ? (directionRaw as any) : null,
+                communicationType: typeRaw ? (typeRaw as any) : null,
+                communicationNotes: taskData.communicationNotes ? String(taskData.communicationNotes) : null,
+                createdById: userId,
+                updatedById: userId,
+              },
+            });
+          }
+        }
 
         // Proactively seed playbook tasks for the imported status (best-effort)
         try {

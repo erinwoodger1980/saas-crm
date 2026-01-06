@@ -10,6 +10,7 @@ interface CsvPreview {
   preview: string[][];
   totalRows: number;
   availableFields: Array<{ key: string; label: string; required: boolean }>;
+  columnValueSamples?: Record<string, string[]>;
 }
 
 interface ImportResult {
@@ -33,6 +34,7 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<CsvPreview | null>(null);
   const [fieldMapping, setFieldMapping] = useState<Record<string, string>>({});
+  const [statusValueMap, setStatusValueMap] = useState<Record<string, string>>({});
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [defaultStatus, setDefaultStatus] = useState<string>('NEW_ENQUIRY');
@@ -43,6 +45,7 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
     setFile(null);
     setPreview(null);
     setFieldMapping({});
+    setStatusValueMap({});
     setImportResult(null);
     setLoading(false);
     setDefaultStatus('NEW_ENQUIRY');
@@ -51,6 +54,48 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
       fileInputRef.current.value = '';
     }
   }, []);
+
+  const uiStatusOptions = [
+    { value: '', label: "Use Default" },
+    { value: 'NEW_ENQUIRY', label: 'New Enquiry' },
+    { value: 'INFO_REQUESTED', label: 'Info Requested' },
+    { value: 'READY_TO_QUOTE', label: 'Ready to Quote' },
+    { value: 'ESTIMATE', label: 'Estimate' },
+    { value: 'QUOTE_SENT', label: 'Quote Sent' },
+    { value: 'WON', label: 'Won' },
+    { value: 'LOST', label: 'Lost' },
+    { value: 'REJECTED', label: 'Rejected' },
+    { value: 'DISQUALIFIED', label: 'Disqualified' },
+    { value: 'COMPLETED', label: 'Completed' },
+  ];
+
+  const statusColumnHeader = useCallback((): string | null => {
+    if (!preview) return null;
+    const entry = Object.entries(fieldMapping).find(([, v]) => v === 'status');
+    return entry ? entry[0] : null;
+  }, [fieldMapping, preview]);
+
+  const statusSamples = useCallback((): string[] => {
+    const header = statusColumnHeader();
+    if (!header || !preview) return [];
+    const fromServer = preview.columnValueSamples?.[header];
+    if (Array.isArray(fromServer) && fromServer.length > 0) return fromServer;
+    const idx = preview.headers.indexOf(header);
+    if (idx < 0) return [];
+    const distinct: string[] = [];
+    const seen = new Set<string>();
+    for (const row of preview.preview) {
+      const raw = row?.[idx];
+      if (!raw) continue;
+      const val = String(raw).trim();
+      if (!val) continue;
+      const key = val.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      distinct.push(val);
+    }
+    return distinct;
+  }, [preview, statusColumnHeader]);
 
   const handleClose = useCallback(() => {
     resetState();
@@ -165,6 +210,9 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
       formData.append('csvFile', file);
       formData.append('fieldMapping', JSON.stringify(fieldMapping));
       formData.append('defaultStatus', defaultStatus);
+      if (Object.keys(statusValueMap).length > 0) {
+        formData.append('statusValueMap', JSON.stringify(statusValueMap));
+      }
       if (createOpportunities) {
         formData.append('createOpportunities', 'true');
       }
@@ -267,6 +315,8 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
                   <li>• First row should contain column headers</li>
                   <li>• Contact Name or Number column is required</li>
                   <li>• <strong>Basic fields:</strong> Number, Name, Email, Phone, Company, Description, Source, Status</li>
+                  <li>• <strong>Client fields:</strong> Map columns to Client (e.g., Client: Email, Client: Address) to link/create clients</li>
+                  <li>• <strong>Task fields:</strong> Map a column to Task: Title (and optional Due Date / Communication Type) to create tasks from your CRM export</li>
                   <li>• <strong>Production fields:</strong> Start Date, Delivery Date, Quoted Value, Customer Date</li>
                   <li>• <strong>Questionnaire fields:</strong> Import directly into any of your questionnaire questions</li>
                   <li>• <strong>Dates:</strong> Use DD/MM/YYYY format (e.g., 24/12/2025)</li>
@@ -325,11 +375,18 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
 
               {/* Field Mapping */}
               <div className="space-y-4">
+                <div className="text-sm text-gray-600">
+                  Tip: If your CSV has a status column, map it to <strong>Status</strong> and then map the status values to JoineryAI statuses below.
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {preview.headers.map((header, index) => {
-                    // Separate basic fields from questionnaire fields
-                    const basicFields = preview.availableFields.filter(f => !f.key.startsWith('custom.'));
-                    const questionnaireFields = preview.availableFields.filter(f => f.key.startsWith('custom.'));
+                    // Group fields for clearer mapping UX
+                    const leadFields = preview.availableFields.filter(
+                      (f) => !f.key.startsWith('custom.') && !f.key.startsWith('client.') && !f.key.startsWith('task.')
+                    );
+                    const clientFields = preview.availableFields.filter((f) => f.key.startsWith('client.'));
+                    const taskFields = preview.availableFields.filter((f) => f.key.startsWith('task.'));
+                    const questionnaireFields = preview.availableFields.filter((f) => f.key.startsWith('custom.'));
                     
                     return (
                       <div key={index} className="space-y-2">
@@ -339,23 +396,51 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
                         <select
                           value={fieldMapping[header] || ''}
                           onChange={(e) => {
+                            const nextValue = e.target.value;
                             setFieldMapping(prev => ({
                               ...prev,
-                              [header]: e.target.value
+                              [header]: nextValue
                             }));
+
+                            // If status mapping moved away from this column, clear status value mapping
+                            if (fieldMapping[header] === 'status' && nextValue !== 'status') {
+                              setStatusValueMap({});
+                            }
                           }}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                         >
                           <option value="">Don't import this column</option>
                           
-                          {/* Basic Lead Fields */}
-                          <optgroup label="Basic Lead Fields">
-                            {basicFields.map(field => (
+                          {/* Lead Fields */}
+                          <optgroup label="Lead Fields">
+                            {leadFields.map(field => (
                               <option key={field.key} value={field.key}>
                                 {field.label} {field.required ? '(Required)' : ''}
                               </option>
                             ))}
                           </optgroup>
+
+                          {/* Client Fields */}
+                          {clientFields.length > 0 && (
+                            <optgroup label="Client Fields">
+                              {clientFields.map((field) => (
+                                <option key={field.key} value={field.key}>
+                                  {field.label} {field.required ? '(Required)' : ''}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+
+                          {/* Task Fields */}
+                          {taskFields.length > 0 && (
+                            <optgroup label="Task Fields">
+                              {taskFields.map((field) => (
+                                <option key={field.key} value={field.key}>
+                                  {field.label} {field.required ? '(Required)' : ''}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
                           
                           {/* Questionnaire Fields */}
                           {questionnaireFields.length > 0 && (
@@ -372,6 +457,58 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
                     );
                   })}
                 </div>
+
+                {/* Status Value Mapping */}
+                {statusColumnHeader() && (
+                  <div className="border rounded-lg p-4 bg-slate-50 space-y-3">
+                    <div>
+                      <h4 className="font-medium text-gray-900">Map Status Values</h4>
+                      <p className="text-sm text-gray-600 mt-1">
+                        CSV column <span className="font-mono bg-white px-2 py-0.5 rounded border">{statusColumnHeader()}</span> is mapped to <strong>Status</strong>.
+                        Choose how each CSV value maps to a system status. Unmapped values use the Default Status above.
+                      </p>
+                    </div>
+
+                    {statusSamples().length === 0 ? (
+                      <p className="text-sm text-gray-600">No status values detected in preview.</p>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {statusSamples().map((raw) => {
+                          const key = raw.toLowerCase().trim();
+                          return (
+                            <div key={key} className="space-y-1">
+                              <label className="text-sm font-medium text-gray-700">
+                                <span className="font-mono bg-white px-2 py-0.5 rounded border">{raw}</span>
+                              </label>
+                              <select
+                                value={statusValueMap[key] || ''}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setStatusValueMap((prev) => {
+                                    const next = { ...prev };
+                                    if (!v) {
+                                      delete next[key];
+                                    } else {
+                                      next[key] = v;
+                                    }
+                                    return next;
+                                  });
+                                }}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                              >
+                                {uiStatusOptions.map((opt) => (
+                                  <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Preview */}

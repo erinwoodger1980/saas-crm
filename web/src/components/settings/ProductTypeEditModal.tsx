@@ -10,7 +10,7 @@ import { Loader2, Sparkles, Image as ImageIcon, Trash2, Plus, Box, Package, Aler
 import { useToast } from '@/components/ui/use-toast';
 import { ProductConfigurator3D } from '@/components/configurator/ProductConfigurator3D';
 import { createDefaultSceneConfig } from '@/lib/scene/config-validation';
-import { ProductPlanV1 } from '@/types/product-plan';
+import { ProductPlanV1, createFallbackDoorPlan, createFallbackWindowPlan } from '@/types/product-plan';
 import { compileProductPlanToProductParams } from '@/lib/scene/plan-compiler';
 import { parametricToSceneConfig } from '@/lib/scene/parametricToSceneConfig';
 import type { ProductParams } from '@/types/parametric-builder';
@@ -66,6 +66,7 @@ export function ProductTypeEditModal({
   // ProductPlan state (new)
   const [productPlan, setProductPlan] = useState<ProductPlanV1 | null>(null);
   const [planVariables, setPlanVariables] = useState<Record<string, number>>({});
+  const [aiNotice, setAiNotice] = useState<{ kind: 'info' | 'fallback'; title: string; message: string } | null>(null);
   
   // 3D Configurator state
   const [sceneConfig, setSceneConfig] = useState<any>(
@@ -97,6 +98,7 @@ export function ProductTypeEditModal({
     setAiImagePreview(null);
     setProductPlan(null);
     setPlanVariables({});
+    setAiNotice(null);
     setSelectedComponents([]);
     setShow3DConfigurator(false);
     setCompiledParams(null);
@@ -159,6 +161,15 @@ export function ProductTypeEditModal({
       console.log('[AI2SCENE] Generated ProductPlan:', plan);
       
       setProductPlan(plan);
+      setAiNotice(
+        isFallback
+          ? {
+              kind: 'fallback',
+              title: 'Using fallback plan',
+              message: `AI generation fell back${fallbackReason ? ` (${fallbackReason})` : ''}. You can still edit/compile this plan.`,
+            }
+          : null
+      );
       // Initialize plan variables
       const vars: Record<string, number> = {};
       for (const [key, variable] of Object.entries(plan.variables)) {
@@ -172,14 +183,58 @@ export function ProductTypeEditModal({
         description: isFallback
           ? `AI fell back (${fallbackReason || 'unknown'}). Generated ${plan.components.length} default components.`
           : `Detected: ${plan.detected.type} (${plan.detected.option || 'auto'}) - ${plan.components.length} components`,
-        variant: isFallback ? 'destructive' : undefined,
+        variant: undefined,
       });
     } catch (error: any) {
       console.error('AI estimation error:', error);
+
+      // UI should still be usable even if the API errors/500s.
+      // Create a deterministic fallback plan client-side and show a clear in-modal notice.
+      const category = initialData?.categoryId || 'doors';
+      const defaultDepth = category === 'windows' ? 80 : 45;
+      const reason = (error?.message ? String(error.message) : 'AI endpoint failed').slice(0, 200);
+      const baseFallback =
+        category === 'windows'
+          ? createFallbackWindowPlan()
+          : createFallbackDoorPlan();
+
+      const fallback: ProductPlanV1 = {
+        ...baseFallback,
+        dimensions: {
+          widthMm: defaultDimensions.widthMm,
+          heightMm: defaultDimensions.heightMm,
+          depthMm: defaultDepth,
+        },
+        variables: {
+          ...baseFallback.variables,
+          pw: { ...(baseFallback.variables.pw as any), defaultValue: defaultDimensions.widthMm },
+          ph: { ...(baseFallback.variables.ph as any), defaultValue: defaultDimensions.heightMm },
+          sd: { ...(baseFallback.variables.sd as any), defaultValue: defaultDepth },
+        },
+        rationale: `Fallback: ${baseFallback.rationale} (reason: ${reason})`,
+        detected: {
+          ...baseFallback.detected,
+          confidence: Math.min(baseFallback.detected.confidence ?? 0.2, 0.2),
+        },
+      };
+
+      setProductPlan(fallback);
+      setAiNotice({
+        kind: 'fallback',
+        title: 'AI endpoint failed — using fallback plan',
+        message: `Couldn’t reach the AI service (${reason}). A default plan was generated so you can continue.`,
+      });
+
+      const vars: Record<string, number> = {};
+      for (const [key, variable] of Object.entries(fallback.variables)) {
+        vars[key] = variable.defaultValue;
+      }
+      setPlanVariables(vars);
+      setActiveTab('plan');
+
       toast({
-        title: 'Generation failed',
-        description: error.message || 'Could not generate product plan',
-        variant: 'destructive',
+        title: 'Used fallback plan',
+        description: 'AI generation failed; a default plan was created so you can continue.',
       });
     } finally {
       setIsEstimating(false);
@@ -384,6 +439,17 @@ export function ProductTypeEditModal({
               </div>
             ) : (
               <div className="space-y-4">
+                {aiNotice && (
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="h-4 w-4 text-blue-700 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-semibold text-blue-900">{aiNotice.title}</p>
+                        <p className="text-sm text-blue-800 mt-1">{aiNotice.message}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {/* Detection summary */}
                 <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
                   <div className="grid grid-cols-2 gap-4">
