@@ -181,6 +181,7 @@ export default function TimesheetsPage() {
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [projectDetail, setProjectDetail] = useState<any>(null);
+  const [addHoursProjectSearch, setAddHoursProjectSearch] = useState("");
 
   async function loadTimesheets() {
     setLoading(true);
@@ -524,6 +525,7 @@ export default function TimesheetsPage() {
       // Lazy-load projects so the admin can optionally attach to a job
       loadProjects();
     }
+    setAddHoursProjectSearch("");
     setAddHoursDialog({
       open: true,
       userId,
@@ -737,11 +739,34 @@ export default function TimesheetsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">No project</SelectItem>
-                  {projects.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
+                  <div className="sticky top-0 bg-background z-10 p-2 border-b">
+                    <input
+                      value={addHoursProjectSearch}
+                      onChange={(e) => setAddHoursProjectSearch(e.target.value)}
+                      placeholder="Type to search projects…"
+                      className="w-full border border-border rounded-md px-3 py-2 bg-background"
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                  <div className="max-h-[300px] overflow-y-auto">
+                    {projectsLoading ? (
+                      <div className="px-2 py-3 text-sm text-muted-foreground">Loading projects…</div>
+                    ) : (() => {
+                      const q = addHoursProjectSearch.trim().toLowerCase();
+                      const filtered = q
+                        ? projects.filter((p) => (p.name || "").toLowerCase().includes(q))
+                        : projects;
+                      if (filtered.length === 0) {
+                        return <div className="px-2 py-3 text-sm text-muted-foreground">No projects found</div>;
+                      }
+                      return filtered.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      ));
+                    })()}
+                  </div>
                 </SelectContent>
               </Select>
             </div>

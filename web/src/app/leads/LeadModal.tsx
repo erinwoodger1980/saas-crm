@@ -1003,6 +1003,7 @@ export default function LeadModal({
         setNameInput(contactName || "");
         setEmailInput(email || "");
         setPhoneInput((row as any)?.phone || "");
+        setDeliveryAddressInput((row as any)?.deliveryAddress || "");
         setDescInput(description || "");
 
         // After fetching full lead + tasks list:
@@ -3353,9 +3354,11 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                             className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
                             value={nameInput}
                             onChange={(e) => setNameInput(e.target.value)}
-                            onBlur={() => {
-                              setLead((l) => (l ? { ...l, contactName: nameInput || null } : l));
-                              savePatch({ contactName: nameInput || null });
+                            onBlur={(e) => {
+                              const nextName = e.currentTarget.value;
+                              setNameInput(nextName);
+                              setLead((l) => (l ? { ...l, contactName: nextName || null } : l));
+                              savePatch({ contactName: nextName || null });
                             }}
                             placeholder="Client name"
                           />
@@ -3370,9 +3373,11 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                             className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
                             value={emailInput}
                             onChange={(e) => setEmailInput(e.target.value)}
-                            onBlur={() => {
-                              setLead((l) => (l ? { ...l, email: emailInput || null } : l));
-                              savePatch({ email: emailInput || null });
+                            onBlur={(e) => {
+                              const nextEmail = e.currentTarget.value;
+                              setEmailInput(nextEmail);
+                              setLead((l) => (l ? { ...l, email: nextEmail || null } : l));
+                              savePatch({ email: nextEmail || null });
                             }}
                             placeholder="client@email.com"
                           />
@@ -3388,15 +3393,17 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
                           value={phoneInput}
                           onChange={(e) => setPhoneInput(e.target.value)}
-                          onBlur={async () => {
-                            setLead((l) => (l ? { ...l, phone: phoneInput || null } : l));
-                            await savePatch({ phone: phoneInput || null });
+                          onBlur={async (e) => {
+                            const nextPhone = e.currentTarget.value;
+                            setPhoneInput(nextPhone);
+                            setLead((l) => (l ? { ...l, phone: nextPhone || null } : l));
+                            await savePatch({ phone: nextPhone || null });
                             // Also update client if linked
-                            if (lead?.clientId && phoneInput) {
+                            if (lead?.clientId && nextPhone) {
                               try {
                                 await apiFetch(`/clients/${lead.clientId}`, {
                                   method: "PATCH",
-                                  json: { phone: phoneInput },
+                                  json: { phone: nextPhone },
                                 });
                               } catch (error) {
                                 console.error("Failed to sync phone to client:", error);
@@ -3416,15 +3423,17 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
                           value={addressInput}
                           onChange={(e) => setAddressInput(e.target.value)}
-                          onBlur={async () => {
-                            setLead((l) => (l ? { ...l, address: addressInput || null } : l));
-                            await savePatch({ address: addressInput || null });
+                          onBlur={async (e) => {
+                            const nextAddress = e.currentTarget.value;
+                            setAddressInput(nextAddress);
+                            setLead((l) => (l ? { ...l, address: nextAddress || null } : l));
+                            await savePatch({ address: nextAddress || null });
                             // Also update client if linked
-                            if (lead?.clientId && addressInput) {
+                            if (lead?.clientId && nextAddress) {
                               try {
                                 await apiFetch(`/clients/${lead.clientId}`, {
                                   method: "PATCH",
-                                  json: { address: addressInput },
+                                  json: { address: nextAddress },
                                 });
                               } catch (error) {
                                 console.error("Failed to sync address to client:", error);
@@ -3653,9 +3662,11 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
                           value={numberInput}
                           onChange={(e) => setNumberInput(e.target.value)}
-                          onBlur={() => {
-                            setLead((l) => (l ? { ...l, number: numberInput || null } : l));
-                            savePatch({ number: numberInput || null });
+                          onBlur={(e) => {
+                            const nextNumber = e.currentTarget.value;
+                            setNumberInput(nextNumber);
+                            setLead((l) => (l ? { ...l, number: nextNumber || null } : l));
+                            savePatch({ number: nextNumber || null });
                           }}
                           placeholder="Enquiry number"
                         />
@@ -3671,9 +3682,11 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
                           value={deliveryAddressInput}
                           onChange={(e) => setDeliveryAddressInput(e.target.value)}
-                          onBlur={() => {
-                            setLead((l) => (l ? { ...l, deliveryAddress: deliveryAddressInput || null } : l));
-                            savePatch({ deliveryAddress: deliveryAddressInput || null });
+                          onBlur={(e) => {
+                            const nextDeliveryAddress = e.currentTarget.value;
+                            setDeliveryAddressInput(nextDeliveryAddress);
+                            setLead((l) => (l ? { ...l, deliveryAddress: nextDeliveryAddress || null } : l));
+                            savePatch({ deliveryAddress: nextDeliveryAddress || null });
                           }}
                           placeholder="Delivery location (if different from client address)"
                         />
