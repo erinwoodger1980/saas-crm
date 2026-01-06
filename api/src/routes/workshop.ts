@@ -1845,8 +1845,8 @@ router.post("/holiday-requests", async (req: any, res) => {
               description: `${request.user.name || 'A user'} has requested ${diffDays} day${diffDays !== 1 ? 's' : ''} of holiday from ${formatDate(start)} to ${formatDate(end)}.\n\nReason: ${reason || 'No reason provided'}\n\nPlease review and approve or deny this request in Settings > Holidays.`,
               status: 'OPEN',
               priority: 'MEDIUM',
-              taskType: 'GENERAL',
-              relatedType: 'HOLIDAY_REQUEST',
+              taskType: 'MANUAL',
+              relatedType: 'OTHER',
               relatedId: request.id,
               assignees: {
                 create: admins.map(admin => ({
