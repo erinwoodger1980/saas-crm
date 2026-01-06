@@ -116,7 +116,9 @@ router.get("/", async (req: any, res: Response) => {
       const matchingProjects = await prisma.project.findMany({
         where: {
           tenantId,
-          clientAccountId: clientAccountId as string,
+          opportunity: {
+            clientAccountId: clientAccountId as string,
+          },
         },
         select: { id: true },
       });
@@ -633,13 +635,21 @@ router.get("/stats/summary", async (req: any, res: Response) => {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    // Optional client filter
+    // Optional client filter - need to get matching project IDs first
     const { clientAccountId } = req.query;
     const baseWhere: any = { tenantId };
     if (clientAccountId) {
-      baseWhere.project = {
-        clientAccountId: clientAccountId
-      };
+      const matchingProjects = await prisma.project.findMany({
+        where: {
+          tenantId,
+          opportunity: {
+            clientAccountId: clientAccountId as string,
+          },
+        },
+        select: { id: true },
+      });
+      const projectIds = matchingProjects.map(p => p.id);
+      baseWhere.projectId = { in: projectIds };
     }
 
     const [
