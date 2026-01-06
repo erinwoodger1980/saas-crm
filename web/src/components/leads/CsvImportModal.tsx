@@ -5,6 +5,8 @@ import { apiFetch } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 
+const REQUIRED_IMPORT_FIELD_KEYS = new Set(['email', 'contactName']);
+
 interface CsvPreview {
   headers: string[];
   preview: string[][];
@@ -191,7 +193,9 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
     if (!file || !preview) return;
     
     // Validate required fields are mapped
-    const requiredFields = preview.availableFields.filter(f => f.required);
+    // Only enforce Email + Name for lead imports; questionnaire fields may be marked
+    // required but should not block lead CSV import.
+    const requiredFields = preview.availableFields.filter(f => REQUIRED_IMPORT_FIELD_KEYS.has(f.key));
     const mappedFields = Object.values(fieldMapping);
     const missingRequired = requiredFields.filter(field => !mappedFields.includes(field.key));
     
@@ -315,7 +319,7 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
                 <h4 className="font-medium text-blue-900 mb-2">CSV Format Requirements:</h4>
                 <ul className="text-sm text-blue-700 space-y-1">
                   <li>• First row should contain column headers</li>
-                  <li>• Email column is required</li>
+                  <li>• Email and Name columns are required</li>
                   <li>• <strong>Basic fields:</strong> Number, Name, Email, Phone, Company, Description, Status</li>
                   <li>• <strong>Client fields:</strong> Use for non-identity client info (e.g., Lead Source, Address). Clients are linked/created automatically from Email (matches any Client Contact email).</li>
                   <li>• <strong>Task fields:</strong> Map a column to Task: Title (and optional Due Date / Communication Type) to create tasks from your CRM export</li>
@@ -417,7 +421,8 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
                           <optgroup label="Lead Fields">
                             {leadFields.map(field => (
                               <option key={field.key} value={field.key}>
-                                {field.key === 'status' ? 'Lead Status' : field.label} {field.required ? '(Required)' : ''}
+                                {field.key === 'status' ? 'Lead Status' : field.label}{' '}
+                                {REQUIRED_IMPORT_FIELD_KEYS.has(field.key) ? '(Required)' : ''}
                               </option>
                             ))}
                           </optgroup>
@@ -427,7 +432,8 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
                             <optgroup label="Client Fields">
                               {clientFields.map((field) => (
                                 <option key={field.key} value={field.key}>
-                                  {field.label} {field.required ? '(Required)' : ''}
+                                  {field.label}{' '}
+                                  {REQUIRED_IMPORT_FIELD_KEYS.has(field.key) ? '(Required)' : ''}
                                 </option>
                               ))}
                             </optgroup>
@@ -438,7 +444,8 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
                             <optgroup label="Task Fields">
                               {taskFields.map((field) => (
                                 <option key={field.key} value={field.key}>
-                                  {field.label} {field.required ? '(Required)' : ''}
+                                  {field.label}{' '}
+                                  {REQUIRED_IMPORT_FIELD_KEYS.has(field.key) ? '(Required)' : ''}
                                 </option>
                               ))}
                             </optgroup>
@@ -449,7 +456,8 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
                             <optgroup label="Questionnaire Fields">
                               {questionnaireFields.map(field => (
                                 <option key={field.key} value={field.key}>
-                                  {field.label} {field.required ? '(Required)' : ''}
+                                  {field.label}{' '}
+                                  {REQUIRED_IMPORT_FIELD_KEYS.has(field.key) ? '(Required)' : ''}
                                 </option>
                               ))}
                             </optgroup>
