@@ -197,6 +197,7 @@ router.get("/opportunities/:id", requireCustomerAuth, async (req: any, res) => {
  * GET /api/customer-portal/fire-door-jobs
  * Get all fire door jobs for the customer's account
  * Includes both FireDoorClientJob records and won Opportunities
+ * Returns in Fire Door Schedule format
  */
 router.get("/fire-door-jobs", requireCustomerAuth, async (req: any, res) => {
   try {
@@ -226,7 +227,7 @@ router.get("/fire-door-jobs", requireCustomerAuth, async (req: any, res) => {
       },
     });
 
-    // Get won opportunities
+    // Get won opportunities (these are the actual fire door schedule projects)
     const opportunities = await prisma.opportunity.findMany({
       where: {
         clientAccountId,
@@ -242,6 +243,16 @@ router.get("/fire-door-jobs", requireCustomerAuth, async (req: any, res) => {
         deliveryDate: true,
         installationStartDate: true,
         installationEndDate: true,
+        lead: {
+          select: {
+            id: true,
+            mjsNumber: true,
+            jobLocation: true,
+            signOffStatus: true,
+            orderingStatus: true,
+            overallProgress: true,
+          },
+        },
       },
       orderBy: {
         createdAt: "desc",
@@ -252,6 +263,7 @@ router.get("/fire-door-jobs", requireCustomerAuth, async (req: any, res) => {
     const allJobs = [
       ...fireDoorJobs.map((job) => ({
         id: job.id,
+        mjsNumber: job.projectReference,
         jobName: job.jobName,
         projectReference: job.projectReference,
         status: job.status || "PENDING",
@@ -260,9 +272,14 @@ router.get("/fire-door-jobs", requireCustomerAuth, async (req: any, res) => {
         dateRequired: job.dateRequired,
         doorItemCount: job.doorItems.length,
         type: "fire-door-job" as const,
+        jobLocation: "SUBMITTED",
+        signOffStatus: job.status === "APPROVED" ? "SIGNED OFF" : "PENDING",
+        orderingStatus: "N/A",
+        overallProgress: 0,
       })),
       ...opportunities.map((opp) => ({
         id: opp.id,
+        mjsNumber: opp.lead?.mjsNumber || opp.number,
         jobName: opp.title,
         projectReference: opp.number,
         status: opp.stage,
@@ -271,6 +288,10 @@ router.get("/fire-door-jobs", requireCustomerAuth, async (req: any, res) => {
         dateRequired: opp.installationStartDate || opp.deliveryDate,
         doorItemCount: null,
         type: "opportunity" as const,
+        jobLocation: opp.lead?.jobLocation || "N/A",
+        signOffStatus: opp.lead?.signOffStatus || "N/A",
+        orderingStatus: opp.lead?.orderingStatus || "N/A",
+        overallProgress: opp.lead?.overallProgress || 0,
       })),
     ];
 
