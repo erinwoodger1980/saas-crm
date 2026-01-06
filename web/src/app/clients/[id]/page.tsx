@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { DeskSurface } from "@/components/DeskSurface";
 import SectionCard from "@/components/SectionCard";
 import { ClientContacts } from "@/components/ClientContacts";
+import { ClientPortalAccess } from "@/components/ClientPortalAccess";
 import { FieldForm } from "@/components/fields/FieldRenderer";
 import { useFields } from "@/hooks/useFields";
 import { ArrowLeft, Save, Mail, Phone, MapPin, Building, Edit, Check, X } from "lucide-react";
@@ -444,6 +445,14 @@ export default function ClientDetailPage() {
                 headers: authHeaders,
               });
             }}
+          />
+        </SectionCard>
+
+        {/* Customer Portal Access */}
+        <SectionCard title="Customer Portal">
+          <ClientPortalAccess
+            clientId={clientId}
+            authHeaders={authHeaders}
           />
         </SectionCard>
 

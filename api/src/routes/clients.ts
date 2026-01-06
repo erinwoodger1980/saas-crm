@@ -684,4 +684,278 @@ router.delete("/:id/contacts/:contactId", async (req, res) => {
   }
 });
 
+/* ------------------------------------------------------------------ */
+/* GET /clients/:id/portal-access - Get client's portal access info  */
+/* ------------------------------------------------------------------ */
+
+router.get("/:id/portal-access", async (req, res) => {
+  try {
+    const { tenantId } = getAuth(req);
+    if (!tenantId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { id } = req.params;
+
+    // Verify client belongs to tenant
+    const client = await prisma.client.findFirst({
+      where: { id, tenantId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        companyName: true,
+      },
+    });
+
+    if (!client) {
+      return res.status(404).json({ error: "Client not found" });
+    }
+
+    // Find ClientAccount linked to this client
+    const clientAccount = await (prisma as any).clientAccount.findFirst({
+      where: {
+        tenantId,
+        OR: [
+          { companyName: client.companyName },
+          { contactEmail: client.email },
+        ],
+      },
+      include: {
+        users: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            isActive: true,
+            lastLoginAt: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+
+    res.json({
+      hasAccess: !!clientAccount,
+      clientAccount: clientAccount || null,
+    });
+  } catch (error) {
+    console.error("Error getting portal access:", error);
+    res.status(500).json({ error: "Failed to get portal access" });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* POST /clients/:id/portal-access - Create portal access for client */
+/* ------------------------------------------------------------------ */
+
+router.post("/:id/portal-access", async (req, res) => {
+  try {
+    const { tenantId } = getAuth(req);
+    if (!tenantId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { id } = req.params;
+    const { email, password, firstName, lastName } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
+
+    // Verify client belongs to tenant
+    const client = await prisma.client.findFirst({
+      where: { id, tenantId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        companyName: true,
+        phone: true,
+      },
+    });
+
+    if (!client) {
+      return res.status(404).json({ error: "Client not found" });
+    }
+
+    // Check if email already exists
+    const existingUser = await (prisma as any).clientUser.findUnique({
+      where: { email: email.toLowerCase().trim() },
+    });
+
+    if (existingUser) {
+      return res.status(409).json({ error: "Email already registered" });
+    }
+
+    // Find or create ClientAccount
+    let clientAccount = await (prisma as any).clientAccount.findFirst({
+      where: {
+        tenantId,
+        OR: [
+          { companyName: client.companyName },
+          { contactEmail: client.email },
+        ],
+      },
+    });
+
+    if (!clientAccount) {
+      clientAccount = await (prisma as any).clientAccount.create({
+        data: {
+          tenantId,
+          companyName: client.companyName || client.name,
+          contactEmail: client.email,
+          contactPhone: client.phone,
+          isActive: true,
+        },
+      });
+    }
+
+    // Create ClientUser with hashed password
+    const bcrypt = require("bcryptjs");
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const clientUser = await (prisma as any).clientUser.create({
+      data: {
+        clientAccountId: clientAccount.id,
+        email: email.toLowerCase().trim(),
+        passwordHash,
+        firstName: firstName?.trim() || null,
+        lastName: lastName?.trim() || null,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        isActive: true,
+        createdAt: true,
+      },
+    });
+
+    res.json({
+      success: true,
+      clientUser,
+      clientAccount,
+    });
+  } catch (error: any) {
+    console.error("Error creating portal access:", error);
+    res.status(500).json({ error: "Failed to create portal access", message: error.message });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* PATCH /clients/:id/portal-access/:userId - Update portal user     */
+/* ------------------------------------------------------------------ */
+
+router.patch("/:id/portal-access/:userId", async (req, res) => {
+  try {
+    const { tenantId } = getAuth(req);
+    if (!tenantId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { id, userId } = req.params;
+    const { password, isActive, firstName, lastName } = req.body;
+
+    // Verify client belongs to tenant
+    const client = await prisma.client.findFirst({
+      where: { id, tenantId },
+    });
+
+    if (!client) {
+      return res.status(404).json({ error: "Client not found" });
+    }
+
+    // Verify user exists and belongs to this tenant's client account
+    const existingUser = await (prisma as any).clientUser.findFirst({
+      where: {
+        id: userId,
+        clientAccount: { tenantId },
+      },
+    });
+
+    if (!existingUser) {
+      return res.status(404).json({ error: "Portal user not found" });
+    }
+
+    const updateData: any = {};
+    
+    if (password) {
+      const bcrypt = require("bcryptjs");
+      updateData.passwordHash = await bcrypt.hash(password, 10);
+    }
+    
+    if (isActive !== undefined) updateData.isActive = Boolean(isActive);
+    if (firstName !== undefined) updateData.firstName = firstName?.trim() || null;
+    if (lastName !== undefined) updateData.lastName = lastName?.trim() || null;
+
+    const updatedUser = await (prisma as any).clientUser.update({
+      where: { id: userId },
+      data: updateData,
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        isActive: true,
+        lastLoginAt: true,
+        createdAt: true,
+      },
+    });
+
+    res.json(updatedUser);
+  } catch (error) {
+    console.error("Error updating portal access:", error);
+    res.status(500).json({ error: "Failed to update portal access" });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* DELETE /clients/:id/portal-access/:userId - Delete portal user    */
+/* ------------------------------------------------------------------ */
+
+router.delete("/:id/portal-access/:userId", async (req, res) => {
+  try {
+    const { tenantId } = getAuth(req);
+    if (!tenantId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { id, userId } = req.params;
+
+    // Verify client belongs to tenant
+    const client = await prisma.client.findFirst({
+      where: { id, tenantId },
+    });
+
+    if (!client) {
+      return res.status(404).json({ error: "Client not found" });
+    }
+
+    // Verify user exists and belongs to this tenant's client account
+    const existingUser = await (prisma as any).clientUser.findFirst({
+      where: {
+        id: userId,
+        clientAccount: { tenantId },
+      },
+    });
+
+    if (!existingUser) {
+      return res.status(404).json({ error: "Portal user not found" });
+    }
+
+    await (prisma as any).clientUser.delete({
+      where: { id: userId },
+    });
+
+    res.status(204).send();
+  } catch (error) {
+    console.error("Error deleting portal access:", error);
+    res.status(500).json({ error: "Failed to delete portal access" });
+  }
+});
+
 export default router;
