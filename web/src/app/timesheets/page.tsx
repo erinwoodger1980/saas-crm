@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
+import { useCurrentUser } from "@/lib/use-current-user";
 import { Clock, Check, X, Download, Calendar, Users, ChevronLeft, ChevronRight, Upload } from "lucide-react";
 
 type Timesheet = {
@@ -72,6 +73,8 @@ type Project = {
 
 export default function TimesheetsPage() {
   const { toast } = useToast();
+  const { user: currentUser } = useCurrentUser();
+  const canAmendTime = ["owner", "admin"].includes(String(currentUser?.role || "").toLowerCase());
   const [activeTab, setActiveTab] = useState<string>("overview");
   const [timesheets, setTimesheets] = useState<Timesheet[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -86,6 +89,46 @@ export default function TimesheetsPage() {
   const [rejectDialog, setRejectDialog] = useState<{ open: boolean; timesheetId: string | null; notes: string }>({
     open: false,
     timesheetId: null,
+    notes: "",
+  });
+
+  const [editEntryDialog, setEditEntryDialog] = useState<{
+    open: boolean;
+    entryId: string | null;
+    userLabel: string;
+    dateKey: string;
+    projectTitle: string | null;
+    process: string;
+    hours: string;
+    notes: string;
+  }>({
+    open: false,
+    entryId: null,
+    userLabel: "",
+    dateKey: "",
+    projectTitle: null,
+    process: "",
+    hours: "",
+    notes: "",
+  });
+
+  const [addHoursDialog, setAddHoursDialog] = useState<{
+    open: boolean;
+    userId: string | null;
+    userLabel: string;
+    dateKey: string;
+    projectId: string;
+    process: string;
+    hours: string;
+    notes: string;
+  }>({
+    open: false,
+    userId: null,
+    userLabel: "",
+    dateKey: "",
+    projectId: "",
+    process: "ADMIN",
+    hours: "",
     notes: "",
   });
 
@@ -378,6 +421,127 @@ export default function TimesheetsPage() {
     return entries.reduce((sum, e) => sum + e.hours, 0);
   }
 
+  function openEditEntryDialog(userLabel: string, dateKey: string, entry: TimeEntry) {
+    setEditEntryDialog({
+      open: true,
+      entryId: entry.id,
+      userLabel,
+      dateKey,
+      projectTitle: entry.project?.title ?? null,
+      process: entry.process,
+      hours: String(entry.hours ?? ""),
+      notes: entry.notes ?? "",
+    });
+  }
+
+  async function confirmEditEntry() {
+    if (!editEntryDialog.entryId) return;
+    const hoursNum = Number(editEntryDialog.hours);
+    if (!Number.isFinite(hoursNum)) {
+      toast({ title: "Invalid hours", description: "Enter a valid number.", variant: "destructive" });
+      return;
+    }
+
+    try {
+      await apiFetch<{ ok: boolean; entry: any }>(`/workshop/time/${editEntryDialog.entryId}`, {
+        method: "PATCH",
+        json: {
+          hours: hoursNum,
+          notes: editEntryDialog.notes?.trim() ? editEntryDialog.notes.trim() : null,
+        },
+      });
+
+      toast({ title: "Time entry updated" });
+      setEditEntryDialog({ open: false, entryId: null, userLabel: "", dateKey: "", projectTitle: null, process: "", hours: "", notes: "" });
+      await loadTeamActivity();
+      await loadTimesheets();
+    } catch (e: any) {
+      toast({ title: "Failed to update entry", description: e?.message || "Unknown error", variant: "destructive" });
+    }
+  }
+
+  async function openAddHoursDialog(userId: string, userLabel: string, dateKey: string) {
+    if (projects.length === 0 && !projectsLoading) {
+      // Lazy-load projects so the admin can optionally attach to a job
+      loadProjects();
+    }
+    setAddHoursDialog({
+      open: true,
+      userId,
+      userLabel,
+      dateKey,
+      projectId: "",
+      process: "ADMIN",
+      hours: "",
+      notes: "",
+    });
+  }
+
+  async function confirmAddHours() {
+    if (!addHoursDialog.userId) return;
+    const hoursNum = Number(addHoursDialog.hours);
+    if (!Number.isFinite(hoursNum)) {
+      toast({ title: "Invalid hours", description: "Enter a valid number.", variant: "destructive" });
+      return;
+    }
+    if (!addHoursDialog.dateKey) {
+      toast({ title: "Invalid date", description: "Choose a date.", variant: "destructive" });
+      return;
+    }
+    if (!addHoursDialog.process?.trim()) {
+      toast({ title: "Invalid process", description: "Enter a process code.", variant: "destructive" });
+      return;
+    }
+
+    try {
+      await apiFetch<{ ok: boolean; entry: any }>("/workshop/time", {
+        method: "POST",
+        json: {
+          userId: addHoursDialog.userId,
+          date: addHoursDialog.dateKey,
+          hours: hoursNum,
+          notes: addHoursDialog.notes?.trim() ? addHoursDialog.notes.trim() : null,
+          process: addHoursDialog.process.trim(),
+          projectId: addHoursDialog.projectId ? addHoursDialog.projectId : null,
+        },
+      });
+
+      toast({ title: "Hours added" });
+      setAddHoursDialog({ open: false, userId: null, userLabel: "", dateKey: "", projectId: "", process: "ADMIN", hours: "", notes: "" });
+      await loadTeamActivity();
+      await loadTimesheets();
+    } catch (e: any) {
+      toast({ title: "Failed to add hours", description: e?.message || "Unknown error", variant: "destructive" });
+    }
+  }
+
+  async function startTimerForUser(userId: string) {
+    try {
+      await apiFetch<{ ok: boolean; timer: any; warning?: string }>("/workshop/timer/start", {
+        method: "POST",
+        json: { userId, process: "ADMIN" },
+      });
+      toast({ title: "Timer started", description: "Started ADMIN timer." });
+      await loadTeamActivity();
+    } catch (e: any) {
+      toast({ title: "Failed to start timer", description: e?.message || "Unknown error", variant: "destructive" });
+    }
+  }
+
+  async function stopTimerForUser(userId: string) {
+    try {
+      await apiFetch<{ ok: boolean; timeEntry: any; hours: any }>("/workshop/timer/stop", {
+        method: "POST",
+        json: { userId },
+      });
+      toast({ title: "Timer stopped" });
+      await loadTeamActivity();
+      await loadTimesheets();
+    } catch (e: any) {
+      toast({ title: "Failed to stop timer", description: e?.message || "Unknown error", variant: "destructive" });
+    }
+  }
+
   // Group entries by project/job for user detail view
   function groupEntriesByProject(days: Record<string, TimeEntry[]>) {
     const projectMap = new Map<string, { name: string; process: string; entries: Record<string, number> }>();
@@ -426,6 +590,142 @@ export default function TimesheetsPage() {
 
   return (
     <>
+      <Dialog
+        open={editEntryDialog.open}
+        onOpenChange={(open) =>
+          setEditEntryDialog((prev) => ({
+            ...prev,
+            open,
+            entryId: open ? prev.entryId : null,
+          }))
+        }
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit time entry</DialogTitle>
+            <DialogDescription>
+              {editEntryDialog.userLabel}
+              {editEntryDialog.dateKey ? ` • ${editEntryDialog.dateKey}` : ""}
+              {editEntryDialog.projectTitle ? ` • ${editEntryDialog.projectTitle}` : ""}
+              {editEntryDialog.process ? ` • ${editEntryDialog.process}` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium mb-1 block">Hours</label>
+              <input
+                type="number"
+                step="0.1"
+                value={editEntryDialog.hours}
+                onChange={(e) => setEditEntryDialog((prev) => ({ ...prev, hours: e.target.value }))}
+                className="w-full border border-border rounded-md px-3 py-2 bg-background"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Notes</label>
+              <Textarea
+                value={editEntryDialog.notes}
+                onChange={(e) => setEditEntryDialog((prev) => ({ ...prev, notes: e.target.value }))}
+                placeholder="Optional"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEditEntryDialog({ open: false, entryId: null, userLabel: "", dateKey: "", projectTitle: null, process: "", hours: "", notes: "" })}
+            >
+              Cancel
+            </Button>
+            <Button onClick={confirmEditEntry}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={addHoursDialog.open}
+        onOpenChange={(open) =>
+          setAddHoursDialog((prev) => ({
+            ...prev,
+            open,
+            userId: open ? prev.userId : null,
+          }))
+        }
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add hours</DialogTitle>
+            <DialogDescription>
+              {addHoursDialog.userLabel}
+              {addHoursDialog.dateKey ? ` • ${addHoursDialog.dateKey}` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium mb-1 block">Date</label>
+              <input
+                type="date"
+                value={addHoursDialog.dateKey}
+                onChange={(e) => setAddHoursDialog((prev) => ({ ...prev, dateKey: e.target.value }))}
+                className="w-full border border-border rounded-md px-3 py-2 bg-background"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Project (optional)</label>
+              <Select value={addHoursDialog.projectId || "none"} onValueChange={(v) => setAddHoursDialog((prev) => ({ ...prev, projectId: v === "none" ? "" : v }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="No project" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No project</SelectItem>
+                  {projects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Process</label>
+              <input
+                value={addHoursDialog.process}
+                onChange={(e) => setAddHoursDialog((prev) => ({ ...prev, process: e.target.value }))}
+                className="w-full border border-border rounded-md px-3 py-2 bg-background"
+                placeholder="e.g. ADMIN"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Hours</label>
+              <input
+                type="number"
+                step="0.1"
+                value={addHoursDialog.hours}
+                onChange={(e) => setAddHoursDialog((prev) => ({ ...prev, hours: e.target.value }))}
+                className="w-full border border-border rounded-md px-3 py-2 bg-background"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Notes</label>
+              <Textarea
+                value={addHoursDialog.notes}
+                onChange={(e) => setAddHoursDialog((prev) => ({ ...prev, notes: e.target.value }))}
+                placeholder="Optional"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setAddHoursDialog({ open: false, userId: null, userLabel: "", dateKey: "", projectId: "", process: "ADMIN", hours: "", notes: "" })}
+            >
+              Cancel
+            </Button>
+            <Button onClick={confirmAddHours}>Add</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog
         open={signOffDialog.open}
         onOpenChange={(open) =>
@@ -923,6 +1223,151 @@ export default function TimesheetsPage() {
               ))}
             </div>
           )}
+
+          {canAmendTime && (
+            <>
+              <div className="text-sm text-muted-foreground flex items-center gap-2 mt-10">
+                <Calendar className="h-4 w-4" />
+                {formatActivityDate(activityFrom)} – {formatActivityDate(activityTo)}
+              </div>
+
+              {activityLoading ? (
+                <div className="text-center py-12 text-muted-foreground">Loading team activity...</div>
+              ) : (
+                <div className="space-y-4">
+                  {userActivity.map((ua) => {
+                    const totalHours = Object.values(ua.days).reduce(
+                      (sum, entries) => sum + getTotalHoursForDay(entries),
+                      0
+                    );
+
+                    const userLabel = ua.user.name || ua.user.email;
+
+                    return (
+                      <Card key={ua.user.id}>
+                        <div className="p-6">
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                              <div
+                                className="w-3 h-3 rounded-full"
+                                style={{ backgroundColor: ua.user.workshopColor || "#6b7280" }}
+                              />
+                              <div>
+                                <h3 className="text-lg font-semibold">{userLabel}</h3>
+                                <p className="text-sm text-muted-foreground">{ua.user.email}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <Badge variant="secondary" className="text-sm">
+                                <Clock className="h-3 w-3 mr-1" />
+                                {totalHours.toFixed(1)}h total
+                              </Badge>
+                              {(() => {
+                                const running = Boolean(ua.hasActiveTimer || activeTimers[ua.user.id]);
+                                return (
+                                  <>
+                                    {running ? (
+                                      <>
+                                        <Badge variant="secondary" className="text-sm bg-green-100 text-green-800">
+                                          Timer running
+                                        </Badge>
+                                        <Button variant="outline" size="sm" onClick={() => stopTimerForUser(ua.user.id)}>
+                                          Stop timer
+                                        </Button>
+                                      </>
+                                    ) : (
+                                      <Button variant="outline" size="sm" onClick={() => startTimerForUser(ua.user.id)}>
+                                        Start timer
+                                      </Button>
+                                    )}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          </div>
+                          <div className="space-y-3">
+                            {dateRange.map((date) => {
+                              const dateKey = date.toISOString().split("T")[0];
+                              const entries = ua.days[dateKey] || [];
+                              const dayHours = getTotalHoursForDay(entries);
+
+                              if (entries.length === 0) return null;
+
+                              return (
+                                <div
+                                  key={dateKey}
+                                  className={`border rounded-lg p-3 ${
+                                    isToday(date) ? "border-primary bg-primary/5" : "border-border"
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="font-medium text-sm">{formatActivityDate(date)}</div>
+                                    <div className="flex items-center gap-2">
+                                      <Badge variant="outline" className="text-xs">
+                                        {dayHours.toFixed(1)}h
+                                      </Badge>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => openAddHoursDialog(ua.user.id, userLabel, dateKey)}
+                                      >
+                                        Add hours
+                                      </Button>
+                                    </div>
+                                  </div>
+                                  <div className="space-y-2">
+                                    {entries.map((entry) => (
+                                      <div
+                                        key={entry.id}
+                                        className="flex items-start gap-2 text-sm bg-background/50 rounded p-2"
+                                      >
+                                        <div className="flex-1">
+                                          <div className="font-medium">
+                                            {entry.project ? (
+                                              <span className="text-primary">{entry.project.title}</span>
+                                            ) : (
+                                              <span className="text-muted-foreground capitalize">
+                                                {entry.process.toLowerCase().replace(/_/g, " ")}
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div className="text-xs text-muted-foreground">
+                                            {entry.process.replace(/_/g, " ")}
+                                            {entry.notes && ` • ${entry.notes}`}
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                          <Badge variant="secondary" className="text-xs">
+                                            {entry.hours}h
+                                          </Badge>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => openEditEntryDialog(userLabel, dateKey, entry)}
+                                          >
+                                            Edit
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            {dateRange.every((d) => !ua.days[d.toISOString().split("T")[0]]) && (
+                              <div className="text-sm text-muted-foreground text-center py-4">
+                                No logged time in this period
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
         </TabsContent>
 
         <TabsContent value="projects" className="space-y-6 mt-6">
@@ -1202,105 +1647,6 @@ export default function TimesheetsPage() {
       )}
         </TabsContent>
 
-        <TabsContent value="activity" className="space-y-6 mt-6">
-          <div className="text-sm text-muted-foreground flex items-center gap-2">
-            <Calendar className="h-4 w-4" />
-            {formatActivityDate(activityFrom)} – {formatActivityDate(activityTo)}
-          </div>
-
-          {activityLoading ? (
-            <div className="text-center py-12 text-muted-foreground">Loading team activity...</div>
-          ) : (
-            <div className="space-y-4">
-              {userActivity.map((ua) => {
-                const totalHours = Object.values(ua.days).reduce(
-                  (sum, entries) => sum + getTotalHoursForDay(entries),
-                  0
-                );
-
-                return (
-                  <Card key={ua.user.id}>
-                    <div className="p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className="w-3 h-3 rounded-full"
-                            style={{ backgroundColor: ua.user.workshopColor || "#6b7280" }}
-                          />
-                          <div>
-                            <h3 className="text-lg font-semibold">{ua.user.name || ua.user.email}</h3>
-                            <p className="text-sm text-muted-foreground">{ua.user.email}</p>
-                          </div>
-                        </div>
-                        <Badge variant="secondary" className="text-sm">
-                          <Clock className="h-3 w-3 mr-1" />
-                          {totalHours.toFixed(1)}h total
-                        </Badge>
-                      </div>
-                      <div className="space-y-3">
-                        {dateRange.map((date) => {
-                          const dateKey = date.toISOString().split("T")[0];
-                          const entries = ua.days[dateKey] || [];
-                          const dayHours = getTotalHoursForDay(entries);
-
-                          if (entries.length === 0) return null;
-
-                          return (
-                            <div
-                              key={dateKey}
-                              className={`border rounded-lg p-3 ${
-                                isToday(date) ? "border-primary bg-primary/5" : "border-border"
-                              }`}
-                            >
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="font-medium text-sm">{formatActivityDate(date)}</div>
-                                <Badge variant="outline" className="text-xs">
-                                  {dayHours.toFixed(1)}h
-                                </Badge>
-                              </div>
-                              <div className="space-y-2">
-                                {entries.map((entry) => (
-                                  <div
-                                    key={entry.id}
-                                    className="flex items-start gap-2 text-sm bg-background/50 rounded p-2"
-                                  >
-                                    <div className="flex-1">
-                                      <div className="font-medium">
-                                        {entry.project ? (
-                                          <span className="text-primary">{entry.project.title}</span>
-                                        ) : (
-                                          <span className="text-muted-foreground capitalize">
-                                            {entry.process.toLowerCase().replace(/_/g, " ")}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="text-xs text-muted-foreground">
-                                        {entry.process.replace(/_/g, " ")}
-                                        {entry.notes && ` • ${entry.notes}`}
-                                      </div>
-                                    </div>
-                                    <Badge variant="secondary" className="text-xs shrink-0">
-                                      {entry.hours}h
-                                    </Badge>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        })}
-                        {dateRange.every((d) => !ua.days[d.toISOString().split("T")[0]]) && (
-                          <div className="text-sm text-muted-foreground text-center py-4">
-                            No logged time in this period
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
-        </TabsContent>
       </Tabs>
       </div>
     </>

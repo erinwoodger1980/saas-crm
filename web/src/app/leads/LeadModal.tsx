@@ -868,7 +868,10 @@ export default function LeadModal({
         };
 
         const normalized: Lead = {
-          id: row.id || leadPreview.id,
+          // IMPORTANT: always keep the actual Lead ID here.
+          // Some API responses may include an Opportunity ID in `row.id`, which breaks
+          // subsequent /leads/:id PATCH calls and custom field loads.
+          id: actualLeadId,
           contactName,
           email,
           phone: (row as any)?.phone ?? null,
@@ -891,7 +894,7 @@ export default function LeadModal({
         // Fetch tenant users for assignment dropdown
         if (tenantId) {
           try {
-            const usersData = await apiFetch<any[]>(`/users`, { headers: authHeaders });
+            const usersData = await apiFetch<any[]>(`/tenant/users`, { headers: authHeaders });
             if (usersData) {
               setTenantUsers(usersData.map((u: any) => ({ id: u.id, name: u.name || u.firstName || u.email, email: u.email })));
             }

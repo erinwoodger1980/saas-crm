@@ -233,6 +233,8 @@ function LeadsPageContent() {
   // New lead description modal
   const [newLeadModalOpen, setNewLeadModalOpen] = useState(false);
   const [newLeadDescription, setNewLeadDescription] = useState("");
+  const [newLeadEmail, setNewLeadEmail] = useState("");
+  const [newLeadName, setNewLeadName] = useState("");
   const [creatingLead, setCreatingLead] = useState(false);
 
   // Load column config for current tab
@@ -571,8 +573,19 @@ function LeadsPageContent() {
     });
   }, [columnConfig, latestTaskByLeadId, refreshGrouped]);
 
-  async function handleCreateLeadWithDescription(description: string) {
-    if (!description?.trim()) return;
+  async function handleCreateLeadManual(input: { email: string; contactName?: string; description?: string }) {
+    const email = (input.email || "").trim();
+    const contactName = (input.contactName || "").trim();
+    const description = (input.description || "").trim();
+    if (!email) {
+      toast({ title: "Email required", description: "Enter an email to create the lead.", variant: "destructive" });
+      return;
+    }
+    // Simple client-side validation to prevent empty/obviously invalid values
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      toast({ title: "Invalid email", description: "Enter a valid email address.", variant: "destructive" });
+      return;
+    }
     
     setCreatingLead(true);
     let leadCreated = false;
@@ -582,7 +595,12 @@ function LeadsPageContent() {
       const lead = await apiFetch<any>("/leads", {
         method: "POST",
         headers: buildAuthHeaders(),
-        json: { contactName: "Manual Lead", email: "", description: description.trim(), custom: { provider: "manual" } },
+        json: {
+          contactName: contactName || "Manual Lead",
+          email,
+          description: description || null,
+          custom: { provider: "manual" },
+        },
       });
       
       leadCreated = true;
@@ -613,7 +631,7 @@ function LeadsPageContent() {
       
       toast({
         title: "Lead created",
-        description: `${description} added to your inbox.`,
+        description: `${email} added to your inbox.`,
       });
     } catch (e: any) {
       console.error("Lead creation error:", e);
@@ -622,7 +640,7 @@ function LeadsPageContent() {
       if (leadCreated) {
         toast({
           title: "Lead created",
-          description: `${description} added to your inbox.`,
+          description: `${email} added to your inbox.`,
         });
         await refreshGrouped();
         return;
@@ -639,12 +657,16 @@ function LeadsPageContent() {
       setCreatingLead(false);
       setNewLeadModalOpen(false);
       setNewLeadDescription("");
+      setNewLeadEmail("");
+      setNewLeadName("");
     }
   }
   
   function handleCreateLead() {
     setNewLeadModalOpen(true);
     setNewLeadDescription("");
+    setNewLeadEmail("");
+    setNewLeadName("");
   }
 
   /* ------------------------------ Email Upload Functions ------------------------------ */
@@ -1252,11 +1274,35 @@ function LeadsPageContent() {
             
             <div className="space-y-4">
               <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
+                <input
+                  autoFocus
+                  type="email"
+                  placeholder="customer@example.com"
+                  value={newLeadEmail}
+                  onChange={(e) => setNewLeadEmail(e.target.value)}
+                  disabled={creatingLead}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Name (optional)</label>
+                <input
+                  type="text"
+                  placeholder="Customer name"
+                  value={newLeadName}
+                  onChange={(e) => setNewLeadName(e.target.value)}
+                  disabled={creatingLead}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-500"
+                />
+              </div>
+
+              <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Lead Description
+                  Lead Description (optional)
                 </label>
                 <textarea
-                  autoFocus
                   placeholder="Enter lead details, project description, or notes..."
                   value={newLeadDescription}
                   onChange={(e) => setNewLeadDescription(e.target.value)}
@@ -1276,8 +1322,8 @@ function LeadsPageContent() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleCreateLeadWithDescription(newLeadDescription)}
-                  disabled={creatingLead || !newLeadDescription.trim()}
+                  onClick={() => handleCreateLeadManual({ email: newLeadEmail, contactName: newLeadName, description: newLeadDescription })}
+                  disabled={creatingLead || !newLeadEmail.trim()}
                   className="px-4 py-2 rounded-lg bg-blue-600 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
                 >
                   {creatingLead ? "Creating..." : "Create Lead"}

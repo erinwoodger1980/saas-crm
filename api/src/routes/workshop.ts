@@ -963,6 +963,54 @@ router.delete("/time/:id", async (req: any, res) => {
   res.json({ ok: true });
 });
 
+// PATCH /workshop/time/:id { hours?, notes?, date?, projectId?, process? }
+// Admin/owner only: used for manual corrections when timers were missed.
+router.patch("/time/:id", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const role = String(req.auth?.role || "").toLowerCase();
+  if (role !== "owner" && role !== "admin") {
+    return res.status(403).json({ error: "only_admins_can_edit_time" });
+  }
+
+  const id = String(req.params.id);
+  const existing = await (prisma as any).timeEntry.findUnique({ where: { id } });
+  if (!existing || existing.tenantId !== tenantId) {
+    return res.status(404).json({ error: "not_found" });
+  }
+
+  const body = req.body || {};
+  const updates: Record<string, any> = {};
+
+  if ("hours" in body) {
+    const n = Number(body.hours);
+    if (!Number.isFinite(n)) return res.status(400).json({ error: "invalid_hours" });
+    updates.hours = new Prisma.Decimal(n);
+  }
+  if ("notes" in body) {
+    updates.notes = body.notes ? String(body.notes) : null;
+  }
+  if ("date" in body) {
+    if (!body.date) return res.status(400).json({ error: "invalid_date" });
+    const d = new Date(String(body.date));
+    if (Number.isNaN(d.getTime())) return res.status(400).json({ error: "invalid_date" });
+    updates.date = d;
+  }
+  if ("projectId" in body) {
+    updates.projectId = body.projectId ? String(body.projectId) : null;
+  }
+  if ("process" in body) {
+    if (!body.process) return res.status(400).json({ error: "invalid_process" });
+    updates.process = String(body.process);
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return res.status(400).json({ error: "no_changes" });
+  }
+
+  const entry = await (prisma as any).timeEntry.update({ where: { id }, data: updates });
+  res.json({ ok: true, entry });
+});
+
 // PATCH /workshop/process-complete - Mark a process as complete/incomplete
 // Body: { projectId, processDefinitionId, completed: boolean }
 router.patch("/process-complete", async (req: any, res) => {
@@ -1265,8 +1313,10 @@ router.post("/timer/start", async (req: any, res) => {
   let assignmentWarning = null;
   try {
     const tenantId = req.auth.tenantId as string;
-    const userId = req.auth.userId as string;
-    const { projectId, process, notes, latitude, longitude, accuracy } = req.body || {};
+    const authUserId = req.auth.userId as string;
+    const role = String(req.auth?.role || "").toLowerCase();
+    const { projectId, process, notes, latitude, longitude, accuracy, userId: requestedUserId } = req.body || {};
+    const userId = (requestedUserId && (role === "owner" || role === "admin")) ? String(requestedUserId) : authUserId;
 
     console.log(`[timer/start] tenant=${tenantId} user=${userId} projectId=${projectId} process=${process} location=${latitude},${longitude}`);
 
@@ -1275,10 +1325,13 @@ router.post("/timer/start", async (req: any, res) => {
     }
 
     // Get user to check if they're an installer (bypasses geofence)
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { isInstaller: true }
+    const user = await prisma.user.findFirst({
+      where: { id: userId, tenantId },
+      select: { isInstaller: true },
     });
+    if (!user) {
+      return res.status(404).json({ error: "user_not_found" });
+    }
 
     // Get tenant geofence settings
     const tenant = await prisma.tenant.findUnique({
@@ -1453,7 +1506,10 @@ router.post("/timer/start", async (req: any, res) => {
 // POST /workshop/timer/stop - Stop active timer and create time entry
 router.post("/timer/stop", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
-  const userId = req.auth.userId as string;
+  const authUserId = req.auth.userId as string;
+  const role = String(req.auth?.role || "").toLowerCase();
+  const requestedUserId = (req.body || {})?.userId;
+  const userId = (requestedUserId && (role === "owner" || role === "admin")) ? String(requestedUserId) : authUserId;
 
   console.log(`[timer/stop] Request from user ${userId}, tenant ${tenantId}`);
 
@@ -1501,7 +1557,10 @@ router.post("/timer/stop", async (req: any, res) => {
 // DELETE /workshop/timer - Cancel active timer without creating time entry
 router.delete("/timer", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
-  const userId = req.auth.userId as string;
+  const authUserId = req.auth.userId as string;
+  const role = String(req.auth?.role || "").toLowerCase();
+  const requestedUserId = req.query?.userId;
+  const userId = (requestedUserId && (role === "owner" || role === "admin")) ? String(requestedUserId) : authUserId;
 
   const result = await (prisma as any).workshopTimer.deleteMany({
     where: { tenantId, userId },
