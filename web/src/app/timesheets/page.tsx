@@ -112,6 +112,24 @@ export default function TimesheetsPage() {
     notes: "",
   });
 
+  const [deleteEntryDialog, setDeleteEntryDialog] = useState<{
+    open: boolean;
+    entryId: string | null;
+    userLabel: string;
+    dateKey: string;
+    projectTitle: string | null;
+    process: string;
+    hours: number | null;
+  }>({
+    open: false,
+    entryId: null,
+    userLabel: "",
+    dateKey: "",
+    projectTitle: null,
+    process: "",
+    hours: null,
+  });
+
   const [addHoursDialog, setAddHoursDialog] = useState<{
     open: boolean;
     userId: string | null;
@@ -434,6 +452,18 @@ export default function TimesheetsPage() {
     });
   }
 
+  function openDeleteEntryDialog(userLabel: string, dateKey: string, entry: TimeEntry) {
+    setDeleteEntryDialog({
+      open: true,
+      entryId: entry.id,
+      userLabel,
+      dateKey,
+      projectTitle: entry.project?.title ?? null,
+      process: entry.process,
+      hours: typeof entry.hours === "number" ? entry.hours : null,
+    });
+  }
+
   async function confirmEditEntry() {
     if (!editEntryDialog.entryId) return;
     const hoursNum = Number(editEntryDialog.hours);
@@ -457,6 +487,35 @@ export default function TimesheetsPage() {
       await loadTimesheets();
     } catch (e: any) {
       toast({ title: "Failed to update entry", description: e?.message || "Unknown error", variant: "destructive" });
+    }
+  }
+
+  async function confirmDeleteEntry() {
+    if (!deleteEntryDialog.entryId) return;
+
+    try {
+      await apiFetch<{ ok: boolean }>(`/workshop/time/${deleteEntryDialog.entryId}`, {
+        method: "DELETE",
+      });
+
+      toast({ title: "Time entry deleted" });
+      setDeleteEntryDialog({
+        open: false,
+        entryId: null,
+        userLabel: "",
+        dateKey: "",
+        projectTitle: null,
+        process: "",
+        hours: null,
+      });
+      await loadTeamActivity();
+      await loadTimesheets();
+    } catch (e: any) {
+      toast({
+        title: "Failed to delete entry",
+        description: e?.message || "Unknown error",
+        variant: "destructive",
+      });
     }
   }
 
@@ -773,6 +832,57 @@ export default function TimesheetsPage() {
             </Button>
             <Button variant="destructive" onClick={confirmReject}>
               Reject
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deleteEntryDialog.open}
+        onOpenChange={(open) =>
+          setDeleteEntryDialog((prev) => ({ ...prev, open, entryId: open ? prev.entryId : null }))
+        }
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete time entry</DialogTitle>
+            <DialogDescription>This will permanently delete the selected time entry.</DialogDescription>
+          </DialogHeader>
+          <div className="text-sm text-muted-foreground space-y-1">
+            <div>
+              <strong>User:</strong> {deleteEntryDialog.userLabel}
+            </div>
+            <div>
+              <strong>Date:</strong> {deleteEntryDialog.dateKey}
+            </div>
+            <div>
+              <strong>Project/Process:</strong> {deleteEntryDialog.projectTitle ?? deleteEntryDialog.process}
+            </div>
+            {typeof deleteEntryDialog.hours === "number" && (
+              <div>
+                <strong>Hours:</strong> {deleteEntryDialog.hours}h
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() =>
+                setDeleteEntryDialog({
+                  open: false,
+                  entryId: null,
+                  userLabel: "",
+                  dateKey: "",
+                  projectTitle: null,
+                  process: "",
+                  hours: null,
+                })
+              }
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDeleteEntry}>
+              Delete
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1291,8 +1401,6 @@ export default function TimesheetsPage() {
                               const entries = ua.days[dateKey] || [];
                               const dayHours = getTotalHoursForDay(entries);
 
-                              if (entries.length === 0) return null;
-
                               return (
                                 <div
                                   key={dateKey}
@@ -1315,50 +1423,57 @@ export default function TimesheetsPage() {
                                       </Button>
                                     </div>
                                   </div>
-                                  <div className="space-y-2">
-                                    {entries.map((entry) => (
-                                      <div
-                                        key={entry.id}
-                                        className="flex items-start gap-2 text-sm bg-background/50 rounded p-2"
-                                      >
-                                        <div className="flex-1">
-                                          <div className="font-medium">
-                                            {entry.project ? (
-                                              <span className="text-primary">{entry.project.title}</span>
-                                            ) : (
-                                              <span className="text-muted-foreground capitalize">
-                                                {entry.process.toLowerCase().replace(/_/g, " ")}
-                                              </span>
-                                            )}
+
+                                  {entries.length === 0 ? (
+                                    <div className="text-xs text-muted-foreground">No entries</div>
+                                  ) : (
+                                    <div className="space-y-2">
+                                      {entries.map((entry) => (
+                                        <div
+                                          key={entry.id}
+                                          className="flex items-start gap-2 text-sm bg-background/50 rounded p-2"
+                                        >
+                                          <div className="flex-1">
+                                            <div className="font-medium">
+                                              {entry.project ? (
+                                                <span className="text-primary">{entry.project.title}</span>
+                                              ) : (
+                                                <span className="text-muted-foreground capitalize">
+                                                  {entry.process.toLowerCase().replace(/_/g, " ")}
+                                                </span>
+                                              )}
+                                            </div>
+                                            <div className="text-xs text-muted-foreground">
+                                              {entry.process.replace(/_/g, " ")}
+                                              {entry.notes && ` • ${entry.notes}`}
+                                            </div>
                                           </div>
-                                          <div className="text-xs text-muted-foreground">
-                                            {entry.process.replace(/_/g, " ")}
-                                            {entry.notes && ` • ${entry.notes}`}
+                                          <div className="flex items-center gap-2 shrink-0">
+                                            <Badge variant="secondary" className="text-xs">
+                                              {entry.hours}h
+                                            </Badge>
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => openEditEntryDialog(userLabel, dateKey, entry)}
+                                            >
+                                              Edit
+                                            </Button>
+                                            <Button
+                                              variant="destructive"
+                                              size="sm"
+                                              onClick={() => openDeleteEntryDialog(userLabel, dateKey, entry)}
+                                            >
+                                              Delete
+                                            </Button>
                                           </div>
                                         </div>
-                                        <div className="flex items-center gap-2 shrink-0">
-                                          <Badge variant="secondary" className="text-xs">
-                                            {entry.hours}h
-                                          </Badge>
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => openEditEntryDialog(userLabel, dateKey, entry)}
-                                          >
-                                            Edit
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}
-                            {dateRange.every((d) => !ua.days[d.toISOString().split("T")[0]]) && (
-                              <div className="text-sm text-muted-foreground text-center py-4">
-                                No logged time in this period
-                              </div>
-                            )}
                           </div>
                         </div>
                       </Card>

@@ -467,6 +467,54 @@ export default function LeadModal({
   // an Opportunity ID.
   const leadIdForApi = resolvedLeadId || lead?.id || null;
 
+  // Best-effort resolver: some flows open this modal with an Opportunity ID.
+  // We need a stable Lead ID before we can PATCH /leads/:id.
+  const resolveLeadIdInFlightRef = useRef<Promise<string | null> | null>(null);
+
+  async function ensureResolvedLeadId(): Promise<string | null> {
+    if (resolvedLeadId) return String(resolvedLeadId);
+    const candidate = leadPreview?.id || lead?.id;
+    if (!candidate) return null;
+
+    if (resolveLeadIdInFlightRef.current) return resolveLeadIdInFlightRef.current;
+
+    resolveLeadIdInFlightRef.current = (async () => {
+      // 1) Treat candidate as a lead id first (fast path for NEW_ENQUIRY etc)
+      try {
+        const leadRes = await apiFetch<any>(`/leads/${encodeURIComponent(candidate)}`, { headers: authHeaders });
+        const row = (leadRes && typeof leadRes === "object" ? (leadRes.lead ?? leadRes) : null) as any;
+        const leadId = String(row?.id || candidate);
+        setResolvedLeadId(leadId);
+        return leadId;
+      } catch {
+        // ignore
+      }
+
+      // 2) Treat candidate as an opportunity id and map to lead id
+      try {
+        const oppRes = await apiFetch<any>(`/opportunities/${encodeURIComponent(candidate)}`, { headers: authHeaders });
+        const opp = (oppRes?.opportunity || oppRes) as any;
+        const leadId = opp?.leadId ? String(opp.leadId) : null;
+        if (leadId) {
+          setResolvedLeadId(leadId);
+          // If we opened from an opportunity, keep it around for WON/order tooling.
+          if (!opportunityId) {
+            setOpportunityId(String(opp?.id || candidate));
+          }
+          return leadId;
+        }
+      } catch {
+        // ignore
+      }
+
+      return null;
+    })().finally(() => {
+      resolveLeadIdInFlightRef.current = null;
+    });
+
+    return resolveLeadIdInFlightRef.current;
+  }
+
   // Unified questionnaire fields by scope
   const [clientFields, setClientFields] = useState<NormalizedQuestionnaireField[]>([]);
   const [quoteDetailsFields, setQuoteDetailsFields] = useState<NormalizedQuestionnaireField[]>([]);
@@ -488,7 +536,7 @@ export default function LeadModal({
     isError: activityError,
     refresh: refreshActivity,
     addActivityOptimistic,
-  } = useLeadActivity(leadIdForApi);
+  } = useLeadActivity(resolvedLeadId || null);
   
   // Email composer state
   const [showEmailComposer, setShowEmailComposer] = useState(false);
@@ -618,14 +666,16 @@ export default function LeadModal({
   useEffect(() => {
     const load = async () => {
       try {
-        const data = await apiFetch(`${API_BASE}/estimates/${encodeURIComponent(lead?.id || '')}`, {
+        const id = resolvedLeadId;
+        if (!id) return;
+        const data = await apiFetch(`${API_BASE}/estimates/${encodeURIComponent(id)}`, {
           headers: authHeaders,
         });
         setMlEstimate(data);
       } catch {}
     };
-    if (lead?.id) load();
-  }, [lead?.id, authHeaders]);
+    if (resolvedLeadId) load();
+  }, [resolvedLeadId, authHeaders]);
 
   const amendItemTotal = (index: number, newTotal: number) => {
     setMlEstimate((prev: any) => {
@@ -650,7 +700,9 @@ export default function LeadModal({
 
   const saveAmendedEstimate = async () => {
     try {
-      await apiFetch(`${API_BASE}/estimates/${encodeURIComponent(lead?.id || '')}/update`, {
+      const id = (await ensureResolvedLeadId()) || resolvedLeadId;
+      if (!id) throw new Error("Missing lead id");
+      await apiFetch(`${API_BASE}/estimates/${encodeURIComponent(id)}/update`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({ estimate: mlEstimate, tenant: settings?.slug }),
@@ -662,7 +714,9 @@ export default function LeadModal({
 
   const confirmMlEstimate = async () => {
     try {
-      await apiFetch(`${API_BASE}/estimates/${encodeURIComponent(lead?.id || '')}/confirm`, {
+      const id = (await ensureResolvedLeadId()) || resolvedLeadId;
+      if (!id) throw new Error("Missing lead id");
+      await apiFetch(`${API_BASE}/estimates/${encodeURIComponent(id)}/confirm`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({ estimate: mlEstimate, tenant: settings?.slug }),
@@ -677,7 +731,9 @@ export default function LeadModal({
 
   const reloadMlEstimate = async () => {
     try {
-      const data = await apiFetch(`${API_BASE}/estimates/${encodeURIComponent(lead?.id || '')}`, {
+      const id = (await ensureResolvedLeadId()) || resolvedLeadId;
+      if (!id) return;
+      const data = await apiFetch(`${API_BASE}/estimates/${encodeURIComponent(id)}`, {
         headers: authHeaders,
       });
       setMlEstimate(data);
@@ -827,24 +883,38 @@ export default function LeadModal({
     (async () => {
       setLoading(true);
       try {
-        // First detect if leadPreview.id is an opportunityId by probing
+        // Resolve identity: prefer treating leadPreview.id as a Lead ID first.
         let actualLeadId = leadPreview.id;
+        let inferredOpportunityId: string | null = null;
+        let fetchedLead: any = null;
+
         try {
-          const probeOpp = await apiFetch<any>(`/opportunities/${encodeURIComponent(leadPreview.id)}`, { headers: authHeaders });
-          if (probeOpp?.opportunity?.leadId) {
-            console.log('[LeadModal] Detected opportunityId in leadPreview, using leadId:', probeOpp.opportunity.leadId);
-            actualLeadId = probeOpp.opportunity.leadId;
+          const leadRes = await apiFetch<{ lead?: any } | any>(`/leads/${encodeURIComponent(leadPreview.id)}`, { headers: authHeaders });
+          fetchedLead = leadRes;
+          const row = (leadRes && typeof leadRes === "object" ? ("lead" in leadRes ? (leadRes as any).lead : leadRes) : null) as any;
+          actualLeadId = String(row?.id || leadPreview.id);
+        } catch (leadErr) {
+          try {
+            const oppRes = await apiFetch<any>(`/opportunities/${encodeURIComponent(leadPreview.id)}`, { headers: authHeaders });
+            const opp = (oppRes?.opportunity || oppRes) as any;
+            if (opp?.leadId) {
+              console.log('[LeadModal] Detected opportunityId in leadPreview, using leadId:', opp.leadId);
+              actualLeadId = String(opp.leadId);
+              inferredOpportunityId = String(opp?.id || leadPreview.id);
+            }
+          } catch (probeErr) {
+            console.debug('[LeadModal] treating leadPreview.id as a leadId', probeErr);
           }
-        } catch (probeErr) {
-          // Not an opportunityId, use leadPreview.id as-is
-          console.debug('[LeadModal] treating leadPreview.id as a leadId', probeErr);
         }
 
         // Pin the resolved Lead ID for all lead-specific routes.
         setResolvedLeadId(String(actualLeadId));
+        if (inferredOpportunityId && !opportunityId) {
+          setOpportunityId(inferredOpportunityId);
+        }
 
         const [one, tlist, s] = await Promise.all([
-          apiFetch<{ lead?: any } | any>(`/leads/${actualLeadId}`, { headers: authHeaders }),
+          fetchedLead ? Promise.resolve(fetchedLead) : apiFetch<{ lead?: any } | any>(`/leads/${encodeURIComponent(actualLeadId)}`, { headers: authHeaders }),
           apiFetch<{ items: Task[]; total: number }>(
             `/tasks?relatedType=LEAD&relatedId=${encodeURIComponent(actualLeadId)}&mine=false`,
             { headers: authHeaders }
@@ -1474,9 +1544,10 @@ export default function LeadModal({
   }
 
   async function savePatch(patch: any) {
-    if (!leadIdForApi) return;
+    const leadId = leadIdForApi || (await ensureResolvedLeadId());
+    if (!leadId) return;
     try {
-      const response = await apiFetch<{ lead?: any }>(`/leads/${leadIdForApi}`, {
+      const response = await apiFetch<{ lead?: any }>(`/leads/${encodeURIComponent(leadId)}`, {
         method: "PATCH",
         headers: { ...authHeaders, "Content-Type": "application/json" },
         json: patch,
@@ -3733,14 +3804,14 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         </div>
                       )}
 
-                      {leadIdForApi && tenantId && (
+                      {resolvedLeadId && tenantId && (
                         <div className="pt-2">
                           <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
                             Custom Fields
                           </div>
                           <CustomFieldsPanel
                             entityType="lead"
-                            entityId={leadIdForApi}
+                            entityId={resolvedLeadId}
                             onSave={async () => {
                               if (onUpdated) await onUpdated();
                             }}
