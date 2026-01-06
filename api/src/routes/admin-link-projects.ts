@@ -59,7 +59,7 @@ router.get('/link-lloyd-worrall', async (req, res) => {
             clientAccountId: client.id,
             name: `Fire Door Project - ${projectLabel}`,
             email: client.email || 'noemail@example.com',
-            status: 'Won'
+            status: 'WON'
           }
         });
 
