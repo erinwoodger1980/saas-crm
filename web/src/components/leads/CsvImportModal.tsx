@@ -75,6 +75,8 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
     return entry ? entry[0] : null;
   }, [fieldMapping, preview]);
 
+  const hasTaskStatusMapped = Object.values(fieldMapping).includes('task.status');
+
   const statusSamples = useCallback((): string[] => {
     const header = statusColumnHeader();
     if (!header || !preview) return [];
@@ -415,7 +417,7 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
                           <optgroup label="Lead Fields">
                             {leadFields.map(field => (
                               <option key={field.key} value={field.key}>
-                                {field.label} {field.required ? '(Required)' : ''}
+                                {field.key === 'status' ? 'Lead Status' : field.label} {field.required ? '(Required)' : ''}
                               </option>
                             ))}
                           </optgroup>
@@ -459,17 +461,30 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
                 </div>
 
                 {/* Status Value Mapping */}
-                {statusColumnHeader() && (
-                  <div className="border rounded-lg p-4 bg-slate-50 space-y-3">
-                    <div>
-                      <h4 className="font-medium text-gray-900">Map Status Values</h4>
+                <div className="border rounded-lg p-4 bg-slate-50 space-y-3">
+                  <div>
+                    <h4 className="font-medium text-gray-900">Map Status Values</h4>
+                    {!statusColumnHeader() ? (
                       <p className="text-sm text-gray-600 mt-1">
-                        CSV column <span className="font-mono bg-white px-2 py-0.5 rounded border">{statusColumnHeader()}</span> is mapped to <strong>Status</strong>.
+                        To enable status value mapping, map a CSV column to <strong>Lead Status</strong> above.
+                      </p>
+                    ) : (
+                      <p className="text-sm text-gray-600 mt-1">
+                        CSV column <span className="font-mono bg-white px-2 py-0.5 rounded border">{statusColumnHeader()}</span> is mapped to <strong>Lead Status</strong>.
                         Choose how each CSV value maps to a system status. Unmapped values use the Default Status above.
                       </p>
-                    </div>
+                    )}
 
-                    {statusSamples().length === 0 ? (
+                    {!statusColumnHeader() && hasTaskStatusMapped && (
+                      <p className="text-sm text-amber-700 mt-2">
+                        Note: You’ve mapped a column to <strong>Task: Status</strong>. That controls imported tasks (OPEN/DONE/etc), not the lead pipeline.
+                        Map a column to <strong>Lead Status</strong> to map values to JoineryAI statuses.
+                      </p>
+                    )}
+                  </div>
+
+                  {statusColumnHeader() && (
+                    statusSamples().length === 0 ? (
                       <p className="text-sm text-gray-600">No status values detected in preview.</p>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -506,9 +521,9 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
                           );
                         })}
                       </div>
-                    )}
-                  </div>
-                )}
+                    )
+                  )}
+                </div>
               </div>
 
               {/* Preview */}
