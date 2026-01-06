@@ -352,6 +352,8 @@ router.post('/estimate-components', upload.single('image'), async (req, res) => 
  * Returns ProductPlanV1; falls back deterministically with rationale containing the reason.
  */
 router.post('/generate-product-plan', async (req, res) => {
+  // IMPORTANT: This endpoint should never hard-fail in production UI flows.
+  // If OpenAI or parsing fails, return a deterministic fallback plan with a reason.
   try {
     const auth = (req as any).auth;
     if (!auth) return res.status(401).json({ error: 'Unauthorized' });
@@ -389,8 +391,31 @@ router.post('/generate-product-plan', async (req, res) => {
     }
     return res.json(createFallbackDoorPlan(dims.widthMm, dims.heightMm, dims.depthMm, reason));
   } catch (e: any) {
-    console.error('[AI2SCENE API] /ai/generate-product-plan failed:', e?.message || e);
-    return res.status(500).json({ error: 'Failed to generate product plan', message: e?.message || String(e) });
+    const msg = e?.message || String(e);
+    console.error('[AI2SCENE API] /ai/generate-product-plan failed:', msg);
+
+    // Best-effort recovery: return fallback plan so UI can proceed.
+    let categoryHint = '';
+    let existingDims: any = undefined;
+    try {
+      categoryHint = String((req as any)?.body?.existingProductType?.category || '').toLowerCase();
+      existingDims = (req as any)?.body?.existingDims;
+    } catch {}
+
+    const defaultCategory = categoryHint.includes('window') ? 'windows' : 'doors';
+    const dims = pickDims(
+      existingDims,
+      defaultCategory === 'windows'
+        ? { widthMm: 1200, heightMm: 1200, depthMm: 80 }
+        : { widthMm: 914, heightMm: 2032, depthMm: 45 }
+    );
+
+    res.setHeader('x-ai-fallback', '1');
+    res.setHeader('x-ai-error', String(msg).slice(0, 200));
+    if (defaultCategory === 'windows') {
+      return res.json(createFallbackWindowPlan(dims.widthMm, dims.heightMm, dims.depthMm, msg));
+    }
+    return res.json(createFallbackDoorPlan(dims.widthMm, dims.heightMm, dims.depthMm, msg));
   }
 });
 
