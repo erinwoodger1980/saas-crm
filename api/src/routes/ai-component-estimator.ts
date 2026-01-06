@@ -11,6 +11,182 @@ import { z } from 'zod';
 import { generateEstimatedProfile } from '../lib/svg-profile-generator';
 import { prisma } from '../prisma';
 
+// ProductPlan (AI2SCENE)
+const DetectedSchema = z.object({
+  category: z.enum(['door', 'window', 'frame']),
+  type: z.string(),
+  option: z.string().optional(),
+  confidence: z.number().min(0).max(1),
+});
+
+const VariableSchema = z.object({
+  defaultValue: z.number(),
+  unit: z.string(),
+  description: z.string().optional(),
+});
+
+const ProductPlanV1Schema = z.object({
+  kind: z.literal('ProductPlanV1'),
+  detected: DetectedSchema,
+  dimensions: z.object({
+    widthMm: z.number().optional(),
+    heightMm: z.number().optional(),
+    depthMm: z.number().optional(),
+  }),
+  materialRoles: z.record(z.string(), z.string()),
+  profileSlots: z.record(
+    z.string(),
+    z.object({
+      profileHint: z.string(),
+      source: z.enum(['estimated', 'uploaded']),
+      uploadedSvg: z.string().optional(),
+    })
+  ),
+  components: z.array(z.any()),
+  variables: z.record(z.string(), VariableSchema),
+  rationale: z.string(),
+});
+
+type ProductPlanV1 = z.infer<typeof ProductPlanV1Schema>;
+
+function createFallbackDoorPlan(
+  widthMm = 914,
+  heightMm = 2032,
+  depthMm = 45,
+  reason?: string
+): ProductPlanV1 {
+  return {
+    kind: 'ProductPlanV1',
+    detected: { category: 'door', type: 'timber_door', option: 'panel', confidence: 0.2 },
+    dimensions: { widthMm, heightMm, depthMm },
+    materialRoles: {
+      frame: 'TIMBER_PRIMARY',
+      panel: 'PANEL_CORE',
+      glass: 'GLASS_CLEAR',
+      seal: 'SEAL_RUBBER',
+      hardware: 'METAL_CHROME',
+    },
+    profileSlots: {
+      LEAF_STILE: { profileHint: 'hardwood_2x1', source: 'estimated' },
+      LEAF_RAIL: { profileHint: 'hardwood_2x1', source: 'estimated' },
+    },
+    components: [],
+    variables: {
+      pw: { defaultValue: widthMm, unit: 'mm', description: 'Product width (outer)' },
+      ph: { defaultValue: heightMm, unit: 'mm', description: 'Product height (outer)' },
+      sd: { defaultValue: depthMm, unit: 'mm', description: 'Standard depth' },
+    },
+    rationale: `Fallback: simple 2-panel timber door with standard proportions${reason ? ` (reason: ${reason})` : ''}`,
+  };
+}
+
+function createFallbackWindowPlan(
+  widthMm = 1200,
+  heightMm = 1200,
+  depthMm = 80,
+  reason?: string
+): ProductPlanV1 {
+  return {
+    kind: 'ProductPlanV1',
+    detected: { category: 'window', type: 'timber_casement', confidence: 0.2 },
+    dimensions: { widthMm, heightMm, depthMm },
+    materialRoles: {
+      frame: 'TIMBER_PRIMARY',
+      glass: 'GLASS_CLEAR',
+      seal: 'SEAL_RUBBER',
+      hardware: 'METAL_CHROME',
+    },
+    profileSlots: {
+      FRAME_JAMB: { profileHint: 'hardwood_3x2', source: 'estimated' },
+      LEAF_STILE: { profileHint: 'hardwood_2x1_5', source: 'estimated' },
+      LEAF_RAIL: { profileHint: 'hardwood_2x1_5', source: 'estimated' },
+    },
+    components: [],
+    variables: {
+      pw: { defaultValue: widthMm, unit: 'mm', description: 'Product width (outer)' },
+      ph: { defaultValue: heightMm, unit: 'mm', description: 'Product height (outer)' },
+      sd: { defaultValue: depthMm, unit: 'mm', description: 'Standard depth' },
+      frameW: { defaultValue: 80, unit: 'mm', description: 'Frame width' },
+      stileW: { defaultValue: 35, unit: 'mm', description: 'Stile width (leaf frame)' },
+    },
+    rationale: `Fallback: simple single-casement window with frame and clear glass${reason ? ` (reason: ${reason})` : ''}`,
+  };
+}
+
+const GenerateProductPlanRequestSchema = z.object({
+  description: z.string().default(''),
+  image: z.string().optional(),
+  existingProductType: z
+    .object({ category: z.string(), type: z.string().optional(), option: z.string().optional() })
+    .optional(),
+  existingDims: z
+    .object({ widthMm: z.number().optional(), heightMm: z.number().optional(), depthMm: z.number().optional() })
+    .optional(),
+});
+
+const SYSTEM_PROMPT = `You are an expert joinery product planner. You output strictly valid JSON matching a ProductPlanV1 schema.
+
+Rules:
+- Use detected.category as one of: door | window | frame
+- Always include a concise rationale.
+- Use variables pw/ph/sd for product width/height/depth and reference them in expressions where helpful.
+- Return ONLY JSON (no markdown).
+`;
+
+function pickDims(existingDims?: any, defaults?: { widthMm: number; heightMm: number; depthMm: number }) {
+  const w = Number(existingDims?.widthMm);
+  const h = Number(existingDims?.heightMm);
+  const d = Number(existingDims?.depthMm);
+  return {
+    widthMm: Number.isFinite(w) && w > 0 ? w : defaults?.widthMm,
+    heightMm: Number.isFinite(h) && h > 0 ? h : defaults?.heightMm,
+    depthMm: Number.isFinite(d) && d > 0 ? d : defaults?.depthMm,
+  };
+}
+
+async function callOpenAiForProductPlan(payload: {
+  description: string;
+  existingProductType?: any;
+  existingDims?: any;
+}): Promise<{ plan: ProductPlanV1 | null; error?: string }> {
+  try {
+    const messages: any[] = [
+      { role: 'system', content: SYSTEM_PROMPT },
+      {
+        role: 'user',
+        content: JSON.stringify(
+          {
+            description: payload.description,
+            existingProductType: payload.existingProductType,
+            existingDims: payload.existingDims,
+          },
+          null,
+          2
+        ),
+      },
+    ];
+
+    const completion = await openai.chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      messages,
+      response_format: { type: 'json_object' },
+      temperature: 0.4,
+      max_tokens: 2000,
+    });
+
+    const responseText = completion.choices[0]?.message?.content;
+    if (!responseText) return { plan: null, error: 'no_openai_response' };
+
+    const parsed = JSON.parse(responseText);
+    const validated = ProductPlanV1Schema.parse(parsed);
+    return { plan: validated };
+  } catch (e: any) {
+    const msg = e?.message || String(e);
+    console.error('[AI2SCENE API] callOpenAiForProductPlan failed:', msg);
+    return { plan: null, error: msg };
+  }
+}
+
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -167,6 +343,54 @@ router.post('/estimate-components', upload.single('image'), async (req, res) => 
       error: 'Failed to estimate components',
       message: error.message,
     });
+  }
+});
+
+/**
+ * POST /ai/generate-product-plan
+ * Body: { description, image?, existingProductType?, existingDims? }
+ * Returns ProductPlanV1; falls back deterministically with rationale containing the reason.
+ */
+router.post('/generate-product-plan', async (req, res) => {
+  try {
+    const auth = (req as any).auth;
+    if (!auth) return res.status(401).json({ error: 'Unauthorized' });
+
+    const parsed = GenerateProductPlanRequestSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid request', details: parsed.error });
+    }
+
+    const { description, existingProductType, existingDims } = parsed.data;
+    const categoryHint = (existingProductType?.category || '').toLowerCase();
+    const defaultCategory = categoryHint.includes('window') ? 'windows' : 'doors';
+    const dims = pickDims(existingDims, defaultCategory === 'windows'
+      ? { widthMm: 1200, heightMm: 1200, depthMm: 80 }
+      : { widthMm: 914, heightMm: 2032, depthMm: 45 }
+    );
+
+    const ai = await callOpenAiForProductPlan({
+      description: description || '',
+      existingProductType,
+      existingDims: dims,
+    });
+
+    if (ai.plan) {
+      res.setHeader('x-ai-fallback', '0');
+      return res.json(ai.plan);
+    }
+
+    const reason = ai.error || 'unknown';
+    res.setHeader('x-ai-fallback', '1');
+    res.setHeader('x-ai-error', String(reason).slice(0, 200));
+
+    if (defaultCategory === 'windows') {
+      return res.json(createFallbackWindowPlan(dims.widthMm, dims.heightMm, dims.depthMm, reason));
+    }
+    return res.json(createFallbackDoorPlan(dims.widthMm, dims.heightMm, dims.depthMm, reason));
+  } catch (e: any) {
+    console.error('[AI2SCENE API] /ai/generate-product-plan failed:', e?.message || e);
+    return res.status(500).json({ error: 'Failed to generate product plan', message: e?.message || String(e) });
   }
 });
 

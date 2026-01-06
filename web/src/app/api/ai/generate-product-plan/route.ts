@@ -492,10 +492,17 @@ async function callOpenAI(description: string, existingProductType?: any, existi
 
 // Fallback generators if OpenAI fails
 function createFallback(category: string, existingDims?: any): ProductPlanV1 {
+  const w = Number(existingDims?.widthMm);
+  const h = Number(existingDims?.heightMm);
+  const d = Number(existingDims?.depthMm);
+  const widthMm = Number.isFinite(w) && w > 0 ? w : undefined;
+  const heightMm = Number.isFinite(h) && h > 0 ? h : undefined;
+  const depthMm = Number.isFinite(d) && d > 0 ? d : undefined;
+
   if (category === 'windows') {
-    return createFallbackWindowPlan(existingDims);
+    return createFallbackWindowPlan(widthMm ?? 1200, heightMm ?? 1200, depthMm ?? 80);
   }
-  return createFallbackDoorPlan(existingDims);
+  return createFallbackDoorPlan(widthMm ?? 914, heightMm ?? 2032, depthMm ?? 45);
 }
 
 export async function POST(request: NextRequest) {

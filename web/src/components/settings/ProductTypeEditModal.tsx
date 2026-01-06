@@ -130,41 +130,32 @@ export function ProductTypeEditModal({
 
     setIsEstimating(true);
     try {
-      // NEW: Call generate-product-plan instead of estimate-components
+      // Use backend /ai endpoint so it runs where OPENAI_API_KEY is configured in production.
       const category = initialData?.categoryId || 'doors';
       const defaultDepth = category === 'windows' ? 80 : 45;
-      
-      const response = await fetch('/api/ai/generate-product-plan', {
+
+      const plan = await apiFetch<ProductPlanV1>('/ai/generate-product-plan', {
         method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+        json: {
           description: aiDescription || 'Product from image',
           image: aiImagePreview || undefined,
           existingProductType: {
             category: category,
-            type: initialData?.type || 'timber'
+            type: initialData?.type || 'timber',
           },
           existingDims: {
             widthMm: defaultDimensions.widthMm,
             heightMm: defaultDimensions.heightMm,
             depthMm: defaultDepth,
           },
-        }),
+        },
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('AI API error:', errorText);
-        throw new Error(`API error: ${response.statusText}`);
-      }
+      const isFallback = plan?.detected?.confidence != null && plan.detected.confidence <= 0.21 && String(plan?.rationale || '').startsWith('Fallback:');
+      const fallbackReason = isFallback
+        ? (String(plan?.rationale || '').match(/\(reason: ([^)]+)\)/)?.[1] ?? null)
+        : null;
 
-      const isFallback = response.headers.get('x-ai-fallback') === '1';
-      const fallbackReason = response.headers.get('x-ai-error');
-
-      const plan = (await response.json()) as ProductPlanV1;
       console.log('[AI2SCENE] Generated ProductPlan:', plan);
       
       setProductPlan(plan);
