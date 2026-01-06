@@ -246,11 +246,8 @@ router.get("/fire-door-jobs", requireCustomerAuth, async (req: any, res) => {
         lead: {
           select: {
             id: true,
-            mjsNumber: true,
-            jobLocation: true,
-            signOffStatus: true,
-            orderingStatus: true,
-            overallProgress: true,
+            number: true,
+            custom: true,
           },
         },
       },
@@ -277,22 +274,25 @@ router.get("/fire-door-jobs", requireCustomerAuth, async (req: any, res) => {
         orderingStatus: "N/A",
         overallProgress: 0,
       })),
-      ...opportunities.map((opp) => ({
-        id: opp.id,
-        mjsNumber: opp.lead?.mjsNumber || opp.number,
-        jobName: opp.title,
-        projectReference: opp.number,
-        status: opp.stage,
-        totalPrice: opp.valueGBP,
-        submittedAt: opp.createdAt,
-        dateRequired: opp.installationStartDate || opp.deliveryDate,
-        doorItemCount: null,
-        type: "opportunity" as const,
-        jobLocation: opp.lead?.jobLocation || "N/A",
-        signOffStatus: opp.lead?.signOffStatus || "N/A",
-        orderingStatus: opp.lead?.orderingStatus || "N/A",
-        overallProgress: opp.lead?.overallProgress || 0,
-      })),
+      ...opportunities.map((opp) => {
+        const custom = opp.lead?.custom as any || {};
+        return {
+          id: opp.id,
+          mjsNumber: opp.lead?.number || opp.number,
+          jobName: opp.title,
+          projectReference: opp.number,
+          status: opp.stage,
+          totalPrice: opp.valueGBP,
+          submittedAt: opp.createdAt,
+          dateRequired: opp.installationStartDate || opp.deliveryDate,
+          doorItemCount: null,
+          type: "opportunity" as const,
+          jobLocation: custom.jobLocation || custom.Job_Location || "N/A",
+          signOffStatus: custom.signOffStatus || custom.Sign_Off_Status || "N/A",
+          orderingStatus: custom.orderingStatus || custom.Ordering_Status || "N/A",
+          overallProgress: custom.overallProgress || custom.Overall_Progress || 0,
+        };
+      }),
     ];
 
     // Sort by submission date
