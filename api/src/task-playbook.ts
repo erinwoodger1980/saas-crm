@@ -49,15 +49,6 @@ export type ManualTaskKey = (typeof MANUAL_TASK_KEYS)[number];
 const DEFAULT_STATUS_RECIPES: Record<UiStatus, TaskRecipe[]> = {
   NEW_ENQUIRY: [
     {
-      id: "status:qualify-enquiry",
-      title: "Qualify Enquiry",
-      dueInDays: 0,
-      priority: "HIGH",
-      relatedType: "LEAD",
-      active: true,
-      autoAssign: "ACTOR",
-    },
-    {
       id: "status:new-review",
       title: "Review enquiry",
       dueInDays: 1,
@@ -200,6 +191,15 @@ export function normalizeTaskPlaybook(raw?: any): TaskPlaybook {
     }
   }
 
+  // Hard-disable deprecated recipes (even if tenant settings still contain them)
+  for (const key of Object.keys(status) as UiStatus[]) {
+    status[key] = (status[key] || []).filter((r) => {
+      const id = typeof r?.id === "string" ? r.id.trim() : "";
+      const title = typeof r?.title === "string" ? r.title.trim().toLowerCase() : "";
+      return !(id === "status:qualify-enquiry" || title === "qualify enquiry");
+    });
+  }
+
   const manual = cloneDefaultManual();
   if (raw && typeof raw.manual === "object") {
     for (const key of Object.keys(raw.manual)) {
@@ -241,6 +241,12 @@ export async function ensureTaskFromRecipe(opts: {
     return null;
   }
 
+  const isReviewEnquiryRecipe = (() => {
+    const id = typeof recipe.id === "string" ? recipe.id.trim() : "";
+    const title = typeof recipe.title === "string" ? recipe.title.trim().toLowerCase() : "";
+    return id === "status:new-review" || title === "review enquiry";
+  })();
+
   const relatedType = opts.relatedType ?? recipe.relatedType ?? "LEAD";
   const key = opts.uniqueKey ?? `${recipe.id}:${relatedType}:${relatedId}`;
 
@@ -261,6 +267,36 @@ export async function ensureTaskFromRecipe(opts: {
     const existing = await prisma.task.findFirst({ where });
     if (existing) {
       console.log(`[task-playbook] ensureTaskFromRecipe: task already exists, id=${existing.id}`);
+
+      // Ensure "Review enquiry" tasks are visible in the assignee task list.
+      if (isReviewEnquiryRecipe && relatedType === "LEAD") {
+        const desiredAssigneeId = await (async () => {
+          try {
+            const lead = await prisma.lead.findUnique({
+              where: { id: relatedId },
+              select: { client: { select: { userId: true } } },
+            });
+            return lead?.client?.userId ?? opts.actorId ?? null;
+          } catch {
+            return opts.actorId ?? null;
+          }
+        })();
+
+        if (desiredAssigneeId) {
+          const hasAssignee = await prisma.taskAssignee.findFirst({
+            where: { taskId: existing.id },
+            select: { userId: true },
+          });
+          if (!hasAssignee) {
+            await prisma.taskAssignee.upsert({
+              where: { taskId_userId: { taskId: existing.id, userId: desiredAssigneeId } },
+              update: {},
+              create: { taskId: existing.id, userId: desiredAssigneeId, role: "OWNER" as any },
+            });
+          }
+        }
+      }
+
       return existing;
     }
 
@@ -274,16 +310,18 @@ export async function ensureTaskFromRecipe(opts: {
     const meta: any = key ? { key } : {};
     
     // If this is a lead task, fetch email info to support action buttons
+    let leadClientUserId: string | null = null;
     if (relatedType === "LEAD") {
       try {
         const lead = await prisma.lead.findUnique({
           where: { id: relatedId },
-          select: { email: true, contactName: true },
+          select: { email: true, contactName: true, client: { select: { userId: true } } },
         });
         if (lead?.email) {
           meta.recipientEmail = lead.email;
           meta.recipientName = lead.contactName;
         }
+        leadClientUserId = lead?.client?.userId ?? null;
       } catch (err) {
         console.warn(`[task-playbook] Could not fetch lead email for task metadata:`, err);
       }
@@ -306,6 +344,24 @@ export async function ensureTaskFromRecipe(opts: {
     });
 
     console.log(`[task-playbook] ensureTaskFromRecipe: created task id=${task.id}, title="${task.title}"`);
+
+    // Always ensure "Review enquiry" has an assignee so it appears in the user's task list.
+    if (isReviewEnquiryRecipe && relatedType === "LEAD") {
+      const desiredAssigneeId = leadClientUserId ?? opts.actorId ?? null;
+      if (desiredAssigneeId) {
+        const hasAssignee = await prisma.taskAssignee.findFirst({
+          where: { taskId: task.id },
+          select: { userId: true },
+        });
+        if (!hasAssignee) {
+          await prisma.taskAssignee.upsert({
+            where: { taskId_userId: { taskId: task.id, userId: desiredAssigneeId } },
+            update: {},
+            create: { taskId: task.id, userId: desiredAssigneeId, role: "OWNER" as any },
+          });
+        }
+      }
+    }
 
     if (recipe.autoAssign === "ACTOR" && opts.actorId) {
       console.log(`[task-playbook] ensureTaskFromRecipe: assigning to actor ${opts.actorId}`);

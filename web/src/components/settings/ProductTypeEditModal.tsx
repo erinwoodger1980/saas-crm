@@ -36,6 +36,9 @@ interface ProductTypeEditModalProps {
     optionId: string;
     label: string;
     type: string;
+    description?: string;
+    sceneConfig?: any;
+    productParams?: ProductParams;
   };
   defaultDimensions?: { widthMm: number; heightMm: number };
 }
@@ -55,7 +58,7 @@ export function ProductTypeEditModal({
   
   // Overview tab state
   const [optionLabel, setOptionLabel] = useState(initialData?.label || '');
-  const [optionDescription, setOptionDescription] = useState('');
+  const [optionDescription, setOptionDescription] = useState(initialData?.description || '');
   
   // AI Generation tab state
   const [aiDescription, setAiDescription] = useState('');
@@ -70,18 +73,20 @@ export function ProductTypeEditModal({
   
   // 3D Configurator state
   const [sceneConfig, setSceneConfig] = useState<any>(
-    createDefaultSceneConfig(
-      initialData?.categoryId || 'doors',
-      defaultDimensions.widthMm,
-      defaultDimensions.heightMm
-    )
+    initialData?.sceneConfig ??
+      createDefaultSceneConfig(
+        initialData?.categoryId || 'doors',
+        defaultDimensions.widthMm,
+        defaultDimensions.heightMm
+      )
   );
   const [show3DConfigurator, setShow3DConfigurator] = useState(false);
-  const [compiledParams, setCompiledParams] = useState<ProductParams | null>(null);
+  const [compiledParams, setCompiledParams] = useState<ProductParams | null>(initialData?.productParams ?? null);
   
   // Component picker state
   const [componentPickerOpen, setComponentPickerOpen] = useState(false);
-  const [selectedComponents, setSelectedComponents] = useState<any[]>([]);
+  const [assignedComponents, setAssignedComponents] = useState<any[]>([]);
+  const [loadingAssignedComponents, setLoadingAssignedComponents] = useState(false);
 
   // Re-initialize modal state when opening a different option.
   useEffect(() => {
@@ -92,24 +97,45 @@ export function ProductTypeEditModal({
 
     setActiveTab('overview');
     setOptionLabel(initialData?.label || '');
-    setOptionDescription('');
+    setOptionDescription(initialData?.description || '');
     setAiDescription('');
     setAiImage(null);
     setAiImagePreview(null);
     setProductPlan(null);
     setPlanVariables({});
     setAiNotice(null);
-    setSelectedComponents([]);
     setShow3DConfigurator(false);
-    setCompiledParams(null);
+    setCompiledParams(initialData?.productParams ?? null);
     setSceneConfig(
-      createDefaultSceneConfig(
-        initialData?.categoryId || 'doors',
-        defaultDimensions.widthMm,
-        defaultDimensions.heightMm
-      )
+      initialData?.sceneConfig ??
+        createDefaultSceneConfig(
+          initialData?.categoryId || 'doors',
+          defaultDimensions.widthMm,
+          defaultDimensions.heightMm
+        )
     );
+    setAssignedComponents([]);
   }, [isOpen, initialData, defaultDimensions.widthMm, defaultDimensions.heightMm]);
+
+  const loadAssignedComponentsForOption = useCallback(async (optionId: string) => {
+    setLoadingAssignedComponents(true);
+    try {
+      const rows = await apiFetch<any[]>(`/components?productType=${encodeURIComponent(optionId)}`);
+      setAssignedComponents(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.error('[ProductTypeEditModal] Failed to load assigned components', err);
+      setAssignedComponents([]);
+    } finally {
+      setLoadingAssignedComponents(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const optionId = initialData?.optionId;
+    if (!optionId) return;
+    void loadAssignedComponentsForOption(optionId);
+  }, [isOpen, initialData?.optionId, loadAssignedComponentsForOption]);
 
   const handleAiImageUpload = (file: File) => {
     setAiImage(file);
@@ -242,27 +268,45 @@ export function ProductTypeEditModal({
   };
 
   const handleComponentSelected = async (component: any) => {
-    // Add component to selected list
-    setSelectedComponents((prev) => {
-      // Check if already added
-      if (prev.some((c) => c.id === component.id)) {
-        toast({
-          title: 'Already added',
-          description: `${component.code} is already in the list`,
-        });
-        return prev;
+    const optionId = initialData?.optionId;
+    if (!optionId) return;
+
+    try {
+      const current = Array.isArray(component.productTypes) ? component.productTypes : [];
+      if (current.includes(optionId)) {
+        toast({ title: 'Already assigned', description: `${component.code} is already linked to this product type.` });
+        return;
       }
-      return [...prev, component];
-    });
-    
-    toast({
-      title: 'Component added',
-      description: `${component.code} - ${component.name}`,
-    });
+      const next = [...current, optionId];
+      await apiFetch(`/components/${encodeURIComponent(component.id)}`, {
+        method: 'PUT',
+        json: { productTypes: next },
+      });
+      toast({ title: 'Assigned', description: `Linked ${component.code} to this product type` });
+      await loadAssignedComponentsForOption(optionId);
+    } catch (err: any) {
+      toast({ title: 'Assign failed', description: err?.message || 'Could not assign component', variant: 'destructive' });
+    }
   };
-  
-  const handleRemoveComponent = (componentId: string) => {
-    setSelectedComponents((prev) => prev.filter((c) => c.id !== componentId));
+
+  const handleRemoveComponent = async (componentId: string) => {
+    const optionId = initialData?.optionId;
+    if (!optionId) return;
+
+    try {
+      const comp = await apiFetch<any>(`/components/${encodeURIComponent(componentId)}`);
+      const current = Array.isArray(comp?.productTypes) ? comp.productTypes : [];
+      if (!current.includes(optionId)) return;
+      const next = current.filter((pt: string) => pt !== optionId);
+      await apiFetch(`/components/${encodeURIComponent(comp.id)}`, {
+        method: 'PUT',
+        json: { productTypes: next },
+      });
+      toast({ title: 'Removed', description: `Unlinked ${comp.code} from this product type` });
+      await loadAssignedComponentsForOption(optionId);
+    } catch (err: any) {
+      toast({ title: 'Remove failed', description: err?.message || 'Could not unlink component', variant: 'destructive' });
+    }
   };
 
   const handleSave = async () => {
@@ -633,7 +677,12 @@ export function ProductTypeEditModal({
               </div>
 
               {/* Component list */}
-              {selectedComponents.length === 0 ? (
+                  {loadingAssignedComponents ? (
+                    <div className="border rounded-lg p-8 text-center text-sm text-muted-foreground">
+                      <Loader2 className="h-5 w-5 mx-auto mb-2 animate-spin" />
+                      <p className="font-medium">Loading components…</p>
+                    </div>
+                  ) : assignedComponents.length === 0 ? (
                 <div className="border rounded-lg p-8 text-center text-sm text-muted-foreground">
                   <Package className="h-12 w-12 mx-auto mb-3 text-slate-300" />
                   <p className="font-medium mb-1">No components added yet</p>
@@ -649,7 +698,7 @@ export function ProductTypeEditModal({
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {selectedComponents.map((component) => (
+                  {assignedComponents.map((component) => (
                     <div
                       key={component.id}
                       className="flex items-center justify-between p-3 border rounded-lg bg-white hover:bg-slate-50"
@@ -707,7 +756,7 @@ export function ProductTypeEditModal({
     </Dialog>
     {/* 3D Configurator Modal */}
     {show3DConfigurator && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
         <div className="w-full max-w-6xl bg-white rounded-2xl shadow-xl overflow-hidden h-[90vh] flex flex-col min-h-0">
           <ProductConfigurator3D
             tenantId="settings"

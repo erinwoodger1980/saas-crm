@@ -76,6 +76,7 @@ function getDefaultDimensions(category: string, type: string, option: string): {
 type ProductOption = {
   id: string;
   label: string;
+  description?: string;
   imagePath?: string;
   imageDataUrl?: string;
   svg?: string;
@@ -218,6 +219,9 @@ export default function ProductTypesSection() {
     optionId: string;
     label: string;
     type: string;
+    description?: string;
+    sceneConfig?: any;
+    productParams?: ProductParams;
   } | null>(null);
   
   // Legacy states - keeping for backward compatibility during transition
@@ -1164,6 +1168,9 @@ export default function ProductTypesSection() {
                                         optionId: option.id,
                                         label: option.label,
                                         type: type.type,
+                                        description: option.description,
+                                        sceneConfig: option.sceneConfig,
+                                        productParams: option.productParams,
                                       });
                                       setEditModalOpen(true);
                                     }}
@@ -1637,6 +1644,7 @@ export default function ProductTypesSection() {
                                 ? {
                                     ...opt,
                                     label: configData.label,
+                                    description: configData.description,
                                     sceneConfig: configData.sceneConfig,
                                     productParams: configData.productParams || opt.productParams,
                                   }

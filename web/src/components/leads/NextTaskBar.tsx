@@ -50,6 +50,10 @@ Our team`
 
   if (!nextTask) return null;
 
+  const isReviewEnquiryTask = String(nextTask.title || "")
+    .trim()
+    .toLowerCase() === "review enquiry";
+
   const isQualifyLeadTask = nextTask.title?.includes("Qualify Lead") || nextTask.title?.includes("qualify");
 
   const handleAccept = async () => {
@@ -59,11 +63,11 @@ Our team`
       await apiFetch(`/tasks/${nextTask.id}/actions/accept-enquiry`, {
         method: "POST",
       });
-      toast("Lead accepted");
+      toast({ title: "Enquiry accepted" });
       onTaskComplete();
     } catch (error) {
       console.error("Failed to accept lead:", error);
-      toast("Failed to accept lead");
+      toast({ title: "Failed to accept" });
     } finally {
       setLoading(false);
     }
@@ -76,15 +80,59 @@ Our team`
       await apiFetch(`/tasks/${nextTask.id}/actions/reject-enquiry`, {
         method: "POST",
       });
-      toast("Lead rejected - ML model updated");
+      toast({ title: "Enquiry rejected" });
       onTaskComplete();
     } catch (error) {
       console.error("Failed to reject lead:", error);
-      toast("Failed to reject lead");
+      toast({ title: "Failed to reject" });
     } finally {
       setLoading(false);
     }
   };
+
+  const handleDecline = async () => {
+    if (!nextTask.id) return;
+    setLoading(true);
+    try {
+      await apiFetch(`/tasks/${nextTask.id}/actions/decline-enquiry`, {
+        method: "POST",
+      });
+      toast({ title: "Enquiry declined" });
+      onTaskComplete();
+    } catch (error) {
+      console.error("Failed to decline enquiry:", error);
+      toast({ title: "Failed to decline" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (isReviewEnquiryTask) {
+    return (
+      <div className="rounded-xl border border-sky-200 bg-sky-50/50 backdrop-blur p-4 shadow-sm">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="font-semibold text-sky-950 mb-1">Next Task: Review enquiry</h3>
+            <p className="text-sm text-sky-800">
+              {leadName || "New lead"} ({leadEmail})
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <Button size="sm" onClick={handleAccept} disabled={loading} className="bg-sky-600 hover:bg-sky-700 text-white">
+              Accept
+            </Button>
+            <Button size="sm" variant="outline" onClick={handleDecline} disabled={loading}>
+              Decline
+            </Button>
+            <Button size="sm" variant="outline" onClick={handleReject} disabled={loading}>
+              Reject
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const handleDisqualify = async () => {
     if (!nextTask.id || !leadId) return;
@@ -97,12 +145,12 @@ Our team`
           taskId: nextTask.id,
         },
       });
-      toast("Lead disqualified - email sent");
+      toast({ title: "Disqualified", description: "Email sent" });
       setShowDisqualifyForm(false);
       onTaskComplete();
     } catch (error) {
       console.error("Failed to disqualify lead:", error);
-      toast("Failed to disqualify lead");
+      toast({ title: "Failed to disqualify" });
     } finally {
       setLoading(false);
     }
@@ -204,11 +252,11 @@ Our team`
             setLoading(true);
             apiFetch(`/tasks/${nextTask.id}/complete`, { method: "POST" })
               .then(() => {
-                toast("Task completed");
+                toast({ title: "Task completed" });
                 onTaskComplete();
               })
               .catch(() => {
-                toast("Failed to complete task");
+                toast({ title: "Failed to complete task" });
               })
               .finally(() => setLoading(false));
           }}

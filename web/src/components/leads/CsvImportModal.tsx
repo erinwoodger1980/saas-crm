@@ -249,7 +249,7 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
     } finally {
       setLoading(false);
     }
-  }, [file, preview, fieldMapping, toast, onImportComplete]);
+  }, [file, preview, fieldMapping, defaultStatus, statusValueMap, createOpportunities, toast, onImportComplete]);
 
   if (!open) return null;
 

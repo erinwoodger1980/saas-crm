@@ -5,9 +5,11 @@ export type UiStatus =
   | "DISQUALIFIED"
   | "REJECTED"
   | "READY_TO_QUOTE"
+  | "ESTIMATE"
   | "QUOTE_SENT"
   | "WON"
-  | "LOST";
+  | "LOST"
+  | "COMPLETED";
 
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 export type RelatedType =
@@ -48,22 +50,15 @@ const STATUS_KEYS: UiStatus[] = [
   "DISQUALIFIED",
   "REJECTED",
   "READY_TO_QUOTE",
+  "ESTIMATE",
   "QUOTE_SENT",
   "WON",
   "LOST",
+  "COMPLETED",
 ];
 
 const DEFAULT_STATUS_RECIPES: Record<UiStatus, TaskRecipe[]> = {
   NEW_ENQUIRY: [
-    {
-      id: "status:qualify-enquiry",
-      title: "Qualify Enquiry",
-      dueInDays: 0,
-      priority: "HIGH",
-      relatedType: "LEAD",
-      active: true,
-      autoAssign: "ACTOR",
-    },
     {
       id: "status:new-review",
       title: "Review enquiry",
@@ -86,6 +81,16 @@ const DEFAULT_STATUS_RECIPES: Record<UiStatus, TaskRecipe[]> = {
       active: true,
     },
   ],
+  ESTIMATE: [
+    {
+      id: "status:review-estimate",
+      title: "Review estimate with customer",
+      dueInDays: 2,
+      priority: "MEDIUM",
+      relatedType: "LEAD",
+      active: true,
+    },
+  ],
   QUOTE_SENT: [
     {
       id: "status:followup-quote",
@@ -98,6 +103,7 @@ const DEFAULT_STATUS_RECIPES: Record<UiStatus, TaskRecipe[]> = {
   ],
   WON: [],
   LOST: [],
+  COMPLETED: [],
 };
 
 const DEFAULT_MANUAL_RECIPES: Record<ManualTaskKey, TaskRecipe> = {

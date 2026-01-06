@@ -48,7 +48,7 @@ export function TaskCenter({ filterRelatedType, filterRelatedId, embedded = fals
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [showOnlyMine, setShowOnlyMine] = useState(true);
+  const [showOnlyMine, setShowOnlyMine] = useState(!embedded);
   const [formDataMap, setFormDataMap] = useState<Record<string, Record<string, any>>>({});
   const [taskEditMap, setTaskEditMap] = useState<Record<string, { taskType: Task['taskType']; status: Task['status']; priority: Task['priority']; dueAt: string; description: string; linkId?: string; recordId?: string; }>>({});
 

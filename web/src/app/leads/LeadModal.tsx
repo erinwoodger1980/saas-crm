@@ -10,6 +10,7 @@ import {
   ManualTaskKey,
   TaskRecipe,
   TaskPlaybook,
+  UiStatus,
   normalizeTaskPlaybook,
 } from "@/lib/task-playbook";
 import {
@@ -44,15 +45,7 @@ export type Lead = {
   clientId?: string | null;
   quoteId?: string | null;
   quoteStatus?: string | null;
-  status:
-    | "NEW_ENQUIRY"
-    | "INFO_REQUESTED"
-    | "DISQUALIFIED"
-    | "REJECTED"
-    | "READY_TO_QUOTE"
-    | "QUOTE_SENT"
-    | "WON"
-    | "LOST";
+  status: UiStatus;
   custom?: any;
   description?: string | null;
   estimatedValue?: number | null;
@@ -144,32 +137,46 @@ type TenantSettings = {
   isFireDoorManufacturer?: boolean;
 };
 
-const STATUS_LABELS: Record<Lead["status"], string> = {
+const STATUS_LABELS: Record<UiStatus, string> = {
   NEW_ENQUIRY: "New enquiry",
   INFO_REQUESTED: "Info requested",
   DISQUALIFIED: "Disqualified",
   REJECTED: "Rejected",
   READY_TO_QUOTE: "Ready to quote",
+  ESTIMATE: "Estimate",
   QUOTE_SENT: "Quote sent",
   WON: "Won",
   LOST: "Lost",
+  COMPLETED: "Completed",
 };
 
 /* ---------------- Status mapping ---------------- */
 
-const uiToServerStatus: Record<Lead["status"], string> = {
-  NEW_ENQUIRY: "NEW",
-  INFO_REQUESTED: "INFO_REQUESTED",
-  DISQUALIFIED: "DISQUALIFIED",
-  REJECTED: "REJECTED",
-  READY_TO_QUOTE: "READY_TO_QUOTE",
-  QUOTE_SENT: "QUOTE_SENT",
-  WON: "WON",
-  LOST: "LOST",
-};
-
-function serverToUiStatus(s?: string | null): Lead["status"] {
+function serverToUiStatus(s?: string | null): UiStatus {
   switch ((s || "").toUpperCase()) {
+    // Accept UI statuses directly (API often returns these)
+    case "NEW_ENQUIRY":
+      return "NEW_ENQUIRY";
+    case "INFO_REQUESTED":
+      return "INFO_REQUESTED";
+    case "DISQUALIFIED":
+      return "DISQUALIFIED";
+    case "REJECTED":
+      return "REJECTED";
+    case "READY_TO_QUOTE":
+      return "READY_TO_QUOTE";
+    case "ESTIMATE":
+      return "ESTIMATE";
+    case "QUOTE_SENT":
+      return "QUOTE_SENT";
+    case "WON":
+      return "WON";
+    case "LOST":
+      return "LOST";
+    case "COMPLETED":
+      return "COMPLETED";
+
+    // Accept DB/legacy statuses
     case "NEW":
       return "NEW_ENQUIRY";
     case "CONTACTED":
@@ -178,6 +185,8 @@ function serverToUiStatus(s?: string | null): Lead["status"] {
     case "QUALIFIED":
     case "READY_TO_QUOTE":
       return "READY_TO_QUOTE";
+    case "ESTIMATE":
+      return "ESTIMATE";
     case "QUOTE_SENT":
       return "QUOTE_SENT";
     case "DISQUALIFIED":
@@ -1405,7 +1414,7 @@ export default function LeadModal({
       return true;
     }
 
-    const nextServer = uiToServerStatus[nextUi];
+    const nextServer = nextUi;
 
     setSaving(true);
     try {
@@ -1715,7 +1724,7 @@ async function ensureManualTask(
 }
 
 async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
-  const recipes = playbook.status[status] || [];
+  const recipes = (playbook.status as Record<Lead["status"], TaskRecipe[]>)[status] || [];
   let created = false;
   for (const recipe of recipes) {
     const made = await ensureRecipeTask(recipe, { existing, uniqueSuffix: lead?.id });

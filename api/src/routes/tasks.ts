@@ -251,10 +251,38 @@ router.get("/latest", async (req, res) => {
         meta: true,
         createdAt: true,
         updatedAt: true,
+        assignees: {
+          select: {
+            userId: true,
+            role: true,
+          },
+        },
       },
       take: Math.min(ids.length * 15, 2000),
       orderBy: [{ updatedAt: "desc" }],
     });
+
+    const assigneeUserIds = Array.from(
+      new Set(
+        tasks
+          .flatMap((t: any) => (Array.isArray(t.assignees) ? t.assignees : []))
+          .map((a: any) => a?.userId)
+          .filter((v: any) => typeof v === "string" && v)
+      )
+    ) as string[];
+
+    const usersById: Record<string, { id: string; name: string | null }> = {};
+    if (assigneeUserIds.length > 0) {
+      const users = await prisma.user.findMany({
+        where: { id: { in: assigneeUserIds } },
+        select: { id: true, name: true, firstName: true, lastName: true, email: true },
+      });
+      for (const u of users) {
+        const fallbackName =
+          [u.firstName, u.lastName].filter(Boolean).join(" ") || u.name || u.email || null;
+        usersById[u.id] = { id: u.id, name: fallbackName };
+      }
+    }
 
     const byRelatedId: Record<string, any | null> = {};
     for (const id of ids) byRelatedId[id] = null;
@@ -273,7 +301,20 @@ router.get("/latest", async (req, res) => {
       return sa.createdAt > sb.createdAt;
     };
 
-    for (const t of tasks) {
+    const withAssignee = (t: any) => {
+      const list = Array.isArray(t.assignees) ? t.assignees : [];
+      const owner = list.find((a: any) => a?.role === "OWNER") || list[0] || null;
+      const assigneeUserId = owner?.userId && typeof owner.userId === "string" ? owner.userId : null;
+      const assigneeName = assigneeUserId ? usersById[assigneeUserId]?.name ?? null : null;
+      return {
+        ...t,
+        assigneeUserId,
+        assigneeName,
+      };
+    };
+
+    for (const t0 of tasks) {
+      const t = withAssignee(t0);
       const rid = t.relatedId;
       if (!rid) continue;
       const current = byRelatedId[rid];
