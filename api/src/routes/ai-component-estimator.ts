@@ -124,14 +124,52 @@ const GenerateProductPlanRequestSchema = z.object({
     .optional(),
 });
 
-const SYSTEM_PROMPT = `You are an expert joinery product planner. You output strictly valid JSON matching a ProductPlanV1 schema.
+const SYSTEM_PROMPT = `You are an expert joinery product planner.
+
+CRITICAL OUTPUT CONTRACT
+- Return ONLY a single JSON object.
+- Do NOT wrap the output in {"plan": ...} or any other envelope.
+- Do NOT output markdown.
+
+You MUST output strictly valid JSON matching this ProductPlanV1 schema (all keys required, even if empty objects/arrays):
+{
+  "kind": "ProductPlanV1",
+  "detected": { "category": "door|window|frame", "type": string, "option"?: string, "confidence": number },
+  "dimensions": { "widthMm"?: number, "heightMm"?: number, "depthMm"?: number },
+  "materialRoles": { [roleName: string]: string },
+  "profileSlots": { [slotName: string]: { "profileHint": string, "source": "estimated|uploaded", "uploadedSvg"?: string } },
+  "components": any[],
+  "variables": { [varName: string]: { "defaultValue": number, "unit": string, "description"?: string } },
+  "rationale": string
+}
 
 Rules:
-- Use detected.category as one of: door | window | frame
-- Always include a concise rationale.
-- Use variables pw/ph/sd for product width/height/depth and reference them in expressions where helpful.
-- Return ONLY JSON (no markdown).
+- kind MUST be exactly "ProductPlanV1".
+- detected.category MUST be one of: door | window | frame.
+- Always include variables pw, ph, sd with sensible defaults based on provided dimensions.
+- If unsure, keep components empty but still provide all required keys.
 `;
+
+function summarizeZodError(err: z.ZodError, maxIssues = 4): string {
+  const issues = err.issues
+    .slice(0, maxIssues)
+    .map((i) => {
+      const path = i.path?.length ? i.path.join('.') : '(root)';
+      return `${path}: ${i.message}`;
+    })
+    .join('; ');
+  const suffix = err.issues.length > maxIssues ? ` (+${err.issues.length - maxIssues} more)` : '';
+  return `invalid_plan_schema: ${issues}${suffix}`;
+}
+
+function safeReason(value: unknown, maxLen = 180): string {
+  return String(value ?? 'unknown')
+    .replace(/\s+/g, ' ')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/[^\x20-\x7E]/g, '')
+    .trim()
+    .slice(0, maxLen);
+}
 
 function pickDims(existingDims?: any, defaults?: { widthMm: number; heightMm: number; depthMm: number }) {
   const w = Number(existingDims?.widthMm);
@@ -178,10 +216,21 @@ async function callOpenAiForProductPlan(payload: {
     if (!responseText) return { plan: null, error: 'no_openai_response' };
 
     const parsed = JSON.parse(responseText);
-    const validated = ProductPlanV1Schema.parse(parsed);
+    const candidate =
+      parsed && typeof parsed === 'object' && !Array.isArray(parsed) && (parsed as any).plan && typeof (parsed as any).plan === 'object'
+        ? (parsed as any).plan
+        : parsed;
+
+    const validated = ProductPlanV1Schema.parse(candidate);
     return { plan: validated };
   } catch (e: any) {
-    const msg = e?.message || String(e);
+    if (e instanceof z.ZodError) {
+      const summary = summarizeZodError(e);
+      console.error('[AI2SCENE API] callOpenAiForProductPlan schema mismatch:', summary);
+      return { plan: null, error: summary };
+    }
+
+    const msg = safeReason(e?.message || String(e));
     console.error('[AI2SCENE API] callOpenAiForProductPlan failed:', msg);
     return { plan: null, error: msg };
   }
@@ -382,7 +431,7 @@ router.post('/generate-product-plan', async (req, res) => {
       return res.json(ai.plan);
     }
 
-    const reason = ai.error || 'unknown';
+    const reason = safeReason(ai.error || 'unknown');
     res.setHeader('x-ai-fallback', '1');
     const safeHeader = String(reason ?? '')
       .replace(/[\r\n]+/g, ' ')
@@ -395,7 +444,7 @@ router.post('/generate-product-plan', async (req, res) => {
     }
     return res.json(createFallbackDoorPlan(dims.widthMm, dims.heightMm, dims.depthMm, reason));
   } catch (e: any) {
-    const msg = e?.message || String(e);
+    const msg = safeReason(e?.message || String(e));
     console.error('[AI2SCENE API] /ai/generate-product-plan failed:', msg);
 
     // Best-effort recovery: return fallback plan so UI can proceed.
