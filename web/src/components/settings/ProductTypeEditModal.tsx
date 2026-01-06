@@ -349,7 +349,7 @@ export function ProductTypeEditModal({
 
   return (
     <>
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen && !show3DConfigurator} onOpenChange={onClose}>
       <DialogContent className="max-w-6xl h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Product Type Configuration</DialogTitle>
@@ -756,7 +756,7 @@ export function ProductTypeEditModal({
     </Dialog>
     {/* 3D Configurator Modal */}
     {show3DConfigurator && (
-      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4">
         <div className="w-full max-w-6xl bg-white rounded-2xl shadow-xl overflow-hidden h-[90vh] flex flex-col min-h-0">
           <ProductConfigurator3D
             tenantId="settings"
