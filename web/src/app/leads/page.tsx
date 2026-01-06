@@ -246,7 +246,15 @@ function LeadsPageContent() {
           setColumnConfig(JSON.parse(saved));
         } catch {
           setColumnConfig([
-            { field: 'contactName', label: 'Contact Name', visible: true, frozen: true, width: 200 },
+            { 
+              field: 'contactName', 
+              label: 'Name', 
+              visible: true, 
+              frozen: true, 
+              width: 250, 
+              type: 'custom',
+              render: (row: Lead) => row.number ? `${row.number} - ${row.contactName || row.description || "Lead"}` : row.contactName || row.description || "Lead"
+            },
             { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
             { field: 'phone', label: 'Phone', visible: true, frozen: false, width: 150 },
             { field: 'latestTask', label: 'Latest task', visible: true, frozen: false, width: 320, type: 'custom' },
@@ -255,7 +263,15 @@ function LeadsPageContent() {
         }
       } else {
         setColumnConfig([
-          { field: 'contactName', label: 'Contact Name', visible: true, frozen: true, width: 200 },
+          { 
+            field: 'contactName', 
+            label: 'Name', 
+            visible: true, 
+            frozen: true, 
+            width: 250, 
+            type: 'custom',
+            render: (row: Lead) => row.number ? `${row.number} - ${row.contactName || row.description || "Lead"}` : row.contactName || row.description || "Lead"
+          },
           { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
           { field: 'phone', label: 'Phone', visible: true, frozen: false, width: 150 },
           { field: 'latestTask', label: 'Latest task', visible: true, frozen: false, width: 320, type: 'custom' },
@@ -1441,7 +1457,7 @@ function LeadCard({
             </span>
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold text-slate-900">
-                {lead.number && lead.description ? `${lead.number} - ${lead.description}` : lead.description || lead.contactName || "Lead"}
+                {lead.number ? `${lead.number} - ${lead.contactName || lead.description || "Lead"}` : lead.contactName || lead.description || "Lead"}
               </div>
               {lead.email && <div className="truncate text-xs text-slate-500">{lead.email}</div>}
             </div>

@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch, setJwt } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/use-toast";
 
 export const dynamic = "force-dynamic";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { toast } = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -42,7 +44,37 @@ export default function LoginPage() {
       }
     } catch (err: any) {
       console.error(err);
-      setError("Invalid email/username or password");
+      const status = err?.status;
+      const apiError = err?.details?.error || err?.details?.message;
+
+      // Make wrong-credentials cases explicit and friendly
+      if (status === 401) {
+        toast({
+          title: "Incorrect email or password",
+          description: "Please check your details and try again.",
+          variant: "destructive",
+        });
+        setError("Incorrect email or password");
+        return;
+      }
+
+      if (status === 403) {
+        toast({
+          title: "Account inactive",
+          description: String(apiError || "Your account is inactive. Please contact support."),
+          variant: "destructive",
+        });
+        setError("Account inactive");
+        return;
+      }
+
+      const message = String(apiError || err?.message || "Please try again");
+      toast({
+        title: "Login failed",
+        description: message,
+        variant: "destructive",
+      });
+      setError(message);
     } finally {
       setLoading(false);
     }

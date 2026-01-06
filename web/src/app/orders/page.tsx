@@ -57,6 +57,8 @@ type OrderStatus = "WON" | "COMPLETED";
 type Order = {
   id: string;
   contactName: string;
+  number?: string | null;
+  description?: string | null;
   email?: string | null;
   status: OrderStatus | string;
   nextAction?: string | null;
@@ -195,7 +197,15 @@ export default function OrdersPage() {
           setColumnConfig(JSON.parse(saved));
         } catch {
           setColumnConfig([
-            { field: 'contactName', label: 'Contact Name', visible: true, frozen: true, width: 200 },
+            { 
+              field: 'contactName', 
+              label: 'Name', 
+              visible: true, 
+              frozen: true, 
+              width: 250, 
+              type: 'custom',
+              render: (row: Order) => row.number ? `${row.number} - ${row.contactName || row.description || "Order"}` : row.contactName || row.description || "Order"
+            },
             { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
             { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown', dropdownOptions: ['WON', 'COMPLETED'] },
             { field: 'nextAction', label: 'Next Action', visible: true, frozen: false, width: 200 },
@@ -203,7 +213,15 @@ export default function OrdersPage() {
         }
       } else {
         setColumnConfig([
-          { field: 'contactName', label: 'Contact Name', visible: true, frozen: true, width: 200 },
+          { 
+            field: 'contactName', 
+            label: 'Name', 
+            visible: true, 
+            frozen: true, 
+            width: 250, 
+            type: 'custom',
+            render: (row: Order) => row.number ? `${row.number} - ${row.contactName || row.description || "Order"}` : row.contactName || row.description || "Order"
+          },
           { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
           { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown', dropdownOptions: ['WON', 'COMPLETED'] },
           { field: 'nextAction', label: 'Next Action', visible: true, frozen: false, width: 200 },
@@ -301,7 +319,7 @@ export default function OrdersPage() {
 
   return (
     <>
-      <DeskSurface variant="emerald" innerClassName="space-y-6">
+      <DeskSurface variant="indigo" innerClassName="space-y-6">
         <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div
             className="inline-flex items-center gap-2 rounded-full border border-emerald-200/70 bg-white/70 px-3 py-1 text-xs font-medium uppercase tracking-[0.25em] text-slate-500 shadow-sm"
@@ -466,7 +484,9 @@ function CardRow({
           {avatarText(order.contactName)}
         </span>
         <div className="flex-1 min-w-0">
-          <div className="truncate text-sm font-medium">{order.contactName || "Order"}</div>
+          <div className="truncate text-sm font-medium">
+            {order.number ? `${order.number} - ${order.contactName || order.description || "Order"}` : order.contactName || order.description || "Order"}
+          </div>
           <div className="text-[11px] text-slate-500">
             {order.custom?.source ? `Source: ${order.custom.source}` : "Source: —"}
             {order.nextAction ? ` · Next: ${order.nextAction}` : ""}

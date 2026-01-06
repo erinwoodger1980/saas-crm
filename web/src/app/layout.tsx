@@ -59,6 +59,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   const isEarlyAccessRoute = pathname?.startsWith("/early-access");
   const isWorkshopRoute = pathname === "/workshop";
   const isDevConsole = pathname?.startsWith("/dev");
+  const isCustomerPortalRoute = pathname?.startsWith("/customer-portal");
 
   const shouldFetchUser = !(
     isAuthRoute ||
@@ -68,7 +69,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     isPublicEstimatorRoute ||
     isTenantLandingPage ||
     isVanityTenantLandingPage ||
-    isEarlyAccessRoute
+    isEarlyAccessRoute ||
+    isCustomerPortalRoute
   );
 
   const { user } = useCurrentUser({ enabled: shouldFetchUser });
@@ -84,7 +86,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     isVanityTenantLandingPage ||
     isEarlyAccessRoute ||
     (isWorkshopRoute && isWorkshopOnly) ||
-    isDevConsole
+    isDevConsole ||
+    isCustomerPortalRoute
   );
   
   const shouldShowTasks = shouldFetchUser && !(
@@ -104,7 +107,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     isPublicEstimatorRoute ||
     isTenantLandingPage ||
     isVanityTenantLandingPage ||
-    isEarlyAccessRoute
+    isEarlyAccessRoute ||
+    isCustomerPortalRoute
   );
   const shouldLoadAnalytics = !(
     isEarlyAccessRoute
