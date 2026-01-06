@@ -118,6 +118,7 @@ import mlTrainingRouter from "./routes/ml-training";
 import examplePhotosRouter from "./routes/example-photos";
 import fireDoorsRouter from "./routes/fire-doors";
 import fireDoorScheduleRouter from "./routes/fire-door-schedule";
+import adminLinkProjectsRouter from "./routes/admin-link-projects";
 import fireDoorScheduleSyncRouter from "./routes/fire-door-schedule-sync";
 import fireDoorImportBomRouter from "./routes/fire-door-import-bom";
 import fireDoorImportTriggerRouter from "./routes/fire-door-import-trigger";
@@ -354,6 +355,7 @@ app.use("/api/scene-state", sceneStateRouter);
 // Admin editor APIs
 app.use("/api/admin/landing-tenants", adminLandingTenantsRouter);
 app.use("/api/admin/landing-tenants", adminImageUploadRouter);
+app.use("/api/admin/link-projects", adminLinkProjectsRouter);
 /** Interest registration (pre-launch waitlist) */
 app.use("/api/interest", interestRouter);
 /** Early adopter signup */
