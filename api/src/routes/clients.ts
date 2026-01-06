@@ -712,14 +712,18 @@ router.get("/:id/portal-access", async (req, res) => {
       return res.status(404).json({ error: "Client not found" });
     }
 
+    if (!client.companyName && !client.email) {
+      return res.status(400).json({ error: "Client must have a company name or email" });
+    }
+
     // Find ClientAccount linked to this client
-    const clientAccount = await (prisma as any).clientAccount.findFirst({
+    const clientAccount = await prisma.clientAccount.findFirst({
       where: {
         tenantId,
         OR: [
-          { companyName: client.companyName },
-          { contactEmail: client.email },
-        ],
+          client.companyName ? { companyName: client.companyName } : null,
+          client.email ? { email: client.email } : null,
+        ].filter(Boolean) as any,
       },
       include: {
         users: {
@@ -780,8 +784,12 @@ router.post("/:id/portal-access", async (req, res) => {
       return res.status(404).json({ error: "Client not found" });
     }
 
+    if (!client.companyName && !client.email) {
+      return res.status(400).json({ error: "Client must have a company name or email" });
+    }
+
     // Check if email already exists
-    const existingUser = await (prisma as any).clientUser.findUnique({
+    const existingUser = await prisma.clientUser.findUnique({
       where: { email: email.toLowerCase().trim() },
     });
 
@@ -790,23 +798,23 @@ router.post("/:id/portal-access", async (req, res) => {
     }
 
     // Find or create ClientAccount
-    let clientAccount = await (prisma as any).clientAccount.findFirst({
+    let clientAccount = await prisma.clientAccount.findFirst({
       where: {
         tenantId,
         OR: [
-          { companyName: client.companyName },
-          { contactEmail: client.email },
-        ],
+          client.companyName ? { companyName: client.companyName } : null,
+          client.email ? { email: client.email } : null,
+        ].filter(Boolean) as any,
       },
     });
 
     if (!clientAccount) {
-      clientAccount = await (prisma as any).clientAccount.create({
+      clientAccount = await prisma.clientAccount.create({
         data: {
           tenantId,
           companyName: client.companyName || client.name,
-          contactEmail: client.email,
-          contactPhone: client.phone,
+          email: client.email || email.toLowerCase().trim(),
+          phone: client.phone,
           isActive: true,
         },
       });
@@ -816,7 +824,7 @@ router.post("/:id/portal-access", async (req, res) => {
     const bcrypt = require("bcryptjs");
     const passwordHash = await bcrypt.hash(password, 10);
 
-    const clientUser = await (prisma as any).clientUser.create({
+    const clientUser = await prisma.clientUser.create({
       data: {
         clientAccountId: clientAccount.id,
         email: email.toLowerCase().trim(),
@@ -870,7 +878,7 @@ router.patch("/:id/portal-access/:userId", async (req, res) => {
     }
 
     // Verify user exists and belongs to this tenant's client account
-    const existingUser = await (prisma as any).clientUser.findFirst({
+    const existingUser = await prisma.clientUser.findFirst({
       where: {
         id: userId,
         clientAccount: { tenantId },
@@ -892,7 +900,7 @@ router.patch("/:id/portal-access/:userId", async (req, res) => {
     if (firstName !== undefined) updateData.firstName = firstName?.trim() || null;
     if (lastName !== undefined) updateData.lastName = lastName?.trim() || null;
 
-    const updatedUser = await (prisma as any).clientUser.update({
+    const updatedUser = await prisma.clientUser.update({
       where: { id: userId },
       data: updateData,
       select: {
@@ -936,7 +944,7 @@ router.delete("/:id/portal-access/:userId", async (req, res) => {
     }
 
     // Verify user exists and belongs to this tenant's client account
-    const existingUser = await (prisma as any).clientUser.findFirst({
+    const existingUser = await prisma.clientUser.findFirst({
       where: {
         id: userId,
         clientAccount: { tenantId },
@@ -947,7 +955,7 @@ router.delete("/:id/portal-access/:userId", async (req, res) => {
       return res.status(404).json({ error: "Portal user not found" });
     }
 
-    await (prisma as any).clientUser.delete({
+    await prisma.clientUser.delete({
       where: { id: userId },
     });
 
