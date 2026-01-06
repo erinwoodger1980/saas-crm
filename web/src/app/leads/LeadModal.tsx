@@ -390,6 +390,7 @@ export default function LeadModal({
 
   // Core state
   const [lead, setLead] = useState<Lead | null>(leadPreview);
+  const [resolvedLeadId, setResolvedLeadId] = useState<string | null>(null);
   const [uiStatus, setUiStatus] = useState<Lead["status"]>(
     leadPreview?.status ? serverToUiStatus(String(leadPreview.status)) : "NEW_ENQUIRY"
   );
@@ -461,6 +462,11 @@ export default function LeadModal({
   // Product types for dropdown (e.g., Door, Window, Arch Opening)
   const [productTypes, setProductTypes] = useState<any[]>([]);
 
+  // Use this for all lead-specific API routes (/leads/*). It is intentionally
+  // decoupled from `opportunityId`, because WON flows can open this modal with
+  // an Opportunity ID.
+  const leadIdForApi = resolvedLeadId || lead?.id || null;
+
   // Unified questionnaire fields by scope
   const [clientFields, setClientFields] = useState<NormalizedQuestionnaireField[]>([]);
   const [quoteDetailsFields, setQuoteDetailsFields] = useState<NormalizedQuestionnaireField[]>([]);
@@ -482,7 +488,7 @@ export default function LeadModal({
     isError: activityError,
     refresh: refreshActivity,
     addActivityOptimistic,
-  } = useLeadActivity(lead?.id || null);
+  } = useLeadActivity(leadIdForApi);
   
   // Email composer state
   const [showEmailComposer, setShowEmailComposer] = useState(false);
@@ -815,6 +821,9 @@ export default function LeadModal({
     if (!open || !leadPreview?.id) return;
     let stop = false;
 
+    // Reset pinned lead id for this modal session
+    setResolvedLeadId(null);
+
     (async () => {
       setLoading(true);
       try {
@@ -830,6 +839,9 @@ export default function LeadModal({
           // Not an opportunityId, use leadPreview.id as-is
           console.debug('[LeadModal] treating leadPreview.id as a leadId', probeErr);
         }
+
+        // Pin the resolved Lead ID for all lead-specific routes.
+        setResolvedLeadId(String(actualLeadId));
 
         const [one, tlist, s] = await Promise.all([
           apiFetch<{ lead?: any } | any>(`/leads/${actualLeadId}`, { headers: authHeaders }),
@@ -1407,11 +1419,11 @@ export default function LeadModal({
   }
 
   async function saveStatus(nextUi: Lead["status"]): Promise<boolean> {
-    if (!lead?.id) return false;
+    if (!leadIdForApi || !lead) return false;
 
     const prevServerStatus = lastSavedServerStatusRef.current;
     const prevUiStatus =
-      prevServerStatus != null ? serverToUiStatus(prevServerStatus) : lead.status;
+      prevServerStatus != null ? serverToUiStatus(prevServerStatus) : (lead?.status ?? "NEW_ENQUIRY");
 
     if (prevUiStatus === nextUi) {
       return true;
@@ -1421,7 +1433,7 @@ export default function LeadModal({
 
     setSaving(true);
     try {
-      const response = await apiFetch<{ lead?: any }>(`/leads/${lead.id}`, {
+      const response = await apiFetch<{ lead?: any }>(`/leads/${leadIdForApi}`, {
         method: "PATCH",
         headers: { ...authHeaders, "Content-Type": "application/json" },
         json: { status: nextServer },
@@ -1462,9 +1474,9 @@ export default function LeadModal({
   }
 
   async function savePatch(patch: any) {
-    if (!lead?.id) return;
+    if (!leadIdForApi) return;
     try {
-      const response = await apiFetch<{ lead?: any }>(`/leads/${lead.id}`, {
+      const response = await apiFetch<{ lead?: any }>(`/leads/${leadIdForApi}`, {
         method: "PATCH",
         headers: { ...authHeaders, "Content-Type": "application/json" },
         json: patch,
@@ -1615,9 +1627,9 @@ export default function LeadModal({
   }, [lead?.quoteId]);
 
   async function reloadTasks() {
-    if (!lead?.id) return;
+    if (!leadIdForApi) return;
     const data = await apiFetch<{ items: Task[]; total: number }>(
-      `/tasks?relatedType=LEAD&relatedId=${encodeURIComponent(lead.id)}&mine=false`,
+      `/tasks?relatedType=LEAD&relatedId=${encodeURIComponent(leadIdForApi)}&mine=false`,
       { headers: authHeaders }
     );
     setTasks(data.items || []);
@@ -1630,7 +1642,7 @@ export default function LeadModal({
   }
 
   async function createManualTask() {
-    if (!lead?.id) return;
+    if (!leadIdForApi) return;
     if (!taskComposer.title.trim()) {
       setTaskError("Title required");
       return;
@@ -1646,7 +1658,7 @@ export default function LeadModal({
           title: taskComposer.title.trim(),
           description: taskComposer.description.trim() || undefined,
           relatedType: "LEAD" as const,
-          relatedId: lead.id,
+          relatedId: leadIdForApi,
           priority: taskComposer.priority,
           dueAt: toIsoOrUndefined(taskComposer.dueAt),
           assignees:
@@ -1682,12 +1694,12 @@ async function ensureRecipeTask(
   recipe: TaskRecipe | undefined,
   overrides?: { existing?: Task[]; relatedType?: Task["relatedType"]; relatedId?: string | null; uniqueSuffix?: string }
 ) {
-  if (!lead?.id || !recipe || recipe.active === false) return false;
+  if (!leadIdForApi || !recipe || recipe.active === false) return false;
 
   const relatedType = overrides?.relatedType ?? recipe.relatedType ?? "LEAD";
   const relatedId =
-    overrides?.relatedId ?? (relatedType === "LEAD" ? lead.id : overrides?.relatedId ?? lead.id);
-  const suffix = overrides?.uniqueSuffix ?? relatedId ?? lead.id;
+    overrides?.relatedId ?? (relatedType === "LEAD" ? leadIdForApi : overrides?.relatedId ?? leadIdForApi);
+  const suffix = overrides?.uniqueSuffix ?? relatedId ?? leadIdForApi;
   const uniqueKey = `${recipe.id}:${relatedType}:${suffix}`;
   if (taskExists(overrides?.existing ?? tasks, uniqueKey, recipe.title)) return false;
 
@@ -1730,7 +1742,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
   const recipes = (playbook.status as Record<Lead["status"], TaskRecipe[]>)[status] || [];
   let created = false;
   for (const recipe of recipes) {
-    const made = await ensureRecipeTask(recipe, { existing, uniqueSuffix: lead?.id });
+    const made = await ensureRecipeTask(recipe, { existing, uniqueSuffix: leadIdForApi || undefined });
     created = created || !!made;
   }
   return created;
@@ -1741,9 +1753,9 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     await apiFetch(url, { method: "POST", headers: authHeaders });
     await reloadTasks();
     // The server may promote the lead (accept on review). Refresh lead status to reflect immediately.
-    if (lead?.id) {
+    if (leadIdForApi) {
       try {
-        const one = await apiFetch<{ lead?: any } | any>(`/leads/${lead.id}`, { headers: authHeaders });
+        const one = await apiFetch<{ lead?: any } | any>(`/leads/${leadIdForApi}`, { headers: authHeaders });
         const row = (one && "lead" in one ? one.lead : one) ?? {};
         const sUi = serverToUiStatus(row.status);
         setUiStatus(sUi);
@@ -1974,12 +1986,12 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
   /* ----------------------------- Actions ----------------------------- */
 
   async function sendQuestionnaire() {
-    if (!lead?.id) return;
+    if (!leadIdForApi) return;
     setBusyTask(true);
     try {
       // First, get email preview without sending
       const resp = await apiFetch<{ ok: boolean; url: string; preview: { subject: string; body: string; to: string; from: string } }>(
-        `/leads/${encodeURIComponent(lead.id)}/request-info`,
+        `/leads/${encodeURIComponent(leadIdForApi)}/request-info`,
         {
           method: "POST",
           headers: { ...authHeaders, "Content-Type": "application/json" },
@@ -2003,12 +2015,12 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
   }
 
   async function sendQuestionnaireEmail(editedSubject: string, editedBody: string) {
-    if (!lead?.id) return;
+    if (!leadIdForApi) return;
     setBusyTask(true);
     try {
       // Send with custom subject and body (using edited values from modal)
       await apiFetch(
-        `/leads/${encodeURIComponent(lead.id)}/request-info`,
+        `/leads/${encodeURIComponent(leadIdForApi)}/request-info`,
         {
           method: "POST",
           headers: { ...authHeaders, "Content-Type": "application/json" },
@@ -2034,10 +2046,10 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
   }
 
   async function copyInviteLink() {
-    if (!lead?.id) return;
+    if (!leadIdForApi) return;
     setBusyTask(true);
     try {
-      const resp = await apiFetch<{ ok: boolean; url: string }>(`/leads/${encodeURIComponent(lead.id)}/request-info`, {
+      const resp = await apiFetch<{ ok: boolean; url: string }>(`/leads/${encodeURIComponent(leadIdForApi)}/request-info`, {
         method: "POST",
         headers: authHeaders,
       });
@@ -2142,7 +2154,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
           title: `Chase supplier quote: ${lead.contactName || lead.email || "Lead"}`,
           description: `Follow up on supplier quote request. Deadline: ${quoteDeadline.toLocaleDateString()}`,
           relatedType: "LEAD" as const,
-          relatedId: lead.id,
+          relatedId: leadIdForApi || lead.id,
           priority: "MEDIUM" as const,
           dueAt: quoteDeadline.toISOString(),
           assignees: userId ? [{ userId, role: "OWNER" as const }] : undefined,
@@ -2161,7 +2173,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
           headers: { ...authHeaders, "Content-Type": "application/json" },
           json: {
             supplierId: selectedSupplierId,
-            leadId: lead.id,
+            leadId: leadIdForApi || lead.id,
             opportunityId: null, // Can be linked later if needed
             notes: quoteNotes || `Requested via lead ${lead.contactName || lead.id}. Deadline: ${quoteDeadline.toLocaleDateString()}`,
           },
@@ -2173,7 +2185,8 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       // Attempt server-side send (via Gmail API). Fallback to mailto if it fails or no 'to'
       if (to) {
         try {
-          await apiFetch(`/leads/${encodeURIComponent(lead.id)}/request-supplier-quote`, {
+          if (!leadIdForApi) throw new Error("Missing lead id");
+          await apiFetch(`/leads/${encodeURIComponent(leadIdForApi)}/request-supplier-quote`, {
             method: "POST",
             headers: { ...authHeaders, "Content-Type": "application/json" },
             json: {
@@ -2598,7 +2611,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
   }
 
   async function deleteLead() {
-    if (!lead?.id) return;
+    if (!leadIdForApi || !lead) return;
     
     const confirmed = window.confirm(
       `Are you sure you want to delete this lead "${lead.contactName || lead.email || 'Unnamed Lead'}"?\n\nThis action cannot be undone and will also delete:\n• All associated tasks\n• Communication history\n• Questionnaire responses\n• Any linked quotes or opportunities`
@@ -2608,7 +2621,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     
     setSaving(true);
     try {
-      await apiFetch(`/leads/${lead.id}`, {
+      await apiFetch(`/leads/${leadIdForApi}`, {
         method: "DELETE",
         headers: authHeaders,
       });
@@ -3720,14 +3733,14 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         </div>
                       )}
 
-                      {lead?.id && tenantId && (
+                      {leadIdForApi && tenantId && (
                         <div className="pt-2">
                           <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
                             Custom Fields
                           </div>
                           <CustomFieldsPanel
                             entityType="lead"
-                            entityId={lead.id}
+                            entityId={leadIdForApi}
                             onSave={async () => {
                               if (onUpdated) await onUpdated();
                             }}
