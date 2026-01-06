@@ -549,9 +549,39 @@ You MUST output strictly valid JSON matching this ProductPlanV1 schema (all keys
   "dimensions": { "widthMm"?: number, "heightMm"?: number, "depthMm"?: number },
   "materialRoles": { [roleName: string]: string },
   "profileSlots": { [slotName: string]: { "profileHint": string, "source": "estimated|uploaded", "uploadedSvg"?: string } },
-  "components": any[],
+  "components": ComponentInstance[],
   "variables": { [varName: string]: { "defaultValue": number, "unit": string, "description"?: string } },
   "rationale": string
+}
+
+ComponentInstance schema (EVERY component must include these required keys):
+{
+  "id": string,
+  "role": "STILE"|"RAIL_TOP"|"RAIL_MID"|"RAIL_BOTTOM"|"PANEL"|"GLASS"|"BEAD"|"FRAME_JAMB_L"|"FRAME_JAMB_R"|"FRAME_HEAD"|"CILL"|"SEAL"|"LOCK"|"HANDLE"|"HINGE"|"GLAZING_BAR"|"MOULDING"|"THRESHOLD"|"WEATHERBOARD",
+  "parametric": boolean,
+  "geometry": {
+    "type": "profileExtrude"|"box"|"gltf",
+    // if type=profileExtrude: include profileSlot + lengthExpr (+ extrudeAxis optional)
+    // if type=box: include widthExpr + heightExpr + depthExpr
+    // if type=gltf: include gltfRef
+    "profileSlot"?: string,
+    "lengthExpr"?: string,
+    "extrudeAxis"?: "x"|"y"|"z",
+    "widthExpr"?: string,
+    "heightExpr"?: string,
+    "depthExpr"?: string,
+    "gltfRef"?: string
+  },
+  "transform": {
+    "xExpr": string,
+    "yExpr": string,
+    "zExpr": string,
+    "rotXDeg"?: number,
+    "rotYDeg"?: number,
+    "rotZDeg"?: number
+  },
+  "quantityExpr": string,
+  "materialRole": "TIMBER_PRIMARY"|"TIMBER_SECONDARY"|"PANEL_CORE"|"SEAL_RUBBER"|"SEAL_FOAM"|"METAL_CHROME"|"METAL_STEEL"|"GLASS_CLEAR"|"GLASS_LEADED"|"GLASS_FROSTED"|"PAINT_FINISH"|"STAIN_FINISH"
 }
 
 Rules:
@@ -560,6 +590,22 @@ Rules:
 - Always include variables pw, ph, sd with sensible defaults based on provided dimensions.
 - components MUST be a non-empty list of component instances (id/role/geometry/transform/materialRole). If unsure, output a minimal structural set (frame + leaf + infill) rather than leaving it empty.
 `;
+
+function looksLikeSashDescription(description?: string, detectedType?: string): boolean {
+  const desc = String(description || '').toLowerCase();
+  const type = String(detectedType || '').toLowerCase();
+  return (
+    desc.includes('sash') ||
+    desc.includes('double-hung') ||
+    desc.includes('double hung') ||
+    desc.includes('spring balance') ||
+    desc.includes('meeting rail') ||
+    desc.includes('vertically sliding') ||
+    desc.includes('2 over 2') ||
+    desc.includes('4 over 4') ||
+    type.includes('sash')
+  );
+}
 
 function ensurePlanHasComponents(
   plan: ProductPlanV1,
@@ -677,8 +723,74 @@ async function callOpenAiForProductPlan(payload: {
         ? (parsed as any).plan
         : parsed;
 
-    const validated = ProductPlanV1Schema.parse(candidate);
-    return { plan: validated };
+    const firstPass = ProductPlanV1Schema.safeParse(candidate);
+    if (firstPass.success) {
+      return { plan: firstPass.data };
+    }
+
+    // One-shot repair: ask the model to fix its JSON to satisfy schema.
+    const firstErr = summarizeZodError(firstPass.error);
+    console.error('[AI2SCENE API] callOpenAiForProductPlan schema mismatch:', firstErr);
+
+    try {
+      const repairMessages: any[] = [
+        {
+          role: 'system',
+          content:
+            'You repair invalid ProductPlanV1 JSON. Return ONLY a single corrected JSON object that matches the schema exactly. No markdown. Do not add extra wrapper keys.',
+        },
+        {
+          role: 'user',
+          content: JSON.stringify(
+            {
+              error: firstErr,
+              badPlan: candidate,
+              description: payload.description,
+              existingProductType: payload.existingProductType,
+              existingDims: payload.existingDims,
+            },
+            null,
+            2
+          ),
+        },
+      ];
+
+      const repaired = await openai.chat.completions.create({
+        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        messages: repairMessages,
+        response_format: { type: 'json_object' },
+        temperature: 0.2,
+        max_tokens: 2200,
+      });
+
+      const repairedText = repaired.choices[0]?.message?.content;
+      if (!repairedText) {
+        return { plan: null, error: firstErr };
+      }
+
+      const repairedParsed = JSON.parse(repairedText);
+      const repairedCandidate =
+        repairedParsed &&
+        typeof repairedParsed === 'object' &&
+        !Array.isArray(repairedParsed) &&
+        (repairedParsed as any).plan &&
+        typeof (repairedParsed as any).plan === 'object'
+          ? (repairedParsed as any).plan
+          : repairedParsed;
+
+      const repairedValidated = ProductPlanV1Schema.safeParse(repairedCandidate);
+      if (repairedValidated.success) {
+        return { plan: repairedValidated.data };
+      }
+
+      const secondErr = summarizeZodError(repairedValidated.error);
+      console.error('[AI2SCENE API] callOpenAiForProductPlan repair failed:', secondErr);
+      return { plan: null, error: secondErr };
+    } catch (repairErr: any) {
+      const msg = safeReason(repairErr?.message || String(repairErr));
+      console.error('[AI2SCENE API] callOpenAiForProductPlan repair attempt errored:', msg);
+      return { plan: null, error: firstErr };
+    }
   } catch (e: any) {
     if (e instanceof z.ZodError) {
       const summary = summarizeZodError(e);
@@ -896,7 +1008,12 @@ router.post('/generate-product-plan', async (req, res) => {
     res.setHeader('x-ai-error', safeHeader);
 
     if (defaultCategory === 'windows') {
-      return res.json(createFallbackWindowPlan(dims.widthMm, dims.heightMm, dims.depthMm, reason));
+      const isSash = looksLikeSashDescription(description || '', existingProductType?.type);
+      return res.json(
+        isSash
+          ? createFallbackSashWindowPlan(dims.widthMm, dims.heightMm, dims.depthMm, reason)
+          : createFallbackWindowPlan(dims.widthMm, dims.heightMm, dims.depthMm, reason)
+      );
     }
     return res.json(createFallbackDoorPlan(dims.widthMm, dims.heightMm, dims.depthMm, reason));
   } catch (e: any) {
@@ -906,9 +1023,13 @@ router.post('/generate-product-plan', async (req, res) => {
     // Best-effort recovery: return fallback plan so UI can proceed.
     let categoryHint = '';
     let existingDims: any = undefined;
+    let description = '';
+    let existingType = '';
     try {
       categoryHint = String((req as any)?.body?.existingProductType?.category || '').toLowerCase();
       existingDims = (req as any)?.body?.existingDims;
+      description = String((req as any)?.body?.description || '');
+      existingType = String((req as any)?.body?.existingProductType?.type || '');
     } catch {}
 
     const defaultCategory = categoryHint.includes('window') ? 'windows' : 'doors';
@@ -926,7 +1047,12 @@ router.post('/generate-product-plan', async (req, res) => {
       .slice(0, 200);
     res.setHeader('x-ai-error', safeHeader);
     if (defaultCategory === 'windows') {
-      return res.json(createFallbackWindowPlan(dims.widthMm, dims.heightMm, dims.depthMm, msg));
+      const isSash = looksLikeSashDescription(description, existingType);
+      return res.json(
+        isSash
+          ? createFallbackSashWindowPlan(dims.widthMm, dims.heightMm, dims.depthMm, msg)
+          : createFallbackWindowPlan(dims.widthMm, dims.heightMm, dims.depthMm, msg)
+      );
     }
     return res.json(createFallbackDoorPlan(dims.widthMm, dims.heightMm, dims.depthMm, msg));
   }

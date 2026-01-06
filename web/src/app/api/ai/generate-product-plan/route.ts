@@ -518,6 +518,20 @@ function createFallback(category: string, existingDims?: any): ProductPlanV1 {
   return createFallbackDoorPlan(widthMm ?? 914, heightMm ?? 2032, depthMm ?? 45);
 }
 
+function looksLikeSash(description?: string): boolean {
+  const desc = String(description || '').toLowerCase();
+  return (
+    desc.includes('sash') ||
+    desc.includes('double-hung') ||
+    desc.includes('double hung') ||
+    desc.includes('spring balance') ||
+    desc.includes('meeting rail') ||
+    desc.includes('vertically sliding') ||
+    desc.includes('2 over 2') ||
+    desc.includes('4 over 4')
+  );
+}
+
 function ensureNonEmptyComponents(opts: {
   plan: ProductPlanV1;
   category: string;
@@ -593,10 +607,15 @@ export async function POST(request: NextRequest) {
 
     // Fallback to safe default
     console.log('[AI2SCENE] Falling back to default plan, error:', aiResult.error);
-    const fallback = createFallback(
-      existingProductType?.category || 'doors',
-      existingDims
-    );
+    const category = existingProductType?.category || 'doors';
+    const fallback =
+      category === 'windows' && looksLikeSash(description)
+        ? createFallbackSashWindowPlan(
+            Number(existingDims?.widthMm) || 1200,
+            Number(existingDims?.heightMm) || 1800,
+            Number(existingDims?.depthMm) || 80
+          )
+        : createFallback(category, existingDims);
 
     const res = NextResponse.json(fallback);
     res.headers.set('x-ai-fallback', '1');
