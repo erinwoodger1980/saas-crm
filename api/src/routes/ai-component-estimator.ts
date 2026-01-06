@@ -291,6 +291,239 @@ function createFallbackWindowPlan(
   };
 }
 
+function createFallbackSashWindowPlan(
+  widthMm = 1200,
+  heightMm = 1800,
+  depthMm = 80,
+  reason?: string
+): ProductPlanV1 {
+  const sashH = Math.max(400, Math.round((heightMm - 160) / 2));
+  return {
+    kind: 'ProductPlanV1',
+    detected: { category: 'window', type: 'sash', option: 'double_hung', confidence: 0.2 },
+    dimensions: { widthMm, heightMm, depthMm },
+    materialRoles: {
+      frame: 'TIMBER_PRIMARY',
+      sash: 'TIMBER_PRIMARY',
+      glazingBar: 'TIMBER_PRIMARY',
+      glass: 'GLASS_CLEAR',
+      finish: 'PAINT_FINISH',
+      hardware: 'METAL_CHROME',
+    },
+    profileSlots: {
+      FRAME_JAMB: { profileHint: 'hardwood_3x2', source: 'estimated' },
+      LEAF_STILE: { profileHint: 'hardwood_2x1_5', source: 'estimated' },
+      LEAF_RAIL: { profileHint: 'hardwood_2x1_5', source: 'estimated' },
+    },
+    components: [
+      // Box frame
+      {
+        id: 'frame_jamb_l',
+        role: 'FRAME_JAMB_L',
+        parametric: true,
+        geometry: { type: 'profileExtrude', profileSlot: 'FRAME_JAMB', lengthExpr: 'ph', extrudeAxis: 'z' },
+        transform: { xExpr: '0', yExpr: '0', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'frame_jamb_r',
+        role: 'FRAME_JAMB_R',
+        parametric: true,
+        geometry: { type: 'profileExtrude', profileSlot: 'FRAME_JAMB', lengthExpr: 'ph', extrudeAxis: 'z' },
+        transform: { xExpr: 'pw - frameW', yExpr: '0', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'frame_head',
+        role: 'FRAME_HEAD',
+        parametric: true,
+        geometry: { type: 'profileExtrude', profileSlot: 'FRAME_JAMB', lengthExpr: 'pw', extrudeAxis: 'z' },
+        transform: { xExpr: '0', yExpr: 'ph - frameW', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'cill',
+        role: 'CILL',
+        parametric: true,
+        geometry: { type: 'profileExtrude', profileSlot: 'FRAME_JAMB', lengthExpr: 'pw', extrudeAxis: 'z' },
+        transform: { xExpr: '0', yExpr: '0', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+
+      // Lower sash
+      {
+        id: 'lower_stile_l',
+        role: 'STILE',
+        parametric: true,
+        geometry: { type: 'profileExtrude', profileSlot: 'LEAF_STILE', lengthExpr: 'sashH', extrudeAxis: 'z' },
+        transform: { xExpr: 'frameW', yExpr: 'frameW', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'lower_stile_r',
+        role: 'STILE',
+        parametric: true,
+        geometry: { type: 'profileExtrude', profileSlot: 'LEAF_STILE', lengthExpr: 'sashH', extrudeAxis: 'z' },
+        transform: { xExpr: 'pw - frameW - sashStileW', yExpr: 'frameW', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'lower_rail_bottom',
+        role: 'RAIL_BOTTOM',
+        parametric: true,
+        geometry: { type: 'profileExtrude', profileSlot: 'LEAF_RAIL', lengthExpr: 'pw - (frameW * 2)', extrudeAxis: 'z' },
+        transform: { xExpr: 'frameW', yExpr: 'frameW', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'meeting_rail_lower',
+        role: 'RAIL_TOP',
+        parametric: true,
+        geometry: { type: 'profileExtrude', profileSlot: 'LEAF_RAIL', lengthExpr: 'pw - (frameW * 2)', extrudeAxis: 'z' },
+        transform: { xExpr: 'frameW', yExpr: 'frameW + sashH - sashRailH', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'lower_glazing_bar_v',
+        role: 'GLAZING_BAR',
+        parametric: true,
+        geometry: { type: 'box', widthExpr: 'barW', heightExpr: 'sashH - (sashRailH * 2)', depthExpr: 'sd' },
+        transform: {
+          xExpr: 'frameW + sashStileW + ((pw - (frameW * 2) - (sashStileW * 2) - barW) / 2)',
+          yExpr: 'frameW + sashRailH',
+          zExpr: '0',
+        },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'lower_glazing_bar_h',
+        role: 'GLAZING_BAR',
+        parametric: true,
+        geometry: { type: 'box', widthExpr: 'pw - (frameW * 2) - (sashStileW * 2)', heightExpr: 'barW', depthExpr: 'sd' },
+        transform: {
+          xExpr: 'frameW + sashStileW',
+          yExpr: 'frameW + sashRailH + ((sashH - (sashRailH * 2) - barW) / 2)',
+          zExpr: '0',
+        },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'lower_glass',
+        role: 'GLASS',
+        parametric: true,
+        geometry: {
+          type: 'box',
+          widthExpr: 'pw - (frameW * 2) - (sashStileW * 2)',
+          heightExpr: 'sashH - (sashRailH * 2)',
+          depthExpr: '10',
+        },
+        transform: { xExpr: 'frameW + sashStileW', yExpr: 'frameW + sashRailH', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'GLASS_CLEAR',
+      },
+
+      // Upper sash
+      {
+        id: 'upper_stile_l',
+        role: 'STILE',
+        parametric: true,
+        geometry: { type: 'profileExtrude', profileSlot: 'LEAF_STILE', lengthExpr: 'sashH', extrudeAxis: 'z' },
+        transform: { xExpr: 'frameW', yExpr: 'frameW + sashH', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'upper_stile_r',
+        role: 'STILE',
+        parametric: true,
+        geometry: { type: 'profileExtrude', profileSlot: 'LEAF_STILE', lengthExpr: 'sashH', extrudeAxis: 'z' },
+        transform: { xExpr: 'pw - frameW - sashStileW', yExpr: 'frameW + sashH', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'meeting_rail_upper',
+        role: 'RAIL_BOTTOM',
+        parametric: true,
+        geometry: { type: 'profileExtrude', profileSlot: 'LEAF_RAIL', lengthExpr: 'pw - (frameW * 2)', extrudeAxis: 'z' },
+        transform: { xExpr: 'frameW', yExpr: 'frameW + sashH', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'upper_rail_top',
+        role: 'RAIL_TOP',
+        parametric: true,
+        geometry: { type: 'profileExtrude', profileSlot: 'LEAF_RAIL', lengthExpr: 'pw - (frameW * 2)', extrudeAxis: 'z' },
+        transform: { xExpr: 'frameW', yExpr: 'frameW + (sashH * 2) - sashRailH', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'upper_glazing_bar_v',
+        role: 'GLAZING_BAR',
+        parametric: true,
+        geometry: { type: 'box', widthExpr: 'barW', heightExpr: 'sashH - (sashRailH * 2)', depthExpr: 'sd' },
+        transform: {
+          xExpr: 'frameW + sashStileW + ((pw - (frameW * 2) - (sashStileW * 2) - barW) / 2)',
+          yExpr: 'frameW + sashH + sashRailH',
+          zExpr: '0',
+        },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'upper_glazing_bar_h',
+        role: 'GLAZING_BAR',
+        parametric: true,
+        geometry: { type: 'box', widthExpr: 'pw - (frameW * 2) - (sashStileW * 2)', heightExpr: 'barW', depthExpr: 'sd' },
+        transform: {
+          xExpr: 'frameW + sashStileW',
+          yExpr: 'frameW + sashH + sashRailH + ((sashH - (sashRailH * 2) - barW) / 2)',
+          zExpr: '0',
+        },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'upper_glass',
+        role: 'GLASS',
+        parametric: true,
+        geometry: {
+          type: 'box',
+          widthExpr: 'pw - (frameW * 2) - (sashStileW * 2)',
+          heightExpr: 'sashH - (sashRailH * 2)',
+          depthExpr: '10',
+        },
+        transform: { xExpr: 'frameW + sashStileW', yExpr: 'frameW + sashH + sashRailH', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'GLASS_CLEAR',
+      },
+    ],
+    variables: {
+      pw: { defaultValue: widthMm, unit: 'mm', description: 'Product width (outer)' },
+      ph: { defaultValue: heightMm, unit: 'mm', description: 'Product height (outer)' },
+      sd: { defaultValue: depthMm, unit: 'mm', description: 'Standard depth' },
+      frameW: { defaultValue: 80, unit: 'mm', description: 'Box frame width' },
+      sashStileW: { defaultValue: 35, unit: 'mm', description: 'Sash stile width' },
+      sashRailH: { defaultValue: 45, unit: 'mm', description: 'Sash rail height' },
+      barW: { defaultValue: 18, unit: 'mm', description: 'Glazing bar width' },
+      sashH: { defaultValue: sashH, unit: 'mm', description: 'Approx sash height' },
+    },
+    rationale: `Fallback: double-hung sash window with two glazed sashes and glazing bars${reason ? ` (reason: ${reason})` : ''}`,
+  };
+}
+
 const GenerateProductPlanRequestSchema = z.object({
   description: z.string().default(''),
   image: z.string().optional(),
@@ -328,18 +561,38 @@ Rules:
 - components MUST be a non-empty list of component instances (id/role/geometry/transform/materialRole). If unsure, output a minimal structural set (frame + leaf + infill) rather than leaving it empty.
 `;
 
-function ensurePlanHasComponents(plan: ProductPlanV1, dims: { widthMm?: number; heightMm?: number; depthMm?: number }): ProductPlanV1 {
+function ensurePlanHasComponents(
+  plan: ProductPlanV1,
+  dims: { widthMm?: number; heightMm?: number; depthMm?: number },
+  description?: string
+): ProductPlanV1 {
   const existing = Array.isArray((plan as any).components) ? (plan as any).components : [];
   if (existing.length > 0) return plan;
 
   const category = String((plan as any)?.detected?.category || '').toLowerCase();
+  const type = String((plan as any)?.detected?.type || '').toLowerCase();
+  const desc = String(description || '').toLowerCase();
   const widthMm = Number(dims.widthMm) || Number((plan as any)?.dimensions?.widthMm) || 1200;
   const heightMm = Number(dims.heightMm) || Number((plan as any)?.dimensions?.heightMm) || 1200;
   const depthMm = Number(dims.depthMm) || Number((plan as any)?.dimensions?.depthMm) || 80;
 
-  const fallback = category === 'door'
-    ? createFallbackDoorPlan(widthMm || 914, heightMm || 2032, depthMm || 45, 'components_autofilled')
-    : createFallbackWindowPlan(widthMm || 1200, heightMm || 1200, depthMm || 80, 'components_autofilled');
+  const looksLikeSash =
+    category === 'window' &&
+    (type.includes('sash') ||
+      desc.includes('sash') ||
+      desc.includes('double-hung') ||
+      desc.includes('double hung') ||
+      desc.includes('spring balance') ||
+      desc.includes('meeting rail') ||
+      desc.includes('2 over 2') ||
+      desc.includes('4 over 4'));
+
+  const fallback =
+    category === 'door'
+      ? createFallbackDoorPlan(widthMm || 914, heightMm || 2032, depthMm || 45, 'components_autofilled')
+      : looksLikeSash
+        ? createFallbackSashWindowPlan(widthMm || 1200, heightMm || 1800, depthMm || 80, 'components_autofilled')
+        : createFallbackWindowPlan(widthMm || 1200, heightMm || 1200, depthMm || 80, 'components_autofilled');
 
   return {
     ...(plan as any),
@@ -631,7 +884,7 @@ router.post('/generate-product-plan', async (req, res) => {
 
     if (ai.plan) {
       res.setHeader('x-ai-fallback', '0');
-      return res.json(ensurePlanHasComponents(ai.plan, dims));
+      return res.json(ensurePlanHasComponents(ai.plan, dims, description || ''));
     }
 
     const reason = safeReason(ai.error || 'unknown');

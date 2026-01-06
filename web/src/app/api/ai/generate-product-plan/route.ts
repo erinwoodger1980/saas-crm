@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ProductPlanV1Schema, createFallbackDoorPlan, createFallbackWindowPlan, ProductPlanV1 } from '@/types/product-plan';
+import {
+  ProductPlanV1Schema,
+  createFallbackDoorPlan,
+  createFallbackWindowPlan,
+  createFallbackSashWindowPlan,
+  ProductPlanV1,
+} from '@/types/product-plan';
 
 const sanitizeHeaderValue = (value: unknown, maxLen = 200) => {
   return String(value ?? '')
@@ -512,6 +518,46 @@ function createFallback(category: string, existingDims?: any): ProductPlanV1 {
   return createFallbackDoorPlan(widthMm ?? 914, heightMm ?? 2032, depthMm ?? 45);
 }
 
+function ensureNonEmptyComponents(opts: {
+  plan: ProductPlanV1;
+  category: string;
+  description?: string;
+  existingDims?: any;
+}): ProductPlanV1 {
+  const { plan, category, description, existingDims } = opts;
+  if (Array.isArray(plan.components) && plan.components.length > 0) return plan;
+
+  const desc = String(description || '').toLowerCase();
+  const detectedType = String((plan as any)?.detected?.type || '').toLowerCase();
+  const isSash =
+    category === 'windows' &&
+    (desc.includes('sash') ||
+      desc.includes('double-hung') ||
+      desc.includes('double hung') ||
+      desc.includes('spring balance') ||
+      desc.includes('meeting rail') ||
+      desc.includes('2 over 2') ||
+      desc.includes('4 over 4') ||
+      detectedType.includes('sash'));
+
+  const fallback = isSash
+    ? createFallbackSashWindowPlan(
+        Number(existingDims?.widthMm) || plan.dimensions.widthMm || 1200,
+        Number(existingDims?.heightMm) || plan.dimensions.heightMm || 1800,
+        Number(existingDims?.depthMm) || plan.dimensions.depthMm || 80
+      )
+    : createFallback(category, existingDims);
+
+  return {
+    ...plan,
+    components: fallback.components,
+    variables: { ...fallback.variables, ...(plan.variables || {}) },
+    profileSlots: Object.keys(plan.profileSlots || {}).length ? plan.profileSlots : fallback.profileSlots,
+    materialRoles: Object.keys(plan.materialRoles || {}).length ? plan.materialRoles : fallback.materialRoles,
+    rationale: `${String(plan.rationale || fallback.rationale).trim()} (components auto-filled)`,
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -528,12 +574,19 @@ export async function POST(request: NextRequest) {
     const aiResult = await callOpenAI(description, existingProductType, existingDims);
 
     if (aiResult.plan) {
-      console.log('[AI2SCENE] Generated ProductPlan:', {
-        kind: aiResult.plan.kind,
-        detected: aiResult.plan.detected,
-        numComponents: aiResult.plan.components.length,
+      const category = existingProductType?.category || 'doors';
+      const safePlan = ensureNonEmptyComponents({
+        plan: aiResult.plan,
+        category,
+        description,
+        existingDims,
       });
-      const res = NextResponse.json(aiResult.plan);
+      console.log('[AI2SCENE] Generated ProductPlan:', {
+        kind: safePlan.kind,
+        detected: safePlan.detected,
+        numComponents: safePlan.components.length,
+      });
+      const res = NextResponse.json(safePlan);
       res.headers.set('x-ai-fallback', '0');
       return res;
     }
