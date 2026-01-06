@@ -156,6 +156,8 @@ import { CustomizableGrid } from "@/components/CustomizableGrid";
 import { ColumnConfigModal } from "@/components/ColumnConfigModal";
 import DropdownOptionsEditor from "@/components/DropdownOptionsEditor";
 import { useToast } from "@/components/ui/use-toast";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 
 import CalendarWeekView from "./CalendarWeekView";
 import CalendarYearView from "./CalendarYearView";
@@ -163,6 +165,7 @@ import WorkshopTimer, { WorkshopTimerHandle } from "@/components/workshop/Worksh
 import { useTaskNotifications } from "@/hooks/useTaskNotifications";
 import { NotificationPrompt, NotificationToggle } from "@/components/notifications/NotificationPrompt";
 import QRScannerModal from "@/components/workshop/QRScannerModal";
+import MyTimesheetView from "@/components/workshop/MyTimesheetView";
 
 // Workshop processes are sourced from settings via `/workshop-processes`
 interface ProcDef { id: string; code: string; name: string; sortOrder?: number; isGeneric?: boolean }
@@ -306,7 +309,7 @@ export default function WorkshopPage() {
   // Task notifications
   const { permission, requestPermission, isEnabled } = useTaskNotifications(user?.id ? Number(user.id) : null);
   
-  const [viewMode, setViewMode] = useState<'calendar' | 'timeline' | 'tasks' | 'grid'>(() => {
+  const [viewMode, setViewMode] = useState<'calendar' | 'timeline' | 'tasks' | 'grid' | 'timesheet'>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('workshop-view-mode');
       if (saved && ['calendar', 'timeline', 'tasks', 'grid'].includes(saved)) {
@@ -367,6 +370,11 @@ export default function WorkshopPage() {
   const [showHoursModal, setShowHoursModal] = useState<{ projectId: string; projectName: string } | null>(null);
   const [showQuickLog, setShowQuickLog] = useState(false);
   const [showHolidayModal, setShowHolidayModal] = useState(false);
+  const [holidayRequestForm, setHolidayRequestForm] = useState({
+    startDate: '',
+    endDate: '',
+    reason: ''
+  });
   const [showProjectDetails, setShowProjectDetails] = useState<string | null>(null);
   const [showProjectSwap, setShowProjectSwap] = useState(false);
   const [swapForm, setSwapForm] = useState({ projectId: '', process: '', notes: '', search: '' });
@@ -1389,12 +1397,28 @@ export default function WorkshopPage() {
             )}
           </Button>
           <Button 
+            variant={viewMode === 'timesheet' ? 'default' : 'outline'} 
+            size="lg"
+            onClick={() => setViewMode('timesheet')}
+            className="font-bold"
+          >
+            📊 My Timesheet
+          </Button>
+          <Button 
             variant="outline" 
             size="lg"
             onClick={() => setShowQRScanner(true)}
             className="font-bold"
           >
             📷 QR Code
+          </Button>
+          <Button 
+            variant="outline" 
+            size="lg"
+            onClick={() => setShowHolidayModal(true)}
+            className="font-bold"
+          >
+            🏖️ Holidays
           </Button>
         </div>
         <WorkshopTimer
@@ -2075,6 +2099,14 @@ export default function WorkshopPage() {
             </Card>
           )}
         </div>
+      )}
+
+      {/* My Timesheet View */}
+      {viewMode === 'timesheet' && user && (
+        <MyTimesheetView 
+          userId={user.id} 
+          userName={user.name || user.email}
+        />
       )}
 
       {/* Column Configuration Modal */}
@@ -2798,6 +2830,89 @@ export default function WorkshopPage() {
           onScanSuccess={handleQRScanSuccess}
         />
       )}
+
+      {/* Holiday Request Modal */}
+      <Dialog open={showHolidayModal} onOpenChange={setShowHolidayModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Request Holiday</DialogTitle>
+            <DialogDescription>
+              Request time off for approval by an administrator
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium mb-1 block">Start Date</label>
+              <Input
+                type="date"
+                value={holidayRequestForm.startDate}
+                onChange={(e) => setHolidayRequestForm(prev => ({ ...prev, startDate: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">End Date</label>
+              <Input
+                type="date"
+                value={holidayRequestForm.endDate}
+                onChange={(e) => setHolidayRequestForm(prev => ({ ...prev, endDate: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Reason (optional)</label>
+              <Textarea
+                value={holidayRequestForm.reason}
+                onChange={(e) => setHolidayRequestForm(prev => ({ ...prev, reason: e.target.value }))}
+                placeholder="Brief reason for holiday request..."
+              />
+            </div>
+            {holidayError && (
+              <div className="text-sm text-red-600 bg-red-50 p-3 rounded border border-red-200">
+                {holidayError}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setShowHolidayModal(false);
+              setHolidayRequestForm({ startDate: '', endDate: '', reason: '' });
+              setHolidayError(null);
+            }}>
+              Cancel
+            </Button>
+            <Button onClick={async () => {
+              if (!holidayRequestForm.startDate || !holidayRequestForm.endDate) {
+                setHolidayError('Please select both start and end dates');
+                return;
+              }
+              if (new Date(holidayRequestForm.endDate) < new Date(holidayRequestForm.startDate)) {
+                setHolidayError('End date must be after start date');
+                return;
+              }
+              try {
+                await apiFetch('/workshop/holiday-requests', {
+                  method: 'POST',
+                  json: {
+                    startDate: holidayRequestForm.startDate,
+                    endDate: holidayRequestForm.endDate,
+                    reason: holidayRequestForm.reason || null,
+                  },
+                });
+                toast({
+                  title: "Holiday request submitted",
+                  description: "Your request has been sent for approval",
+                });
+                setShowHolidayModal(false);
+                setHolidayRequestForm({ startDate: '', endDate: '', reason: '' });
+                setHolidayError(null);
+              } catch (e: any) {
+                setHolidayError(e?.message || 'Failed to submit holiday request');
+              }
+            }}>
+              Submit Request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

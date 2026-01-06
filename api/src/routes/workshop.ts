@@ -283,6 +283,34 @@ router.patch("/users/:userId/hours", async (req: any, res) => {
   res.json({ ok: true, user: updated });
 });
 
+// PATCH /workshop/users/:userId/holiday-allowance { holidayAllowance: number }
+router.patch("/users/:userId/holiday-allowance", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const userId = String(req.params.userId);
+  const { holidayAllowance } = req.body || {};
+  
+  if (holidayAllowance == null || isNaN(Number(holidayAllowance))) {
+    return res.status(400).json({ error: "invalid_allowance" });
+  }
+  
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, tenantId: true },
+  });
+  
+  if (!user || user.tenantId !== tenantId) {
+    return res.status(404).json({ error: "not_found" });
+  }
+  
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: { holidayAllowance: Number(holidayAllowance) },
+    select: { id: true, name: true, email: true, holidayAllowance: true },
+  });
+  
+  res.json({ ok: true, user: updated });
+});
+
 // PATCH /workshop/users/:userId/profile-picture { profilePictureUrl: string }
 router.patch("/users/:userId/profile-picture", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
@@ -1676,4 +1704,258 @@ router.patch("/process-status", async (req: any, res) => {
   }
 });
 
+// GET /workshop/my-timesheet - Get time entries for a specific user in a date range
+router.get("/my-timesheet", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const userId = req.query.userId as string;
+  const from = req.query.from ? new Date(String(req.query.from)) : new Date(new Date().setDate(new Date().getDate() - 7));
+  const to = req.query.to ? new Date(String(req.query.to)) : new Date();
+
+  if (!userId) {
+    return res.status(400).json({ error: "userId required" });
+  }
+
+  try {
+    const entries = await (prisma as any).workshopTime.findMany({
+      where: {
+        tenantId,
+        userId,
+        date: {
+          gte: from,
+          lte: to,
+        },
+      },
+      include: {
+        project: {
+          select: {
+            id: true,
+            name: true,
+            number: true,
+          },
+        },
+      },
+      orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
+    });
+
+    res.json({ entries });
+  } catch (e: any) {
+    console.error("[my-timesheet] Error:", e);
+    return res.status(500).json({ error: "Failed to load timesheet", message: e.message });
+  }
+});
+
+// GET /workshop/holiday-requests - Get all holiday requests (admins see all, users see their own)
+router.get("/holiday-requests", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const userId = req.auth.userId as string;
+  const role = req.auth.role as string;
+
+  try {
+    const where: any = { tenantId };
+    
+    // Non-admins can only see their own requests
+    if (!['owner', 'admin'].includes(role?.toLowerCase() || '')) {
+      where.userId = userId;
+    }
+
+    const requests = await (prisma as any).holidayRequest.findMany({
+      where,
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json({ requests });
+  } catch (e: any) {
+    console.error("[holiday-requests] Error:", e);
+    return res.status(500).json({ error: "Failed to load holiday requests", message: e.message });
+  }
+});
+
+// POST /workshop/holiday-requests - Create a new holiday request
+router.post("/holiday-requests", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const userId = req.auth.userId as string;
+  const { startDate, endDate, reason } = req.body;
+
+  if (!startDate || !endDate) {
+    return res.status(400).json({ error: "startDate and endDate are required" });
+  }
+
+  try {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    if (end < start) {
+      return res.status(400).json({ error: "End date must be after start date" });
+    }
+
+    // Calculate number of days
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 to include both start and end days
+
+    const request = await (prisma as any).holidayRequest.create({
+      data: {
+        tenantId,
+        userId,
+        startDate: start,
+        endDate: end,
+        days: diffDays,
+        reason: reason || null,
+        status: 'pending',
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    res.json({ ok: true, request });
+  } catch (e: any) {
+    console.error("[holiday-requests] Error:", e);
+    return res.status(500).json({ error: "Failed to create holiday request", message: e.message });
+  }
+});
+
+// PATCH /workshop/holiday-requests/:id - Approve or deny a holiday request (admin only)
+router.patch("/holiday-requests/:id", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const role = req.auth.role as string;
+  const requestId = req.params.id;
+  const { status, adminNotes } = req.body;
+
+  // Only admins can approve/deny
+  if (!['owner', 'admin'].includes(role?.toLowerCase() || '')) {
+    return res.status(403).json({ error: "Only administrators can approve/deny holiday requests" });
+  }
+
+  if (!['approved', 'denied'].includes(status)) {
+    return res.status(400).json({ error: "Status must be 'approved' or 'denied'" });
+  }
+
+  try {
+    const request = await (prisma as any).holidayRequest.update({
+      where: {
+        id: requestId,
+        tenantId,
+      },
+      data: {
+        status,
+        adminNotes: adminNotes || null,
+        approvedAt: status === 'approved' ? new Date() : null,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    res.json({ ok: true, request });
+  } catch (e: any) {
+    console.error("[holiday-requests] Error:", e);
+    return res.status(500).json({ error: "Failed to update holiday request", message: e.message });
+  }
+});
+
+// DELETE /workshop/holiday-requests/:id - Delete a holiday request
+router.delete("/holiday-requests/:id", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const userId = req.auth.userId as string;
+  const role = req.auth.role as string;
+  const requestId = req.params.id;
+
+  try {
+    const request = await (prisma as any).holidayRequest.findUnique({
+      where: { id: requestId, tenantId },
+    });
+
+    if (!request) {
+      return res.status(404).json({ error: "Holiday request not found" });
+    }
+
+    // Users can only delete their own pending requests, admins can delete any
+    const isAdmin = ['owner', 'admin'].includes(role?.toLowerCase() || '');
+    if (!isAdmin && (request.userId !== userId || request.status !== 'pending')) {
+      return res.status(403).json({ error: "You can only delete your own pending requests" });
+    }
+
+    await (prisma as any).holidayRequest.delete({
+      where: { id: requestId },
+    });
+
+    res.json({ ok: true });
+  } catch (e: any) {
+    console.error("[holiday-requests] Error:", e);
+    return res.status(500).json({ error: "Failed to delete holiday request", message: e.message });
+  }
+});
+
+// GET /workshop/holiday-balance - Get holiday balance for current user
+router.get("/holiday-balance", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const userId = req.auth.userId as string;
+
+  try {
+    // Get user's annual allowance
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { holidayAllowance: true },
+    });
+
+    const allowance = user?.holidayAllowance || 0;
+
+    // Get current year
+    const currentYear = new Date().getFullYear();
+    const yearStart = new Date(currentYear, 0, 1);
+    const yearEnd = new Date(currentYear, 11, 31);
+
+    // Get approved holiday requests for current year
+    const approvedRequests = await (prisma as any).holidayRequest.findMany({
+      where: {
+        tenantId,
+        userId,
+        status: 'approved',
+        startDate: {
+          gte: yearStart,
+          lte: yearEnd,
+        },
+      },
+      select: {
+        days: true,
+      },
+    });
+
+    const used = approvedRequests.reduce((sum: number, req: any) => sum + (req.days || 0), 0);
+    const remaining = allowance - used;
+
+    res.json({ 
+      allowance, 
+      used, 
+      remaining,
+      year: currentYear,
+    });
+  } catch (e: any) {
+    console.error("[holiday-balance] Error:", e);
+    return res.status(500).json({ error: "Failed to calculate holiday balance", message: e.message });
+  }
+});
+
 export default router;
+

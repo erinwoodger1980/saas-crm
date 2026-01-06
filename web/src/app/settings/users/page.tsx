@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Trash2, KeyRound } from "lucide-react";
 
-type UserRow = { id: string; name: string | null; email: string; workshopUsername?: string | null; role?: string; workshopHoursPerDay?: number | null; workshopProcessCodes?: string[]; passwordHash?: string | null; firstName?: string | null; lastName?: string | null; emailFooter?: string | null; isEarlyAdopter?: boolean };
+type UserRow = { id: string; name: string | null; email: string; workshopUsername?: string | null; role?: string; workshopHoursPerDay?: number | null; workshopProcessCodes?: string[]; holidayAllowance?: number | null; passwordHash?: string | null; firstName?: string | null; lastName?: string | null; emailFooter?: string | null; isEarlyAdopter?: boolean };
 
 type UsersResponse = { ok: boolean; items: UserRow[] };
 
@@ -25,6 +25,7 @@ export default function UsersSettingsPage() {
   const [form, setForm] = useState<{ email: string; username: string; password: string; role: "admin" | "workshop" | ""; useUsername: boolean }>({ email: "", username: "", password: "", role: "", useUsername: false });
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [editingHours, setEditingHours] = useState<Record<string, string>>({});
+  const [editingHolidayAllowance, setEditingHolidayAllowance] = useState<Record<string, string>>({});
   const [editingProcesses, setEditingProcesses] = useState<Record<string, string[]>>({});
   const [editingProfile, setEditingProfile] = useState<Record<string, { firstName: string; lastName: string; emailFooter: string }>>({});
   const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null);
@@ -144,6 +145,23 @@ export default function UsersSettingsPage() {
       });
     } catch (e: any) {
       setError(e?.message || "Failed to update hours");
+    }
+  }
+
+  async function updateUserHolidayAllowance(userId: string, allowance: number) {
+    try {
+      await apiFetch(`/workshop/users/${userId}/holiday-allowance`, {
+        method: "PATCH",
+        json: { holidayAllowance: allowance },
+      });
+      await loadUsers();
+      setEditingHolidayAllowance(prev => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+    } catch (e: any) {
+      setError(e?.message || "Failed to update holiday allowance");
     }
   }
 
@@ -437,6 +455,55 @@ export default function UsersSettingsPage() {
                             onClick={() => setEditingHours(prev => ({
                               ...prev,
                               [u.id]: String(u.workshopHoursPerDay != null ? Number(u.workshopHoursPerDay) : 8)
+                            }))}
+                          >
+                            Edit
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-muted-foreground whitespace-nowrap">Holiday allowance (days/year):</label>
+                      {editingHolidayAllowance[u.id] !== undefined ? (
+                        <>
+                          <Input
+                            type="number"
+                            min="0"
+                            max="365"
+                            value={editingHolidayAllowance[u.id]}
+                            onChange={(e) => setEditingHolidayAllowance(prev => ({ ...prev, [u.id]: e.target.value }))}
+                            className="w-20 h-8 text-sm"
+                          />
+                          <Button
+                            size="sm"
+                            onClick={() => updateUserHolidayAllowance(u.id, Number(editingHolidayAllowance[u.id]))}
+                            disabled={!editingHolidayAllowance[u.id] || isNaN(Number(editingHolidayAllowance[u.id]))}
+                          >
+                            Save
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setEditingHolidayAllowance(prev => {
+                              const next = { ...prev };
+                              delete next[u.id];
+                              return next;
+                            })}
+                          >
+                            Cancel
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-sm font-medium w-12 text-right">
+                            {u.holidayAllowance != null ? Number(u.holidayAllowance) : 20} days
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setEditingHolidayAllowance(prev => ({
+                              ...prev,
+                              [u.id]: String(u.holidayAllowance != null ? Number(u.holidayAllowance) : 20)
                             }))}
                           >
                             Edit

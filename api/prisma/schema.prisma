@@ -135,6 +135,7 @@ model Tenant {
   architectPacks             ArchitectPack[]             @relation("ArchitectPacks")
   tenantAIUsageEvents        TenantAIUsageEvent[]        @relation("TenantAIUsageEvents")
   tenantAIUsageMonthly       TenantAIUsageMonthly[]      @relation("TenantAIUsageMonthly")
+  holidayRequests            HolidayRequest[]
   productTypeComponentAssignments ProductTypeComponentAssignment[] @relation("ProductTypeComponentAssignmentsTenant")
   profiles                   Profile[]                   @relation("TenantProfiles")
 }
@@ -779,6 +780,7 @@ model User {
   isDeveloper                Boolean                     @default(false)
   isOwner                    Boolean                     @default(false)
   workshopProcessCodes       String[]
+  holidayAllowance           Int?                        @default(20)
   examplePhotos              ExamplePhoto[]
   goalPlans                  GoalPlan[]
   resolvedFeedbacks          Feedback[]                  @relation("FeedbackResolver")
@@ -800,6 +802,7 @@ model User {
   signedOffTimesheets        Timesheet[]                 @relation("TimesheetSignedOffBy")
   timesheets                 Timesheet[]                 @relation("TimesheetUser")
   workshopTimers             WorkshopTimer[]
+  holidayRequests            HolidayRequest[]
   fireDoorQRScans            FireDoorQRScan[]            @relation("FireDoorQRScans")
   fireDoorMaintenanceRecords FireDoorMaintenanceRecord[] @relation("FireDoorMaintenanceRecords")
   devTimeEntries             DevTimeEntry[]
@@ -4633,4 +4636,26 @@ model TenantAIUsageMonthly {
 
   @@unique([tenantId, month])
   @@index([tenantId])
+}
+
+model HolidayRequest {
+  id          String    @id @default(cuid())
+  tenantId    String
+  userId      String
+  startDate   DateTime
+  endDate     DateTime
+  days        Int       // Number of days requested
+  reason      String?
+  status      String    @default("pending") // pending | approved | denied
+  adminNotes  String?
+  approvedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId])
+  @@index([tenantId, status])
+  @@index([userId, status])
 }
