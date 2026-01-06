@@ -111,7 +111,7 @@ router.get("/", async (req: any, res: Response) => {
     if (signOffStatus) where.signOffStatus = signOffStatus;
     if (scheduledBy) where.scheduledBy = scheduledBy;
     
-    // Filter by client account - need to get matching project IDs first
+    // Filter by client account - get fireDoorScheduleIds from Projects linked to client's Opportunities
     if (clientAccountId) {
       const matchingProjects = await prisma.project.findMany({
         where: {
@@ -119,13 +119,16 @@ router.get("/", async (req: any, res: Response) => {
           opportunity: {
             clientAccountId: clientAccountId as string,
           },
+          fireDoorScheduleId: { not: null }, // Only projects with fire door schedules
         },
-        select: { id: true },
+        select: { fireDoorScheduleId: true },
       });
-      const projectIds = matchingProjects.map(p => p.id);
+      const fireDoorScheduleIds = matchingProjects
+        .map(p => p.fireDoorScheduleId)
+        .filter((id): id is string => id !== null);
       
-      // Find FireDoorScheduleProjects that reference these projects
-      where.projectId = { in: projectIds };
+      // Filter FireDoorScheduleProjects by ID
+      where.id = { in: fireDoorScheduleIds };
     }
 
     const orderBy: any = {};
@@ -635,7 +638,7 @@ router.get("/stats/summary", async (req: any, res: Response) => {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    // Optional client filter - need to get matching project IDs first
+    // Optional client filter - get fireDoorScheduleIds from Projects linked to client's Opportunities
     const { clientAccountId } = req.query;
     const baseWhere: any = { tenantId };
     if (clientAccountId) {
@@ -645,11 +648,15 @@ router.get("/stats/summary", async (req: any, res: Response) => {
           opportunity: {
             clientAccountId: clientAccountId as string,
           },
+          fireDoorScheduleId: { not: null }, // Only projects with fire door schedules
         },
-        select: { id: true },
+        select: { fireDoorScheduleId: true },
       });
-      const projectIds = matchingProjects.map(p => p.id);
-      baseWhere.projectId = { in: projectIds };
+      const fireDoorScheduleIds = matchingProjects
+        .map(p => p.fireDoorScheduleId)
+        .filter((id): id is string => id !== null);
+      
+      baseWhere.id = { in: fireDoorScheduleIds };
     }
 
     const [
