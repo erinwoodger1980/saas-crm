@@ -1088,42 +1088,73 @@ export default function LeadModal({
     (async () => {
       setWkLoading(true);
       try {
-        // First probe: is lead.id actually an opportunityId?
-        let actualOpportunityId: string | null = null;
-        let projectData: any = null;
-        
-        try {
-          const probeProject = await apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(lead.id)}`);
-          if (probeProject && (probeProject.ok === true || probeProject.assignments !== undefined)) {
-            // lead.id is an opportunityId
-            actualOpportunityId = lead.id;
-            projectData = probeProject;
-            console.log('[LeadModal] detected lead.id is opportunityId:', actualOpportunityId);
+        const leadId = resolvedLeadId || lead.id;
+
+        // Resolve the opportunityId for workshop/project endpoints.
+        // IMPORTANT: /workshop-processes/project/:id expects an opportunityId.
+        let actualOpportunityId: string | null = opportunityId || null;
+        if (!actualOpportunityId) {
+          try {
+            // If this leadId already has an opportunity, use it.
+            const byLead = await apiFetch<any>(`/opportunities/by-lead/${encodeURIComponent(leadId)}`, { headers: authHeaders });
+            const opp = (byLead?.opportunity || byLead) as any;
+            if (opp?.id) {
+              actualOpportunityId = String(opp.id);
+              setOpportunityId(String(opp.id));
+            }
+          } catch {
+            // Not found yet; we'll rely on ensure-for-lead below when needed.
           }
-        } catch (probeErr: any) {
-          console.debug('[LeadModal] lead.id is not an opportunityId, treating as leadId', probeErr);
         }
-        
+
         const [defs, users, oppDetails] = await Promise.all([
           apiFetch<ProcDef[]>(`/workshop-processes`).catch(() => [] as ProcDef[]),
           apiFetch<{ ok: boolean; items: ProcUser[] }>(`/workshop/users`).then((r) => (r as any)?.items || []).catch(() => [] as ProcUser[]),
-          // If we have actualOpportunityId, fetch it directly; otherwise try by-lead
-          actualOpportunityId 
-            ? apiFetch<any>(`/opportunities/${encodeURIComponent(actualOpportunityId)}`, { headers: authHeaders }).catch((err) => { console.error('[LeadModal] /opportunities/:id fetch error:', err); return null; })
-            : apiFetch<any>(`/opportunities/by-lead/${encodeURIComponent(lead.id)}`, { headers: authHeaders }).catch((err) => { console.error('[LeadModal] /opportunities/by-lead fetch error:', err); return null; }),
+          actualOpportunityId
+            ? apiFetch<any>(`/opportunities/${encodeURIComponent(actualOpportunityId)}`, { headers: authHeaders }).catch((err) => {
+                console.error('[LeadModal] /opportunities/:id fetch error:', err);
+                return null;
+              })
+            : apiFetch<any>(`/opportunities/by-lead/${encodeURIComponent(leadId)}`, { headers: authHeaders }).catch((err) => {
+                console.error('[LeadModal] /opportunities/by-lead fetch error:', err);
+                return null;
+              }),
         ]);
-        
-        // If we don't have project data yet, fetch it now
-        if (!projectData && actualOpportunityId) {
-          projectData = await apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(actualOpportunityId)}`).catch(() => null);
-        } else if (!projectData && !actualOpportunityId) {
-          projectData = await apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(lead.id)}`).catch(() => null);
+
+        // Resolve opportunityId from oppDetails (by-lead path) if not already known
+        const resolvedOpp = (oppDetails?.opportunity || oppDetails) || null;
+        if (!actualOpportunityId && resolvedOpp?.id) {
+          actualOpportunityId = String(resolvedOpp.id);
+          setOpportunityId(String(resolvedOpp.id));
         }
+
+        // If still missing, ensure/create on the server using leadId
+        if (!actualOpportunityId) {
+          try {
+            const ensured = await apiFetch<any>(`/opportunities/ensure-for-lead/${encodeURIComponent(leadId)}`, {
+              method: 'POST',
+              headers: authHeaders,
+            });
+            const ensuredId = String(ensured?.opportunity?.id || ensured?.id || '');
+            if (ensuredId) {
+              actualOpportunityId = ensuredId;
+              setOpportunityId(ensuredId);
+            }
+          } catch (err) {
+            console.error('[LeadModal] ensure-for-lead failed:', err);
+          }
+        }
+
+        const projectData = actualOpportunityId
+          ? await apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(actualOpportunityId)}`).catch(() => null)
+          : null;
         
         if (cancelled) return;
         setWkDefs((Array.isArray(defs) ? defs : []).sort((a, b) => (Number(a.sortOrder||0) - Number(b.sortOrder||0)) || a.name.localeCompare(b.name)));
         setWkUsers(Array.isArray(users) ? users : []);
-        const arr = Array.isArray(projectData?.assignments || projectData) ? (projectData.assignments || projectData) : [];
+        const arr = Array.isArray(projectData?.assignments || projectData)
+          ? (projectData.assignments || projectData)
+          : [];
         const norm: ProcAssignment[] = arr.map((it: any) => ({
           id: String(it.id || it.assignmentId || crypto.randomUUID()),
           processDefinitionId: it.processDefinitionId || it.processDefinition?.id,
@@ -1134,20 +1165,13 @@ export default function LeadModal({
           assignedUser: it.assignedUser ? { id: it.assignedUser.id, name: it.assignedUser.name ?? null, email: it.assignedUser.email } : null,
         }));
         setWkAssignments(norm);
-        
-        // Set opportunityId if we detected it
-        if (actualOpportunityId && !opportunityId) {
-          console.log('[LeadModal] setting opportunityId from detection:', actualOpportunityId);
-          setOpportunityId(actualOpportunityId);
-        }
-        
+
         // Load material dates and project details from the opportunity data
         console.log('[LeadModal] oppDetails response:', oppDetails);
-        const opp = (oppDetails?.opportunity || oppDetails) || null;
+        const opp = resolvedOpp;
         console.log('[LeadModal] resolved opp:', opp);
         if (opp) {
-          if (opp.id && !actualOpportunityId) {
-            console.log('[LeadModal] setting opportunityId from opp data:', opp.id);
+          if (opp.id) {
             setOpportunityId(String(opp.id));
           }
           // Store opportunity stage for conditional labeling
@@ -1195,7 +1219,7 @@ export default function LeadModal({
       }
     })();
     return () => { cancelled = true; };
-  }, [open, lead?.id, uiStatus, authHeaders, opportunityId]);
+  }, [open, lead?.id, resolvedLeadId, uiStatus, authHeaders, opportunityId]);
 
   function getAssignmentFor(defId: string): ProcAssignment | undefined {
     return wkAssignments.find((a) => (a.processDefinitionId === defId) || (a.processCode && wkDefs.find(d => d.id===defId)?.code === a.processCode));
@@ -1250,23 +1274,24 @@ export default function LeadModal({
     if (opportunityId) return opportunityId;
     if (!lead?.id) return null;
     try {
-      // First, if the current id is already an opportunity id (modal opened from Opportunities), use it
-      // Probe the project assignments endpoint to see if lead.id is actually an opportunityId
+      const leadId = resolvedLeadId || lead.id;
+
+      // Prefer resolving an existing opportunity by lead id (no 404 spam on workshop endpoints)
       try {
-        const probe = await apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(lead.id)}`);
-        // If we get a valid response (even if assignments is empty), this is an opportunityId
-        if (probe && (probe.ok === true || probe.assignments !== undefined)) {
-          console.log('[ensureOpportunity] detected lead.id is already opportunityId:', lead.id);
-          setOpportunityId(String(lead.id));
-          return String(lead.id);
+        const byLead = await apiFetch<any>(`/opportunities/by-lead/${encodeURIComponent(leadId)}`, { headers: authHeaders });
+        const opp = (byLead?.opportunity || byLead) as any;
+        const existingId = opp?.id ? String(opp.id) : null;
+        if (existingId) {
+          setOpportunityId(existingId);
+          return existingId;
         }
-      } catch (probeErr: any) {
-        // If we get 404, lead.id is not an opportunityId, proceed to ensure-for-lead
-        console.log('[ensureOpportunity] probe failed, will try ensure-for-lead:', probeErr?.status || probeErr?.message);
+      } catch {
+        // ignore
       }
+
       // Try resolve/create on the server using leadId
-      console.log('[ensureOpportunity] calling ensure-for-lead with:', lead.id);
-      const out = await apiFetch<any>(`/opportunities/ensure-for-lead/${encodeURIComponent(lead.id)}`, { method: 'POST', headers: authHeaders });
+      console.log('[ensureOpportunity] calling ensure-for-lead with:', leadId);
+      const out = await apiFetch<any>(`/opportunities/ensure-for-lead/${encodeURIComponent(leadId)}`, { method: 'POST', headers: authHeaders });
       const id = String(out?.opportunity?.id || '');
       if (id) {
         console.log('[ensureOpportunity] resolved opportunityId:', id);
@@ -1608,8 +1633,13 @@ export default function LeadModal({
       }
       await triggerOnUpdated();
     } catch (e: any) {
-      console.error("patch failed", e?.message || e);
-      alert("Failed to save changes");
+      const message =
+        e?.detail ||
+        e?.error ||
+        e?.message ||
+        (typeof e === "string" ? e : "Failed to save changes");
+      console.error("patch failed", { message, error: e, patch });
+      toast(`Failed to save: ${message}`);
     }
   }
 

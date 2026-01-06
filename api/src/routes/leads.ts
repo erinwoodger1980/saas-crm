@@ -1721,11 +1721,16 @@ router.patch("/:id", async (req, res) => {
     data.contactName = nextName;
   }
   if (body.email !== undefined) {
-    const nextEmail = normalizeEmail(body.email);
-    if (!nextEmail) return res.status(400).json({ error: "email cannot be empty" });
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(nextEmail)) return res.status(400).json({ error: "invalid email" });
-    data.email = nextEmail;
+    // Lead.email is optional. Allow clearing it by sending null/"".
+    if (body.email === null || body.email === "") {
+      data.email = null;
+    } else {
+      const nextEmail = normalizeEmail(body.email);
+      if (!nextEmail) return res.status(400).json({ error: "invalid email" });
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(nextEmail)) return res.status(400).json({ error: "invalid email" });
+      data.email = nextEmail;
+    }
   }
   if ((body as any).phone !== undefined) data.phone = (body as any).phone || null;
   if ((body as any).address !== undefined) data.address = (body as any).address || null;
