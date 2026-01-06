@@ -196,12 +196,14 @@ router.get("/opportunities/:id", requireCustomerAuth, async (req: any, res) => {
 /**
  * GET /api/customer-portal/fire-door-jobs
  * Get all fire door jobs for the customer's account
+ * Includes both FireDoorClientJob records and won Opportunities
  */
 router.get("/fire-door-jobs", requireCustomerAuth, async (req: any, res) => {
   try {
     const { clientAccountId } = req.customerAuth;
 
-    const jobs = await prisma.fireDoorClientJob.findMany({
+    // Get fire door client jobs
+    const fireDoorJobs = await prisma.fireDoorClientJob.findMany({
       where: {
         clientAccountId,
       },
@@ -224,13 +226,62 @@ router.get("/fire-door-jobs", requireCustomerAuth, async (req: any, res) => {
       },
     });
 
-    res.json({
-      jobs: jobs.map((job) => ({
-        ...job,
-        doorItemCount: job.doorItems.length,
-        doorItems: undefined, // Remove from response
-      })),
+    // Get won opportunities
+    const opportunities = await prisma.opportunity.findMany({
+      where: {
+        clientAccountId,
+        stage: "WON",
+      },
+      select: {
+        id: true,
+        title: true,
+        number: true,
+        stage: true,
+        valueGBP: true,
+        createdAt: true,
+        deliveryDate: true,
+        installationStartDate: true,
+        installationEndDate: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
     });
+
+    // Combine and format both types
+    const allJobs = [
+      ...fireDoorJobs.map((job) => ({
+        id: job.id,
+        jobName: job.jobName,
+        projectReference: job.projectReference,
+        status: job.status || "PENDING",
+        totalPrice: job.totalPrice,
+        submittedAt: job.submittedAt,
+        dateRequired: job.dateRequired,
+        doorItemCount: job.doorItems.length,
+        type: "fire-door-job" as const,
+      })),
+      ...opportunities.map((opp) => ({
+        id: opp.id,
+        jobName: opp.title,
+        projectReference: opp.number,
+        status: opp.stage,
+        totalPrice: opp.valueGBP,
+        submittedAt: opp.createdAt,
+        dateRequired: opp.installationStartDate || opp.deliveryDate,
+        doorItemCount: null,
+        type: "opportunity" as const,
+      })),
+    ];
+
+    // Sort by submission date
+    allJobs.sort((a, b) => {
+      const dateA = a.submittedAt ? new Date(a.submittedAt).getTime() : 0;
+      const dateB = b.submittedAt ? new Date(b.submittedAt).getTime() : 0;
+      return dateB - dateA;
+    });
+
+    res.json({ jobs: allJobs });
   } catch (error) {
     console.error("[customer-portal/fire-door-jobs] Error:", error);
     res.status(500).json({ error: "Failed to fetch fire door jobs" });

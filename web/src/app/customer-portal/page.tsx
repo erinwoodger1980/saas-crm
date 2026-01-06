@@ -41,7 +41,8 @@ type FireDoorJobListItem = {
   totalPrice?: any;
   submittedAt?: string;
   dateRequired?: string;
-  doorItemCount?: number;
+  doorItemCount?: number | null;
+  type?: "fire-door-job" | "opportunity";
 };
 
 function formatDate(value?: string) {
@@ -141,24 +142,24 @@ export default function CustomerPortalJobsPage() {
 
         <Card className="bg-white/70 backdrop-blur border-slate-200">
           <CardHeader>
-            <CardTitle>Your fire door jobs</CardTitle>
+            <CardTitle>Your projects and jobs</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
               <div className="py-10 text-sm text-slate-600">Loading…</div>
             ) : jobs.length === 0 ? (
-              <div className="py-10 text-sm text-slate-600">No jobs found.</div>
+              <div className="py-10 text-slate-600">No projects found.</div>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Job</TableHead>
+                    <TableHead>Project</TableHead>
                     <TableHead>Reference</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Doors</TableHead>
+                    <TableHead>Type</TableHead>
                     <TableHead>Required</TableHead>
-                    <TableHead>Submitted</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead className="text-right">Value</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -173,7 +174,11 @@ export default function CustomerPortalJobsPage() {
                           {job.status || "—"}
                         </Badge>
                       </TableCell>
-                      <TableCell>{job.doorItemCount ?? "—"}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">
+                          {job.type === "fire-door-job" ? "Fire Door" : "Project"}
+                        </Badge>
+                      </TableCell>
                       <TableCell>{formatDate(job.dateRequired)}</TableCell>
                       <TableCell>{formatDate(job.submittedAt)}</TableCell>
                       <TableCell className="text-right">{formatMoneyGBP(job.totalPrice)}</TableCell>
