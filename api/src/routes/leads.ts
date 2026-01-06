@@ -271,13 +271,22 @@ function buildComputedValues(lead: any): Record<string, any> {
 }
 
 function serializeLeadRow(lead: any, extras: Record<string, any> = {}) {
+  const baseCustom: any =
+    lead?.custom && typeof lead.custom === "object" && !Array.isArray(lead.custom)
+      ? { ...(lead.custom as Record<string, any>) }
+      : {};
+  const clientSource = lead?.client?.source;
+  if (typeof clientSource === "string" && clientSource.trim()) {
+    baseCustom.source = clientSource.trim();
+  }
+
   const payload: any = {
     id: lead.id,
     contactName: lead.contactName,
     email: lead.email,
     description: lead.description,
     status: (lead.custom as any)?.uiStatus || dbToUi(lead.status),
-    custom: lead.custom,
+    custom: baseCustom,
     estimatedValue: toMaybeNumber(lead.estimatedValue),
     quotedValue: toMaybeNumber(lead.quotedValue),
     dateQuoteSent: lead.dateQuoteSent ? lead.dateQuoteSent.toISOString() : null,
@@ -542,6 +551,45 @@ async function upsertClientForImport(opts: {
   return created.id;
 }
 
+async function upsertClientSourceForLead(opts: {
+  tenantId: string;
+  userId: string;
+  leadId: string;
+  leadEmail: string | null | undefined;
+  leadName: string | null | undefined;
+  clientId: string | null | undefined;
+  source: string;
+}): Promise<{ clientId: string } | null> {
+  const { tenantId, userId, leadId, leadEmail, leadName, clientId, source } = opts;
+  const trimmed = String(source || "").trim();
+  if (!trimmed) return null;
+
+  if (clientId) {
+    const updated = await prisma.client.update({
+      where: { id: clientId },
+      data: { source: trimmed },
+      select: { id: true },
+    });
+    return { clientId: updated.id };
+  }
+
+  const email = typeof leadEmail === "string" ? leadEmail.trim() : leadEmail ? String(leadEmail).trim() : "";
+  if (!email) return null;
+  const name = typeof leadName === "string" ? leadName.trim() : leadName ? String(leadName).trim() : "";
+  if (!name) return null;
+
+  const existing = await prisma.client.findFirst({ where: { tenantId, email } });
+  const client = existing
+    ? await prisma.client.update({ where: { id: existing.id }, data: { source: trimmed }, select: { id: true } })
+    : await prisma.client.create({
+        data: { tenantId, userId, name, email, source: trimmed },
+        select: { id: true },
+      });
+
+  await prisma.lead.update({ where: { id: leadId }, data: { clientId: client.id } });
+  return { clientId: client.id };
+}
+
 /* ------------------------------------------------------------------ */
 /* CSV Import Endpoints                                                */
 /* ------------------------------------------------------------------ */
@@ -727,6 +775,11 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
           const config = lookupCsvField(csvColumn);
           const transformed = config?.transform ? config.transform(rawValue) ?? rawValue : rawValue;
 
+          // Canonical: some fields belong on Client (e.g. source)
+          if (config?.clientKey) {
+            clientData[config.clientKey] = transformed;
+          }
+
           // Client mapping
           if (leadField.startsWith('client.custom.')) {
             const key = leadField.substring('client.custom.'.length);
@@ -815,6 +868,10 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
             }
           }
         }
+
+        if (config.clientKey) {
+          clientData[config.clientKey] = transformed;
+        }
         if (config.qKey) {
           if (CANONICAL_FIELD_CONFIG[config.qKey]) {
             const normalized = normalizeCanonicalValue(config.qKey, transformed);
@@ -878,7 +935,6 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
         }
         if (leadData.phone) custom.phone = leadData.phone;
         if (leadData.company) custom.company = leadData.company;
-        if (leadData.source) custom.source = leadData.source;
 
         // Upsert/link Client (best-effort). We link if we have any meaningful client/contact data.
         let clientId: string | null = null;
@@ -1197,6 +1253,9 @@ router.get("/grouped", async (req, res) => {
     where: { tenantId },
     orderBy: [{ capturedAt: "desc" }],
     include: {
+      client: {
+        select: { source: true },
+      },
       opportunity: {
         select: { 
           id: true,
@@ -1233,6 +1292,13 @@ router.get("/grouped", async (req, res) => {
   for (const l of rows) {
     const ui = (l.custom as any)?.uiStatus as UiStatus | undefined;
     const bucket = ui ?? dbToUi(l.status);
+
+    const baseCustom = ((l.custom as any) || {}) as any;
+    const clientSource = (l as any)?.client?.source;
+    const mergedCustom =
+      typeof clientSource === "string" && clientSource.trim()
+        ? { ...baseCustom, source: clientSource.trim() }
+        : baseCustom;
     
     // Calculate process completion percentages
     const processes = l.opportunity?.projectProcesses || [];
@@ -1261,6 +1327,7 @@ router.get("/grouped", async (req, res) => {
     
     (grouped[bucket] || grouped.NEW_ENQUIRY).push({
       ...l,
+      custom: mergedCustom,
       opportunityId: l.opportunity?.id || null,
       taskCount: taskCountMap.get(l.id) || 0,
       processPercentages
@@ -1312,6 +1379,13 @@ router.post("/", async (req, res) => {
       dateReceived: now.toISOString().split('T')[0],
     };
 
+    // Source is stored on Client; accept legacy custom.source but don't persist it on Lead
+    const requestedSource =
+      typeof (customData as any)?.source === "string" ? String((customData as any).source) : null;
+    if (Object.prototype.hasOwnProperty.call(customData, "source")) {
+      delete (customData as any).source;
+    }
+
     // Auto-set dateQuoteSent if creating with QUOTE_SENT status
     let dateQuoteSent: Date | undefined = undefined;
     if (uiStatus === "QUOTE_SENT") {
@@ -1324,7 +1398,7 @@ router.post("/", async (req, res) => {
       customData.dateOrderPlaced = now.toISOString().split('T')[0];
     }
 
-    const lead = await prisma.lead.create({
+    let lead = await prisma.lead.create({
       data: {
         tenantId,
         createdById: userId,
@@ -1338,6 +1412,28 @@ router.post("/", async (req, res) => {
         custom: customData,
       },
     });
+
+    if (requestedSource && email) {
+      try {
+        const linked = await upsertClientSourceForLead({
+          tenantId,
+          userId,
+          leadId: lead.id,
+          leadEmail: email,
+          leadName: contactName,
+          clientId: lead.clientId,
+          source: requestedSource,
+        });
+        if (linked?.clientId) {
+          lead = (await prisma.lead.findUnique({
+            where: { id: lead.id },
+            include: { client: { select: { source: true } } },
+          })) as any;
+        }
+      } catch (e) {
+        console.warn("[leads] client source upsert failed:", (e as any)?.message || e);
+      }
+    }
 
     // Link to ClientAccount for customer data reuse
     if (email) {
@@ -1400,7 +1496,9 @@ router.post("/", async (req, res) => {
       }
     }
 
-    res.json(lead);
+    const baseCustom = (((lead as any).custom as any) || {}) as any;
+    const clientSource = (lead as any)?.client?.source ?? null;
+    res.json({ ...(lead as any), custom: { ...baseCustom, source: clientSource ?? null } });
   } catch (e: any) {
     console.error("[leads] POST / failed:", e);
     res.status(500).json({ error: "internal_error", detail: e.message });
@@ -1521,6 +1619,19 @@ router.patch("/:id", async (req, res) => {
   applyQuestionnairePatch(body.questionnaire);
   applyQuestionnairePatch(body.custom);
 
+  // Source is stored on Client; accept legacy custom.source but don't persist it on Lead
+  const hasRequestedSource = Object.prototype.hasOwnProperty.call(nextCustom, "source");
+  const requestedSourceRaw = hasRequestedSource ? (nextCustom as any).source : null;
+  const requestedSource =
+    typeof requestedSourceRaw === "string"
+      ? requestedSourceRaw
+      : requestedSourceRaw != null
+        ? String(requestedSourceRaw)
+        : null;
+  if (hasRequestedSource) {
+    delete (nextCustom as any).source;
+  }
+
   // Only apply canonical updates to Lead if they exist as direct fields
   // startDate and deliveryDate should only go to custom and opportunity
   const leadOnlyFields = ['estimatedValue', 'quotedValue', 'dateQuoteSent'];
@@ -1531,7 +1642,30 @@ router.patch("/:id", async (req, res) => {
   }
   data.custom = nextCustom;
 
-  const updated = await prisma.lead.update({ where: { id }, data });
+  let updated = await prisma.lead.update({ where: { id }, data });
+
+  let effectiveClientId: string | null = (updated as any).clientId ?? null;
+  let effectiveSource: string | null = null;
+  if (requestedSource && String(requestedSource).trim()) {
+    try {
+      const linked = await upsertClientSourceForLead({
+        tenantId,
+        userId: (req.auth?.userId as string | undefined) ?? (existing as any).createdById,
+        leadId: id,
+        leadEmail: (updated as any).email,
+        leadName: (updated as any).contactName,
+        clientId: effectiveClientId,
+        source: String(requestedSource),
+      });
+      if (linked?.clientId) {
+        effectiveClientId = linked.clientId;
+        effectiveSource = String(requestedSource).trim();
+        updated = (await prisma.lead.findUnique({ where: { id } })) as any;
+      }
+    } catch (e) {
+      console.warn("[leads.patch] client source upsert failed:", (e as any)?.message || e);
+    }
+  }
 
   // After persisting, trigger generic Field ↔ Task link auto-completion on relevant changes
   try {
@@ -1710,7 +1844,13 @@ router.patch("/:id", async (req, res) => {
   const prevWon = prevUi === "WON";
   const nextWon = nextUi === "WON";
   if (prevWon !== nextWon) {
-    const source = (nextCustom.source ?? prevCustom.source ?? "Unknown").toString().trim() || "Unknown";
+    let source = (effectiveSource ?? prevCustom.source ?? "Unknown").toString().trim() || "Unknown";
+    if (!effectiveSource && effectiveClientId) {
+      try {
+        const c = await prisma.client.findUnique({ where: { id: effectiveClientId }, select: { source: true } });
+        source = (c?.source ?? prevCustom.source ?? "Unknown").toString().trim() || "Unknown";
+      } catch {}
+    }
     const cap = existing.capturedAt instanceof Date ? existing.capturedAt : new Date(existing.capturedAt as any);
     const m = monthStartUTC(cap);
     await prisma.leadSourceCost.upsert({
@@ -1910,7 +2050,11 @@ router.patch("/:id", async (req, res) => {
 
   }
 
-  res.json({ ok: true, lead: serializeLeadRow(updated) });
+  const withClient = await prisma.lead.findUnique({
+    where: { id },
+    include: { client: { select: { source: true } } },
+  });
+  res.json({ ok: true, lead: serializeLeadRow(withClient || updated) });
 });
 
 /* ------------------------------------------------------------------ */
@@ -1924,6 +2068,9 @@ router.get("/:id", async (req, res) => {
   const lead = await prisma.lead.findFirst({
     where: { id: req.params.id, tenantId },
     include: {
+      client: {
+        select: { source: true },
+      },
       visionInferences: {
         orderBy: [{ itemNumber: "asc" }, { createdAt: "asc" }],
       },

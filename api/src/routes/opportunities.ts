@@ -224,19 +224,22 @@ router.post("/:id/next-followup", async (req: any, res: any) => {
     const id = String(req.params.id);
 
     // Allow callers to provide either a lead id or an opportunity id.
-    let lead = await prisma.lead.findUnique({ where: { id } });
+    let lead = await prisma.lead.findUnique({
+      where: { id },
+      include: { client: { select: { source: true } } },
+    });
     let opportunity = lead
       ? await prisma.opportunity.findFirst({
           where: { tenantId, leadId: id },
           orderBy: { createdAt: "desc" },
-          include: { lead: true },
+          include: { lead: { include: { client: { select: { source: true } } } } },
         })
       : null;
 
     if (!lead || lead.tenantId !== tenantId) {
       const oppById = await prisma.opportunity.findUnique({
         where: { id },
-        include: { lead: true },
+        include: { lead: { include: { client: { select: { source: true } } } } },
       });
       if (!oppById || oppById.tenantId !== tenantId) {
         return res.status(404).json({ error: "not found" });
@@ -249,14 +252,19 @@ router.post("/:id/next-followup", async (req: any, res: any) => {
       return res.status(404).json({ error: "not found" });
     }
 
-    const source = ((lead.custom as any) || {}).source || (opportunity?.lead?.custom as any)?.source || "Unknown";
+    const source =
+      lead.client?.source ||
+      ((lead.custom as any) || {}).source ||
+      opportunity?.lead?.client?.source ||
+      (opportunity?.lead?.custom as any)?.source ||
+      "Unknown";
 
     // Look back 2 months
     const from = new Date(new Date().getFullYear(), new Date().getMonth() - 2, 1);
 
     const leads = await prisma.lead.findMany({
       where: { tenantId, capturedAt: { gte: from } },
-      select: { status: true, custom: true },
+      select: { status: true, custom: true, client: { select: { source: true } } },
     });
 
     const spends = await prisma.leadSourceSpend.findMany({
@@ -267,7 +275,7 @@ router.post("/:id/next-followup", async (req: any, res: any) => {
     let spend = 0;
 
     for (const l of leads) {
-      const src = (l.custom as any)?.source || "Unknown";
+      const src = l.client?.source || (l.custom as any)?.source || "Unknown";
       if (src === source && String(l.status).toUpperCase() === "WON") wins++;
     }
     for (const s of spends) {

@@ -1,5 +1,6 @@
 export type CsvFieldTarget = {
   leadKey?: string;
+  clientKey?: string;
   qKey?: string;
   transform?: (value: string) => any;
 };
@@ -139,8 +140,9 @@ export const CSV_FIELD_MAP: Record<string, CsvFieldTarget> = {
   "email address": { leadKey: "email", qKey: "email" },
   "phone": { leadKey: "phone", qKey: "phone" },
   "phone number": { leadKey: "phone", qKey: "phone" },
-  "lead source": { leadKey: "source", qKey: "lead_source" },
-  "source": { leadKey: "source", qKey: "source" },
+  // Source is stored canonically on Client
+  "lead source": { clientKey: "source", qKey: "lead_source" },
+  "source": { clientKey: "source", qKey: "source" },
   "region": { qKey: "region" },
   "project location": { qKey: "region" },
   "timeframe": { qKey: "timeframe" },

@@ -233,7 +233,12 @@ router.post("/recalc", async (req: AuthedReq, res: Response) => {
 
     const leads = await prisma.lead.findMany({
       where: { tenantId, capturedAt: { gte: from } },
-      select: { capturedAt: true, status: true, custom: true },
+      select: {
+        capturedAt: true,
+        status: true,
+        custom: true,
+        client: { select: { source: true } },
+      },
     });
 
     const ym = (d: Date) =>
@@ -245,7 +250,7 @@ router.post("/recalc", async (req: AuthedReq, res: Response) => {
     >();
 
     for (const l of leads) {
-      const src = (String((l.custom as any)?.source ?? "Unknown")).trim() || "Unknown";
+      const src = (String(l.client?.source ?? (l.custom as any)?.source ?? "Unknown")).trim() || "Unknown";
       const d = new Date(l.capturedAt);
       const month = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1, 0, 0, 0, 0));
       const key = `${src}::${ym(month)}`;
