@@ -401,18 +401,35 @@ function parseCSV(csvText: string): { headers: string[]; rows: string[][] } {
 function validateLeadData(data: any): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
   
-  if (!data.contactName || typeof data.contactName !== 'string' || !data.contactName.trim()) {
-    errors.push('Contact name is required');
-  }
-  
-  if (data.email && typeof data.email === 'string' && data.email.trim()) {
+  const emailValue = typeof data.email === 'string' ? data.email.trim() : '';
+  if (!emailValue) {
+    errors.push('Email is required');
+  } else {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(data.email.trim())) {
+    if (!emailRegex.test(emailValue)) {
       errors.push('Invalid email format');
     }
   }
   
   return { valid: errors.length === 0, errors };
+}
+
+function normalizeEmail(raw: any): string | null {
+  const value = typeof raw === "string" ? raw.trim() : raw ? String(raw).trim() : "";
+  if (!value) return null;
+  return value.toLowerCase();
+}
+
+function deriveNameFromEmail(email: string): string {
+  const local = String(email).split("@")[0] || "";
+  const cleaned = local.replace(/[._-]+/g, " ").trim();
+  return cleaned || email;
+}
+
+function stringOrNull(raw: any): string | null {
+  if (raw === undefined || raw === null) return null;
+  const value = typeof raw === "string" ? raw.trim() : String(raw).trim();
+  return value ? value : null;
 }
 
 function parseTagList(raw: any): string[] {
@@ -454,29 +471,27 @@ async function upsertClientForImport(opts: {
 }): Promise<string | null> {
   const { tenantId, userId, leadData, clientData, clientCustomData } = opts;
 
-  const emailRaw = (clientData.email ?? leadData.email ?? null) as any;
-  const phoneRaw = (clientData.phone ?? leadData.phone ?? null) as any;
-  const companyNameRaw = (clientData.companyName ?? leadData.company ?? null) as any;
-  const nameRaw = (clientData.name ?? companyNameRaw ?? leadData.contactName ?? null) as any;
-
-  const email = typeof emailRaw === "string" ? emailRaw.trim() : emailRaw ? String(emailRaw).trim() : null;
-  const phone = typeof phoneRaw === "string" ? phoneRaw.trim() : phoneRaw ? String(phoneRaw).trim() : null;
-  const companyName = typeof companyNameRaw === "string" ? companyNameRaw.trim() : companyNameRaw ? String(companyNameRaw).trim() : null;
-  const name = typeof nameRaw === "string" ? nameRaw.trim() : nameRaw ? String(nameRaw).trim() : null;
-  // Per CRM-import expectations: only link Clients by email.
-  // If we don't have an email, we skip Client linkage rather than guessing.
+  const email = normalizeEmail(clientData.email ?? leadData.email ?? null);
+  // Per CRM expectations: only link Clients by email.
   if (!email) return null;
-  if (!name) return null;
+
+  const phone = stringOrNull(clientData.phone ?? leadData.phone ?? null);
+  const companyName = stringOrNull(clientData.companyName ?? leadData.company ?? null);
+  const contactName =
+    stringOrNull(leadData.contactName ?? clientData.contactPerson ?? null) ??
+    stringOrNull(clientData.name ?? null) ??
+    (companyName ? companyName : deriveNameFromEmail(email));
+  const clientName = stringOrNull(clientData.name ?? null) ?? companyName ?? contactName ?? deriveNameFromEmail(email);
 
   const candidate = {
-    name,
+    name: clientName,
     email: email || null,
     phone: phone || null,
     address: (clientData.address ?? leadData.address ?? null) as any,
     city: clientData.city ?? null,
     postcode: clientData.postcode ?? null,
     country: clientData.country ?? undefined,
-    contactPerson: (clientData.contactPerson ?? leadData.contactName ?? null) as any,
+    contactPerson: contactName,
     companyName: companyName || null,
     type: clientData.type ?? undefined,
     source: clientData.source ?? undefined,
@@ -485,8 +500,52 @@ async function upsertClientForImport(opts: {
     custom: Object.keys(clientCustomData || {}).length > 0 ? clientCustomData : undefined,
   };
 
+  const emailFilter: any = { equals: email, mode: "insensitive" };
+
   let existing: any = null;
-  if (candidate.email) existing = await prisma.client.findFirst({ where: { tenantId, email: candidate.email } });
+  // Prefer matching by ClientContact.email (multi-contact companies)
+  const existingContact = await prisma.clientContact.findFirst({
+    where: { email: emailFilter, client: { tenantId } },
+    select: { clientId: true },
+  });
+  if (existingContact?.clientId) {
+    existing = await prisma.client.findFirst({ where: { id: existingContact.clientId, tenantId } });
+  }
+  if (!existing && candidate.email) {
+    existing = await prisma.client.findFirst({ where: { tenantId, email: emailFilter } });
+  }
+
+  const ensureContactForClient = async (clientId: string) => {
+    const existingForEmail = await prisma.clientContact.findFirst({
+      where: { clientId, email: emailFilter },
+      select: { id: true, name: true, phone: true, mobile: true },
+    });
+
+    if (existingForEmail) {
+      const contactUpdate: any = {};
+      if (contactName && String(contactName).trim() && existingForEmail.name.trim() !== String(contactName).trim()) {
+        contactUpdate.name = String(contactName).trim();
+      }
+      if (phone && (!existingForEmail.phone || !existingForEmail.phone.trim())) {
+        contactUpdate.phone = String(phone).trim();
+      }
+      if (Object.keys(contactUpdate).length > 0) {
+        await prisma.clientContact.update({ where: { id: existingForEmail.id }, data: contactUpdate });
+      }
+      return;
+    }
+
+    const anyExisting = await prisma.clientContact.findFirst({ where: { clientId }, select: { id: true } });
+    await prisma.clientContact.create({
+      data: {
+        clientId,
+        name: contactName || deriveNameFromEmail(email),
+        email,
+        phone,
+        isPrimary: !anyExisting,
+      },
+    });
+  };
 
   if (existing) {
     const updateData: any = {};
@@ -523,8 +582,10 @@ async function upsertClientForImport(opts: {
 
     if (Object.keys(updateData).length > 0) {
       const updated = await prisma.client.update({ where: { id: existing.id }, data: updateData });
+      await ensureContactForClient(updated.id);
       return updated.id;
     }
+    await ensureContactForClient(existing.id);
     return existing.id;
   }
 
@@ -545,10 +606,58 @@ async function upsertClientForImport(opts: {
       source: candidate.source ? String(candidate.source).trim() : undefined,
       notes: candidate.notes ? String(candidate.notes).trim() : undefined,
       tags: candidate.tags,
+      contacts: {
+        create: {
+          name: contactName || deriveNameFromEmail(email),
+          email,
+          phone,
+          isPrimary: true,
+        },
+      },
       ...(candidate.custom ? { custom: candidate.custom } : {}),
     },
   });
   return created.id;
+}
+
+async function ensureClientContactForLeadEmail(opts: {
+  tenantId: string;
+  clientId: string;
+  email: string;
+  name: string;
+  phone?: string | null;
+}): Promise<void> {
+  const { tenantId, clientId, email, name, phone } = opts;
+
+  const client = await prisma.client.findFirst({ where: { id: clientId, tenantId }, select: { id: true } });
+  if (!client) return;
+
+  const emailFilter: any = { equals: email, mode: "insensitive" };
+  const existing = await prisma.clientContact.findFirst({
+    where: { clientId, email: emailFilter },
+    select: { id: true, name: true, phone: true },
+  });
+
+  if (existing) {
+    const updateData: any = {};
+    if (name && String(name).trim() && existing.name.trim() !== String(name).trim()) updateData.name = String(name).trim();
+    if (phone && (!existing.phone || !existing.phone.trim())) updateData.phone = phone;
+    if (Object.keys(updateData).length > 0) {
+      await prisma.clientContact.update({ where: { id: existing.id }, data: updateData });
+    }
+    return;
+  }
+
+  const anyExisting = await prisma.clientContact.findFirst({ where: { clientId }, select: { id: true } });
+  await prisma.clientContact.create({
+    data: {
+      clientId,
+      name: name || deriveNameFromEmail(email),
+      email,
+      phone: phone ?? null,
+      isPrimary: !anyExisting,
+    },
+  });
 }
 
 async function upsertClientSourceForLead(opts: {
@@ -573,16 +682,29 @@ async function upsertClientSourceForLead(opts: {
     return { clientId: updated.id };
   }
 
-  const email = typeof leadEmail === "string" ? leadEmail.trim() : leadEmail ? String(leadEmail).trim() : "";
+  const email = normalizeEmail(leadEmail);
   if (!email) return null;
-  const name = typeof leadName === "string" ? leadName.trim() : leadName ? String(leadName).trim() : "";
-  if (!name) return null;
+  const name = stringOrNull(leadName) ?? deriveNameFromEmail(email);
 
-  const existing = await prisma.client.findFirst({ where: { tenantId, email } });
+  const emailFilter: any = { equals: email, mode: "insensitive" };
+  const byContact = await prisma.clientContact.findFirst({
+    where: { email: emailFilter, client: { tenantId } },
+    select: { clientId: true },
+  });
+  const existing = byContact?.clientId
+    ? await prisma.client.findFirst({ where: { id: byContact.clientId, tenantId } })
+    : await prisma.client.findFirst({ where: { tenantId, email: emailFilter } });
   const client = existing
     ? await prisma.client.update({ where: { id: existing.id }, data: { source: trimmed }, select: { id: true } })
     : await prisma.client.create({
-        data: { tenantId, userId, name, email, source: trimmed },
+        data: {
+          tenantId,
+          userId,
+          name,
+          email,
+          source: trimmed,
+          contacts: { create: { name, email, isPrimary: true } },
+        },
         select: { id: true },
       });
 
@@ -646,7 +768,7 @@ router.post("/import/preview", upload.single('csvFile'), async (req, res) => {
     const availableFields = [
       { key: 'number', label: 'Lead Number', required: false },
       { key: 'contactName', label: 'Contact Name', required: false },
-      { key: 'email', label: 'Email', required: false },
+      { key: 'email', label: 'Email', required: true },
       { key: 'phone', label: 'Phone', required: false },
       { key: 'address', label: 'Address', required: false },
       { key: 'company', label: 'Company', required: false },
@@ -662,9 +784,8 @@ router.post("/import/preview", upload.single('csvFile'), async (req, res) => {
       { key: 'dateQuoteSent', label: 'Date Quote Sent', required: false },
 
       // Client fields (creates/updates Client and links Lead.clientId)
-      { key: 'client.name', label: 'Client: Name', required: false },
-      { key: 'client.email', label: 'Client: Email', required: false },
-      { key: 'client.phone', label: 'Client: Phone', required: false },
+      // NOTE: Contact identity fields are mapped once via Lead fields (email/name/phone)
+      // and then synced into Client + ClientContact automatically.
       { key: 'client.address', label: 'Client: Address', required: false },
       { key: 'client.city', label: 'Client: City', required: false },
       { key: 'client.postcode', label: 'Client: Postcode', required: false },
@@ -970,14 +1091,21 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
         }
 
         // Create the lead
+        const normalizedEmail = normalizeEmail(leadData.email);
+        const derivedContactName =
+          stringOrNull(leadData.contactName ?? null) ??
+          stringOrNull((clientData as any)?.contactPerson ?? null) ??
+          stringOrNull((clientData as any)?.name ?? null) ??
+          (normalizedEmail ? deriveNameFromEmail(normalizedEmail) : "Unknown");
+
         const lead = await prisma.lead.create({
           data: {
             tenantId,
             createdById: userId,
             ...(clientId ? { clientId } : {}),
             number: leadData.number || null,
-            contactName: leadData.contactName || null,
-            email: leadData.email || "",
+            contactName: derivedContactName,
+            email: normalizedEmail || "",
             phone: leadData.phone || null,
             address: leadData.address || null,
             status: uiToDb(uiStatus),
@@ -1365,6 +1493,12 @@ router.post("/", async (req, res) => {
     } = req.body || {};
 
     if (!contactName) return res.status(400).json({ error: "contactName required" });
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) return res.status(400).json({ error: "email required" });
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(normalizedEmail)) {
+      return res.status(400).json({ error: "invalid email" });
+    }
 
     const uiStatus: UiStatus = status || "NEW_ENQUIRY";
 
@@ -1398,12 +1532,27 @@ router.post("/", async (req, res) => {
       customData.dateOrderPlaced = now.toISOString().split('T')[0];
     }
 
+    // Always link/create Client when an email exists (required)
+    let clientId: string | null = null;
+    try {
+      clientId = await upsertClientForImport({
+        tenantId,
+        userId,
+        leadData: { contactName, email: normalizedEmail },
+        clientData: {},
+        clientCustomData: {},
+      });
+    } catch (e) {
+      console.warn("[leads] client upsert failed:", (e as any)?.message || e);
+    }
+
     let lead = await prisma.lead.create({
       data: {
         tenantId,
         createdById: userId,
+        ...(clientId ? { clientId } : {}),
         contactName: String(contactName),
-        email: email ?? "",
+        email: normalizedEmail,
         status: uiToDb(uiStatus),
         number: number ?? null,
         description: description ?? null,
@@ -1413,13 +1562,13 @@ router.post("/", async (req, res) => {
       },
     });
 
-    if (requestedSource && email) {
+    if (requestedSource && normalizedEmail) {
       try {
         const linked = await upsertClientSourceForLead({
           tenantId,
           userId,
           leadId: lead.id,
-          leadEmail: email,
+          leadEmail: normalizedEmail,
           leadName: contactName,
           clientId: lead.clientId,
           source: requestedSource,
@@ -1436,7 +1585,7 @@ router.post("/", async (req, res) => {
     }
 
     // Link to ClientAccount for customer data reuse
-    if (email) {
+    if (normalizedEmail) {
       linkLeadToClientAccount(lead.id).catch((err) => 
         console.warn("[leads] Failed to link ClientAccount:", err)
       );
@@ -1452,7 +1601,7 @@ router.post("/", async (req, res) => {
           tenantId,
           createdById: userId,
           title: `Review enquiry: ${lead.contactName}`,
-          description: `Review and respond to enquiry from ${lead.contactName}${email ? ` (${email})` : ''}`,
+          description: `Review and respond to enquiry from ${lead.contactName} (${normalizedEmail})`,
           status: "OPEN",
           priority: "HIGH",
           taskType: "MANUAL",
@@ -1566,8 +1715,18 @@ router.patch("/:id", async (req, res) => {
   };
 
   if (body.number !== undefined) data.number = body.number || null;
-  if (body.contactName !== undefined) data.contactName = body.contactName || null;
-  if (body.email !== undefined) data.email = body.email || null;
+  if (body.contactName !== undefined) {
+    const nextName = stringOrNull(body.contactName);
+    if (!nextName) return res.status(400).json({ error: "contactName cannot be empty" });
+    data.contactName = nextName;
+  }
+  if (body.email !== undefined) {
+    const nextEmail = normalizeEmail(body.email);
+    if (!nextEmail) return res.status(400).json({ error: "email cannot be empty" });
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(nextEmail)) return res.status(400).json({ error: "invalid email" });
+    data.email = nextEmail;
+  }
   if ((body as any).phone !== undefined) data.phone = (body as any).phone || null;
   if ((body as any).address !== undefined) data.address = (body as any).address || null;
   if ((body as any).deliveryAddress !== undefined) data.deliveryAddress = (body as any).deliveryAddress || null;
@@ -1646,6 +1805,41 @@ router.patch("/:id", async (req, res) => {
 
   let effectiveClientId: string | null = (updated as any).clientId ?? null;
   let effectiveSource: string | null = null;
+
+  // Keep Lead ↔ Client/ClientContact linked by email (multi-contact aware)
+  try {
+    const actorId = (req.auth?.userId as string | undefined) ?? (existing as any).createdById;
+    const updatedEmail = normalizeEmail((updated as any).email);
+    const updatedName = stringOrNull((updated as any).contactName) ?? (updatedEmail ? deriveNameFromEmail(updatedEmail) : null);
+    if (updatedEmail) {
+      if (body.clientId !== undefined && body.clientId) {
+        // Respect explicit clientId changes; ensure contact exists for the lead email
+        await ensureClientContactForLeadEmail({
+          tenantId,
+          clientId: String(body.clientId),
+          email: updatedEmail,
+          name: updatedName || deriveNameFromEmail(updatedEmail),
+          phone: (updated as any).phone ?? null,
+        });
+        effectiveClientId = String(body.clientId);
+      } else {
+        const linkedClientId = await upsertClientForImport({
+          tenantId,
+          userId: actorId,
+          leadData: { email: updatedEmail, contactName: updatedName, phone: (updated as any).phone ?? null },
+          clientData: {},
+          clientCustomData: {},
+        });
+        if (linkedClientId && linkedClientId !== effectiveClientId) {
+          updated = (await prisma.lead.update({ where: { id }, data: { clientId: linkedClientId } })) as any;
+          effectiveClientId = linkedClientId;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[leads.patch] client/contact sync failed:", (e as any)?.message || e);
+  }
+
   if (requestedSource && String(requestedSource).trim()) {
     try {
       const linked = await upsertClientSourceForLead({

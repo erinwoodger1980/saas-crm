@@ -549,6 +549,14 @@ router.post("/:id/contacts", async (req, res) => {
       },
     });
 
+    // Two-way sync: if this contact has an email, link/update Leads that use it.
+    if (contact.email) {
+      await prisma.lead.updateMany({
+        where: { tenantId, email: { equals: contact.email, mode: "insensitive" } },
+        data: { clientId: id, contactName: contact.name },
+      });
+    }
+
     res.status(201).json(contact);
   } catch (error) {
     console.error("Error creating contact:", error);
@@ -609,6 +617,23 @@ router.patch("/:id/contacts/:contactId", async (req, res) => {
       where: { id: contactId },
       data: updateData,
     });
+
+    // Two-way sync: update leads linked by the contact email.
+    const oldEmail = existing.email ? String(existing.email).trim() : null;
+    const newEmail = contact.email ? String(contact.email).trim() : null;
+    if (oldEmail && newEmail && oldEmail.toLowerCase() !== newEmail.toLowerCase()) {
+      // Contact email changed: move leads from old -> new within this client
+      await prisma.lead.updateMany({
+        where: { tenantId, clientId: id, email: { equals: oldEmail, mode: "insensitive" } },
+        data: { email: newEmail, contactName: contact.name },
+      });
+    } else if (newEmail) {
+      // Keep lead name in sync and ensure they point at this client
+      await prisma.lead.updateMany({
+        where: { tenantId, email: { equals: newEmail, mode: "insensitive" } },
+        data: { clientId: id, contactName: contact.name },
+      });
+    }
 
     res.json(contact);
   } catch (error) {
