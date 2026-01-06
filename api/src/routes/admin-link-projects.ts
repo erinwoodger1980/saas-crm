@@ -3,6 +3,11 @@ import { prisma } from '../prisma';
 
 const router = Router();
 
+// Test endpoint to verify route is working
+router.get('/test', async (req, res) => {
+  res.json({ message: 'Admin link projects route is working!' });
+});
+
 router.get('/link-lloyd-worrall', async (req, res) => {
   try {
     // Find Lloyd Worrall client account
