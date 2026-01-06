@@ -92,7 +92,17 @@ export function TaskCenter({ filterRelatedType, filterRelatedId, embedded = fals
     if (!tenantId) return;
     setLoading(true);
     try {
-      const params = new URLSearchParams(); params.set('take', '100'); if (showOnlyMine && userId) params.set('mine', 'true'); if (searchQuery.trim()) params.set('search', searchQuery.trim()); if (filterRelatedType && filterRelatedId) { params.set('relatedType', filterRelatedType); params.set('relatedId', filterRelatedId); }
+      const params = new URLSearchParams();
+      params.set('take', '100');
+      if (showOnlyMine && userId) params.set('mine', 'true');
+      if (searchQuery.trim()) params.set('search', searchQuery.trim());
+      if (filterRelatedType && filterRelatedId) {
+        params.set('relatedType', filterRelatedType);
+        params.set('relatedId', filterRelatedId);
+        // In embedded/related-record views (e.g. Lead modal), we need completed items too
+        // so users can see communication context after completing a comms task.
+        params.set('includeDone', 'true');
+      }
       const response = await apiFetch<{ items: Task[]; total: number }>(`/tasks?${params}`, { headers: { 'x-tenant-id': tenantId } });
       setTasks(response.items);
       const newFormDataMap: Record<string, Record<string, any>> = {}; const newTaskEditMap: Record<string, any> = {};
@@ -120,6 +130,17 @@ export function TaskCenter({ filterRelatedType, filterRelatedId, embedded = fals
 
   const taskCounts = useMemo(() => { const counts: Record<string, number> = { all: 0, completed: 0 }; Object.keys(TASK_TYPE_CONFIG).forEach(type => { counts[type] = 0; }); tasks.forEach(task => { if (task.status === 'DONE') counts.completed++; else { counts.all++; counts[task.taskType]++; } }); return counts; }, [tasks]);
   const filteredTasks = useMemo(() => tasks.filter(task => { if (activeTab === 'completed') return task.status === 'DONE'; if (activeTab !== 'all') return task.taskType === activeTab && task.status !== 'DONE'; return task.status !== 'DONE'; }), [tasks, activeTab]);
+
+  const completedCommunicationTasks = useMemo(() => {
+    if (!filterRelatedType || !filterRelatedId) return [] as Task[];
+    return tasks
+      .filter((task) => (task.taskType === 'COMMUNICATION' || task.taskType === 'FOLLOW_UP') && task.status === 'DONE')
+      .sort((a, b) => {
+        const aTime = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+        const bTime = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+        return bTime - aTime;
+      });
+  }, [tasks, filterRelatedType, filterRelatedId]);
 
   const { overdue, urgent, highPriority, upcoming } = useMemo(() => { const now = new Date(); const overdue: Task[] = []; const urgent: Task[] = []; const highPriority: Task[] = []; const upcoming: Task[] = []; filteredTasks.forEach((task) => { const dueDate = task.dueAt ? new Date(task.dueAt) : null; const isOver = dueDate && dueDate < now; if (isOver) overdue.push(task); else if (task.priority === 'URGENT') urgent.push(task); else if (task.priority === 'HIGH') highPriority.push(task); else upcoming.push(task); }); return { overdue, urgent, highPriority, upcoming }; }, [filteredTasks]);
 
@@ -365,6 +386,15 @@ export function TaskCenter({ filterRelatedType, filterRelatedId, embedded = fals
             </div>
 
             <div className="hidden md:grid gap-4 pb-6">{filteredTasks.map(renderTaskCard)}</div>
+
+            {embedded && filterRelatedType === 'LEAD' && filterRelatedId && completedCommunicationTasks.length > 0 && (
+              <div className="mt-8">
+                <div className="mb-3 text-sm font-semibold text-slate-900">Communication history ({completedCommunicationTasks.length})</div>
+                <div className="grid gap-4 md:grid-cols-1">
+                  {completedCommunicationTasks.map(renderTaskCard)}
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

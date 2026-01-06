@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ProductPlanV1Schema, createFallbackDoorPlan, createFallbackWindowPlan, ProductPlanV1 } from '@/types/product-plan';
 
+const sanitizeHeaderValue = (value: unknown, maxLen = 200) => {
+  return String(value ?? '')
+    .replace(/[\r\n]+/g, ' ')
+    // Headers must not contain control chars or non-ASCII.
+    .replace(/[^\x20-\x7E]/g, '')
+    .slice(0, maxLen);
+};
+
 /**
  * POST /api/ai/generate-product-plan
  * 
  * Takes a product description (and optionally image) and generates a detailed ProductPlanV1.
- * 
  * This is a component-level assembly plan that drives 3D rendering, BOM, cutlists, and pricing.
  * It replaces simple param patches with exact component instances, geometry expressions, and material roles.
  * 
@@ -540,7 +547,7 @@ export async function POST(request: NextRequest) {
 
     const res = NextResponse.json(fallback);
     res.headers.set('x-ai-fallback', '1');
-    if (aiResult.error) res.headers.set('x-ai-error', String(aiResult.error).slice(0, 200));
+    if (aiResult.error) res.headers.set('x-ai-error', sanitizeHeaderValue(aiResult.error));
     return res;
   } catch (error) {
     console.error('[AI2SCENE] Error in POST handler:', error);

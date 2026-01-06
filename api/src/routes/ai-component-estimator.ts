@@ -384,7 +384,11 @@ router.post('/generate-product-plan', async (req, res) => {
 
     const reason = ai.error || 'unknown';
     res.setHeader('x-ai-fallback', '1');
-    res.setHeader('x-ai-error', String(reason).slice(0, 200));
+    const safeHeader = String(reason ?? '')
+      .replace(/[\r\n]+/g, ' ')
+      .replace(/[^\x20-\x7E]/g, '')
+      .slice(0, 200);
+    res.setHeader('x-ai-error', safeHeader);
 
     if (defaultCategory === 'windows') {
       return res.json(createFallbackWindowPlan(dims.widthMm, dims.heightMm, dims.depthMm, reason));
@@ -411,7 +415,11 @@ router.post('/generate-product-plan', async (req, res) => {
     );
 
     res.setHeader('x-ai-fallback', '1');
-    res.setHeader('x-ai-error', String(msg).slice(0, 200));
+    const safeHeader = String(msg ?? '')
+      .replace(/[\r\n]+/g, ' ')
+      .replace(/[^\x20-\x7E]/g, '')
+      .slice(0, 200);
+    res.setHeader('x-ai-error', safeHeader);
     if (defaultCategory === 'windows') {
       return res.json(createFallbackWindowPlan(dims.widthMm, dims.heightMm, dims.depthMm, msg));
     }
