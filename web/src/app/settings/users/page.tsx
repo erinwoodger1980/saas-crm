@@ -444,37 +444,66 @@ export default function UsersSettingsPage() {
                         </>
                       )}
                     </div>
-                    <div className="flex items-start gap-2">
-                      <label className="text-xs text-muted-foreground whitespace-nowrap mt-2">Processes:</label>
+                    <div className="flex flex-col gap-2 border-t pt-3 mt-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium">Allowed Processes</label>
+                        {editingProcesses[u.id] === undefined && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setEditingProcesses(prev => ({
+                              ...prev,
+                              [u.id]: u.workshopProcessCodes || []
+                            }))}
+                          >
+                            Edit Processes
+                          </Button>
+                        )}
+                      </div>
                       {editingProcesses[u.id] !== undefined ? (
-                        <div className="flex-1">
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
-                            {processes.map(proc => (
-                              <label key={proc.code} className="flex items-center gap-2 text-sm bg-slate-50 px-3 py-2 rounded border cursor-pointer hover:bg-slate-100 hover:border-slate-400 transition-colors">
-                                <input
-                                  type="checkbox"
-                                  checked={editingProcesses[u.id].includes(proc.code)}
-                                  onChange={(e) => {
-                                    const codes = editingProcesses[u.id];
-                                    setEditingProcesses(prev => ({
-                                      ...prev,
-                                      [u.id]: e.target.checked 
-                                        ? [...codes, proc.code]
-                                        : codes.filter(c => c !== proc.code)
-                                    }));
-                                  }}
-                                  className="rounded"
-                                />
-                                <span className="font-medium">{proc.name}</span>
-                              </label>
-                            ))}
+                        <div className="flex-1 bg-slate-50 p-4 rounded-lg border">
+                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 mb-4">
+                            {processes.map(proc => {
+                              const isChecked = editingProcesses[u.id].includes(proc.code);
+                              return (
+                                <label 
+                                  key={proc.code} 
+                                  className={`
+                                    flex items-center gap-2 px-4 py-3 rounded-md border-2 cursor-pointer transition-all
+                                    ${isChecked 
+                                      ? 'bg-blue-50 border-blue-500 shadow-sm' 
+                                      : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                                    }
+                                  `}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={(e) => {
+                                      const codes = editingProcesses[u.id];
+                                      setEditingProcesses(prev => ({
+                                        ...prev,
+                                        [u.id]: e.target.checked 
+                                          ? [...codes, proc.code]
+                                          : codes.filter(c => c !== proc.code)
+                                      }));
+                                    }}
+                                    className="w-4 h-4 rounded border-slate-300"
+                                  />
+                                  <span className={`text-sm font-medium ${isChecked ? 'text-blue-900' : 'text-slate-700'}`}>
+                                    {proc.name}
+                                  </span>
+                                </label>
+                              );
+                            })}
                           </div>
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 border-t pt-3">
                             <Button
                               size="sm"
                               onClick={() => updateUserProcesses(u.id, editingProcesses[u.id])}
+                              className="bg-blue-600 hover:bg-blue-700"
                             >
-                              Save
+                              Save Changes
                             </Button>
                             <Button
                               size="sm"
@@ -487,28 +516,39 @@ export default function UsersSettingsPage() {
                             >
                               Cancel
                             </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setEditingProcesses(prev => ({
+                                ...prev,
+                                [u.id]: []
+                              }))}
+                              className="ml-auto"
+                            >
+                              Clear All (Allow All)
+                            </Button>
                           </div>
                         </div>
                       ) : (
-                        <>
-                          <span className="text-sm text-muted-foreground mt-1">
-                            {(u.workshopProcessCodes?.length ?? 0) === 0 
-                              ? 'All' 
-                              : u.workshopProcessCodes?.map(code => 
-                                  processes.find(p => p.code === code)?.name || code
-                                ).join(', ')}
-                          </span>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setEditingProcesses(prev => ({
-                              ...prev,
-                              [u.id]: u.workshopProcessCodes || []
-                            }))}
-                          >
-                            Edit
-                          </Button>
-                        </>
+                        <div className="flex flex-wrap gap-2">
+                          {(u.workshopProcessCodes?.length ?? 0) === 0 ? (
+                            <div className="text-sm text-muted-foreground px-3 py-1.5 bg-slate-100 rounded-md border">
+                              All processes allowed
+                            </div>
+                          ) : (
+                            u.workshopProcessCodes?.map(code => {
+                              const proc = processes.find(p => p.code === code);
+                              return (
+                                <div 
+                                  key={code} 
+                                  className="text-sm font-medium px-3 py-1.5 bg-blue-100 text-blue-900 rounded-md border border-blue-200"
+                                >
+                                  {proc?.name || code}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
                       )}
                     </div>
                     <Button

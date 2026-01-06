@@ -28,6 +28,7 @@ interface WorkshopTimerProps {
   projects: Project[];
   processes: Array<{ code: string; name: string; isGeneric?: boolean; isLastManufacturing?: boolean; isLastInstallation?: boolean }>;
   onTimerChange?: () => void;
+  currentUser?: { workshopProcessCodes?: string[] } | null;
 }
 
 export interface WorkshopTimerHandle {
@@ -53,7 +54,7 @@ function formatDuration(startedAt: string): string {
   return `${mins}m`;
 }
 
-const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ projects, processes, onTimerChange }, ref) => {
+const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ projects, processes, onTimerChange, currentUser }, ref) => {
   const [activeTimer, setActiveTimer] = useState<Timer | null>(null);
   const [elapsed, setElapsed] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -63,17 +64,29 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);
   const [completionMode, setCompletionMode] = useState<"stop" | "swap">("stop");
   
+  // Filter processes based on user's allowed processes
+  // If workshopProcessCodes is empty or undefined, show all processes
+  const allowedProcesses = processes.filter(p => {
+    const userProcessCodes = currentUser?.workshopProcessCodes;
+    // If no restrictions (empty array or undefined), show all processes
+    if (!userProcessCodes || userProcessCodes.length === 0) {
+      return true;
+    }
+    // Otherwise, only show processes the user is allowed to work on
+    return userProcessCodes.includes(p.code);
+  });
+  
   // Start timer form state
   const [projectId, setProjectId] = useState("");
   const [process, setProcess] = useState("");
   const [notes, setNotes] = useState("");
   
   // Check if selected process is generic
-  const selectedProcess = processes.find(p => p.code === process);
+  const selectedProcess = allowedProcesses.find(p => p.code === process);
   const isGenericProcess = selectedProcess?.isGeneric || false;
   
   // Get current timer process details
-  const activeTimerProcess = activeTimer ? processes.find(p => p.code === activeTimer.process) : null;
+  const activeTimerProcess = activeTimer ? allowedProcesses.find(p => p.code === activeTimer.process) : null;
   const isLastProcess = activeTimerProcess?.isLastManufacturing || activeTimerProcess?.isLastInstallation || false;
 
   // Expose method to open timer with a specific project
@@ -117,7 +130,7 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
 
   async function startTimer() {
     if (!process) return;
-    const procDef = processes.find(p => p.code === process);
+    const procDef = allowedProcesses.find(p => p.code === process);
     const isGeneric = procDef?.isGeneric || false;
     // For non-generic timers, projectId is required
     if (!isGeneric && !projectId) return;
@@ -184,7 +197,7 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
       console.error("[swapTimer] No process selected");
       return;
     }
-    const procDef = processes.find(p => p.code === process);
+    const procDef = allowedProcesses.find(p => p.code === process);
     const isGeneric = procDef?.isGeneric || false;
     // For non-generic timers, projectId is required
     if (!isGeneric && !projectId) {
@@ -207,7 +220,7 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
       console.error("[handleSwapTimerComplete] No process selected");
       return;
     }
-    const procDef = processes.find(p => p.code === process);
+    const procDef = allowedProcesses.find(p => p.code === process);
     const isGeneric = procDef?.isGeneric || false;
     
     console.log("[handleSwapTimerComplete] Starting timer swap with completion");
@@ -290,7 +303,7 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
   async function handleSwapTimerSkip() {
     if (!activeTimer) return;
     if (!process) return;
-    const procDef = processes.find(p => p.code === process);
+    const procDef = allowedProcesses.find(p => p.code === process);
     const isGeneric = procDef?.isGeneric || false;
     
     setLoading(true);
@@ -508,7 +521,7 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Process:</span>
               <span className="font-medium text-sm">
-                {processes.find((p) => p.code === activeTimer.process)?.name ||
+                {allowedProcesses.find((p) => p.code === activeTimer.process)?.name ||
                   formatProcess(activeTimer.process)}
               </span>
             </div>
@@ -563,7 +576,7 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
           </div>
 
           {showSwap && (() => {
-            const swapIsGeneric = processes.find(p => p.code === process)?.isGeneric || false;
+            const swapIsGeneric = allowedProcesses.find(p => p.code === process)?.isGeneric || false;
             const filteredProjects = projects.filter((p) =>
               projectSearch
                 ? p.title.toLowerCase().includes(projectSearch.toLowerCase())
@@ -620,7 +633,7 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
                       <SelectValue placeholder="Select process" />
                     </SelectTrigger>
                     <SelectContent>
-                      {processes.map((p) => (
+                      {allowedProcesses.map((p) => (
                         <SelectItem key={p.code} value={p.code} className="text-base py-3">
                           {p.name} {p.isGeneric && "⭐"}
                         </SelectItem>
@@ -738,7 +751,7 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
                   <SelectValue placeholder="Select process" />
                 </SelectTrigger>
                 <SelectContent>
-                  {processes.map((p) => (
+                  {allowedProcesses.map((p) => (
                     <SelectItem key={p.code} value={p.code} className="text-base py-3">
                       {p.name} {p.isGeneric && "⭐"}
                     </SelectItem>

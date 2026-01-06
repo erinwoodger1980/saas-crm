@@ -14,6 +14,7 @@ export type CurrentUser = {
   lastName?: string | null;
   isEarlyAdopter?: boolean | null;
   isDeveloper?: boolean | null;
+  workshopProcessCodes?: string[];
   // Allow accessing additional flags without type errors
   [key: string]: any;
 };
