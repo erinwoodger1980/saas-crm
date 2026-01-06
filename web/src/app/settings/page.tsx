@@ -1016,6 +1016,12 @@ export default function SettingsPage() {
           >
             👥 Users
           </a>
+          <a
+            href="/settings/holidays"
+            className="inline-flex items-center gap-2 px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm font-medium"
+          >
+            🏖️ Holidays
+          </a>
           {user?.isDeveloper && (
             <>
               <a

@@ -1766,6 +1766,7 @@ router.get("/holiday-requests", async (req: any, res) => {
             id: true,
             name: true,
             email: true,
+            holidayAllowance: true,
           },
         },
       },
@@ -1821,6 +1822,123 @@ router.post("/holiday-requests", async (req: any, res) => {
         },
       },
     });
+
+    // Create a task for admin approval (non-blocking)
+    (async () => {
+      try {
+        // Find owner/admin users for assignment
+        const admins = await prisma.user.findMany({
+          where: {
+            tenantId,
+            role: { in: ['owner', 'admin'] },
+          },
+          select: { id: true, email: true, name: true },
+        });
+
+        if (admins.length > 0) {
+          const formatDate = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+          
+          const task = await prisma.task.create({
+            data: {
+              tenantId,
+              title: `Review Holiday Request: ${request.user.name || 'User'}`,
+              description: `${request.user.name || 'A user'} has requested ${diffDays} day${diffDays !== 1 ? 's' : ''} of holiday from ${formatDate(start)} to ${formatDate(end)}.\n\nReason: ${reason || 'No reason provided'}\n\nPlease review and approve or deny this request in Settings > Holidays.`,
+              status: 'OPEN',
+              priority: 'MEDIUM',
+              taskType: 'GENERAL',
+              relatedType: 'HOLIDAY_REQUEST',
+              relatedId: request.id,
+              assignees: {
+                create: admins.map(admin => ({
+                  tenantId,
+                  userId: admin.id,
+                })),
+              },
+            },
+          });
+
+          // Send email notification to admins
+          const { sendAdminEmail } = await import('../services/email-notification');
+          const { env } = await import('../env');
+          
+          const baseUrl = env.WEB_URL || 'https://app.joineryai.app';
+          const taskLink = `${baseUrl}/tasks?id=${task.id}`;
+          const holidaysLink = `${baseUrl}/settings/holidays`;
+
+          for (const admin of admins) {
+            if (admin.email) {
+              await sendAdminEmail({
+                to: admin.email,
+                subject: `Holiday Request: ${request.user.name || 'User'} - ${diffDays} days`,
+                html: `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: #3b82f6; color: white; padding: 20px; border-radius: 8px 8px 0 0; }
+    .content { background: #f9fafb; padding: 20px; border: 1px solid #e5e7eb; }
+    .field { margin-bottom: 15px; }
+    .label { font-weight: bold; color: #6b7280; font-size: 12px; text-transform: uppercase; }
+    .value { margin-top: 4px; font-size: 14px; }
+    .button { display: inline-block; background: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 10px; }
+    .footer { padding: 15px; text-align: center; color: #6b7280; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2 style="margin: 0;">🏖️ Holiday Request Awaiting Approval</h2>
+    </div>
+    <div class="content">
+      <div class="field">
+        <div class="label">Employee</div>
+        <div class="value">${request.user.name || 'Unknown'} (${request.user.email})</div>
+      </div>
+      
+      <div class="field">
+        <div class="label">Dates</div>
+        <div class="value">${formatDate(start)} - ${formatDate(end)}</div>
+      </div>
+      
+      <div class="field">
+        <div class="label">Duration</div>
+        <div class="value">${diffDays} day${diffDays !== 1 ? 's' : ''}</div>
+      </div>
+      
+      ${reason ? `
+      <div class="field">
+        <div class="label">Reason</div>
+        <div class="value">${reason}</div>
+      </div>
+      ` : ''}
+      
+      <div style="margin-top: 20px;">
+        <a href="${holidaysLink}" class="button">Review Request</a>
+        <a href="${taskLink}" style="margin-left: 10px; color: #3b82f6; text-decoration: none;">View Task →</a>
+      </div>
+    </div>
+    <div class="footer">
+      JoineryAI - Holiday Management System
+    </div>
+  </div>
+</body>
+</html>
+                `,
+              }).catch(err => {
+                console.error(`[holiday-requests] Failed to send email to ${admin.email}:`, err);
+              });
+            }
+          }
+
+          console.log(`[holiday-requests] Created task ${task.id} and notified ${admins.length} admin(s)`);
+        }
+      } catch (taskError) {
+        console.error("[holiday-requests] Failed to create task/send notification:", taskError);
+        // Don't fail the request if task creation fails
+      }
+    })();
 
     res.json({ ok: true, request });
   } catch (e: any) {
