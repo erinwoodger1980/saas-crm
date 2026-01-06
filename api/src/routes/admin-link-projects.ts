@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client';
 const router = Router();
 const prisma = new PrismaClient();
 
-router.post('/link-lloyd-worrall', async (req, res) => {
+router.get('/link-lloyd-worrall', async (req, res) => {
   try {
     // Find Lloyd Worrall client account
     const client = await prisma.clientAccount.findFirst({
