@@ -1917,12 +1917,21 @@ router.post("/:id/actions/accept-enquiry/preview", async (req, res) => {
     if (!recipientEmail && task.relatedType === "LEAD" && task.relatedId) {
       const lead = await prisma.lead.findUnique({
         where: { id: task.relatedId },
-        select: { email: true, contactName: true },
+        select: { email: true, contactName: true, clientId: true },
       });
       console.log("[accept-enquiry/preview] Lead lookup:", lead);
       if (lead) {
         recipientEmail = lead.email;
         recipientName = recipientName || lead.contactName;
+
+        if (!recipientEmail && lead.clientId) {
+          const contact = await prisma.clientContact.findFirst({
+            where: { clientId: lead.clientId, email: { not: null } },
+            select: { email: true, name: true },
+          });
+          if (contact?.email) recipientEmail = contact.email;
+          if (!recipientName && contact?.name) recipientName = contact.name;
+        }
       }
     }
 
@@ -1985,12 +1994,21 @@ router.post("/:id/actions/decline-enquiry/preview", async (req, res) => {
     if (!recipientEmail && task.relatedType === "LEAD" && task.relatedId) {
       const lead = await prisma.lead.findUnique({
         where: { id: task.relatedId },
-        select: { email: true, contactName: true },
+        select: { email: true, contactName: true, clientId: true },
       });
       console.log("[decline-enquiry/preview] Lead lookup:", lead);
       if (lead) {
         recipientEmail = lead.email;
         recipientName = recipientName || lead.contactName;
+
+        if (!recipientEmail && lead.clientId) {
+          const contact = await prisma.clientContact.findFirst({
+            where: { clientId: lead.clientId, email: { not: null } },
+            select: { email: true, name: true },
+          });
+          if (contact?.email) recipientEmail = contact.email;
+          if (!recipientName && contact?.name) recipientName = contact.name;
+        }
       }
     }
 
@@ -2067,11 +2085,20 @@ router.post("/:id/actions/accept-enquiry", async (req, res) => {
     if (!recipientEmail && task.relatedType === "LEAD" && task.relatedId) {
       const lead = await prisma.lead.findUnique({
         where: { id: task.relatedId },
-        select: { email: true, contactName: true, custom: true },
+        select: { email: true, contactName: true, custom: true, clientId: true },
       });
       if (lead) {
         recipientEmail = lead.email;
         recipientName = recipientName || lead.contactName;
+
+        if (!recipientEmail && lead.clientId) {
+          const contact = await prisma.clientContact.findFirst({
+            where: { clientId: lead.clientId, email: { not: null } },
+            select: { email: true, name: true },
+          });
+          if (contact?.email) recipientEmail = contact.email;
+          if (!recipientName && contact?.name) recipientName = contact.name;
+        }
         
         // Extract email threading information
         const custom = lead.custom as any;
@@ -2224,11 +2251,20 @@ router.post("/:id/actions/decline-enquiry", async (req, res) => {
     if (!recipientEmail && task.relatedType === "LEAD" && task.relatedId) {
       const lead = await prisma.lead.findUnique({
         where: { id: task.relatedId },
-        select: { email: true, contactName: true, custom: true },
+        select: { email: true, contactName: true, custom: true, clientId: true },
       });
       if (lead) {
         recipientEmail = lead.email;
         recipientName = recipientName || lead.contactName;
+
+        if (!recipientEmail && lead.clientId) {
+          const contact = await prisma.clientContact.findFirst({
+            where: { clientId: lead.clientId, email: { not: null } },
+            select: { email: true, name: true },
+          });
+          if (contact?.email) recipientEmail = contact.email;
+          if (!recipientName && contact?.name) recipientName = contact.name;
+        }
         
         // Extract email threading information
         const custom = lead.custom as any;
