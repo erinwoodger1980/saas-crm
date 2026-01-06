@@ -25,6 +25,43 @@ const VariableSchema = z.object({
   description: z.string().optional(),
 });
 
+const GeometrySchema = z
+  .object({
+    type: z.enum(['profileExtrude', 'box', 'gltf']),
+    profileSlot: z.string().optional(),
+    widthExpr: z.string().optional(),
+    heightExpr: z.string().optional(),
+    depthExpr: z.string().optional(),
+    extrudeAxis: z.enum(['x', 'y', 'z']).optional(),
+    lengthExpr: z.string().optional(),
+    gltfRef: z.string().optional(),
+  })
+  .passthrough();
+
+const TransformSchema = z
+  .object({
+    xExpr: z.string(),
+    yExpr: z.string(),
+    zExpr: z.string(),
+    rotXDeg: z.number().optional(),
+    rotYDeg: z.number().optional(),
+    rotZDeg: z.number().optional(),
+  })
+  .passthrough();
+
+const ComponentInstanceSchema = z
+  .object({
+    id: z.string(),
+    role: z.string(),
+    parametric: z.boolean().optional().default(true),
+    geometry: GeometrySchema,
+    transform: TransformSchema,
+    quantityExpr: z.string().optional().default('1'),
+    materialRole: z.string(),
+    profileSlot: z.string().optional(),
+  })
+  .passthrough();
+
 const ProductPlanV1Schema = z.object({
   kind: z.literal('ProductPlanV1'),
   detected: DetectedSchema,
@@ -42,7 +79,7 @@ const ProductPlanV1Schema = z.object({
       uploadedSvg: z.string().optional(),
     })
   ),
-  components: z.array(z.any()),
+  components: z.array(ComponentInstanceSchema),
   variables: z.record(z.string(), VariableSchema),
   rationale: z.string(),
 });
@@ -70,11 +107,64 @@ function createFallbackDoorPlan(
       LEAF_STILE: { profileHint: 'hardwood_2x1', source: 'estimated' },
       LEAF_RAIL: { profileHint: 'hardwood_2x1', source: 'estimated' },
     },
-    components: [],
+    components: [
+      {
+        id: 'stile_left',
+        role: 'STILE',
+        parametric: true,
+        geometry: { type: 'profileExtrude', profileSlot: 'LEAF_STILE', lengthExpr: 'ph', extrudeAxis: 'z' },
+        transform: { xExpr: '0', yExpr: '0', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'stile_right',
+        role: 'STILE',
+        parametric: true,
+        geometry: { type: 'profileExtrude', profileSlot: 'LEAF_STILE', lengthExpr: 'ph', extrudeAxis: 'z' },
+        transform: { xExpr: 'pw - stileW', yExpr: '0', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'rail_top',
+        role: 'RAIL_TOP',
+        parametric: true,
+        geometry: { type: 'profileExtrude', profileSlot: 'LEAF_RAIL', lengthExpr: 'pw', extrudeAxis: 'z' },
+        transform: { xExpr: '0', yExpr: 'ph - railH', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'rail_bottom',
+        role: 'RAIL_BOTTOM',
+        parametric: true,
+        geometry: { type: 'profileExtrude', profileSlot: 'LEAF_RAIL', lengthExpr: 'pw', extrudeAxis: 'z' },
+        transform: { xExpr: '0', yExpr: '0', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'panel_main',
+        role: 'PANEL',
+        parametric: true,
+        geometry: {
+          type: 'box',
+          widthExpr: 'pw - (stileW * 2)',
+          heightExpr: 'ph - (railH * 2)',
+          depthExpr: 'sd',
+        },
+        transform: { xExpr: 'stileW', yExpr: 'railH', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'PANEL_CORE',
+      },
+    ],
     variables: {
       pw: { defaultValue: widthMm, unit: 'mm', description: 'Product width (outer)' },
       ph: { defaultValue: heightMm, unit: 'mm', description: 'Product height (outer)' },
       sd: { defaultValue: depthMm, unit: 'mm', description: 'Standard depth' },
+      stileW: { defaultValue: 50, unit: 'mm', description: 'Stile width' },
+      railH: { defaultValue: 50, unit: 'mm', description: 'Rail height' },
     },
     rationale: `Fallback: simple 2-panel timber door with standard proportions${reason ? ` (reason: ${reason})` : ''}`,
   };
@@ -101,13 +191,101 @@ function createFallbackWindowPlan(
       LEAF_STILE: { profileHint: 'hardwood_2x1_5', source: 'estimated' },
       LEAF_RAIL: { profileHint: 'hardwood_2x1_5', source: 'estimated' },
     },
-    components: [],
+    components: [
+      {
+        id: 'frame_head',
+        role: 'FRAME_HEAD',
+        parametric: true,
+        geometry: { type: 'profileExtrude', profileSlot: 'FRAME_JAMB', lengthExpr: 'pw', extrudeAxis: 'z' },
+        transform: { xExpr: '0', yExpr: 'ph - frameW', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'frame_jamb_l',
+        role: 'FRAME_JAMB_L',
+        parametric: true,
+        geometry: { type: 'profileExtrude', profileSlot: 'FRAME_JAMB', lengthExpr: 'ph', extrudeAxis: 'z' },
+        transform: { xExpr: '0', yExpr: '0', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'frame_jamb_r',
+        role: 'FRAME_JAMB_R',
+        parametric: true,
+        geometry: { type: 'profileExtrude', profileSlot: 'FRAME_JAMB', lengthExpr: 'ph', extrudeAxis: 'z' },
+        transform: { xExpr: 'pw - frameW', yExpr: '0', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'cill',
+        role: 'CILL',
+        parametric: true,
+        geometry: { type: 'profileExtrude', profileSlot: 'FRAME_JAMB', lengthExpr: 'pw', extrudeAxis: 'z' },
+        transform: { xExpr: '0', yExpr: '0', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'leaf_stile_l',
+        role: 'STILE',
+        parametric: true,
+        geometry: { type: 'profileExtrude', profileSlot: 'LEAF_STILE', lengthExpr: 'ph - (frameW * 2)', extrudeAxis: 'z' },
+        transform: { xExpr: 'frameW', yExpr: 'frameW', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'leaf_stile_r',
+        role: 'STILE',
+        parametric: true,
+        geometry: { type: 'profileExtrude', profileSlot: 'LEAF_STILE', lengthExpr: 'ph - (frameW * 2)', extrudeAxis: 'z' },
+        transform: { xExpr: 'pw - frameW - stileW', yExpr: 'frameW', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'leaf_rail_top',
+        role: 'RAIL_TOP',
+        parametric: true,
+        geometry: { type: 'profileExtrude', profileSlot: 'LEAF_RAIL', lengthExpr: 'pw - (frameW * 2)', extrudeAxis: 'z' },
+        transform: { xExpr: 'frameW', yExpr: 'ph - frameW - railH', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'leaf_rail_bottom',
+        role: 'RAIL_BOTTOM',
+        parametric: true,
+        geometry: { type: 'profileExtrude', profileSlot: 'LEAF_RAIL', lengthExpr: 'pw - (frameW * 2)', extrudeAxis: 'z' },
+        transform: { xExpr: 'frameW', yExpr: 'frameW', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'TIMBER_PRIMARY',
+      },
+      {
+        id: 'glass_main',
+        role: 'GLASS',
+        parametric: true,
+        geometry: {
+          type: 'box',
+          widthExpr: 'pw - (frameW * 2) - (stileW * 2)',
+          heightExpr: 'ph - (frameW * 2) - (railH * 2)',
+          depthExpr: '10',
+        },
+        transform: { xExpr: 'frameW + stileW', yExpr: 'frameW + railH', zExpr: '0' },
+        quantityExpr: '1',
+        materialRole: 'GLASS_CLEAR',
+      },
+    ],
     variables: {
       pw: { defaultValue: widthMm, unit: 'mm', description: 'Product width (outer)' },
       ph: { defaultValue: heightMm, unit: 'mm', description: 'Product height (outer)' },
       sd: { defaultValue: depthMm, unit: 'mm', description: 'Standard depth' },
       frameW: { defaultValue: 80, unit: 'mm', description: 'Frame width' },
       stileW: { defaultValue: 35, unit: 'mm', description: 'Stile width (leaf frame)' },
+      railH: { defaultValue: 45, unit: 'mm', description: 'Rail height (leaf frame)' },
     },
     rationale: `Fallback: simple single-casement window with frame and clear glass${reason ? ` (reason: ${reason})` : ''}`,
   };
@@ -147,8 +325,33 @@ Rules:
 - kind MUST be exactly "ProductPlanV1".
 - detected.category MUST be one of: door | window | frame.
 - Always include variables pw, ph, sd with sensible defaults based on provided dimensions.
-- If unsure, keep components empty but still provide all required keys.
+- components MUST be a non-empty list of component instances (id/role/geometry/transform/materialRole). If unsure, output a minimal structural set (frame + leaf + infill) rather than leaving it empty.
 `;
+
+function ensurePlanHasComponents(plan: ProductPlanV1, dims: { widthMm?: number; heightMm?: number; depthMm?: number }): ProductPlanV1 {
+  const existing = Array.isArray((plan as any).components) ? (plan as any).components : [];
+  if (existing.length > 0) return plan;
+
+  const category = String((plan as any)?.detected?.category || '').toLowerCase();
+  const widthMm = Number(dims.widthMm) || Number((plan as any)?.dimensions?.widthMm) || 1200;
+  const heightMm = Number(dims.heightMm) || Number((plan as any)?.dimensions?.heightMm) || 1200;
+  const depthMm = Number(dims.depthMm) || Number((plan as any)?.dimensions?.depthMm) || 80;
+
+  const fallback = category === 'door'
+    ? createFallbackDoorPlan(widthMm || 914, heightMm || 2032, depthMm || 45, 'components_autofilled')
+    : createFallbackWindowPlan(widthMm || 1200, heightMm || 1200, depthMm || 80, 'components_autofilled');
+
+  return {
+    ...(plan as any),
+    // keep detected/type/rationale, but fill core plan structure
+    dimensions: (plan as any).dimensions || fallback.dimensions,
+    materialRoles: Object.keys((plan as any).materialRoles || {}).length ? (plan as any).materialRoles : fallback.materialRoles,
+    profileSlots: Object.keys((plan as any).profileSlots || {}).length ? (plan as any).profileSlots : fallback.profileSlots,
+    variables: { ...fallback.variables, ...((plan as any).variables || {}) },
+    components: fallback.components,
+    rationale: `${String((plan as any).rationale || fallback.rationale).trim()} (components auto-filled)`,
+  } as any;
+}
 
 function summarizeZodError(err: z.ZodError, maxIssues = 4): string {
   const issues = err.issues
@@ -428,7 +631,7 @@ router.post('/generate-product-plan', async (req, res) => {
 
     if (ai.plan) {
       res.setHeader('x-ai-fallback', '0');
-      return res.json(ai.plan);
+      return res.json(ensurePlanHasComponents(ai.plan, dims));
     }
 
     const reason = safeReason(ai.error || 'unknown');
