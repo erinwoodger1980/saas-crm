@@ -1220,8 +1220,7 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
       return (
         <input
           type="date"
-          disabled={isCustomerPortal}
-          className="bg-white border border-slate-200 rounded px-2 py-1 outline-none text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-300 disabled:bg-slate-100 disabled:cursor-not-allowed"
+          className="bg-white border border-slate-200 rounded px-2 py-1 outline-none text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-300"
           value={value ? new Date(value).toISOString().slice(0, 10) : ''}
           onChange={(e) => {
             const dateValue = e.target.value ? new Date(e.target.value).toISOString() : undefined;
@@ -1248,8 +1247,7 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
       return (
         <input
           type="date"
-          disabled={isCustomerPortal}
-          className="bg-white border border-slate-200 rounded px-2 py-1 outline-none text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-300 disabled:bg-slate-100 disabled:cursor-not-allowed"
+          className="bg-white border border-slate-200 rounded px-2 py-1 outline-none text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-300"
           value={value ? new Date(value).toISOString().slice(0, 10) : ''}
           onChange={(e) => {
             const newDate = e.target.value;
@@ -1278,8 +1276,7 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
       return (
         <input
           type="date"
-          disabled={isCustomerPortal}
-          className="bg-white border border-slate-200 rounded px-2 py-1 outline-none text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-300 disabled:bg-slate-100 disabled:cursor-not-allowed"
+          className="bg-white border border-slate-200 rounded px-2 py-1 outline-none text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-300"
           value={value ? new Date(value).toISOString().slice(0, 10) : ''}
           onChange={(e) => {
             const dateValue = e.target.value ? new Date(e.target.value).toISOString() : undefined;
@@ -1351,10 +1348,9 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
             type="number"
             min={0}
             max={100}
-            disabled={isCustomerPortal}
             value={value || 0}
             onChange={(e) => updateProject(project.id, { [field]: parseInt(e.target.value) || 0 })}
-            className="w-14 bg-white/60 rounded px-1 py-0.5 text-xs border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:bg-slate-100 disabled:cursor-not-allowed"
+            className="w-14 bg-white/60 rounded px-1 py-0.5 text-xs border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300"
           />
         </div>
       );
@@ -1369,11 +1365,10 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
             type="number"
             min={0}
             step={0.01}
-            disabled={isCustomerPortal}
             value={value || ''}
             placeholder="0.00"
             onChange={(e) => updateProject(project.id, { netValue: parseFloat(e.target.value) || null })}
-            className="w-24 bg-white border border-slate-200 rounded px-2 py-1 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-300 disabled:bg-slate-100 disabled:cursor-not-allowed"
+            className="w-24 bg-white border border-slate-200 rounded px-2 py-1 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-300"
           />
         </div>
       );
@@ -1385,9 +1380,8 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
         <input
           type="checkbox"
           checked={!!value}
-          disabled={isCustomerPortal}
           onChange={(e) => updateProject(project.id, { [field]: e.target.checked })}
-          className="w-4 h-4 text-blue-600 focus:ring-2 focus:ring-blue-300 disabled:cursor-not-allowed"
+          className="w-4 h-4 text-blue-600 focus:ring-2 focus:ring-blue-300"
         />
       );
     }
@@ -1475,9 +1469,8 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
       return (
         <select
           value={value || ''}
-          disabled={isCustomerPortal}
           onChange={(e) => updateProject(project.id, { jobLocation: e.target.value })}
-          className={`text-[11px] font-medium px-2 py-1 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:cursor-not-allowed ${colorClasses}`}
+          className={`text-[11px] font-medium px-2 py-1 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${colorClasses}`}
           style={customColor ? { backgroundColor: customColor.bg, color: customColor.text } : undefined}
         >
           <option value="">--</option>
@@ -1492,9 +1485,8 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
       return (
         <select
           value={value || ''}
-          disabled={isCustomerPortal}
           onChange={(e) => updateProject(project.id, { signOffStatus: e.target.value })}
-          className={`text-[11px] font-medium px-2 py-1 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:cursor-not-allowed ${colorClasses}`}
+          className={`text-[11px] font-medium px-2 py-1 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${colorClasses}`}
           style={customColor ? { backgroundColor: customColor.bg, color: customColor.text } : undefined}
         >
           <option value="">--</option>
@@ -1524,7 +1516,6 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
       return (
         <select
           value={value || ''}
-          disabled={isCustomerPortal}
           onChange={(e) => {
             const newValue = e.target.value;
             const updates: any = { [field]: newValue };
@@ -1557,7 +1548,6 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
       return (
         <select
           value={value || ''}
-          disabled={isCustomerPortal}
           onChange={(e) => {
             const newValue = e.target.value;
             const updates: any = { [field]: newValue };
@@ -1593,9 +1583,8 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
       return (
         <select
           value={value || ''}
-          disabled={isCustomerPortal}
           onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
-          className={`text-[11px] font-semibold px-3 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:cursor-not-allowed ${colorClasses}`}
+          className={`text-[11px] font-semibold px-3 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${colorClasses}`}
           style={customColor ? { backgroundColor: customColor.bg, color: customColor.text, borderColor: customColor.bg } : undefined}
         >
           <option value="">--</option>
@@ -1612,9 +1601,8 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
       return (
         <select
           value={value || ''}
-          disabled={isCustomerPortal}
           onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
-          className={`text-[11px] font-semibold px-3 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:cursor-not-allowed ${colorClasses}`}
+          className={`text-[11px] font-semibold px-3 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${colorClasses}`}
           style={customColor ? { backgroundColor: customColor.bg, color: customColor.text, borderColor: customColor.bg } : undefined}
         >
           <option value="">--</option>
@@ -1642,7 +1630,6 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
         <input
           type="number"
           min={0}
-          disabled={isCustomerPortal}
           value={value || ''}
           placeholder="—"
           onChange={(e) => {
@@ -1692,11 +1679,10 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
         <input
           type="number"
           min={0}
-          disabled={isCustomerPortal}
           value={value || ''}
           placeholder="—"
           onChange={(e) => updateProject(project.id, { [field]: parseInt(e.target.value) || null })}
-          className="bg-transparent outline-none w-20 text-sm font-semibold border-b border-dashed border-slate-300 focus:border-blue-500 disabled:cursor-not-allowed"
+          className="bg-transparent outline-none w-20 text-sm font-semibold border-b border-dashed border-slate-300 focus:border-blue-500"
         />
       );
     }
@@ -1705,9 +1691,8 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
     if (field === 'paperworkComments' || field === 'deliveryNotes' || field === 'bomNotes') {
       return (
         <textarea
-          className="bg-transparent outline-none w-full text-sm font-semibold border border-slate-200 rounded px-2 py-1 focus:border-blue-500 resize-none disabled:cursor-not-allowed disabled:bg-slate-50"
+          className="bg-transparent outline-none w-full text-sm font-semibold border border-slate-200 rounded px-2 py-1 focus:border-blue-500 resize-none"
           rows={2}
-          disabled={isCustomerPortal}
           value={value || ''}
           placeholder="—"
           title={value || ''}
@@ -1725,9 +1710,8 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
     if (field === 'jobName') {
       return (
         <textarea
-          className="bg-transparent outline-none w-full text-sm font-semibold resize-none min-h-[40px] disabled:cursor-not-allowed disabled:bg-slate-50"
+          className="bg-transparent outline-none w-full text-sm font-semibold resize-none min-h-[40px]"
           value={value || ''}
-          disabled={isCustomerPortal}
           placeholder="—"
           rows={2}
           title={value || ''}
@@ -1739,9 +1723,8 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
     // Text fields (default)
     return (
       <input
-        className="bg-transparent outline-none w-full text-sm font-semibold disabled:cursor-not-allowed"
+        className="bg-transparent outline-none w-full text-sm font-semibold"
         value={value || ''}
-        disabled={isCustomerPortal}
         placeholder="—"
         onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
       />
@@ -1763,65 +1746,61 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
               </p>
             </div>
             <div className="flex gap-3">
-              {!isCustomerPortal && (
-                <>
-                  <label className="cursor-pointer">
-                    <input
-                      type="file"
-                      accept=".csv"
-                      className="hidden"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        
-                        try {
-                          setLoading(true);
-                          const csvContent = await file.text();
-                          const result = await apiFetch<any>('/fire-door-schedule/trigger-bom-import', {
-                            method: 'POST',
-                            json: { csvContent }
-                          });
-                          
-                          alert(`Import complete!\nCreated: ${result.summary.created}\nUpdated: ${result.summary.updated}\nSkipped: ${result.summary.skipped}\nErrors: ${result.summary.errors}`);
-                          loadData();
-                        } catch (error: any) {
-                          alert(`Import failed: ${error.message || 'Unknown error'}`);
-                        } finally {
-                          setLoading(false);
-                          e.target.value = ''; // Reset file input
-                        }
-                      }}
-                    />
-                    <span className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none border border-slate-200 bg-white/50 hover:bg-white h-10 py-2 px-4 cursor-pointer">
-                      <Download className="w-4 h-4 mr-2" />
-                      Import CSV
-                    </span>
-                  </label>
-                  <Button
-                    variant="outline"
-                    className="bg-white/50 border-2 border-blue-500/30 text-blue-700 hover:bg-blue-50 hover:border-blue-500/50"
-                    onClick={() => {
-                      // Navigate to the project overview page
-                      if (projects.length > 0) {
-                        const firstProject = projects[0];
-                        router.push(`/fire-door-schedule/${firstProject.id}`);
-                      } else {
-                        router.push("/fire-door-schedule/new");
-                      }
-                    }}
-                  >
-                    <FileText className="w-4 h-4 mr-2" />
-                    View Order
-                  </Button>
-                  <Button 
-                    onClick={() => router.push("/fire-door-schedule/new")}
-                    className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg hover:shadow-xl transition-all"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    New Project
-                  </Button>
-                </>
-              )}
+              <label className="cursor-pointer">
+                <input
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    
+                    try {
+                      setLoading(true);
+                      const csvContent = await file.text();
+                      const result = await apiFetch<any>('/fire-door-schedule/trigger-bom-import', {
+                        method: 'POST',
+                        json: { csvContent }
+                      });
+                      
+                      alert(`Import complete!\nCreated: ${result.summary.created}\nUpdated: ${result.summary.updated}\nSkipped: ${result.summary.skipped}\nErrors: ${result.summary.errors}`);
+                      loadData();
+                    } catch (error: any) {
+                      alert(`Import failed: ${error.message || 'Unknown error'}`);
+                    } finally {
+                      setLoading(false);
+                      e.target.value = ''; // Reset file input
+                    }
+                  }}
+                />
+                <span className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none border border-slate-200 bg-white/50 hover:bg-white h-10 py-2 px-4 cursor-pointer">
+                  <Download className="w-4 h-4 mr-2" />
+                  Import CSV
+                </span>
+              </label>
+              <Button
+                variant="outline"
+                className="bg-white/50 border-2 border-blue-500/30 text-blue-700 hover:bg-blue-50 hover:border-blue-500/50"
+                onClick={() => {
+                  // Navigate to the project overview page
+                  if (projects.length > 0) {
+                    const firstProject = projects[0];
+                    router.push(`/fire-door-schedule/${firstProject.id}`);
+                  } else {
+                    router.push("/fire-door-schedule/new");
+                  }
+                }}
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                View Order
+              </Button>
+              <Button 
+                onClick={() => router.push("/fire-door-schedule/new")}
+                className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg hover:shadow-xl transition-all"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                New Project
+              </Button>
             </div>
           </div>
         </div>
