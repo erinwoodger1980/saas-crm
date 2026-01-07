@@ -737,7 +737,10 @@ router.post("/line-items", async (req: any, res: Response) => {
   try {
     const tenantId = req.auth?.tenantId;
     
+    console.log('[POST /line-items] Request:', { tenantId, body: req.body });
+    
     if (!tenantId) {
+      console.log('[POST /line-items] Unauthorized - missing tenantId');
       return res.status(401).json({ error: "Unauthorized" });
     }
 
@@ -747,10 +750,16 @@ router.post("/line-items", async (req: any, res: Response) => {
     });
 
     if (!tenantSettings?.isFireDoorManufacturer) {
+      console.log('[POST /line-items] Not a fire door manufacturer');
       return res.status(403).json({ error: "Fire door schedule is only available for fire door manufacturers" });
     }
 
     const { fireDoorImportId, ...lineItemData } = req.body;
+
+    if (!fireDoorImportId) {
+      console.log('[POST /line-items] Missing fireDoorImportId');
+      return res.status(400).json({ error: "fireDoorImportId is required" });
+    }
 
     // Verify the import belongs to this tenant
     const fireDoorImport = await prisma.fireDoorImport.findFirst({
@@ -761,6 +770,7 @@ router.post("/line-items", async (req: any, res: Response) => {
     });
 
     if (!fireDoorImport) {
+      console.log('[POST /line-items] Fire door import not found:', fireDoorImportId);
       return res.status(404).json({ error: "Fire door import not found" });
     }
 
@@ -773,10 +783,11 @@ router.post("/line-items", async (req: any, res: Response) => {
       },
     });
 
+    console.log('[POST /line-items] Created line item:', newLineItem.id);
     res.json(newLineItem);
   } catch (error) {
     console.error("Error creating line item:", error);
-    res.status(500).json({ error: "Failed to create line item" });
+    res.status(500).json({ error: "Failed to create line item", details: error instanceof Error ? error.message : 'Unknown error' });
   }
 });
 
@@ -786,7 +797,10 @@ router.post("/imports", async (req: any, res: Response) => {
     const tenantId = req.auth?.tenantId;
     const userId = req.auth?.userId;
     
+    console.log('[POST /imports] Request:', { tenantId, userId, body: req.body });
+    
     if (!tenantId || !userId) {
+      console.log('[POST /imports] Unauthorized - missing tenantId or userId');
       return res.status(401).json({ error: "Unauthorized" });
     }
 
@@ -796,6 +810,7 @@ router.post("/imports", async (req: any, res: Response) => {
     });
 
     if (!tenantSettings?.isFireDoorManufacturer) {
+      console.log('[POST /imports] Not a fire door manufacturer');
       return res.status(403).json({ error: "Fire door schedule is only available for fire door manufacturers" });
     }
 
@@ -810,6 +825,7 @@ router.post("/imports", async (req: any, res: Response) => {
     });
 
     if (!project) {
+      console.log('[POST /imports] Project not found:', projectId);
       return res.status(404).json({ error: "Project not found" });
     }
 
@@ -826,10 +842,11 @@ router.post("/imports", async (req: any, res: Response) => {
       },
     });
 
+    console.log('[POST /imports] Created import:', newImport.id);
     res.json(newImport);
   } catch (error) {
     console.error("Error creating import:", error);
-    res.status(500).json({ error: "Failed to create import" });
+    res.status(500).json({ error: "Failed to create import", details: error instanceof Error ? error.message : 'Unknown error' });
   }
 });
 

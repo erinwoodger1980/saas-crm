@@ -3,12 +3,16 @@
 import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { AgGridReact } from 'ag-grid-react';
+import { ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
 import type { ColDef, GridOptions, GridApi, ValueFormatterParams } from 'ag-grid-community';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { FireDoorRFIPanel } from '@/components/FireDoorRFIPanel';
 import { MessageSquare, ArrowLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+
+// Register AG Grid modules
+ModuleRegistry.registerModules([AllCommunityModule]);
 
 interface FireDoorLineItem {
   id: string;
@@ -32,6 +36,11 @@ interface FireDoorLineItem {
   position: string | null;
   notes1: string | null;
   notes2: string | null;
+  calculatedField1: string | null;
+  calculatedField2: string | null;
+  calculatedField3: string | null;
+  calculatedField4: string | null;
+  calculatedField5: string | null;
 }
 
 interface RFI {
@@ -341,6 +350,100 @@ function FireDoorsPageContent() {
       ],
     },
     
+    // Calculated Fields Section
+    {
+      headerName: 'Calculated Fields',
+      children: [
+        {
+          field: 'calculatedField1',
+          headerName: 'Calc 1',
+          width: 150,
+          editable: false,
+          cellStyle: { backgroundColor: '#e3f2fd', fontWeight: '500' },
+          filter: 'agTextColumnFilter',
+        },
+        {
+          field: 'calculatedField2',
+          headerName: 'Calc 2',
+          width: 150,
+          editable: false,
+          cellStyle: { backgroundColor: '#e3f2fd', fontWeight: '500' },
+          filter: 'agTextColumnFilter',
+        },
+        {
+          field: 'calculatedField3',
+          headerName: 'Calc 3',
+          width: 150,
+          editable: false,
+          cellStyle: { backgroundColor: '#e3f2fd', fontWeight: '500' },
+          filter: 'agTextColumnFilter',
+        },
+        {
+          field: 'calculatedField4',
+          headerName: 'Calc 4',
+          width: 150,
+          editable: false,
+          cellStyle: { backgroundColor: '#e3f2fd', fontWeight: '500' },
+          filter: 'agTextColumnFilter',
+        },
+        {
+          field: 'calculatedField5',
+          headerName: 'Calc 5',
+          width: 150,
+          editable: false,
+          cellStyle: { backgroundColor: '#e3f2fd', fontWeight: '500' },
+          filter: 'agTextColumnFilter',
+        },
+      ],
+    },
+    
+    // Calculated Fields Section
+    {
+      headerName: 'Calculated Fields',
+      children: [
+        {
+          field: 'calculatedField1',
+          headerName: 'Calc 1',
+          width: 150,
+          editable: false,
+          cellStyle: { backgroundColor: '#e3f2fd', fontWeight: '500' },
+          filter: 'agTextColumnFilter',
+        },
+        {
+          field: 'calculatedField2',
+          headerName: 'Calc 2',
+          width: 150,
+          editable: false,
+          cellStyle: { backgroundColor: '#e3f2fd', fontWeight: '500' },
+          filter: 'agTextColumnFilter',
+        },
+        {
+          field: 'calculatedField3',
+          headerName: 'Calc 3',
+          width: 150,
+          editable: false,
+          cellStyle: { backgroundColor: '#e3f2fd', fontWeight: '500' },
+          filter: 'agTextColumnFilter',
+        },
+        {
+          field: 'calculatedField4',
+          headerName: 'Calc 4',
+          width: 150,
+          editable: false,
+          cellStyle: { backgroundColor: '#e3f2fd', fontWeight: '500' },
+          filter: 'agTextColumnFilter',
+        },
+        {
+          field: 'calculatedField5',
+          headerName: 'Calc 5',
+          width: 150,
+          editable: false,
+          cellStyle: { backgroundColor: '#e3f2fd', fontWeight: '500' },
+          filter: 'agTextColumnFilter',
+        },
+      ],
+    },
+    
     // Communication Section
     {
       headerName: 'Communication',
@@ -466,7 +569,10 @@ function FireDoorsPageContent() {
             </button>
             <button
               onClick={async () => {
-                if (!projectId || !projectInfo) return;
+                if (!projectId || !projectInfo) {
+                  alert('No project selected');
+                  return;
+                }
                 
                 // Check if there's a fire door import for this project
                 let importId = projectInfo.fireDoorImportId;
@@ -485,16 +591,27 @@ function FireDoorsPageContent() {
                         rowCount: 0,
                       }),
                     });
-                    if (res.ok) {
-                      const newImport = await res.json();
-                      importId = newImport.id;
-                      setProjectInfo({ ...projectInfo, fireDoorImportId: importId });
+                    
+                    if (!res.ok) {
+                      const errorData = await res.json();
+                      console.error('Import creation failed:', errorData);
+                      alert(`Failed to create import: ${errorData.error || 'Unknown error'}`);
+                      return;
                     }
+                    
+                    const newImport = await res.json();
+                    importId = newImport.id;
+                    setProjectInfo({ ...projectInfo, fireDoorImportId: importId });
                   } catch (error) {
                     console.error('Error creating import:', error);
-                    alert('Failed to create import. Please try again.');
+                    alert(`Failed to create import: ${error instanceof Error ? error.message : 'Unknown error'}`);
                     return;
                   }
+                }
+                
+                if (!importId) {
+                  alert('No import ID available');
+                  return;
                 }
                 
                 // Create new line item
@@ -513,15 +630,18 @@ function FireDoorsPageContent() {
                     }),
                   });
                   
-                  if (res.ok) {
-                    const newItem = await res.json();
-                    setRowData([...rowData, newItem]);
-                  } else {
-                    alert('Failed to create line item');
+                  if (!res.ok) {
+                    const errorData = await res.json();
+                    console.error('Line item creation failed:', errorData);
+                    alert(`Failed to create line item: ${errorData.error || 'Unknown error'}`);
+                    return;
                   }
+                  
+                  const newItem = await res.json();
+                  setRowData([...rowData, newItem]);
                 } catch (error) {
                   console.error('Error creating line item:', error);
-                  alert('Failed to create line item');
+                  alert(`Failed to create line item: ${error instanceof Error ? error.message : 'Unknown error'}`);
                 }
               }}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition font-medium"
