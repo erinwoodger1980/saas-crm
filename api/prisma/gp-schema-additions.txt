@@ -1,0 +1,59 @@
+-- Add to schema.prisma
+
+// Monthly wage bill inputs
+model MonthlyWageBill {
+  id        String   @id @default(cuid())
+  tenantId  String
+  month     String   // Format: YYYY-MM
+  wageBill  Decimal  // Total wages for the month
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, month])
+  @@index([tenantId, month])
+}
+
+// Extend existing Opportunity model with GP fields
+// Add these fields to Opportunity:
+// contractValue    Decimal?  // Total sale price
+// budgetHours      Decimal?  // Total budgeted hours
+// materialTotal    Decimal?  // Total estimated materials cost
+// materialsToDate  Decimal?  // Actual materials spent to date
+
+// Monthly GP metrics cache (computed)
+model MonthlyProjectMetrics {
+  id                       String      @id @default(cuid())
+  tenantId                 String
+  projectId                String      // Opportunity ID
+  month                    String      // Format: YYYY-MM
+  
+  // Hours tracking
+  hoursThisMonth           Decimal     @default(0)
+  hoursToDate              Decimal     @default(0)
+  percentCompleteThisMonth Decimal     @default(0)
+  percentCompleteToDate    Decimal     @default(0)
+  
+  // Revenue tracking
+  revenueThisMonth         Decimal     @default(0)
+  revenueToDate            Decimal     @default(0)
+  
+  // Cost tracking
+  labourCostThisMonth      Decimal     @default(0)
+  materialsCostThisMonth   Decimal     @default(0)
+  totalCostThisMonth       Decimal     @default(0)
+  
+  // Gross profit
+  grossProfitThisMonth     Decimal     @default(0)
+  grossProfitPercent       Decimal     @default(0)
+  
+  createdAt                DateTime    @default(now())
+  updatedAt                DateTime    @updatedAt
+  
+  tenant                   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project                  Opportunity @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, projectId, month])
+  @@index([tenantId, month])
+  @@index([projectId])
+}

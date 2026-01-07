@@ -140,6 +140,8 @@ model Tenant {
   profiles                   Profile[]                   @relation("TenantProfiles")
   accountingConnections      TenantAccountingConnection[] @relation("AccountingConnections")
   accountingDocuments        AccountingDocument[]        @relation("AccountingDocuments")
+  monthlyWageBills           MonthlyWageBill[]           @relation("MonthlyWageBills")
+  monthlyProjectMetrics      MonthlyProjectMetrics[]     @relation("MonthlyProjectMetrics")
 }
 
 model LippingLookup {
@@ -989,6 +991,11 @@ model Opportunity {
   clientAccountId          String?
   installationEndDate      DateTime?
   installationStartDate    DateTime?
+  // GP calculation fields
+  contractValue            Decimal?
+  budgetHours              Decimal?
+  materialTotal            Decimal?
+  materialsToDate          Decimal?
   emailMessages            EmailMessage[]
   emailThreads             EmailThread[]
   client                   Client?                    @relation(fields: [clientId], references: [id])
@@ -1001,6 +1008,7 @@ model Opportunity {
   timeEntries              TimeEntry[]
   workshopTimers           WorkshopTimer[]
   project                  Project?                   @relation("ProjectOpportunity")
+  monthlyProjectMetrics    MonthlyProjectMetrics[]
 
   @@index([tenantId, stage])
   @@index([clientId])
@@ -4742,4 +4750,48 @@ model AccountingDocument {
   @@index([tenantId, externalType])
   @@index([tenantId, linkedEntityType, linkedEntityId])
   @@index([connectionId])
+}
+
+model MonthlyWageBill {
+  id        String   @id @default(cuid())
+  tenantId  String
+  month     String   // Format: YYYY-MM
+  wageBill  Decimal
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tenant    Tenant   @relation("MonthlyWageBills", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, month])
+  @@index([tenantId, month])
+}
+
+model MonthlyProjectMetrics {
+  id                       String      @id @default(cuid())
+  tenantId                 String
+  projectId                String      // Opportunity.id
+  month                    String      // Format: YYYY-MM
+  
+  // Hours tracking
+  hoursThisMonth           Decimal     @default(0)
+  hoursToDate              Decimal     @default(0)
+  percentCompleteThisMonth Decimal     @default(0)
+  percentCompleteToDate    Decimal     @default(0)
+  
+  // Financial breakdown
+  revenueThisMonth         Decimal     @default(0)
+  labourCostThisMonth      Decimal     @default(0)
+  materialsCostThisMonth   Decimal     @default(0)
+  totalCostThisMonth       Decimal     @default(0)
+  grossProfitThisMonth     Decimal     @default(0)
+  grossProfitPercent       Decimal     @default(0)
+  
+  createdAt                DateTime    @default(now())
+  updatedAt                DateTime    @updatedAt
+  
+  opportunity              Opportunity @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tenant                   Tenant      @relation("MonthlyProjectMetrics", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, projectId, month])
+  @@index([tenantId, month])
+  @@index([projectId, month])
 }

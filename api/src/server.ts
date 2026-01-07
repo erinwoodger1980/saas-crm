@@ -130,6 +130,7 @@ import publicFireDoorsRouter from "./routes/public-fire-doors";
 import customerAuthRouter from "./routes/customer-auth";
 import customerPortalRouter from "./routes/customer-portal";
 import materialDebugRouter from "./routes/material-debug";
+import monthlyGPRouter from "./routes/monthly-gp";
 import doorCoresRouter from "./routes/door-cores";
 import ironmongeryItemsRouter from "./routes/ironmongery-items";
 import rfisRouter from "./routes/rfis";
@@ -755,6 +756,8 @@ app.use("/fire-door-schedule", requireAuth, fireDoorImportTriggerRouter);
 app.use("/fire-door-schedule", requireAuth, fireDoorEnableRouter);
 app.use("/fire-door-schedule", requireAuth, fireDoorScheduleRouter);
 app.use("/fire-door-production", requireAuth, fireDoorProductionRouter);
+// Monthly GP calculation and dashboard
+app.use("/api/monthly-gp", requireAuth, monthlyGPRouter);
 // Fire door line item layout configuration (customizable field display for QR scans)
 app.use("/fire-door-line-item-layout", requireAuth, fireDoorLineItemLayoutRouter);
 // Fire door quotes (dedicated quote builder for fire doors)

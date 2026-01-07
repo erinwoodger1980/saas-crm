@@ -1,0 +1,169 @@
+[prisma] $use middleware not available - dev user and process seeding will not run automatically on tenant creation
+Applying migration to production database...
+SQL: -- Add GP calculation fields to Opportunity model
+ALTER TABLE public."Opportunity" ADD COLUMN IF NOT EXISTS "contractValue" DECIMAL;
+ALTER TABLE public."Opportunity" ADD COLUMN IF NOT EXISTS "budgetHours" DECIMAL;
+ALTER TABLE public."Opportunity" ADD COLUMN IF NOT EXISTS "materialTotal" DECIMAL;
+ALTER TABLE public."Opportunity" ADD COLUMN IF NOT EXISTS "materialsToDate" DECIMAL;
+
+-- Create MonthlyWageBill table
+CREATE TABLE IF NOT EXISTS public."MonthlyWageBill" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
+    "month" TEXT NOT NULL,
+    "wageBill" DECIMAL(65,30) NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "MonthlyWageBill_pkey" PRIMARY KEY ("id")
+);
+
+-- Create MonthlyProjectMetrics table
+CREATE TABLE IF NOT EXISTS public."MonthlyProjectMetrics" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "month" TEXT NOT NULL,
+    "hoursThisMonth" DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "hoursToDate" DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "percentCompleteThisMonth" DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "percentCompleteToDate" DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "revenueThisMonth" DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "labourCostThisMonth" DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "materialsCostThisMonth" DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "totalCostThisMonth" DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "grossProfitThisMonth" DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "grossProfitPercent" DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "MonthlyProjectMetrics_pkey" PRIMARY KEY ("id")
+);
+
+-- Create unique constraints
+DO $$ BEGIN
+    CREATE UNIQUE INDEX IF NOT EXISTS "MonthlyWageBill_tenantId_month_key" ON public."MonthlyWageBill"("tenantId", "month");
+EXCEPTION
+    WHEN duplicate_table THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    CREATE UNIQUE INDEX IF NOT EXISTS "MonthlyProjectMetrics_tenantId_projectId_month_key" ON public."MonthlyProjectMetrics"("tenantId", "projectId", "month");
+EXCEPTION
+    WHEN duplicate_table THEN NULL;
+END $$;
+
+-- Create indexes
+DO $$ BEGIN
+    CREATE INDEX IF NOT EXISTS "MonthlyWageBill_tenantId_month_idx" ON public."MonthlyWageBill"("tenantId", "month");
+EXCEPTION
+    WHEN duplicate_table THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    CREATE INDEX IF NOT EXISTS "MonthlyProjectMetrics_tenantId_month_idx" ON public."MonthlyProjectMetrics"("tenantId", "month");
+EXCEPTION
+    WHEN duplicate_table THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    CREATE INDEX IF NOT EXISTS "MonthlyProjectMetrics_projectId_month_idx" ON public."MonthlyProjectMetrics"("projectId", "month");
+EXCEPTION
+    WHEN duplicate_table THEN NULL;
+END $$;
+
+-- Add foreign key constraints
+DO $$ BEGIN
+    ALTER TABLE public."MonthlyWageBill" ADD CONSTRAINT "MonthlyWageBill_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES public."Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE public."MonthlyProjectMetrics" ADD CONSTRAINT "MonthlyProjectMetrics_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES public."Opportunity"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE public."MonthlyProjectMetrics" ADD CONSTRAINT "MonthlyProjectMetrics_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES public."Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
+
+
+Executing: ALTER TABLE public."Opportunity" ADD COLUMN IF NOT EXISTS "budgetHours" DECIMAL...
+prisma:error 
+Invalid `prisma.$executeRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42P01`. Message: `relation "public.Opportunity" does not exist`
+❌ Migration failed: PrismaClientKnownRequestError: 
+Invalid `prisma.$executeRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42P01`. Message: `relation "public.Opportunity" does not exist`
+    at $r.handleRequestError (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+client@7.0.0_prisma@7.0.0_@types+react@19.2.6_react-dom@19.2.0_react@19.2.0__react@19_azvqfyy76gbumj3v3d6eou4idi/node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+    at $r.handleAndLogRequestError (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+client@7.0.0_prisma@7.0.0_@types+react@19.2.6_react-dom@19.2.0_react@19.2.0__react@19_azvqfyy76gbumj3v3d6eou4idi/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at $r.request (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+client@7.0.0_prisma@7.0.0_@types+react@19.2.6_react-dom@19.2.0_react@19.2.0__react@19_azvqfyy76gbumj3v3d6eou4idi/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async a (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+client@7.0.0_prisma@7.0.0_@types+react@19.2.6_react-dom@19.2.0_react@19.2.0__react@19_azvqfyy76gbumj3v3d6eou4idi/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:766:24)
+    at async applyMigration (/Users/Erin/saas-crm/api/apply-gp-migration.ts:22:9) {
+  code: 'P2010',
+  meta: {
+    driverAdapterError: DriverAdapterError: TableDoesNotExist
+        at PrismaPgAdapter.onError (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+adapter-pg@7.0.0/node_modules/@prisma/adapter-pg/dist/index.js:693:11)
+        at PrismaPgAdapter.performIO (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+adapter-pg@7.0.0/node_modules/@prisma/adapter-pg/dist/index.js:688:12)
+        at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+        at async PrismaPgAdapter.executeRaw (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+adapter-pg@7.0.0/node_modules/@prisma/adapter-pg/dist/index.js:647:13)
+        at async <anonymous> (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+client@7.0.0_prisma@7.0.0_@types+react@19.2.6_react-dom@19.2.0_react@19.2.0__react@19_azvqfyy76gbumj3v3d6eou4idi/node_modules/@prisma/client-engine-runtime/src/tracing.ts:68:22)
+        at async mr (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+client@7.0.0_prisma@7.0.0_@types+react@19.2.6_react-dom@19.2.0_react@19.2.0__react@19_azvqfyy76gbumj3v3d6eou4idi/node_modules/@prisma/client-engine-runtime/src/tracing.ts:56:10)
+        at async e.interpretNode (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+client@7.0.0_prisma@7.0.0_@types+react@19.2.6_react-dom@19.2.0_react@19.2.0__react@19_azvqfyy76gbumj3v3d6eou4idi/node_modules/@prisma/client-engine-runtime/src/interpreter/query-interpreter.ts:158:18)
+        at async e.run (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+client@7.0.0_prisma@7.0.0_@types+react@19.2.6_react-dom@19.2.0_react@19.2.0__react@19_azvqfyy76gbumj3v3d6eou4idi/node_modules/@prisma/client-engine-runtime/src/interpreter/query-interpreter.ts:83:23)
+        at async e.execute (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+client@7.0.0_prisma@7.0.0_@types+react@19.2.6_react-dom@19.2.0_react@19.2.0__react@19_azvqfyy76gbumj3v3d6eou4idi/node_modules/@prisma/client/src/runtime/core/engines/client/LocalExecutor.ts:75:12)
+        at async Dt.request (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+client@7.0.0_prisma@7.0.0_@types+react@19.2.6_react-dom@19.2.0_react@19.2.0__react@19_azvqfyy76gbumj3v3d6eou4idi/node_modules/@prisma/client/src/runtime/core/engines/client/ClientEngine.ts:469:22) {
+      cause: [Object]
+    }
+  },
+  clientVersion: '7.0.0'
+}
+node:internal/process/promises:394
+    triggerUncaughtException(err, true /* fromPromise */);
+    ^
+
+PrismaClientKnownRequestError: 
+Invalid `prisma.$executeRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42P01`. Message: `relation "public.Opportunity" does not exist`
+    at $r.handleRequestError (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+client@7.0.0_prisma@7.0.0_@types+react@19.2.6_react-dom@19.2.0_react@19.2.0__react@19_azvqfyy76gbumj3v3d6eou4idi/node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+    at $r.handleAndLogRequestError (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+client@7.0.0_prisma@7.0.0_@types+react@19.2.6_react-dom@19.2.0_react@19.2.0__react@19_azvqfyy76gbumj3v3d6eou4idi/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at $r.request (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+client@7.0.0_prisma@7.0.0_@types+react@19.2.6_react-dom@19.2.0_react@19.2.0__react@19_azvqfyy76gbumj3v3d6eou4idi/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async a (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+client@7.0.0_prisma@7.0.0_@types+react@19.2.6_react-dom@19.2.0_react@19.2.0__react@19_azvqfyy76gbumj3v3d6eou4idi/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:766:24)
+    at async applyMigration (/Users/Erin/saas-crm/api/apply-gp-migration.ts:22:9) {
+  code: 'P2010',
+  meta: {
+    driverAdapterError: DriverAdapterError: TableDoesNotExist
+        at PrismaPgAdapter.onError (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+adapter-pg@7.0.0/node_modules/@prisma/adapter-pg/dist/index.js:693:11)
+        at PrismaPgAdapter.performIO (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+adapter-pg@7.0.0/node_modules/@prisma/adapter-pg/dist/index.js:688:12)
+        at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+        at async PrismaPgAdapter.executeRaw (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+adapter-pg@7.0.0/node_modules/@prisma/adapter-pg/dist/index.js:647:13)
+        at async <anonymous> (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+client@7.0.0_prisma@7.0.0_@types+react@19.2.6_react-dom@19.2.0_react@19.2.0__react@19_azvqfyy76gbumj3v3d6eou4idi/node_modules/@prisma/client-engine-runtime/src/tracing.ts:68:22)
+        at async mr (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+client@7.0.0_prisma@7.0.0_@types+react@19.2.6_react-dom@19.2.0_react@19.2.0__react@19_azvqfyy76gbumj3v3d6eou4idi/node_modules/@prisma/client-engine-runtime/src/tracing.ts:56:10)
+        at async e.interpretNode (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+client@7.0.0_prisma@7.0.0_@types+react@19.2.6_react-dom@19.2.0_react@19.2.0__react@19_azvqfyy76gbumj3v3d6eou4idi/node_modules/@prisma/client-engine-runtime/src/interpreter/query-interpreter.ts:158:18)
+        at async e.run (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+client@7.0.0_prisma@7.0.0_@types+react@19.2.6_react-dom@19.2.0_react@19.2.0__react@19_azvqfyy76gbumj3v3d6eou4idi/node_modules/@prisma/client-engine-runtime/src/interpreter/query-interpreter.ts:83:23)
+        at async e.execute (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+client@7.0.0_prisma@7.0.0_@types+react@19.2.6_react-dom@19.2.0_react@19.2.0__react@19_azvqfyy76gbumj3v3d6eou4idi/node_modules/@prisma/client/src/runtime/core/engines/client/LocalExecutor.ts:75:12)
+        at async Dt.request (/Users/Erin/saas-crm/api/node_modules/.pnpm/@prisma+client@7.0.0_prisma@7.0.0_@types+react@19.2.6_react-dom@19.2.0_react@19.2.0__react@19_azvqfyy76gbumj3v3d6eou4idi/node_modules/@prisma/client/src/runtime/core/engines/client/ClientEngine.ts:469:22) {
+      cause: {
+        originalCode: '42P01',
+        originalMessage: 'relation "public.Opportunity" does not exist',
+        kind: 'TableDoesNotExist',
+        table: 'public.Opportunity'
+      }
+    }
+  },
+  clientVersion: '7.0.0'
+}
+
+Node.js v24.10.0

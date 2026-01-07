@@ -1,16 +1,12 @@
-import { Router } from 'express';
-import { prisma } from '../prisma';
+// Run this script to link Lloyd Worrall projects to opportunities
+// Usage: cd api && DATABASE_URL="postgresql://..." npx tsx link-lloyd-prod.ts
 
-const router = Router();
+import { prisma } from './src/prisma';
 
-// Test endpoint to verify route is working
-router.get('/test', (req, res) => {
-  res.json({ message: 'Admin link projects route is working!', timestamp: new Date().toISOString() });
-});
-
-router.get('/link-lloyd-worrall', async (req, res) => {
+async function linkLloydWorrallProjects() {
   try {
-    // Find Lloyd Worrall client account
+    console.log('🔍 Finding Lloyd Worrall client account...');
+    
     const client = await prisma.clientAccount.findFirst({
       where: {
         companyName: { contains: 'LLOYD WORRALL', mode: 'insensitive' }
@@ -18,23 +14,18 @@ router.get('/link-lloyd-worrall', async (req, res) => {
     });
 
     if (!client) {
-      return res.status(404).json({ error: 'Lloyd Worrall client not found' });
+      console.log('❌ Lloyd Worrall client not found');
+      return;
     }
 
-    const results = {
-      clientId: client.id,
-      clientName: client.companyName,
-      tenantId: client.tenantId,
-      opportunitiesCreated: 0,
-      projectsLinked: 0,
-      details: [] as any[]
-    };
+    console.log(`✅ Found client: ${client.companyName} (${client.id})`);
+    console.log(`   Tenant ID: ${client.tenantId}`);
 
     // Find all FireDoorScheduleProjects for this tenant that don't have Project links
     const fireDoorProjects = await prisma.fireDoorScheduleProject.findMany({
       where: {
         tenantId: client.tenantId,
-        project: null // No existing Project link
+        project: null
       },
       select: {
         id: true,
@@ -44,8 +35,15 @@ router.get('/link-lloyd-worrall', async (req, res) => {
       }
     });
 
+    console.log(`\n📦 Found ${fireDoorProjects.length} fire door projects without Project links`);
+
+    let opportunitiesCreated = 0;
+    let projectsLinked = 0;
+
     for (const fdp of fireDoorProjects) {
       const projectLabel = fdp.mjsNumber || fdp.jobName || fdp.clientName || fdp.id.substring(0, 8);
+      
+      console.log(`\n🔗 Processing: ${projectLabel}`);
       
       // Create or find an Opportunity for this fire door project
       let opportunity = await prisma.opportunity.findFirst({
@@ -64,9 +62,10 @@ router.get('/link-lloyd-worrall', async (req, res) => {
             contactName: `Fire Door Project - ${projectLabel}`,
             email: client.email || 'noemail@example.com',
             status: 'WON',
-            createdById: 'system' // System-generated lead
+            createdById: 'system'
           }
         });
+        console.log(`   ✅ Created lead: ${lead.id}`);
 
         opportunity = await prisma.opportunity.create({
           data: {
@@ -77,7 +76,10 @@ router.get('/link-lloyd-worrall', async (req, res) => {
             stage: 'WON'
           }
         });
-        results.opportunitiesCreated++;
+        console.log(`   ✅ Created opportunity: ${opportunity.id}`);
+        opportunitiesCreated++;
+      } else {
+        console.log(`   ℹ️  Using existing opportunity: ${opportunity.id}`);
       }
 
       // Create Project link
@@ -92,16 +94,13 @@ router.get('/link-lloyd-worrall', async (req, res) => {
         }
       });
 
-      results.projectsLinked++;
-      results.details.push({
-        fireDoorId: fdp.id,
-        mjsNumber: fdp.mjsNumber,
-        clientName: fdp.clientName,
-        jobName: fdp.jobName,
-        opportunityId: opportunity.id,
-        projectId: project.id
-      });
+      console.log(`   ✅ Created Project link: ${project.id}`);
+      projectsLinked++;
     }
+
+    console.log(`\n✅ Successfully completed!`);
+    console.log(`   Opportunities created: ${opportunitiesCreated}`);
+    console.log(`   Projects linked: ${projectsLinked}`);
 
     // Verify the links work
     const verifyProjects = await prisma.project.findMany({
@@ -112,16 +111,15 @@ router.get('/link-lloyd-worrall', async (req, res) => {
       }
     });
 
-    results.details.push({
-      verification: `Found ${verifyProjects.length} total linked projects for Lloyd Worrall`
-    });
-
-    res.json(results);
+    console.log(`\n🔍 Verification: Found ${verifyProjects.length} total linked projects for Lloyd Worrall`);
 
   } catch (error: any) {
-    console.error('Error linking projects:', error);
-    res.status(500).json({ error: error.message });
+    console.error('❌ Error:', error.message);
+    console.error(error);
+    throw error;
+  } finally {
+    await prisma.$disconnect();
   }
-});
+}
 
-export default router;
+linkLloydWorrallProjects();
