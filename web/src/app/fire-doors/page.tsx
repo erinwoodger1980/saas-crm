@@ -2,9 +2,11 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { AgGridReact } from 'ag-grid-react';
-import type { ColDef, GridOptions, GridApi, ColumnApi } from 'ag-grid-community';
+import type { ColDef, GridOptions, GridApi, ValueFormatterParams } from 'ag-grid-community';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
+import { FireDoorRFIPanel } from '@/components/FireDoorRFIPanel';
+import { MessageSquare } from 'lucide-react';
 
 interface FireDoorLineItem {
   id: string;
@@ -58,6 +60,8 @@ export default function FireDoorsPage() {
   const [rfis, setRfis] = useState<Record<string, RFI[]>>({});
   const [selectedProject, setSelectedProject] = useState<string>('');
   const [projects, setProjects] = useState<Array<{ id: string; projectName: string }>>([]);
+  const [showRFIPanel, setShowRFIPanel] = useState(false);
+  const [selectedLineItemId, setSelectedLineItemId] = useState<string | undefined>(undefined);
   
   const gridRef = useRef<AgGridReact>(null);
 
@@ -203,7 +207,7 @@ export default function FireDoorsPage() {
           width: 120,
           editable: true,
           filter: 'agNumberColumnFilter',
-          valueFormatter: (params) => params.value ? `${params.value}mm` : '',
+          valueFormatter: (params: ValueFormatterParams) => params.value ? `${params.value}mm` : '',
         },
         {
           field: 'slaveLeafWidth',
@@ -211,7 +215,7 @@ export default function FireDoorsPage() {
           width: 120,
           editable: true,
           filter: 'agNumberColumnFilter',
-          valueFormatter: (params) => params.value ? `${params.value}mm` : '',
+          valueFormatter: (params: ValueFormatterParams) => params.value ? `${params.value}mm` : '',
         },
         {
           field: 'leafHeight',
@@ -219,7 +223,7 @@ export default function FireDoorsPage() {
           width: 100,
           editable: true,
           filter: 'agNumberColumnFilter',
-          valueFormatter: (params) => params.value ? `${params.value}mm` : '',
+          valueFormatter: (params: ValueFormatterParams) => params.value ? `${params.value}mm` : '',
         },
         {
           field: 'frameWidth',
@@ -227,7 +231,7 @@ export default function FireDoorsPage() {
           width: 120,
           editable: true,
           filter: 'agNumberColumnFilter',
-          valueFormatter: (params) => params.value ? `${params.value}mm` : '',
+          valueFormatter: (params: ValueFormatterParams) => params.value ? `${params.value}mm` : '',
         },
         {
           field: 'frameHeight',
@@ -235,7 +239,7 @@ export default function FireDoorsPage() {
           width: 120,
           editable: true,
           filter: 'agNumberColumnFilter',
-          valueFormatter: (params) => params.value ? `${params.value}mm` : '',
+          valueFormatter: (params: ValueFormatterParams) => params.value ? `${params.value}mm` : '',
         },
         {
           field: 'leafThickness',
@@ -243,7 +247,7 @@ export default function FireDoorsPage() {
           width: 100,
           editable: true,
           filter: 'agNumberColumnFilter',
-          valueFormatter: (params) => params.value ? `${params.value}mm` : '',
+          valueFormatter: (params: ValueFormatterParams) => params.value ? `${params.value}mm` : '',
         },
       ],
     },
@@ -363,7 +367,7 @@ export default function FireDoorsPage() {
           width: 110,
           editable: false,
           filter: 'agNumberColumnFilter',
-          valueFormatter: (params) => params.value ? `£${params.value.toFixed(2)}` : '',
+          valueFormatter: (params: ValueFormatterParams) => params.value ? `£${params.value.toFixed(2)}` : '',
         },
         {
           field: 'labourCost',
@@ -371,7 +375,7 @@ export default function FireDoorsPage() {
           width: 110,
           editable: false,
           filter: 'agNumberColumnFilter',
-          valueFormatter: (params) => params.value ? `£${params.value.toFixed(2)}` : '',
+          valueFormatter: (params: ValueFormatterParams) => params.value ? `£${params.value.toFixed(2)}` : '',
         },
         {
           field: 'totalCost',
@@ -379,7 +383,7 @@ export default function FireDoorsPage() {
           width: 110,
           editable: false,
           filter: 'agNumberColumnFilter',
-          valueFormatter: (params) => params.value ? `£${params.value.toFixed(2)}` : '',
+          valueFormatter: (params: ValueFormatterParams) => params.value ? `£${params.value.toFixed(2)}` : '',
         },
         {
           field: 'sellPrice',
@@ -387,7 +391,7 @@ export default function FireDoorsPage() {
           width: 110,
           editable: true,
           filter: 'agNumberColumnFilter',
-          valueFormatter: (params) => params.value ? `£${params.value.toFixed(2)}` : '',
+          valueFormatter: (params: ValueFormatterParams) => params.value ? `£${params.value.toFixed(2)}` : '',
         },
       ],
     },
@@ -466,6 +470,28 @@ export default function FireDoorsPage() {
     suppressColumnVirtualisation: false,
     rowSelection: 'multiple',
     animateRows: true,
+    getContextMenuItems: (params: any) => {
+      const lineItemId = params.node?.data?.id;
+      const field = params.column?.getColId();
+      
+      if (!lineItemId || !field) return [];
+      
+      return [
+        {
+          name: `Create RFI for ${params.column?.getColDef().headerName}`,
+          icon: '<span class="ag-icon ag-icon-message"></span>',
+          action: () => {
+            setSelectedLineItemId(lineItemId);
+            setShowRFIPanel(true);
+          },
+        },
+        'separator',
+        'copy',
+        'paste',
+        'separator',
+        'export',
+      ];
+    },
   }), []);
 
   const onCellValueChanged = useCallback(async (event: any) => {
@@ -526,6 +552,16 @@ export default function FireDoorsPage() {
               ))}
             </select>
             <button
+              onClick={() => {
+                setSelectedLineItemId(undefined);
+                setShowRFIPanel(true);
+              }}
+              className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition flex items-center gap-2"
+            >
+              <MessageSquare className="w-4 h-4" />
+              RFI Manager ({Object.values(rfis).flat().length})
+            </button>
+            <button
               onClick={onExportCSV}
               className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
             >
@@ -551,6 +587,26 @@ export default function FireDoorsPage() {
           />
         </div>
       </div>
+
+      {/* RFI Panel */}
+      {showRFIPanel && (
+        <FireDoorRFIPanel
+          projectId={selectedProject}
+          lineItemId={selectedLineItemId}
+          onClose={() => setShowRFIPanel(false)}
+          onRFICreated={() => {
+            // Refetch data to update RFI counts
+            if (selectedProject) {
+              fetch(`/api/fire-door-schedule/items?projectId=${selectedProject}`, {
+                credentials: 'include',
+              })
+                .then(res => res.json())
+                .then(data => setRowData(data))
+                .catch(error => console.error('Error refetching:', error));
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
