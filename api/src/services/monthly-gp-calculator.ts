@@ -1,6 +1,6 @@
 // api/src/services/monthly-gp-calculator.ts
 import { prisma } from '../prisma';
-import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
 
 interface MonthlyGPInput {
   tenantId: string;
@@ -262,29 +262,28 @@ export class MonthlyGPCalculator {
         tenantId,
         projectId,
         month,
-        hoursThisMonth: new Decimal(hoursThisMonth),
-        hoursToDate: new Decimal(hoursToDate),
-        percentCompleteThisMonth: new Decimal(percentCompleteThisMonth),
-        percentCompleteToDate: new Decimal(percentCompleteToDate),
-        revenueThisMonth: new Decimal(revenueThisMonth),
-        revenueToDate: new Decimal(0), // TODO: Calculate cumulative
-        labourCostThisMonth: new Decimal(labourCostThisMonth),
-        materialsCostThisMonth: new Decimal(materialsCostThisMonth),
-        totalCostThisMonth: new Decimal(totalCostThisMonth),
-        grossProfitThisMonth: new Decimal(grossProfitThisMonth),
-        grossProfitPercent: new Decimal(grossProfitPercent)
+        hoursThisMonth: new Prisma.Decimal(hoursThisMonth),
+        hoursToDate: new Prisma.Decimal(hoursToDate),
+        percentCompleteThisMonth: new Prisma.Decimal(percentCompleteThisMonth),
+        percentCompleteToDate: new Prisma.Decimal(percentCompleteToDate),
+        revenueThisMonth: new Prisma.Decimal(revenueThisMonth),
+        labourCostThisMonth: new Prisma.Decimal(labourCostThisMonth),
+        materialsCostThisMonth: new Prisma.Decimal(materialsCostThisMonth),
+        totalCostThisMonth: new Prisma.Decimal(totalCostThisMonth),
+        grossProfitThisMonth: new Prisma.Decimal(grossProfitThisMonth),
+        grossProfitPercent: new Prisma.Decimal(grossProfitPercent)
       },
       update: {
-        hoursThisMonth: new Decimal(hoursThisMonth),
-        hoursToDate: new Decimal(hoursToDate),
-        percentCompleteThisMonth: new Decimal(percentCompleteThisMonth),
-        percentCompleteToDate: new Decimal(percentCompleteToDate),
-        revenueThisMonth: new Decimal(revenueThisMonth),
-        labourCostThisMonth: new Decimal(labourCostThisMonth),
-        materialsCostThisMonth: new Decimal(materialsCostThisMonth),
-        totalCostThisMonth: new Decimal(totalCostThisMonth),
-        grossProfitThisMonth: new Decimal(grossProfitThisMonth),
-        grossProfitPercent: new Decimal(grossProfitPercent)
+        hoursThisMonth: new Prisma.Decimal(hoursThisMonth),
+        hoursToDate: new Prisma.Decimal(hoursToDate),
+        percentCompleteThisMonth: new Prisma.Decimal(percentCompleteThisMonth),
+        percentCompleteToDate: new Prisma.Decimal(percentCompleteToDate),
+        revenueThisMonth: new Prisma.Decimal(revenueThisMonth),
+        labourCostThisMonth: new Prisma.Decimal(labourCostThisMonth),
+        materialsCostThisMonth: new Prisma.Decimal(materialsCostThisMonth),
+        totalCostThisMonth: new Prisma.Decimal(totalCostThisMonth),
+        grossProfitThisMonth: new Prisma.Decimal(grossProfitThisMonth),
+        grossProfitPercent: new Prisma.Decimal(grossProfitPercent)
       }
     });
 

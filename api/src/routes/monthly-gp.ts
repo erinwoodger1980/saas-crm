@@ -12,7 +12,7 @@ const router = Router();
 router.get('/:month', async (req, res) => {
   try {
     const { month } = req.params;
-    const tenantId = req.user?.tenantId;
+    const tenantId = req.auth?.tenantId;
 
     if (!tenantId) {
       return res.status(401).json({ error: 'Unauthorized' });
@@ -41,7 +41,7 @@ router.get('/:month', async (req, res) => {
  */
 router.get('/wage-bill/list', async (req, res) => {
   try {
-    const tenantId = req.user?.tenantId;
+    const tenantId = req.auth?.tenantId;
 
     if (!tenantId) {
       return res.status(401).json({ error: 'Unauthorized' });
@@ -65,7 +65,7 @@ router.get('/wage-bill/list', async (req, res) => {
  */
 router.post('/wage-bill', async (req, res) => {
   try {
-    const tenantId = req.user?.tenantId;
+    const tenantId = req.auth?.tenantId;
     const { month, wageBill } = req.body;
 
     if (!tenantId) {
@@ -108,7 +108,7 @@ router.post('/wage-bill', async (req, res) => {
  */
 router.get('/months/list', async (req, res) => {
   try {
-    const tenantId = req.user?.tenantId;
+    const tenantId = req.auth?.tenantId;
 
     if (!tenantId) {
       return res.status(401).json({ error: 'Unauthorized' });
