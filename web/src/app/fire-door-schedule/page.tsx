@@ -1744,8 +1744,8 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
 
     // Textarea for comments/notes
     if (field === 'paperworkComments' || field === 'deliveryNotes' || field === 'bomNotes' || field === 'lajClientComments' || field === 'clientComments') {
-      // lajClientComments is the only field editable by customers
-      const isEditable = isCustomerPortal ? field === 'lajClientComments' : true;
+      // clientComments is the only field editable by customers
+      const isEditable = isCustomerPortal ? field === 'clientComments' : true;
       return (
         <textarea
           className="bg-transparent outline-none w-full text-sm font-semibold border border-slate-200 rounded px-2 py-1 focus:border-blue-500 resize-none disabled:cursor-not-allowed disabled:bg-slate-50"
