@@ -2073,18 +2073,6 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
                 </Button>
               );
             })}
-            {!isCustomerPortal && (
-              <Button
-                variant="outline"
-                className="text-sm bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100 backdrop-blur-sm ml-auto"
-                onClick={() => router.push('/fire-doors')}
-              >
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 0a2 2 0 012 2v6a2 2 0 01-2 2m-6 0a2 2 0 002-2v-6a2 2 0 00-2-2" />
-                </svg>
-                View Order Grid
-              </Button>
-            )}
           </div>
           {showColumnFreezeModal && (
             <div className="mt-4 p-4 rounded-xl border border-slate-300 bg-white shadow-lg">

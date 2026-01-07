@@ -566,6 +566,14 @@ export default function FireDoorScheduleDetailPage() {
                   />
                   <Button
                     variant="outline"
+                    onClick={() => router.push('/fire-doors')}
+                    className="border-emerald-200 text-emerald-600 hover:bg-emerald-50"
+                  >
+                    <Table className="w-4 h-4 mr-2" />
+                    View Order Grid
+                  </Button>
+                  <Button
+                    variant="outline"
                     onClick={() => router.push(`/fire-door-schedule/${id}/qr-print`)}
                     className="border-purple-200 text-purple-600 hover:bg-purple-50"
                   >

@@ -69,14 +69,18 @@ export default function FireDoorsPage() {
   useEffect(() => {
     async function fetchProjects() {
       try {
-        const res = await fetch('/api/projects', {
+        const res = await fetch('/api/fire-door-schedule', {
           credentials: 'include',
         });
         if (res.ok) {
           const data = await res.json();
-          setProjects(data);
-          if (data.length > 0) {
-            setSelectedProject(data[0].id);
+          const projectList = data.projects.map((p: any) => ({
+            id: p.id,
+            projectName: `${p.mjsNumber || 'No MJS'} - ${p.jobName || 'Unnamed'}`,
+          }));
+          setProjects(projectList);
+          if (projectList.length > 0) {
+            setSelectedProject(projectList[0].id);
           }
         }
       } catch (error) {
