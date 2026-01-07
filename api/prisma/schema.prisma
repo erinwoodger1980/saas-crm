@@ -3449,14 +3449,58 @@ model FireDoorLineItem {
   calculatedField3        String?
   calculatedField4        String?
   calculatedField5        String?
-  createdAt               DateTime         @default(now())
-  updatedAt               DateTime         @updatedAt
-  import                  FireDoorImport   @relation(fields: [fireDoorImportId], references: [id], onDelete: Cascade)
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+  import                  FireDoorImport         @relation(fields: [fireDoorImportId], references: [id], onDelete: Cascade)
   qrScans                 FireDoorQRScan[]
+  components              ComponentInstance[]
 
   @@index([tenantId, fireDoorImportId])
   @@index([tenantId, rating])
   @@index([fireDoorImportId, rowIndex])
+}
+
+// Component system for BOM generation from line items
+model ComponentDefinition {
+  id                    String              @id @default(cuid())
+  tenantId              String
+  name                  String              // "Door Blank", "Frame Jamb", "Hinge"
+  category              String              // "MANUFACTURED", "PURCHASED", "ASSEMBLY"
+  description           String?
+  propertyMappings      Json                // How to extract properties from line item
+  creationRules         Json                // When to create this component
+  preview3DTemplate     Json?               // Template for 3D preview
+  cncProgramTemplate    String?             // CNC program template
+  isActive              Boolean             @default(true)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  instances             ComponentInstance[]
+  
+  @@index([tenantId, category])
+  @@index([tenantId, isActive])
+}
+
+model ComponentInstance {
+  id                    String              @id @default(cuid())
+  tenantId              String
+  fireDoorLineItemId    String
+  definitionId          String
+  properties            Json                // Extracted property values
+  quantity              Int                 @default(1)
+  unitCost              Decimal?            @db.Decimal(10, 2)
+  totalCost             Decimal?            @db.Decimal(10, 2)
+  status                String              @default("PENDING") // PENDING, ORDERED, IN_PRODUCTION, COMPLETE
+  supplier              String?
+  orderReference        String?
+  position3D            Json?               // {x, y, z, rotation} for 3D preview
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  lineItem              FireDoorLineItem    @relation(fields: [fireDoorLineItemId], references: [id], onDelete: Cascade)
+  definition            ComponentDefinition @relation(fields: [definitionId], references: [id])
+  
+  @@index([tenantId, fireDoorLineItemId])
+  @@index([definitionId])
+  @@index([status])
 }
 
 model FireDoorScheduleProject {
