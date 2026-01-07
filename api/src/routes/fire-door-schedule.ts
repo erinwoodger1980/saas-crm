@@ -496,6 +496,7 @@ const updateProjectHandler = async (req: any, res: Response) => {
     delete updateData.id;
     delete updateData.tenantId;
     delete updateData.createdAt;
+    delete updateData.fireDoorImportId; // This field doesn't exist in FireDoorScheduleProject
     
     // Convert date strings to Date objects for date fields
     // Also handle clearing dates (empty string -> null)
