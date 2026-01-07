@@ -12,38 +12,26 @@ import { useRouter } from 'next/navigation';
 
 interface FireDoorLineItem {
   id: string;
-  mjsNumber: string | null;
+  lajRef: string | null;
   doorRef: string | null;
-  location: string | null;
-  clientOrderNo: string | null;
-  masterLeafWidth: number | null;
-  slaveLeafWidth: number | null;
-  leafHeight: number | null;
-  frameWidth: number | null;
-  frameHeight: number | null;
-  leafThickness: number | null;
-  fireRating: string | null;
+  masterWidth: number | null;
+  slaveWidth: number | null;
+  doorHeight: number | null;
+  core: string | null;
+  rating: string | null;
   coreType: string | null;
   certification: string | null;
-  intumescentType: string | null;
-  lippingMaterial: string | null;
-  doorFacing: string | null;
-  frameMaterial: string | null;
-  glassType: string | null;
+  material: string | null;
+  materialFacing: string | null;
   hingeType: string | null;
   lockType: string | null;
-  closerType: string | null;
-  sealsType: string | null;
-  materialsCost: number | null;
-  labourCost: number | null;
-  totalCost: number | null;
-  sellPrice: number | null;
-  productionStatus: string | null;
-  deliveryDate: string | null;
-  lajClientComments: string | null;
-  clientComments: string | null;
-  qrCodes: string | null;
-  projectId: string;
+  qtyOfHinges: number | null;
+  lockHeight: number | null;
+  doorFinish: string | null;
+  handingFinish: string | null;
+  position: string | null;
+  notes1: string | null;
+  notes2: string | null;
 }
 
 interface RFI {
@@ -74,7 +62,7 @@ function FireDoorsPageContent() {
   const [rfis, setRfis] = useState<Record<string, RFI[]>>({});
   const [showRFIPanel, setShowRFIPanel] = useState(false);
   const [selectedLineItemId, setSelectedLineItemId] = useState<string | undefined>(undefined);
-  const [projectInfo, setProjectInfo] = useState<{ mjsNumber: string; jobName: string } | null>(null);
+  const [projectInfo, setProjectInfo] = useState<{ mjsNumber: string; jobName: string; fireDoorImportId: string | null } | null>(null);
   
   const gridRef = useRef<AgGridReact>(null);
 
@@ -94,7 +82,8 @@ function FireDoorsPageContent() {
           const project = await projectRes.json();
           setProjectInfo({
             mjsNumber: project.mjsNumber || 'No MJS',
-            jobName: project.jobName || 'Unnamed Project'
+            jobName: project.jobName || 'Unnamed Project',
+            fireDoorImportId: project.fireDoorImportId || null
           });
         }
         const res = await fetch(`/api/fire-door-schedule/${projectId}/line-items`, {
@@ -169,8 +158,8 @@ function FireDoorsPageContent() {
       headerName: 'Identification',
       children: [
         {
-          field: 'mjsNumber',
-          headerName: 'MJS Number',
+          field: 'lajRef',
+          headerName: 'LAJ Ref',
           pinned: 'left',
           width: 120,
           editable: true,
@@ -185,16 +174,9 @@ function FireDoorsPageContent() {
           filter: 'agTextColumnFilter',
         },
         {
-          field: 'location',
-          headerName: 'Location',
+          field: 'position',
+          headerName: 'Position',
           width: 150,
-          editable: true,
-          filter: 'agTextColumnFilter',
-        },
-        {
-          field: 'clientOrderNo',
-          headerName: 'Client Order',
-          width: 130,
           editable: true,
           filter: 'agTextColumnFilter',
         },
@@ -206,7 +188,7 @@ function FireDoorsPageContent() {
       headerName: 'Dimensions',
       children: [
         {
-          field: 'masterLeafWidth',
+          field: 'masterWidth',
           headerName: 'Master Width',
           width: 120,
           editable: true,
@@ -214,7 +196,7 @@ function FireDoorsPageContent() {
           valueFormatter: (params: ValueFormatterParams) => params.value ? `${params.value}mm` : '',
         },
         {
-          field: 'slaveLeafWidth',
+          field: 'slaveWidth',
           headerName: 'Slave Width',
           width: 120,
           editable: true,
@@ -222,32 +204,8 @@ function FireDoorsPageContent() {
           valueFormatter: (params: ValueFormatterParams) => params.value ? `${params.value}mm` : '',
         },
         {
-          field: 'leafHeight',
+          field: 'doorHeight',
           headerName: 'Height',
-          width: 100,
-          editable: true,
-          filter: 'agNumberColumnFilter',
-          valueFormatter: (params: ValueFormatterParams) => params.value ? `${params.value}mm` : '',
-        },
-        {
-          field: 'frameWidth',
-          headerName: 'Frame Width',
-          width: 120,
-          editable: true,
-          filter: 'agNumberColumnFilter',
-          valueFormatter: (params: ValueFormatterParams) => params.value ? `${params.value}mm` : '',
-        },
-        {
-          field: 'frameHeight',
-          headerName: 'Frame Height',
-          width: 120,
-          editable: true,
-          filter: 'agNumberColumnFilter',
-          valueFormatter: (params: ValueFormatterParams) => params.value ? `${params.value}mm` : '',
-        },
-        {
-          field: 'leafThickness',
-          headerName: 'Thickness',
           width: 100,
           editable: true,
           filter: 'agNumberColumnFilter',
@@ -261,18 +219,25 @@ function FireDoorsPageContent() {
       headerName: 'Fire Specification',
       children: [
         {
-          field: 'fireRating',
+          field: 'rating',
           headerName: 'Fire Rating',
           width: 120,
           editable: true,
-          filter: 'agSetColumnFilter',
+          filter: 'agTextColumnFilter',
+        },
+        {
+          field: 'core',
+          headerName: 'Core',
+          width: 120,
+          editable: true,
+          filter: 'agTextColumnFilter',
         },
         {
           field: 'coreType',
           headerName: 'Core Type',
-          width: 150,
+          width: 130,
           editable: true,
-          filter: 'agSetColumnFilter',
+          filter: 'agTextColumnFilter',
         },
         {
           field: 'certification',
@@ -280,13 +245,6 @@ function FireDoorsPageContent() {
           width: 150,
           editable: true,
           filter: 'agTextColumnFilter',
-        },
-        {
-          field: 'intumescentType',
-          headerName: 'Intumescent',
-          width: 130,
-          editable: true,
-          filter: 'agSetColumnFilter',
         },
       ],
     },
@@ -296,32 +254,25 @@ function FireDoorsPageContent() {
       headerName: 'Materials',
       children: [
         {
-          field: 'lippingMaterial',
-          headerName: 'Lipping',
+          field: 'material',
+          headerName: 'Material',
           width: 130,
           editable: true,
-          filter: 'agSetColumnFilter',
+          filter: 'agTextColumnFilter',
         },
         {
-          field: 'doorFacing',
+          field: 'materialFacing',
           headerName: 'Facing',
           width: 130,
           editable: true,
-          filter: 'agSetColumnFilter',
+          filter: 'agTextColumnFilter',
         },
         {
-          field: 'frameMaterial',
-          headerName: 'Frame',
-          width: 130,
+          field: 'doorFinish',
+          headerName: 'Finish',
+          width: 150,
           editable: true,
-          filter: 'agSetColumnFilter',
-        },
-        {
-          field: 'glassType',
-          headerName: 'Glass',
-          width: 130,
-          editable: true,
-          filter: 'agSetColumnFilter',
+          filter: 'agTextColumnFilter',
         },
       ],
     },
@@ -333,96 +284,59 @@ function FireDoorsPageContent() {
         {
           field: 'hingeType',
           headerName: 'Hinges',
-          width: 130,
+          width: 120,
           editable: true,
-          filter: 'agSetColumnFilter',
+          filter: 'agTextColumnFilter',
+        },
+        {
+          field: 'qtyOfHinges',
+          headerName: 'Qty',
+          width: 80,
+          editable: true,
+          filter: 'agNumberColumnFilter',
         },
         {
           field: 'lockType',
           headerName: 'Lock',
-          width: 130,
-          editable: true,
-          filter: 'agSetColumnFilter',
-        },
-        {
-          field: 'closerType',
-          headerName: 'Closer',
-          width: 130,
-          editable: true,
-          filter: 'agSetColumnFilter',
-        },
-        {
-          field: 'sealsType',
-          headerName: 'Seals',
-          width: 130,
-          editable: true,
-          filter: 'agSetColumnFilter',
-        },
-      ],
-    },
-    
-    // Pricing Section
-    {
-      headerName: 'Pricing',
-      children: [
-        {
-          field: 'materialsCost',
-          headerName: 'Materials',
-          width: 110,
-          editable: false,
-          filter: 'agNumberColumnFilter',
-          valueFormatter: (params: ValueFormatterParams) => params.value ? `£${params.value.toFixed(2)}` : '',
-        },
-        {
-          field: 'labourCost',
-          headerName: 'Labour',
-          width: 110,
-          editable: false,
-          filter: 'agNumberColumnFilter',
-          valueFormatter: (params: ValueFormatterParams) => params.value ? `£${params.value.toFixed(2)}` : '',
-        },
-        {
-          field: 'totalCost',
-          headerName: 'Total Cost',
-          width: 110,
-          editable: false,
-          filter: 'agNumberColumnFilter',
-          valueFormatter: (params: ValueFormatterParams) => params.value ? `£${params.value.toFixed(2)}` : '',
-        },
-        {
-          field: 'sellPrice',
-          headerName: 'Sell Price',
-          width: 110,
-          editable: true,
-          filter: 'agNumberColumnFilter',
-          valueFormatter: (params: ValueFormatterParams) => params.value ? `£${params.value.toFixed(2)}` : '',
-        },
-      ],
-    },
-    
-    // Production Section
-    {
-      headerName: 'Production',
-      children: [
-        {
-          field: 'productionStatus',
-          headerName: 'Status',
-          width: 130,
-          editable: true,
-          filter: 'agSetColumnFilter',
-        },
-        {
-          field: 'deliveryDate',
-          headerName: 'Delivery',
           width: 120,
           editable: true,
-          filter: 'agDateColumnFilter',
+          filter: 'agTextColumnFilter',
         },
         {
-          field: 'qrCodes',
-          headerName: 'QR Code',
+          field: 'lockHeight',
+          headerName: 'Lock Height',
+          width: 110,
+          editable: true,
+          filter: 'agNumberColumnFilter',
+          valueFormatter: (params: ValueFormatterParams) => params.value ? `${params.value}mm` : '',
+        },
+        {
+          field: 'handingFinish',
+          headerName: 'Handing',
           width: 100,
-          editable: false,
+          editable: true,
+          filter: 'agTextColumnFilter',
+        },
+      ],
+    },
+
+    // Notes Section
+    {
+      headerName: 'Notes',
+      children: [
+        {
+          field: 'notes1',
+          headerName: 'Notes 1',
+          width: 200,
+          editable: true,
+          filter: 'agTextColumnFilter',
+        },
+        {
+          field: 'notes2',
+          headerName: 'Notes 2',
+          width: 200,
+          editable: true,
+          filter: 'agTextColumnFilter',
         },
       ],
     },
@@ -433,28 +347,10 @@ function FireDoorsPageContent() {
       children: [
         {
           headerName: 'RFIs',
-          width: 200,
+          width: 150,
           cellRenderer: RFIBadgeRenderer,
           filter: false,
           sortable: false,
-        },
-        {
-          field: 'lajClientComments',
-          headerName: 'LAJ Comments',
-          width: 200,
-          editable: true,
-          filter: 'agTextColumnFilter',
-          wrapText: true,
-          autoHeight: true,
-        },
-        {
-          field: 'clientComments',
-          headerName: 'Client Comments',
-          width: 200,
-          editable: true,
-          filter: 'agTextColumnFilter',
-          wrapText: true,
-          autoHeight: true,
         },
       ],
     },
@@ -504,7 +400,7 @@ function FireDoorsPageContent() {
     const newValue = data[field];
 
     try {
-      const res = await fetch(`/api/fire-door-schedule/items/${data.id}`, {
+      const res = await fetch(`/api/fire-door-schedule/line-items/${data.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -568,8 +464,69 @@ function FireDoorsPageContent() {
             >
               Export CSV
             </button>
-            <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-              Import CSV
+            <button
+              onClick={async () => {
+                if (!projectId || !projectInfo) return;
+                
+                // Check if there's a fire door import for this project
+                let importId = projectInfo.fireDoorImportId;
+                
+                if (!importId) {
+                  // Create a default import if none exists
+                  try {
+                    const res = await fetch('/api/fire-door-schedule/imports', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      credentials: 'include',
+                      body: JSON.stringify({
+                        projectId,
+                        sourceName: 'Manual Entry',
+                        totalValue: 0,
+                        rowCount: 0,
+                      }),
+                    });
+                    if (res.ok) {
+                      const newImport = await res.json();
+                      importId = newImport.id;
+                      setProjectInfo({ ...projectInfo, fireDoorImportId: importId });
+                    }
+                  } catch (error) {
+                    console.error('Error creating import:', error);
+                    alert('Failed to create import. Please try again.');
+                    return;
+                  }
+                }
+                
+                // Create new line item
+                try {
+                  const res = await fetch('/api/fire-door-schedule/line-items', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                      fireDoorImportId: importId,
+                      rowIndex: rowData.length,
+                      doorRef: `NEW-${rowData.length + 1}`,
+                      rating: 'FD60S',
+                      doorHeight: 2040,
+                      masterWidth: 926,
+                    }),
+                  });
+                  
+                  if (res.ok) {
+                    const newItem = await res.json();
+                    setRowData([...rowData, newItem]);
+                  } else {
+                    alert('Failed to create line item');
+                  }
+                } catch (error) {
+                  console.error('Error creating line item:', error);
+                  alert('Failed to create line item');
+                }
+              }}
+              className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition font-medium"
+            >
+              + Add Line Item
             </button>
           </div>
         </div>

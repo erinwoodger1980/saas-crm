@@ -321,7 +321,16 @@ router.get("/:id", async (req: any, res: Response) => {
       return res.status(404).json({ error: "Project not found" });
     }
 
-    res.json(project);
+    // Get the most recent import for this project
+    const latestImport = await prisma.fireDoorImport.findFirst({
+      where: { projectId: id },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+
+    const fireDoorImportId = latestImport?.id || null;
+
+    res.json({ ...project, fireDoorImportId });
   } catch (error) {
     console.error("Error fetching project:", error);
     res.status(500).json({ error: "Failed to fetch project" });
@@ -720,6 +729,107 @@ router.get("/stats/summary", async (req: any, res: Response) => {
   } catch (error) {
     console.error("Error fetching summary stats:", error);
     res.status(500).json({ error: "Failed to fetch stats" });
+  }
+});
+
+// POST /fire-door-schedule/line-items - Create new line item
+router.post("/line-items", async (req: any, res: Response) => {
+  try {
+    const tenantId = req.auth?.tenantId;
+    
+    if (!tenantId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const tenantSettings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { isFireDoorManufacturer: true },
+    });
+
+    if (!tenantSettings?.isFireDoorManufacturer) {
+      return res.status(403).json({ error: "Fire door schedule is only available for fire door manufacturers" });
+    }
+
+    const { fireDoorImportId, ...lineItemData } = req.body;
+
+    // Verify the import belongs to this tenant
+    const fireDoorImport = await prisma.fireDoorImport.findFirst({
+      where: {
+        id: fireDoorImportId,
+        tenantId,
+      },
+    });
+
+    if (!fireDoorImport) {
+      return res.status(404).json({ error: "Fire door import not found" });
+    }
+
+    // Create the line item
+    const newLineItem = await prisma.fireDoorLineItem.create({
+      data: {
+        ...lineItemData,
+        fireDoorImportId,
+        tenantId,
+      },
+    });
+
+    res.json(newLineItem);
+  } catch (error) {
+    console.error("Error creating line item:", error);
+    res.status(500).json({ error: "Failed to create line item" });
+  }
+});
+
+// POST /fire-door-schedule/imports - Create new fire door import (for manual entry)
+router.post("/imports", async (req: any, res: Response) => {
+  try {
+    const tenantId = req.auth?.tenantId;
+    const userId = req.auth?.userId;
+    
+    if (!tenantId || !userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const tenantSettings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { isFireDoorManufacturer: true },
+    });
+
+    if (!tenantSettings?.isFireDoorManufacturer) {
+      return res.status(403).json({ error: "Fire door schedule is only available for fire door manufacturers" });
+    }
+
+    const { projectId, sourceName, totalValue, rowCount } = req.body;
+
+    // Verify the project belongs to this tenant
+    const project = await prisma.fireDoorScheduleProject.findFirst({
+      where: {
+        id: projectId,
+        tenantId,
+      },
+    });
+
+    if (!project) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+
+    // Create the import
+    const newImport = await prisma.fireDoorImport.create({
+      data: {
+        projectId,
+        tenantId,
+        createdById: userId,
+        sourceName: sourceName || 'Manual Entry',
+        totalValue: totalValue || 0,
+        rowCount: rowCount || 0,
+        status: 'Processed',
+      },
+    });
+
+    res.json(newImport);
+  } catch (error) {
+    console.error("Error creating import:", error);
+    res.status(500).json({ error: "Failed to create import" });
   }
 });
 
