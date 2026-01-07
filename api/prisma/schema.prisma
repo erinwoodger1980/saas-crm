@@ -142,6 +142,7 @@ model Tenant {
   accountingDocuments        AccountingDocument[]        @relation("AccountingDocuments")
   monthlyWageBills           MonthlyWageBill[]           @relation("MonthlyWageBills")
   monthlyProjectMetrics      MonthlyProjectMetrics[]     @relation("MonthlyProjectMetrics")
+  fireDoorRFIs               FireDoorRFI[]               @relation("TenantFireDoorRFIs")
 }
 
 model LippingLookup {
@@ -813,6 +814,8 @@ model User {
   supplier                   Supplier?                   @relation(fields: [supplierId], references: [id])
   tenant                     Tenant                      @relation(fields: [tenantId], references: [id])
   clients                    Client[]
+  createdRFIs                FireDoorRFI[]               @relation("RFICreator")
+  assignedRFIs               FireDoorRFI[]               @relation("RFIAssignee")
 }
 
 model SignupToken {
@@ -3563,6 +3566,7 @@ model FireDoorScheduleProject {
   productionLogs           FireDoorProductionLog[]
   project                  Project?                @relation("ProjectFireDoorSchedule")
   tenant                   Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rfis                     FireDoorRFI[]           @relation("FireDoorRFIs")
 
   @@index([tenantId])
   @@index([tenantId, jobLocation])
@@ -4801,3 +4805,31 @@ model MonthlyProjectMetrics {
   @@index([tenantId, month])
   @@index([projectId, month])
 }
+
+model FireDoorRFI {
+  id                  String                  @id @default(cuid())
+  tenantId            String
+  fireDoorLineItemId  String
+  field               String // Which field has missing/unclear info
+  question            String // What information is being requested
+  status              String                  @default("open") // open, answered, closed
+  priority            String                  @default("medium") // low, medium, high, urgent
+  createdBy           String
+  assignedTo          String?
+  response            String?
+  respondedAt         DateTime?
+  resolvedAt          DateTime?
+  visibleToCustomer   Boolean                 @default(true)
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  
+  tenant              Tenant                  @relation("TenantFireDoorRFIs", fields: [tenantId], references: [id], onDelete: Cascade)
+  lineItem            FireDoorScheduleProject @relation("FireDoorRFIs", fields: [fireDoorLineItemId], references: [id], onDelete: Cascade)
+  creator             User                    @relation("RFICreator", fields: [createdBy], references: [id])
+  assignee            User?                   @relation("RFIAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
+  
+  @@index([tenantId, status])
+  @@index([fireDoorLineItemId])
+  @@index([tenantId, createdAt])
+}
+
