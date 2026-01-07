@@ -19,6 +19,7 @@ import {
   updateComponentInclusionRules,
   updateComponentQuantityFormula
 } from "../services/bom-generator";
+import FireDoorPricingService, { generateFireDoorBOM, type FireDoorConfig } from "../services/fire-door-pricing";
 
 const DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT = "Questionnaire for your estimate";
 const DEFAULT_QUESTIONNAIRE_EMAIL_BODY =
@@ -1908,6 +1909,97 @@ router.post("/tenant/bom/component/:componentId/quantity-formula", async (req: a
     res.status(500).json({
       success: false,
       error: error.message || 'Update failed'
+    });
+  }
+});
+
+/**
+ * POST /tenant/fire-door/calculate-price
+ * Calculate complete price breakdown for a fire door configuration
+ * Uses imported component and material data
+ * 
+ * Body: FireDoorConfig (dimensions, fire rating, materials, etc.)
+ * Query: ?overheadPercent=15&marginPercent=25&shopRatePerHour=45
+ */
+router.post("/tenant/fire-door/calculate-price", async (req: any, res) => {
+  try {
+    const tenantId = authTenantId(req);
+    if (!tenantId) return res.status(401).json({ error: 'unauthorized' });
+
+    const config: FireDoorConfig = req.body;
+    const {
+      overheadPercent,
+      marginPercent,
+      shopRatePerHour,
+      includeLabour = true
+    } = req.query;
+
+    // Validate required fields
+    if (!config.masterLeafWidth || !config.masterLeafHeight || !config.leafThickness) {
+      return res.status(400).json({
+        error: 'Missing required dimensions: masterLeafWidth, masterLeafHeight, leafThickness'
+      });
+    }
+
+    if (!config.quantity || config.quantity < 1) {
+      return res.status(400).json({
+        error: 'quantity must be at least 1'
+      });
+    }
+
+    const service = new FireDoorPricingService(prisma, tenantId);
+    const breakdown = await service.calculatePrice(config, {
+      overheadPercent: overheadPercent ? parseFloat(overheadPercent) : undefined,
+      marginPercent: marginPercent ? parseFloat(marginPercent) : undefined,
+      shopRatePerHour: shopRatePerHour ? parseFloat(shopRatePerHour) : undefined,
+      includeLabour: includeLabour === 'true' || includeLabour === true,
+    });
+
+    res.json({
+      success: true,
+      breakdown
+    });
+  } catch (error: any) {
+    console.error('Fire door pricing failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Pricing calculation failed'
+    });
+  }
+});
+
+/**
+ * POST /tenant/fire-door/generate-bom
+ * Generate BOM from fire door configuration
+ * Returns line items that can be saved to a quote
+ * 
+ * Body: FireDoorConfig
+ */
+router.post("/tenant/fire-door/generate-bom", async (req: any, res) => {
+  try {
+    const tenantId = authTenantId(req);
+    if (!tenantId) return res.status(401).json({ error: 'unauthorized' });
+
+    const config: FireDoorConfig = req.body;
+
+    // Validate required fields
+    if (!config.masterLeafWidth || !config.masterLeafHeight || !config.leafThickness) {
+      return res.status(400).json({
+        error: 'Missing required dimensions'
+      });
+    }
+
+    const bom = await generateFireDoorBOM(tenantId, config, prisma);
+
+    res.json({
+      success: true,
+      bom
+    });
+  } catch (error: any) {
+    console.error('Fire door BOM generation failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'BOM generation failed'
     });
   }
 });
