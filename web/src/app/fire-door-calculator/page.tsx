@@ -130,9 +130,21 @@ export default function FireDoorCalculatorPage() {
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6 lg:px-6 lg:py-8">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Fire Door Calculator</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Quickly price a fire door and save to a quote.</p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Fire Door Calculator</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Quickly price a fire door and save to a quote.</p>
+        </div>
+        <Button
+          variant="outline"
+          className="bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+          onClick={() => router.push('/fire-doors')}
+        >
+          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 0a2 2 0 012 2v6a2 2 0 01-2 2m-6 0a2 2 0 002-2v-6a2 2 0 00-2-2" />
+          </svg>
+          View Order Grid
+        </Button>
       </div>
 
       {/* Fire Door Import Section - for manufacturers to upload CSV spreadsheets */}
@@ -165,6 +177,17 @@ export default function FireDoorCalculatorPage() {
               Spreadsheet View ({importId ? "Imported Doors" : "No Import"})
             </Button>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-auto bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+            onClick={() => router.push('/fire-doors')}
+          >
+            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 0a2 2 0 012 2v6a2 2 0 01-2 2m-6 0a2 2 0 002-2v-6a2 2 0 00-2-2" />
+            </svg>
+            View Order Grid
+          </Button>
         </div>
       )}
 

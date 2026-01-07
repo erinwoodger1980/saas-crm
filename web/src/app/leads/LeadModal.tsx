@@ -2529,6 +2529,14 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     if (!lead?.id) return;
     setSaving(true);
     try {
+      // Check if client is a fire door manufacturer - route to new fire door grid
+      if (settings?.isFireDoorManufacturer) {
+        // For fire door manufacturers, navigate to the enhanced fire door grid
+        window.location.href = `/fire-doors`;
+        return;
+      }
+      
+      // Normal quote builder flow for non-fire-door manufacturers
       let qid: string | null = lead.quoteId || null;
       if (!qid) {
         const q = await apiFetch<any>("/quotes", {

@@ -90,6 +90,12 @@ importers:
       '@tiptap/starter-kit':
         specifier: ^3.10.2
         version: 3.10.2
+      ag-grid-community:
+        specifier: ^35.0.0
+        version: 35.0.0
+      ag-grid-react:
+        specifier: ^35.0.0
+        version: 35.0.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       canvas-confetti:
         specifier: ^1.9.3
         version: 1.9.3
@@ -1898,6 +1904,18 @@ packages:
     resolution: {integrity: sha512-NZyJarBfL7nWwIq+FDL6Zp/yHEhePMNnnJ0y3qfieCrmNvYct8uvtiV41UvlSe6apAfk0fY1FbWx+NwfmpvtTg==}
     engines: {node: '>=0.4.0'}
     hasBin: true
+
+  ag-charts-types@13.0.0:
+    resolution: {integrity: sha512-mqOmKS0q4s2tt/C+CBG2Z+HWrSKYvRUCAlQzcKXKfARE3v/KdnBuxfjafa2c8ivElTTywdVdOe0q52Cow2Oggw==}
+
+  ag-grid-community@35.0.0:
+    resolution: {integrity: sha512-Cz3MA98zZygPwvCi8OKIhP0nea+YXdx8r5MwIXqVqnQwb/BEL05nGxwovIpelL6spv3jNlHQrTVgt4lw9J+nyg==}
+
+  ag-grid-react@35.0.0:
+    resolution: {integrity: sha512-ZmAjDnLONYja3IazKnMsqWZ8ZsJNTOTVQQX2tXNEkDHTMlVqIkDrcVU2f/o8awJhLCZhOMh7bE1YmYG/yHZLOg==}
+    peerDependencies:
+      react: 18.2.0
+      react-dom: 18.2.0
 
   ajv@6.12.6:
     resolution: {integrity: sha512-j3fVLgvTo527anyYyJOGTYJbG+vnnQYvE0m5mmkc1TK+nxAppkCLMIL0aZ4dblVCNoGShhm+kzE4ZUykBoMg4g==}
@@ -5633,6 +5651,19 @@ snapshots:
       acorn: 8.15.0
 
   acorn@8.15.0: {}
+
+  ag-charts-types@13.0.0: {}
+
+  ag-grid-community@35.0.0:
+    dependencies:
+      ag-charts-types: 13.0.0
+
+  ag-grid-react@35.0.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
+    dependencies:
+      ag-grid-community: 35.0.0
+      prop-types: 15.8.1
+      react: 18.2.0
+      react-dom: 18.2.0(react@18.2.0)
 
   ajv@6.12.6:
     dependencies:
