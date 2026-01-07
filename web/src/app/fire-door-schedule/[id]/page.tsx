@@ -1185,7 +1185,7 @@ export default function FireDoorScheduleDetailPage() {
                                 {item.fireRating || '—'}
                               </td>
                               <td className="px-3 py-2 text-sm font-medium text-slate-800">
-                                {item.lineTotal != null ? `£${item.lineTotal.toFixed(2)}` : '—'}
+                                {item.lineTotal != null ? `£${Number(item.lineTotal).toFixed(2)}` : '—'}
                               </td>
                             </tr>
                           ))}
