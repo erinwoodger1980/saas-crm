@@ -151,6 +151,7 @@ import assetsRouter from "./routes/assets";
 import profilesRouter from "./routes/profiles";
 import accountingSageRouter from "./routes/accounting-sage";
 import fireDoorRfisRouter from "./routes/fire-door-rfis";
+import fireDoorComponentsRouter from "./routes/fire-door-components";
 
 type BillingModule = typeof import("./routes/billing");
 type PublicSignupModule = typeof import("./routes/public-signup");
@@ -770,6 +771,8 @@ app.use("/door-cores", requireAuth, doorCoresRouter);
 app.use("/ironmongery-items", requireAuth, ironmongeryItemsRouter);
 app.use("/rfis", requireAuth, rfisRouter);
 app.use("/api/fire-door-rfis", fireDoorRfisRouter);
+// Fire door components (BOM generation and component management)
+app.use("/api/fire-door-components", requireAuth, fireDoorComponentsRouter);
 // Generic lookup API for calculated fields
 app.use("/api/lookup", requireAuth, lookupRouter);
 // Lipping lookup table (door manufacturing lipping specifications)

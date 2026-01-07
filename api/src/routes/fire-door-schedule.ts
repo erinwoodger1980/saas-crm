@@ -557,10 +557,21 @@ const updateProjectHandler = async (req: any, res: Response) => {
 
     console.log('[fire-door-schedule] Final updateData before Prisma:', JSON.stringify(updateData, null, 2));
     
-    const project = await prisma.fireDoorScheduleProject.update({
-      where: { id },
-      data: updateData,
-    });
+    let project;
+    try {
+      project = await prisma.fireDoorScheduleProject.update({
+        where: { id },
+        data: updateData,
+      });
+    } catch (prismaError: any) {
+      console.error('[fire-door-schedule] Prisma update error:', {
+        code: prismaError.code,
+        meta: prismaError.meta,
+        message: prismaError.message,
+        updateData: Object.keys(updateData),
+      });
+      throw prismaError;
+    }
 
     console.log('[fire-door-schedule] Project updated successfully');
     console.log('[fire-door-schedule] Updated paperwork fields:', {
