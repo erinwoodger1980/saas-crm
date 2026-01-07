@@ -126,9 +126,10 @@ router.get('/:lineItemId/bom', async (req: any, res: Response) => {
       ),
       purchased: bom.purchased.reduce((sum, c) => sum + (c.totalCost ? Number(c.totalCost) : 0), 0),
       assembly: bom.assembly.reduce((sum, c) => sum + (c.totalCost ? Number(c.totalCost) : 0), 0),
+      total: 0,
     };
 
-    totals['total' as any] = totals.manufactured + totals.purchased + totals.assembly;
+    totals.total = totals.manufactured + totals.purchased + totals.assembly;
 
     res.json({ components: bom, totals });
   } catch (error) {

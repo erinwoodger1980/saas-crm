@@ -93,11 +93,11 @@ export class ComponentGeneratorService {
         }
 
         // Extract properties
-        const properties = await this.extractProperties(
-          definition.propertyMappings as Record<string, PropertyMapping>,
-          lineItem,
-          tenantId
-        );
+        const propertyMappings = definition.propertyMappings as unknown as Record<
+          string,
+          PropertyMapping
+        >;
+        const properties = await this.extractProperties(propertyMappings, lineItem, tenantId);
 
         // Calculate costs
         const unitCost = properties.unitCost || properties.coreCost || null;
