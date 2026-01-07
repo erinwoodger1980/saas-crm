@@ -3554,6 +3554,12 @@ model FireDoorScheduleProject {
   timbersDateExpected      DateTime?
   timbersDateOrdered       DateTime?
   timbersDateReceived      DateTime?
+  clientOrderNo            String?
+  typeOfJob                String?
+  lajClientComments        String?
+  clientComments           String?
+  factoryFitIronmongeryReleased String?
+  qrCodes                  Boolean                 @default(false)
   productionLogs           FireDoorProductionLog[]
   project                  Project?                @relation("ProjectFireDoorSchedule")
   tenant                   Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)

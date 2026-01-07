@@ -32,6 +32,15 @@ interface FireDoorProject {
   orderingStatus?: string;
   overallProgress?: number;
   approxDeliveryDate?: string;
+  // New fields for Client Portal tab
+  clientOrderNo?: string;
+  typeOfJob?: string;
+  laqNumber?: string;
+  deliveryDate?: string;
+  lajClientComments?: string;
+  clientComments?: string;
+  factoryFitIronmongeryReleased?: string;
+  qrCodes?: boolean;
   [key: string]: any;
 }
 
@@ -62,8 +71,8 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  // Active tab (phase-based tabs)
-  const [activeTab, setActiveTab] = useState<string>("PROJECT_OVERVIEW");
+  // Active tab (phase-based tabs) - default to CLIENT_PORTAL for customer portal
+  const [activeTab, setActiveTab] = useState<string>(isCustomerPortal ? "CLIENT_PORTAL" : "PROJECT_OVERVIEW");
   // Location filter (multi-select checkboxes) - exclude COMPLETE & DELIVERED by default
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [showTable, setShowTable] = useState<boolean>(true); // consolidated table view toggle
@@ -801,6 +810,30 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
 
   // Tab definitions with labels and column sets
   const TAB_DEFINITIONS = {
+    CLIENT_PORTAL: {
+      label: 'Client Portal',
+      columns: [
+        'mjsNumber',
+        'jobLocation',
+        'clientOrderNo',
+        'jobName',
+        'scheduledBy',
+        'typeOfJob',
+        'laqNumber',
+        'dateReceived',
+        'signOffDate',
+        'poNumber',
+        'netValue',
+        'dateRequired',
+        'calculatedCompletionDate',
+        'deliveryDate',
+        'lajClientComments',
+        'clientComments',
+        'factoryFitIronmongeryReleased',
+        'transportStatus',
+        'qrCodes'
+      ]
+    },
     PROGRESS: {
       label: 'Progress',
       columns: [
@@ -998,6 +1031,14 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
   const COLUMN_LABELS: Record<string, string> = {
     mjsNumber: 'MJS',
     jobName: 'Job Description',
+    clientOrderNo: 'Client Order No',
+    typeOfJob: 'Type of Job',
+    laqNumber: 'LAQ Number',
+    lajClientComments: 'LAJ Client Comments',
+    clientComments: 'Client Comments',
+    factoryFitIronmongeryReleased: 'Factory Fit Ironmongery Released',
+    qrCodes: 'QR Codes',
+    deliveryDate: 'Delivery Date',
     clientName: 'Customer',
     netValue: 'Net Value',
     poNumber: 'PO',
@@ -1702,16 +1743,60 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
     }
 
     // Textarea for comments/notes
-    if (field === 'paperworkComments' || field === 'deliveryNotes' || field === 'bomNotes') {
+    if (field === 'paperworkComments' || field === 'deliveryNotes' || field === 'bomNotes' || field === 'lajClientComments' || field === 'clientComments') {
+      // lajClientComments is the only field editable by customers
+      const isEditable = isCustomerPortal ? field === 'lajClientComments' : true;
       return (
         <textarea
           className="bg-transparent outline-none w-full text-sm font-semibold border border-slate-200 rounded px-2 py-1 focus:border-blue-500 resize-none disabled:cursor-not-allowed disabled:bg-slate-50"
           rows={2}
-          disabled={isCustomerPortal}
+          disabled={!isEditable}
           value={value || ''}
           placeholder="—"
           title={value || ''}
           onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
+        />
+      );
+    }
+
+    // QR Codes checkbox
+    if (field === 'qrCodes') {
+      return (
+        <input
+          type="checkbox"
+          disabled={isCustomerPortal}
+          checked={value === true}
+          onChange={(e) => updateProject(project.id, { [field]: e.target.checked })}
+          className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 disabled:cursor-not-allowed"
+        />
+      );
+    }
+
+    // New text fields for Client Portal
+    if (['clientOrderNo', 'typeOfJob', 'laqNumber', 'factoryFitIronmongeryReleased'].includes(field)) {
+      return (
+        <input
+          className="bg-transparent outline-none w-full text-sm font-semibold border-b border-dashed border-slate-300 focus:border-blue-500 disabled:cursor-not-allowed disabled:bg-slate-50"
+          value={value || ''}
+          disabled={isCustomerPortal}
+          placeholder="—"
+          onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
+        />
+      );
+    }
+
+    // Delivery Date field
+    if (field === 'deliveryDate') {
+      return (
+        <input
+          type="date"
+          disabled={isCustomerPortal}
+          className="bg-white border border-slate-200 rounded px-2 py-1 outline-none text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-300 disabled:bg-slate-100 disabled:cursor-not-allowed"
+          value={value ? new Date(value).toISOString().slice(0, 10) : ''}
+          onChange={(e) => {
+            const dateValue = e.target.value ? new Date(e.target.value).toISOString() : undefined;
+            updateProject(project.id, { [field]: dateValue });
+          }}
         />
       );
     }
@@ -1797,22 +1882,6 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
                       Import CSV
                     </span>
                   </label>
-                  <Button
-                    variant="outline"
-                    className="bg-white/50 border-2 border-blue-500/30 text-blue-700 hover:bg-blue-50 hover:border-blue-500/50"
-                    onClick={() => {
-                      // Navigate to the project overview page
-                      if (projects.length > 0) {
-                        const firstProject = projects[0];
-                        router.push(`/fire-door-schedule/${firstProject.id}`);
-                      } else {
-                        router.push("/fire-door-schedule/new");
-                      }
-                    }}
-                  >
-                    <FileText className="w-4 h-4 mr-2" />
-                    View Order
-                  </Button>
                   <Button 
                     onClick={() => router.push("/fire-door-schedule/new")}
                     className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg hover:shadow-xl transition-all"
@@ -1964,7 +2033,7 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
             >
               {showTable ? "Card View" : "Table View"}
             </Button>
-            {showTable && (
+            {showTable && !isCustomerPortal && (
               <>
                 <Button
                   variant="outline"
@@ -2384,20 +2453,22 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
                       key={project.id}
                       className="group hover:bg-blue-50/40 transition-colors border-b border-slate-100"
                     >
-                      <td className="sticky left-0 px-4 py-3 z-[50] bg-white bg-clip-padding border-r border-slate-200 shadow-[inset_-1px_0_0_rgba(15,23,42,0.06)] w-[140px] min-w-[140px] max-w-[140px]">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            router.push(`/fire-door-schedule/${project.id}`);
-                          }}
-                          className="text-xs bg-white/80 border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-500"
-                        >
-                          <FileText className="w-3 h-3 mr-1" />
-                          View Order
-                        </Button>
-                      </td>
+                      {!isCustomerPortal && (
+                        <td className="sticky left-0 px-4 py-3 z-[50] bg-white bg-clip-padding border-r border-slate-200 shadow-[inset_-1px_0_0_rgba(15,23,42,0.06)] w-[140px] min-w-[140px] max-w-[140px]">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/fire-door-schedule/${project.id}`);
+                            }}
+                            className="text-xs bg-white/80 border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-500"
+                          >
+                            <FileText className="w-3 h-3 mr-1" />
+                            View Order
+                          </Button>
+                        </td>
+                      )}
                       {getVisibleColumns().map((field) => {
                         const isFrozen = frozenColumns.includes(field);
                         const frozenIndex = frozenColumns.indexOf(field);
