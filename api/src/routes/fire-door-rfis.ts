@@ -45,7 +45,7 @@ router.get('/', requireAuth, async (req, res) => {
           select: {
             id: true,
             mjsNumber: true,
-            location: true,
+            jobLocation: true,
             projectId: true,
           },
         },
@@ -93,7 +93,7 @@ router.get('/:id', requireAuth, async (req, res) => {
           select: {
             id: true,
             mjsNumber: true,
-            location: true,
+            jobLocation: true,
             projectId: true,
           },
         },
@@ -158,7 +158,7 @@ router.post('/', requireAuth, async (req, res) => {
           select: {
             id: true,
             mjsNumber: true,
-            location: true,
+            jobLocation: true,
           },
         },
         creator: {
@@ -218,7 +218,7 @@ router.patch('/:id', requireAuth, async (req, res) => {
           select: {
             id: true,
             mjsNumber: true,
-            location: true,
+            jobLocation: true,
           },
         },
         creator: {
@@ -301,7 +301,7 @@ router.get('/customer/:clientAccountId', async (req, res) => {
           select: {
             id: true,
             mjsNumber: true,
-            location: true,
+            jobLocation: true,
             projectId: true,
           },
         },
