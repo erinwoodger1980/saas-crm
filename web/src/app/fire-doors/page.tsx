@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { AgGridReact } from 'ag-grid-react';
 import type { ColDef, GridOptions, GridApi, ValueFormatterParams } from 'ag-grid-community';
@@ -57,6 +57,14 @@ interface RFI {
 }
 
 export default function FireDoorsPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading...</div>}>
+      <FireDoorsPageContent />
+    </Suspense>
+  );
+}
+
+function FireDoorsPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const projectId = searchParams.get('projectId');
