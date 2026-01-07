@@ -1,9 +1,8 @@
 import { Router, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../prisma';
 import { ComponentGeneratorService } from '../services/componentGenerator';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // ============================================================================
 // POST /fire-door-components/generate/:lineItemId
