@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../prisma';
-import { authenticateToken } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 import { z } from 'zod';
 
 const router = Router();
@@ -24,10 +24,10 @@ const updateRFISchema = z.object({
 });
 
 // GET /api/fire-door-rfis - List all RFIs for tenant
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   try {
     const { status, priority, fireDoorLineItemId, projectId } = req.query;
-    const tenantId = req.user!.tenantId;
+    const tenantId = req.auth!.tenantId;
 
     const where: any = { tenantId };
 
@@ -45,7 +45,6 @@ router.get('/', authenticateToken, async (req, res) => {
           select: {
             id: true,
             mjsNumber: true,
-            doorRef: true,
             location: true,
             projectId: true,
           },
@@ -82,10 +81,10 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 // GET /api/fire-door-rfis/:id - Get single RFI
-router.get('/:id', authenticateToken, async (req, res) => {
+router.get('/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const tenantId = req.user!.tenantId;
+    const tenantId = req.auth!.tenantId;
 
     const rfi = await prisma.fireDoorRFI.findFirst({
       where: { id, tenantId },
@@ -94,7 +93,6 @@ router.get('/:id', authenticateToken, async (req, res) => {
           select: {
             id: true,
             mjsNumber: true,
-            doorRef: true,
             location: true,
             projectId: true,
           },
@@ -130,10 +128,10 @@ router.get('/:id', authenticateToken, async (req, res) => {
 });
 
 // POST /api/fire-door-rfis - Create new RFI
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', requireAuth, async (req, res) => {
   try {
-    const tenantId = req.user!.tenantId;
-    const userId = req.user!.id;
+    const tenantId = req.auth!.tenantId;
+    const userId = req.auth!.userId;
 
     const data = createRFISchema.parse(req.body);
 
@@ -141,7 +139,7 @@ router.post('/', authenticateToken, async (req, res) => {
     const lineItem = await prisma.fireDoorScheduleProject.findFirst({
       where: {
         id: data.fireDoorLineItemId,
-        project: { tenantId },
+        tenantId,
       },
     });
 
@@ -160,7 +158,6 @@ router.post('/', authenticateToken, async (req, res) => {
           select: {
             id: true,
             mjsNumber: true,
-            doorRef: true,
             location: true,
           },
         },
@@ -186,10 +183,10 @@ router.post('/', authenticateToken, async (req, res) => {
 });
 
 // PATCH /api/fire-door-rfis/:id - Update RFI
-router.patch('/:id', authenticateToken, async (req, res) => {
+router.patch('/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const tenantId = req.user!.tenantId;
+    const tenantId = req.auth!.tenantId;
 
     const data = updateRFISchema.parse(req.body);
 
@@ -221,7 +218,6 @@ router.patch('/:id', authenticateToken, async (req, res) => {
           select: {
             id: true,
             mjsNumber: true,
-            doorRef: true,
             location: true,
           },
         },
@@ -255,10 +251,10 @@ router.patch('/:id', authenticateToken, async (req, res) => {
 });
 
 // DELETE /api/fire-door-rfis/:id - Delete RFI
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const tenantId = req.user!.tenantId;
+    const tenantId = req.auth!.tenantId;
 
     // Verify RFI belongs to tenant
     const existingRFI = await prisma.fireDoorRFI.findFirst({
@@ -285,37 +281,28 @@ router.get('/customer/:clientAccountId', async (req, res) => {
   try {
     const { clientAccountId } = req.params;
 
-    // Find all projects for this client account
-    const projects = await prisma.project.findMany({
-      where: { clientAccountId },
+    // Find all fire door projects for this client
+    const fireDoorProjects = await prisma.fireDoorScheduleProject.findMany({
+      where: { clientName: clientAccountId }, // Using clientName as identifier
       select: { id: true },
     });
 
-    const projectIds = projects.map((p) => p.id);
+    const lineItemIds = fireDoorProjects.map((p) => p.id);
 
-    // Get RFIs for fire door line items in these projects
+    // Get RFIs for these line items
     const rfis = await prisma.fireDoorRFI.findMany({
       where: {
         visibleToCustomer: true,
         status: { in: ['open', 'answered'] }, // Don't show closed RFIs
-        lineItem: {
-          projectId: { in: projectIds },
-        },
+        fireDoorLineItemId: { in: lineItemIds },
       },
       include: {
         lineItem: {
           select: {
             id: true,
             mjsNumber: true,
-            doorRef: true,
             location: true,
             projectId: true,
-            project: {
-              select: {
-                projectName: true,
-                projectId: true,
-              },
-            },
           },
         },
         creator: {
