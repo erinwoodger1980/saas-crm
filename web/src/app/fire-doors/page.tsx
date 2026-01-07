@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { AgGridReact } from 'ag-grid-react';
 import type { ColDef, GridOptions, GridApi, ValueFormatterParams } from 'ag-grid-community';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { FireDoorRFIPanel } from '@/components/FireDoorRFIPanel';
-import { MessageSquare } from 'lucide-react';
+import { MessageSquare, ArrowLeft } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 interface FireDoorLineItem {
   id: string;
@@ -55,49 +57,39 @@ interface RFI {
 }
 
 export default function FireDoorsPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const projectId = searchParams.get('projectId');
+  
   const [rowData, setRowData] = useState<FireDoorLineItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [rfis, setRfis] = useState<Record<string, RFI[]>>({});
-  const [selectedProject, setSelectedProject] = useState<string>('');
-  const [projects, setProjects] = useState<Array<{ id: string; projectName: string }>>([]);
   const [showRFIPanel, setShowRFIPanel] = useState(false);
   const [selectedLineItemId, setSelectedLineItemId] = useState<string | undefined>(undefined);
+  const [projectInfo, setProjectInfo] = useState<{ mjsNumber: string; jobName: string } | null>(null);
   
   const gridRef = useRef<AgGridReact>(null);
 
-  // Fetch projects
-  useEffect(() => {
-    async function fetchProjects() {
-      try {
-        const res = await fetch('/api/fire-door-schedule', {
-          credentials: 'include',
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const projectList = data.projects.map((p: any) => ({
-            id: p.id,
-            projectName: `${p.mjsNumber || 'No MJS'} - ${p.jobName || 'Unnamed'}`,
-          }));
-          setProjects(projectList);
-          if (projectList.length > 0) {
-            setSelectedProject(projectList[0].id);
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching projects:', error);
-      }
-    }
-    fetchProjects();
-  }, []);
-
   // Fetch fire door line items
   useEffect(() => {
-    if (!selectedProject) return;
+    if (!projectId) return;
 
     async function fetchData() {
       try {
         setLoading(true);
-        const res = await fetch(`/api/fire-door-schedule/items?projectId=${selectedProject}`, {
+        
+        // Fetch project info
+        const projectRes = await fetch(`/api/fire-door-schedule/${projectId}`, {
+          credentials: 'include',
+        });
+        if (projectRes.ok) {
+          const project = await projectRes.json();
+          setProjectInfo({
+            mjsNumber: project.mjsNumber || 'No MJS',
+            jobName: project.jobName || 'Unnamed Project'
+          });
+        }
+        const res = await fetch(`/api/fire-door-schedule/${projectId}/line-items`, {
           credentials: 'include',
         });
         if (res.ok) {
@@ -105,7 +97,7 @@ export default function FireDoorsPage() {
           setRowData(data);
           
           // Fetch RFIs for all line items
-          const rfiRes = await fetch(`/api/fire-door-rfis?projectId=${selectedProject}`, {
+          const rfiRes = await fetch(`/api/fire-door-rfis?projectId=${projectId}`, {
             credentials: 'include',
           });
           if (rfiRes.ok) {
@@ -128,7 +120,7 @@ export default function FireDoorsPage() {
     }
 
     fetchData();
-  }, [selectedProject]);
+  }, [projectId]);
 
   // RFI Badge Renderer
   const RFIBadgeRenderer = (params: any) => {
@@ -537,24 +529,21 @@ export default function FireDoorsPage() {
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Fire Door Schedule</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              Spreadsheet-like interface with import/export, RFI tracking, and pricing integration
-            </p>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => router.push(`/fire-door-schedule/${projectId}`)}
+              className="p-2 hover:bg-gray-100 rounded-lg transition"
+            >
+              <ArrowLeft className="w-5 h-5 text-gray-600" />
+            </button>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Fire Door Order Grid</h1>
+              <p className="text-sm text-gray-500 mt-1">
+                {projectInfo ? `${projectInfo.mjsNumber} - ${projectInfo.jobName}` : 'Loading...'}
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-3">
-            <select
-              value={selectedProject}
-              onChange={(e) => setSelectedProject(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.projectName}
-                </option>
-              ))}
-            </select>
             <button
               onClick={() => {
                 setSelectedLineItemId(undefined);
@@ -595,13 +584,13 @@ export default function FireDoorsPage() {
       {/* RFI Panel */}
       {showRFIPanel && (
         <FireDoorRFIPanel
-          projectId={selectedProject}
+          projectId={projectId || undefined}
           lineItemId={selectedLineItemId}
           onClose={() => setShowRFIPanel(false)}
           onRFICreated={() => {
             // Refetch data to update RFI counts
-            if (selectedProject) {
-              fetch(`/api/fire-door-schedule/items?projectId=${selectedProject}`, {
+            if (projectId) {
+              fetch(`/api/fire-door-schedule/${projectId}/line-items`, {
                 credentials: 'include',
               })
                 .then(res => res.json())

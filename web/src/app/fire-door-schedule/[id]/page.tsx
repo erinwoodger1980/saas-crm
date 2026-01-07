@@ -566,7 +566,7 @@ export default function FireDoorScheduleDetailPage() {
                   />
                   <Button
                     variant="outline"
-                    onClick={() => router.push('/fire-doors')}
+                    onClick={() => router.push(`/fire-doors?projectId=${id}`)}
                     className="border-emerald-200 text-emerald-600 hover:bg-emerald-50"
                   >
                     <Table className="w-4 h-4 mr-2" />
