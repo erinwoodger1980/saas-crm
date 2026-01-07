@@ -2352,14 +2352,16 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
                 <thead>
                   <tr ref={headerRowRef} className="bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600 text-xs uppercase tracking-wider select-none">
                     {/* Sticky header cells at top of scroll container */}
-                    <th className="sticky top-0 left-0 px-4 py-3 text-left z-[200] bg-white bg-clip-padding border-r border-slate-200 w-[140px] min-w-[140px] max-w-[140px]">
-                      <span className="text-xs uppercase tracking-wider">Actions</span>
-                    </th>
+                    {!isCustomerPortal && (
+                      <th className="sticky top-0 left-0 px-4 py-3 text-left z-[200] bg-white bg-clip-padding border-r border-slate-200 w-[140px] min-w-[140px] max-w-[140px]">
+                        <span className="text-xs uppercase tracking-wider">Actions</span>
+                      </th>
+                    )}
                     {getVisibleColumns().map((field, index) => {
                       const isFrozen = frozenColumns.includes(field);
                       const frozenIndex = frozenColumns.indexOf(field);
                       const fieldWidth = getColumnWidth(field);
-                      const leftOffset = frozenIndex >= 0 ? ACTIONS_WIDTH + (frozenColumns.slice(0, frozenIndex).reduce((sum, col) => sum + getColumnWidth(col), 0)) : undefined;
+                      const leftOffset = frozenIndex >= 0 ? (isCustomerPortal ? 0 : ACTIONS_WIDTH) + (frozenColumns.slice(0, frozenIndex).reduce((sum, col) => sum + getColumnWidth(col), 0)) : undefined;
                       const isLastFrozen = isFrozen && frozenIndex === frozenColumns.length - 1;
                       return (
                       <th
@@ -2420,7 +2422,7 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
                       const isFrozen = frozenColumns.includes(field);
                       const frozenIndex = frozenColumns.indexOf(field);
                       const fieldWidth = getColumnWidth(field);
-                      const leftOffset = frozenIndex >= 0 ? ACTIONS_WIDTH + (frozenColumns.slice(0, frozenIndex).reduce((sum, col) => sum + getColumnWidth(col), 0)) : undefined;
+                      const leftOffset = frozenIndex >= 0 ? (isCustomerPortal ? 0 : ACTIONS_WIDTH) + (frozenColumns.slice(0, frozenIndex).reduce((sum, col) => sum + getColumnWidth(col), 0)) : undefined;
                       const isLastFrozen = isFrozen && frozenIndex === frozenColumns.length - 1;
                       return (
                         <th
@@ -2473,7 +2475,7 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
                         const isFrozen = frozenColumns.includes(field);
                         const frozenIndex = frozenColumns.indexOf(field);
                         const fieldWidth = getColumnWidth(field);
-                        const leftOffset = frozenIndex >= 0 ? ACTIONS_WIDTH + (frozenColumns.slice(0, frozenIndex).reduce((sum, col) => sum + getColumnWidth(col), 0)) : undefined;
+                        const leftOffset = frozenIndex >= 0 ? (isCustomerPortal ? 0 : ACTIONS_WIDTH) + (frozenColumns.slice(0, frozenIndex).reduce((sum, col) => sum + getColumnWidth(col), 0)) : undefined;
                         const isLastFrozen = isFrozen && frozenIndex === frozenColumns.length - 1;
                         return (
                         <td

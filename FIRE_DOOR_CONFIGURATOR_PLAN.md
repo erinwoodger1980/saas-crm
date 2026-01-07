@@ -1,4 +1,12 @@
-# Fire Door Configurator System - Phase 0 & 1 Plan
+# Fire Door Configurator System - Comprehensive Implementation Plan
+
+**Last Updated:** 7 January 2026  
+**Data Sources:**
+- Paul's Quote List Explained.csv (200+ column dictionary with descriptions)
+- Costings for Copilot.xls (26 sheets: pricing, certification, production data)
+- Existing system infrastructure analysis
+
+---
 
 ## Phase 0: Existing System Inventory
 
@@ -128,37 +136,49 @@
 #### 1. **Fire Door Domain Model**
 
 **No explicit fire door configuration schema:**
-- Need `FireDoorConfiguration` model or use existing `ProductConfiguration`
+- Need structured mapping from Paul's CSV columns (A-GZ, 200+ columns) to attribute definitions
 - Need fire rating rules (FD30/FD60/FD90/FD120 → component requirements)
-- Need certification tracking (which test certificates apply)
+- Need certification tracking from "Fire Certification" sheets (116 rows ASPEX + 122 rows standard)
 - Need seal requirements (intumescent, smoke, acoustic)
 
 **CSV Column Mappings:**
-- Need structured mapping from Paul's CSV columns to attribute definitions
-- Need dropdown options for all enumerated fields (handing, frame type, etc.)
+- **CRITICAL INSIGHT:** Paul's Excel shows actual production data (598 rows × 256 columns) with real configurations
+- Product Codes sheet has 110 predefined doorset types (FD001-FD110+)
+- Leaf Sizing By Frame Type sheet (63 rows) provides dimensional formulas
+- Need dropdown options for all enumerated fields (handing, frame type, action, etc.)
 - Need validation rules for each attribute
 
 #### 2. **Pricing Engine**
 
-**No fire door-specific pricing calculator:**
-- Existing `web/src/lib/costing/pricing.ts` is generic
-- Need fire door formulas:
-  - Material cost = sum(BOM qty × unit cost)
-  - Labour cost = sum(operation minutes × shop rate)
-  - Overhead allocation
-  - Margin calculation
-- Need explainability (why was this component included?)
+**Excel file contains complete pricing data:**
+- **Door Core Prices** sheet (137 rows): Core material costs by thickness and type
+- **Timber Prices** sheet (52 rows): Lipping, stiles, rails, and veneer costs
+- **Glass Prices** sheet (58 rows): Fire-rated glass by type and size
+- **Leaf_Frame Finishes** sheet (105 rows): Finish costs (lacquer, veneer, PVC wrap)
+- **Veneer Layon Prices 2024** sheet (79 rows): Veneer overlay pricing
+- **Ironmongery** sheet (70 rows): Hardware component costs
+- **Lathams** sheet (413 rows): Full supplier price list
+- **Weights** sheet (26 rows): Component weights for shipping calculations
+
+**Need to build:**
+- Pricing calculator that references these Excel sheets
+- Material cost = sum(BOM qty × unit cost from Excel lookup)
+- Labour cost = sum(operation minutes × shop rate)
+- Overhead allocation
+- Margin calculation
+- Explainability (why was this component included?)
 
 #### 3. **Workshop Paperwork Generator**
 
 **No PDF generation for:**
-- Production summary sheet
-- Cutting list (profile lengths, panel dims)
+- Production summary sheet (from Woodge Export sheets - 598 rows with 126-256 production columns)
+- Cutting list (profile lengths, panel dims from Door Production sheet)
 - Machining sheet (hinge prep, lock case, closers, seals)
-- Ironmongery schedule (brand/model + quantities)
-- Glazing schedule (glass spec + sizes)
-- QA checklist
+- Ironmongery schedule (brand/model + quantities from Ironmongery Intu Packs - 51 rows)
+- Glazing schedule (glass spec + sizes from Glass Prices - 58 rows)
+- QA checklist (from Fire Certification Check sheet - 122 validation rows)
 - Door labels (ref, rating, handing, dims)
+- Shopping Lists sheet (21 rows) - material procurement
 
 **Recommendation:** Use existing PDF libraries or build with `pdfkit` / `puppeteer`
 
@@ -175,17 +195,111 @@
 - Bridge from `FireDoorLineItem` → `ProductParams` → 3D scene
 - Automatic hardware positioning (hinges, locks, closers)
 - Vision panel cutouts from spec
-- Sidelight/toplight generation
+- Sidelight/toplight generation (from columns BX-CN: fanlights and sidelights 1-4)
 
 ---
 
-## Phase 1: CSV to Domain Model
+## Phase 1: CSV & Excel Data Integration
 
-### Step 1: Analyze Paul's CSV Column Dictionary
+### Step 1: Analyze Paul's Column Dictionary + Excel Data
 
-**File:** `/Users/Erin/Library/Mobile Documents/com~apple~CloudDocs/Coaching/Aldridge Joinery/Costing Files/Pauls Quote List Explained.csv`
+**Primary Data Sources:**
 
-**Total Columns:** 200+ (A-FZ+)
+#### A. **Paul's Quote List Explained.csv**
+- **200+ columns** (A through GZ) with detailed descriptions
+- Column explanations include:
+  - Component affected (e.g., "Door Blank & Frame")
+  - Impact on system (e.g., "affects core type, glass type, intumescent type, certification")
+  - UI requirements (e.g., "Dropdown Box", "Auto fills", "Required if...")
+  - Default values and validation rules
+  - Calculation formulas and dependencies
+
+#### B. **Costings for Copilot.xls - 26 Sheets**
+
+**Production Data:**
+1. **Woodge Export (Production)** - 598 rows × 126 columns
+   - Real fire door configurations
+   - Fields: LAJ REF, DOOR REF, MASTER WIDTH, SLAVE WIDTH, DOOR HEIGHT
+   - RATING (FD30/60/90/120), CORE TYPE, LIPPING DETAIL
+   - HINGING, POSITION, QTY OF HINGES, HINGE TYPE
+   - LOCK TYPE, SPINDLE PREP, CYLINDER PREP, LOCK HEIGHT
+   - VISION PANEL specs, BEAD TYPE, VP POSITION
+   - FRAME TYPE, MATERIAL, WIDTH, HEAD, EXTENSION, JAMBS
+   - FRAME FINISH, FRAME HEIGHT, FRAME WIDTH
+   - INTUMESCENT TYPE, INTUMESCENT ARRANGEMENT
+
+2. **Woodge Export** - 598 rows × 256 columns (full export)
+   - Extended production data with additional columns
+
+**Pricing Reference Data:**
+3. **Door Core Prices** - 137 rows
+   - Columns: Core Type, Thickness, Price, Supplier, Fire Rating
+   - Examples: Strebord_MDF_Faced44 (£22.00), Halspan_Optima54 (£33.50)
+
+4. **Timber Prices** - 52 rows
+   - Veneer types: Oak (£720/m³), Ash (£710/m³), Walnut (£640/m³)
+   - Acoustic laminations: 6.8mm (£17.00/m²)
+
+5. **Glass Prices** - 58 rows
+   - Fire-rated glass by type, thickness, and rating
+   - Pyroguard, Pilkington Pyrostop variants
+
+6. **Leaf_Frame Finishes** - 105 rows
+   - Finish options: Lacquer, PVC Wrap, Veneer
+   - Cost by finish type and material
+
+7. **Veneer Layon Prices 2024** - 79 rows
+   - Veneer overlay pricing by species and grade
+
+8. **Ironmongery** - 70 rows
+   - Hardware catalog: hinges, locks, closers, seals
+   
+9. **Ironmongery Intu Packs** - 51 rows
+   - Intumescent packs by fire rating
+
+10. **Lathams** - 413 rows (+ 74 rows with 20% adjustment)
+    - Full supplier price list
+
+11. **Weights** - 26 rows
+    - Component weights for logistics
+
+**Certification Data:**
+12. **Fire Certification** - 116 rows
+    - Core fire rating certifications
+
+13. **Fire Certification Check** - 122 rows
+    - Validation and compliance rules
+
+14. **Fire Certification ASPEX** - 108 rows
+    - ASPEX-specific certification data
+
+**Configuration Data:**
+15. **Product Codes** - 110 rows
+    - Predefined doorset configurations (FD001-FD110+)
+    - Columns: Code, Description, Type, Number of Leaves, Frame, Fanlight, Sidelight
+    - Example: FD001 = "Concealed - Double - Without Frame"
+    - Includes lipping style conditions, frame type requirements
+
+16. **Leaf Sizing By Frame Type** - 63 rows
+    - Dimensional formulas by frame configuration
+    - Opening types: Single Action, Double Action, Leaf & a Half, Double, Split, etc.
+
+17. **Door Production** - 4 rows
+    - Production setup configurations
+
+18. **Frame Sheet** - 3 rows
+    - Frame construction templates
+
+**Supporting Data:**
+19. **Cost Sheet** - 641 rows (main costing calculations)
+20. **Line By Line Fill** - 72 rows (line item templates)
+21. **Shopping Lists** - 21 rows (material procurement)
+22. **Lists** - 22 rows (reference lists)
+23. **Data**, **Row**, **Import** sheets - Supporting/empty sheets
+
+---
+
+### Step 2: Complete Column Mapping (200+ Columns)
 
 **Column Groupings:**
 
@@ -453,7 +567,544 @@
 
 ---
 
-### Step 2: Define Attribute Schema
+---
+
+## Phase 2: Pricing Engine Implementation
+
+### Architecture: Excel Data → Database Import
+
+**Strategy:** Import Excel pricing data into existing `ComponentLookup` and `Material` tables
+
+#### Import Flow:
+
+```typescript
+// 1. Parse Excel sheets
+const pricingData = {
+  cores: parseSheet('Door Core Prices'), // 137 rows
+  timber: parseSheet('Timber Prices'),    // 52 rows
+  glass: parseSheet('Glass Prices'),      // 58 rows
+  finishes: parseSheet('Leaf_Frame Finishes'), // 105 rows
+  ironmongery: parseSheet('Ironmongery'), // 70 rows
+  veneers: parseSheet('Veneer Layon Prices 2024'), // 79 rows
+  lathams: parseSheet('Lathams'), // 413 rows
+};
+
+// 2. Create ComponentLookup records
+await prisma.componentLookup.createMany({
+  data: pricingData.cores.map(row => ({
+    componentType: 'CORE',
+    code: row['Core Type'], // e.g., 'Strebord_MDF_Faced44'
+    name: row['Description'],
+    basePrice: row['Price'],
+    unit: 'EA',
+    attributes: {
+      thickness: row['Thickness'],
+      fireRating: row['Fire Rating'],
+      supplier: row['Supplier'],
+      density: row['Density (kg/m³)'],
+    }
+  }))
+});
+
+// 3. Create Material records for timber
+await prisma.material.createMany({
+  data: pricingData.timber.map(row => ({
+    name: row['Species'],
+    category: 'TIMBER',
+    pricePerUnit: row['Price per m³'],
+    unit: 'M3',
+    supplier: 'Lathams',
+    attributes: {
+      grade: row['Grade'],
+      acousticRating: row['Acoustic (dB)'],
+    }
+  }))
+});
+```
+
+### Pricing Calculator Service
+
+**File:** `api/src/services/fire-door-pricing.ts`
+
+```typescript
+interface PricingBreakdown {
+  materials: {
+    core: { qty: number; unitCost: number; total: number };
+    lipping: { qty: number; unitCost: number; total: number };
+    glass: { qty: number; unitCost: number; total: number };
+    facing: { qty: number; unitCost: number; total: number };
+    ironmongery: { item: string; qty: number; unitCost: number; total: number }[];
+    frame: { qty: number; unitCost: number; total: number };
+  };
+  labour: {
+    cutting: { minutes: number; rate: number; total: number };
+    edgeBanding: { minutes: number; rate: number; total: number };
+    machining: { minutes: number; rate: number; total: number };
+    assembly: { minutes: number; rate: number; total: number };
+    finishing: { minutes: number; rate: number; total: number };
+  };
+  overhead: number;
+  subtotal: number;
+  margin: number;
+  totalPrice: number;
+}
+
+class FireDoorPricingService {
+  async calculatePrice(config: FireDoorConfig): Promise<PricingBreakdown> {
+    // 1. Lookup core price from ComponentLookup
+    const core = await this.lookupCore(config.coreType, config.leafThickness);
+    const coreQty = config.leafCount; // 1 core per leaf
+    const coreCost = core.basePrice * coreQty;
+    
+    // 2. Calculate lipping cost
+    const lippingPerimeter = (config.masterLeafWidth + config.leafHeight) * 2;
+    if (config.slaveLeafWidth) {
+      lippingPerimeter += (config.slaveLeafWidth + config.leafHeight) * 2;
+    }
+    const lippingQty = lippingPerimeter / 1000; // Convert mm to m
+    const lippingMaterial = await this.lookupTimber(config.lippingMaterial);
+    const lippingCost = lippingQty * lippingMaterial.pricePerMetre;
+    
+    // 3. Calculate glass cost (if vision panels)
+    let glassCost = 0;
+    if (config.visionPanelQty1 > 0) {
+      const glassArea = (config.vp1Width * config.vp1Height) / 1000000; // mm² to m²
+      const glassPrice = await this.lookupGlass(config.glassType, config.fireRating);
+      glassCost = glassArea * config.visionPanelQty1 * glassPrice.pricePerM2;
+    }
+    
+    // 4. Calculate facing cost
+    const leafArea = (config.masterLeafWidth * config.leafHeight) / 1000000; // mm² to m²
+    const facingArea = leafArea * 2 * config.leafCount; // Both sides, all leaves
+    const facingMaterial = await this.lookupFinish(config.doorFacing, config.doorFinishSide1);
+    const facingCost = facingArea * facingMaterial.pricePerM2;
+    
+    // 5. Calculate ironmongery cost
+    const ironmongeryCosts = [];
+    if (config.hingeSupplyType === 'Supplied') {
+      const hinge = await this.lookupIronmongery(config.hingeType);
+      ironmongeryCosts.push({
+        item: config.hingeType,
+        qty: config.hingeQty,
+        unitCost: hinge.basePrice,
+        total: hinge.basePrice * config.hingeQty
+      });
+    }
+    // ... repeat for locks, bolts, closers, etc.
+    
+    // 6. Calculate labour costs
+    const labourTimes = await this.calculateLabourMinutes(config);
+    const shopRate = 45; // £45/hour = £0.75/minute
+    const labourCost = Object.values(labourTimes).reduce((sum, mins) => {
+      return sum + (mins * (shopRate / 60));
+    }, 0);
+    
+    // 7. Calculate overhead (15% of materials + labour)
+    const materialSubtotal = coreCost + lippingCost + glassCost + facingCost + 
+      ironmongeryCosts.reduce((sum, item) => sum + item.total, 0);
+    const overhead = (materialSubtotal + labourCost) * 0.15;
+    
+    // 8. Apply margin (25% markup)
+    const subtotal = materialSubtotal + labourCost + overhead;
+    const margin = subtotal * 0.25;
+    const totalPrice = subtotal + margin;
+    
+    return {
+      materials: {
+        core: { qty: coreQty, unitCost: core.basePrice, total: coreCost },
+        lipping: { qty: lippingQty, unitCost: lippingMaterial.pricePerMetre, total: lippingCost },
+        glass: { qty: glassArea, unitCost: glassPrice.pricePerM2, total: glassCost },
+        facing: { qty: facingArea, unitCost: facingMaterial.pricePerM2, total: facingCost },
+        ironmongery: ironmongeryCosts,
+        frame: { ... }
+      },
+      labour: labourTimes,
+      overhead,
+      subtotal,
+      margin,
+      totalPrice
+    };
+  }
+  
+  private async lookupCore(coreType: string, thickness: number) {
+    return await prisma.componentLookup.findFirst({
+      where: {
+        componentType: 'CORE',
+        code: { contains: coreType },
+        attributes: { path: ['thickness'], equals: thickness }
+      }
+    });
+  }
+  
+  private async calculateLabourMinutes(config: FireDoorConfig) {
+    // Base times from historical data
+    const baseTimes = {
+      cutting: 15, // minutes per core
+      edgeBanding: 20, // minutes per leaf
+      machining: 30, // base machining time
+      assembly: 45,
+      finishing: config.doorFacing === 'Paint' ? 60 : 30
+    };
+    
+    // Adjust for complexity
+    if (config.visionPanelQty1 > 0) {
+      baseTimes.machining += 20 * config.visionPanelQty1;
+    }
+    if (config.lockType1) {
+      baseTimes.machining += 15;
+    }
+    if (config.lockType2) {
+      baseTimes.machining += 15;
+    }
+    
+    return baseTimes;
+  }
+}
+```
+
+### Excel Import Script
+
+**File:** `scripts/import-fire-door-pricing.ts`
+
+```typescript
+import XLSX from 'xlsx';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+async function importPricingData() {
+  const workbook = XLSX.readFile('Costings for Copilot.xls');
+  
+  // Import Door Core Prices
+  const coreSheet = workbook.Sheets['Door Core Prices'];
+  const coreData = XLSX.utils.sheet_to_json(coreSheet);
+  
+  for (const row of coreData) {
+    await prisma.componentLookup.upsert({
+      where: { code: row['Core Type'] },
+      create: {
+        tenantId: 'YOUR_TENANT_ID',
+        componentType: 'CORE',
+        code: row['Core Type'],
+        name: row['Description'],
+        basePrice: row['Price'],
+        unit: 'EA',
+        attributes: {
+          thickness: row['Thickness'],
+          fireRating: row['Fire Rating'],
+          supplier: row['Supplier'],
+        }
+      },
+      update: {
+        basePrice: row['Price'],
+      }
+    });
+  }
+  
+  console.log('✅ Imported Door Core Prices');
+  
+  // Import Timber Prices
+  const timberSheet = workbook.Sheets['Timber Prices'];
+  const timberData = XLSX.utils.sheet_to_json(timberSheet);
+  
+  for (const row of timberData) {
+    await prisma.material.upsert({
+      where: { 
+        tenantId_name: {
+          tenantId: 'YOUR_TENANT_ID',
+          name: row['Species']
+        }
+      },
+      create: {
+        tenantId: 'YOUR_TENANT_ID',
+        name: row['Species'],
+        category: 'TIMBER',
+        pricePerUnit: row['Price per m³'],
+        unit: 'M3',
+        supplier: 'Lathams',
+      },
+      update: {
+        pricePerUnit: row['Price per m³'],
+      }
+    });
+  }
+  
+  console.log('✅ Imported Timber Prices');
+  
+  // ... repeat for Glass Prices, Finishes, Ironmongery, etc.
+}
+
+importPricingData()
+  .then(() => console.log('✅ All pricing data imported'))
+  .catch(console.error)
+  .finally(() => prisma.$disconnect());
+```
+
+---
+
+## Phase 3: Fire Rating Rules Engine
+
+### Certification Data Integration
+
+**From Excel sheets:**
+- Fire Certification (116 rows)
+- Fire Certification Check (122 rows)  
+- Fire Certification ASPEX (108 rows)
+
+### Rules Engine Implementation
+
+**File:** `api/src/services/fire-rating-rules.ts`
+
+```typescript
+interface FireRatingRule {
+  coreType: string;
+  minLeafThickness: number;
+  intumescentStrip: string;
+  intumescentThickness: string; // e.g., "15x4mm", "20x4mm"
+  glassBead: string;
+  glassTypes: string[];
+  maxGlazedArea?: number; // m² or percentage
+  certification: string[];
+  restrictions: {
+    frameMaterial?: { exclude: string[] };
+    letterPlate?: boolean;
+    doorViewer?: boolean;
+    action?: string[]; // Allowed actions
+    maxLeafWidth?: number;
+    maxLeafHeight?: number;
+  };
+}
+
+const FIRE_RATING_RULES: Record<string, FireRatingRule> = {
+  'FD30': {
+    coreType: 'Strebord FD30',
+    minLeafThickness: 44,
+    intumescentStrip: 'Lorient 15x4mm',
+    intumescentThickness: '15x4mm',
+    glassBead: 'Timber Non-Intumescent',
+    glassTypes: [
+      'Pyroguard 30-32',
+      'Pilkington Pyrostop 30-16',
+      'Pyrobelite 7-16',
+    ],
+    maxGlazedArea: 0.5, // 50% of door area
+    certification: [
+      'CERTIFIRE CF5023',
+      'BWF-CERTIFIRE FDIS001',
+      'ASPEX A/042920',
+    ],
+    restrictions: {
+      letterPlate: true,
+      doorViewer: true,
+      action: ['Single', 'Double', 'Sliding', 'Anti Barricade'],
+    },
+  },
+  
+  'FD60': {
+    coreType: 'Strebord FD60',
+    minLeafThickness: 54,
+    intumescentStrip: 'Lorient 20x4mm',
+    intumescentThickness: '20x4mm',
+    glassBead: 'Intumescent Glazing Bead',
+    glassTypes: [
+      'Pyroguard 60-44',
+      'Pilkington Pyrostop 60-32',
+      'Schott Pyran S 60',
+    ],
+    maxGlazedArea: 0.4, // 40% of door area
+    certification: [
+      'CERTIFIRE CF5024',
+      'BWF-CERTIFIRE FDIS002',
+      'ASPEX A/042921',
+    ],
+    restrictions: {
+      frameMaterial: {
+        exclude: ['Softwood', 'Beech'], // Must use Maple-Beech Stained or Hardwood
+      },
+      letterPlate: false, // NOT permitted
+      doorViewer: false,  // NOT permitted
+      action: ['Single', 'Double'], // No sliding for FD60
+      maxLeafWidth: 1200,
+      maxLeafHeight: 2400,
+    },
+  },
+  
+  'FD90': {
+    coreType: 'Halspan FD90',
+    minLeafThickness: 64,
+    intumescentStrip: 'Lorient 25x4mm',
+    intumescentThickness: '25x4mm',
+    glassBead: 'Intumescent Glazing Bead',
+    glassTypes: [
+      'Pyroguard 90-64',
+      'Pilkington Pyrostop 90-52',
+    ],
+    maxGlazedArea: 0.3, // 30% of door area
+    certification: [
+      'CERTIFIRE CF5025',
+      'ASPEX A/042922',
+    ],
+    restrictions: {
+      frameMaterial: {
+        exclude: ['Softwood', 'Beech', 'MDF'],
+      },
+      letterPlate: false,
+      doorViewer: false,
+      action: ['Single', 'Double'],
+      maxLeafWidth: 1100,
+      maxLeafHeight: 2300,
+    },
+  },
+  
+  'FD120': {
+    coreType: 'Halspan FD120',
+    minLeafThickness: 60,
+    intumescentStrip: 'Lorient 25x4mm Double',
+    intumescentThickness: '25x4mm (double)',
+    glassBead: 'Intumescent Glazing Bead',
+    glassTypes: [
+      'Pyroguard 120-88',
+    ],
+    maxGlazedArea: 0.25, // 25% of door area
+    certification: [
+      'CERTIFIRE CF5026',
+    ],
+    restrictions: {
+      frameMaterial: {
+        exclude: ['Softwood', 'Beech', 'MDF'],
+      },
+      letterPlate: false,
+      doorViewer: false,
+      action: ['Single'], // Only single action for FD120
+      maxLeafWidth: 1000,
+      maxLeafHeight: 2200,
+    },
+  },
+};
+
+export class FireRatingRulesEngine {
+  validate(config: FireDoorConfig): ValidationResult {
+    if (!config.fireRating || config.fireRating === 'None') {
+      return { valid: true, errors: [], warnings: [] };
+    }
+    
+    const rules = FIRE_RATING_RULES[config.fireRating];
+    if (!rules) {
+      return {
+        valid: false,
+        errors: [`Unknown fire rating: ${config.fireRating}`],
+        warnings: [],
+      };
+    }
+    
+    const errors: string[] = [];
+    const warnings: string[] = [];
+    
+    // Check leaf thickness
+    if (config.leafThickness < rules.minLeafThickness) {
+      errors.push(
+        `Leaf thickness ${config.leafThickness}mm is below minimum ${rules.minLeafThickness}mm for ${config.fireRating}`
+      );
+    }
+    
+    // Check core type
+    if (config.coreType !== rules.coreType) {
+      warnings.push(
+        `Core type should be ${rules.coreType} for ${config.fireRating} (currently: ${config.coreType})`
+      );
+    }
+    
+    // Check glass type
+    if (config.visionPanelQty1 > 0) {
+      if (!rules.glassTypes.includes(config.glassType)) {
+        errors.push(
+          `Glass type ${config.glassType} is not certified for ${config.fireRating}. ` +
+          `Permitted types: ${rules.glassTypes.join(', ')}`
+        );
+      }
+      
+      // Check glazed area
+      const leafArea = (config.masterLeafWidth * config.leafHeight) / 1000000; // m²
+      const glazedArea = (config.vp1Width * config.vp1Height) / 1000000; // m²
+      const glazedPercentage = glazedArea / leafArea;
+      
+      if (glazedPercentage > rules.maxGlazedArea) {
+        errors.push(
+          `Glazed area ${(glazedPercentage * 100).toFixed(1)}% exceeds maximum ` +
+          `${(rules.maxGlazedArea * 100).toFixed(1)}% for ${config.fireRating}`
+        );
+      }
+    }
+    
+    // Check frame material restrictions
+    if (rules.restrictions.frameMaterial?.exclude.includes(config.frameMaterial)) {
+      errors.push(
+        `Frame material ${config.frameMaterial} is not permitted for ${config.fireRating}. ` +
+        `Excluded materials: ${rules.restrictions.frameMaterial.exclude.join(', ')}`
+      );
+    }
+    
+    // Check letter plate
+    if (config.letterPlate && rules.restrictions.letterPlate === false) {
+      errors.push(`Letter plate is not permitted for ${config.fireRating}`);
+    }
+    
+    // Check door viewer
+    if (config.doorViewer && rules.restrictions.doorViewer === false) {
+      errors.push(`Door viewer is not permitted for ${config.fireRating}`);
+    }
+    
+    // Check action type
+    if (!rules.restrictions.action?.includes(config.action)) {
+      errors.push(
+        `Action type ${config.action} is not permitted for ${config.fireRating}. ` +
+        `Permitted actions: ${rules.restrictions.action.join(', ')}`
+      );
+    }
+    
+    // Check dimensions
+    if (rules.restrictions.maxLeafWidth && config.masterLeafWidth > rules.restrictions.maxLeafWidth) {
+      errors.push(
+        `Leaf width ${config.masterLeafWidth}mm exceeds maximum ${rules.restrictions.maxLeafWidth}mm for ${config.fireRating}`
+      );
+    }
+    
+    if (rules.restrictions.maxLeafHeight && config.leafHeight > rules.restrictions.maxLeafHeight) {
+      errors.push(
+        `Leaf height ${config.leafHeight}mm exceeds maximum ${rules.restrictions.maxLeafHeight}mm for ${config.fireRating}`
+      );
+    }
+    
+    return {
+      valid: errors.length === 0,
+      errors,
+      warnings,
+      certification: rules.certification,
+    };
+  }
+  
+  applyAutoCorrections(config: FireDoorConfig): FireDoorConfig {
+    if (!config.fireRating || config.fireRating === 'None') {
+      return config;
+    }
+    
+    const rules = FIRE_RATING_RULES[config.fireRating];
+    if (!rules) return config;
+    
+    return {
+      ...config,
+      coreType: rules.coreType,
+      leafThickness: Math.max(config.leafThickness || 0, rules.minLeafThickness),
+      intumescentStrip: rules.intumescentStrip,
+      glassBead: config.visionPanelQty1 > 0 ? rules.glassBead : config.glassBead,
+    };
+  }
+}
+```
+
+---
+
+## Phase 4: Workshop Paperwork PDF Generation
 
 **Use existing `Attribute` model or create `FireDoorAttributeDefinition`:**
 
