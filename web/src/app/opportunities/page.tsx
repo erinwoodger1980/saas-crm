@@ -81,7 +81,7 @@ const STATUS_LABELS: Record<QuoteStatus, string> = {
   LOST: "Lost",
 };
 
-export default function OpportunitiesPage() {
+function OpportunitiesPageContent() {
   const [tab, setTab] = useState<QuoteStatus>("QUOTE_SENT");
   const [grouped, setGrouped] = useState<Grouped>({} as Grouped);
   const [rows, setRows] = useState<Lead[]>([]);
@@ -641,4 +641,12 @@ class ErrorBoundary extends React.Component<{ fallback: React.ReactNode; childre
   static getDerivedStateFromError() { return { hasError: true }; }
   componentDidCatch(err: any, info: any) { console.error('Opportunity modal error boundary caught:', err, info); }
   render() { if (this.state.hasError) return this.props.fallback; return this.props.children; }
+}
+
+export default function OpportunitiesPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm">Loading opportunities...</div>}>
+      <OpportunitiesPageContent />
+    </Suspense>
+  );
 }
