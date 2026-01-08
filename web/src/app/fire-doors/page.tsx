@@ -1,47 +1,11 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { AgGridReact } from 'ag-grid-react';
-import { ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
-import type { ColDef, GridOptions, GridApi, ValueFormatterParams } from 'ag-grid-community';
-import 'ag-grid-community/styles/ag-grid.css';
-import 'ag-grid-community/styles/ag-theme-alpine.css';
+import FireDoorSpreadsheet from '@/components/FireDoorSpreadsheet';
 import { FireDoorRFIPanel } from '@/components/FireDoorRFIPanel';
 import { MessageSquare, ArrowLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-
-// Register AG Grid modules
-ModuleRegistry.registerModules([AllCommunityModule]);
-
-interface FireDoorLineItem {
-  id: string;
-  lajRef: string | null;
-  doorRef: string | null;
-  masterWidth: number | null;
-  slaveWidth: number | null;
-  doorHeight: number | null;
-  core: string | null;
-  rating: string | null;
-  coreType: string | null;
-  certification: string | null;
-  material: string | null;
-  materialFacing: string | null;
-  hingeType: string | null;
-  lockType: string | null;
-  qtyOfHinges: number | null;
-  lockHeight: number | null;
-  doorFinish: string | null;
-  handingFinish: string | null;
-  position: string | null;
-  notes1: string | null;
-  notes2: string | null;
-  calculatedField1: string | null;
-  calculatedField2: string | null;
-  calculatedField3: string | null;
-  calculatedField4: string | null;
-  calculatedField5: string | null;
-}
 
 interface RFI {
   id: string;
@@ -66,24 +30,16 @@ function FireDoorsPageContent() {
   const router = useRouter();
   const projectId = searchParams.get('projectId');
   
-  const [rowData, setRowData] = useState<FireDoorLineItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [rfis, setRfis] = useState<Record<string, RFI[]>>({});
   const [showRFIPanel, setShowRFIPanel] = useState(false);
   const [selectedLineItemId, setSelectedLineItemId] = useState<string | undefined>(undefined);
   const [projectInfo, setProjectInfo] = useState<{ mjsNumber: string; jobName: string; fireDoorImportId: string | null } | null>(null);
   
-  const gridRef = useRef<AgGridReact>(null);
-
-  // Fetch fire door line items
+  // Fetch project info
   useEffect(() => {
     if (!projectId) return;
 
-    async function fetchData() {
+    async function fetchProjectInfo() {
       try {
-        setLoading(true);
-        
-        // Fetch project info
         const projectRes = await fetch(`/api/fire-door-schedule/${projectId}`, {
           credentials: 'include',
         });
@@ -95,458 +51,48 @@ function FireDoorsPageContent() {
             fireDoorImportId: project.fireDoorImportId || null
           });
         }
-        const res = await fetch(`/api/fire-door-schedule/${projectId}/line-items`, {
-          credentials: 'include',
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setRowData(data);
-          
-          // Fetch RFIs for all line items
-          const rfiRes = await fetch(`/api/fire-door-rfis?projectId=${projectId}`, {
-            credentials: 'include',
-          });
-          if (rfiRes.ok) {
-            const rfiData = await rfiRes.json();
-            // Group RFIs by line item ID
-            const grouped = rfiData.reduce((acc: Record<string, RFI[]>, rfi: any) => {
-              const lineItemId = rfi.fireDoorLineItemId;
-              if (!acc[lineItemId]) acc[lineItemId] = [];
-              acc[lineItemId].push(rfi);
-              return acc;
-            }, {});
-            setRfis(grouped);
-          }
-        }
       } catch (error) {
-        console.error('Error fetching data:', error);
-      } finally {
-        setLoading(false);
+        console.error('Error fetching project info:', error);
       }
     }
 
-    fetchData();
+    fetchProjectInfo();
   }, [projectId]);
 
-  // RFI Badge Renderer
-  const RFIBadgeRenderer = (params: any) => {
-    const lineItemId = params.data?.id;
-    const lineItemRfis = rfis[lineItemId] || [];
-    const openCount = lineItemRfis.filter(r => r.status === 'open').length;
-    
-    if (openCount === 0) return null;
-    
-    const urgentCount = lineItemRfis.filter(r => r.status === 'open' && r.priority === 'urgent').length;
-    const highCount = lineItemRfis.filter(r => r.status === 'open' && r.priority === 'high').length;
-    
-    return (
-      <div className="flex gap-1">
-        {urgentCount > 0 && (
-          <span className="px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-800 rounded">
-            {urgentCount} Urgent
-          </span>
-        )}
-        {highCount > 0 && (
-          <span className="px-2 py-0.5 text-xs font-semibold bg-orange-100 text-orange-800 rounded">
-            {highCount} High
-          </span>
-        )}
-        {openCount - urgentCount - highCount > 0 && (
-          <span className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded">
-            {openCount - urgentCount - highCount} Open
-          </span>
-        )}
-      </div>
-    );
-  };
-
-  // Column definitions with sections
-  const columnDefs: ColDef[] = useMemo(() => [
-    // Identification Section
-    {
-      headerName: 'Identification',
-      children: [
-        {
-          field: 'lajRef',
-          headerName: 'LAJ Ref',
-          pinned: 'left',
-          width: 120,
-          editable: true,
-          filter: 'agTextColumnFilter',
-        },
-        {
-          field: 'doorRef',
-          headerName: 'Door Ref',
-          pinned: 'left',
-          width: 120,
-          editable: true,
-          filter: 'agTextColumnFilter',
-        },
-        {
-          field: 'position',
-          headerName: 'Position',
-          width: 150,
-          editable: true,
-          filter: 'agTextColumnFilter',
-        },
-      ],
-    },
-    
-    // Dimensions Section
-    {
-      headerName: 'Dimensions',
-      children: [
-        {
-          field: 'masterWidth',
-          headerName: 'Master Width',
-          width: 120,
-          editable: true,
-          filter: 'agNumberColumnFilter',
-          valueFormatter: (params: ValueFormatterParams) => params.value ? `${params.value}mm` : '',
-        },
-        {
-          field: 'slaveWidth',
-          headerName: 'Slave Width',
-          width: 120,
-          editable: true,
-          filter: 'agNumberColumnFilter',
-          valueFormatter: (params: ValueFormatterParams) => params.value ? `${params.value}mm` : '',
-        },
-        {
-          field: 'doorHeight',
-          headerName: 'Height',
-          width: 100,
-          editable: true,
-          filter: 'agNumberColumnFilter',
-          valueFormatter: (params: ValueFormatterParams) => params.value ? `${params.value}mm` : '',
-        },
-      ],
-    },
-    
-    // Fire Specification Section
-    {
-      headerName: 'Fire Specification',
-      children: [
-        {
-          field: 'rating',
-          headerName: 'Fire Rating',
-          width: 120,
-          editable: true,
-          filter: 'agTextColumnFilter',
-        },
-        {
-          field: 'core',
-          headerName: 'Core',
-          width: 120,
-          editable: true,
-          filter: 'agTextColumnFilter',
-        },
-        {
-          field: 'coreType',
-          headerName: 'Core Type',
-          width: 130,
-          editable: true,
-          filter: 'agTextColumnFilter',
-        },
-        {
-          field: 'certification',
-          headerName: 'Certification',
-          width: 150,
-          editable: true,
-          filter: 'agTextColumnFilter',
-        },
-      ],
-    },
-    
-    // Materials Section
-    {
-      headerName: 'Materials',
-      children: [
-        {
-          field: 'material',
-          headerName: 'Material',
-          width: 130,
-          editable: true,
-          filter: 'agTextColumnFilter',
-        },
-        {
-          field: 'materialFacing',
-          headerName: 'Facing',
-          width: 130,
-          editable: true,
-          filter: 'agTextColumnFilter',
-        },
-        {
-          field: 'doorFinish',
-          headerName: 'Finish',
-          width: 150,
-          editable: true,
-          filter: 'agTextColumnFilter',
-        },
-      ],
-    },
-    
-    // Ironmongery Section
-    {
-      headerName: 'Ironmongery',
-      children: [
-        {
-          field: 'hingeType',
-          headerName: 'Hinges',
-          width: 120,
-          editable: true,
-          filter: 'agTextColumnFilter',
-        },
-        {
-          field: 'qtyOfHinges',
-          headerName: 'Qty',
-          width: 80,
-          editable: true,
-          filter: 'agNumberColumnFilter',
-        },
-        {
-          field: 'lockType',
-          headerName: 'Lock',
-          width: 120,
-          editable: true,
-          filter: 'agTextColumnFilter',
-        },
-        {
-          field: 'lockHeight',
-          headerName: 'Lock Height',
-          width: 110,
-          editable: true,
-          filter: 'agNumberColumnFilter',
-          valueFormatter: (params: ValueFormatterParams) => params.value ? `${params.value}mm` : '',
-        },
-        {
-          field: 'handingFinish',
-          headerName: 'Handing',
-          width: 100,
-          editable: true,
-          filter: 'agTextColumnFilter',
-        },
-      ],
-    },
-
-    // Notes Section
-    {
-      headerName: 'Notes',
-      children: [
-        {
-          field: 'notes1',
-          headerName: 'Notes 1',
-          width: 200,
-          editable: true,
-          filter: 'agTextColumnFilter',
-        },
-        {
-          field: 'notes2',
-          headerName: 'Notes 2',
-          width: 200,
-          editable: true,
-          filter: 'agTextColumnFilter',
-        },
-      ],
-    },
-    
-    // Calculated Fields Section
-    {
-      headerName: 'Calculated Fields',
-      children: [
-        {
-          field: 'calculatedField1',
-          headerName: 'Calc 1',
-          width: 150,
-          editable: false,
-          cellStyle: { backgroundColor: '#e3f2fd', fontWeight: '500' },
-          filter: 'agTextColumnFilter',
-        },
-        {
-          field: 'calculatedField2',
-          headerName: 'Calc 2',
-          width: 150,
-          editable: false,
-          cellStyle: { backgroundColor: '#e3f2fd', fontWeight: '500' },
-          filter: 'agTextColumnFilter',
-        },
-        {
-          field: 'calculatedField3',
-          headerName: 'Calc 3',
-          width: 150,
-          editable: false,
-          cellStyle: { backgroundColor: '#e3f2fd', fontWeight: '500' },
-          filter: 'agTextColumnFilter',
-        },
-        {
-          field: 'calculatedField4',
-          headerName: 'Calc 4',
-          width: 150,
-          editable: false,
-          cellStyle: { backgroundColor: '#e3f2fd', fontWeight: '500' },
-          filter: 'agTextColumnFilter',
-        },
-        {
-          field: 'calculatedField5',
-          headerName: 'Calc 5',
-          width: 150,
-          editable: false,
-          cellStyle: { backgroundColor: '#e3f2fd', fontWeight: '500' },
-          filter: 'agTextColumnFilter',
-        },
-      ],
-    },
-    
-    // Calculated Fields Section
-    {
-      headerName: 'Calculated Fields',
-      children: [
-        {
-          field: 'calculatedField1',
-          headerName: 'Calc 1',
-          width: 150,
-          editable: false,
-          cellStyle: { backgroundColor: '#e3f2fd', fontWeight: '500' },
-          filter: 'agTextColumnFilter',
-        },
-        {
-          field: 'calculatedField2',
-          headerName: 'Calc 2',
-          width: 150,
-          editable: false,
-          cellStyle: { backgroundColor: '#e3f2fd', fontWeight: '500' },
-          filter: 'agTextColumnFilter',
-        },
-        {
-          field: 'calculatedField3',
-          headerName: 'Calc 3',
-          width: 150,
-          editable: false,
-          cellStyle: { backgroundColor: '#e3f2fd', fontWeight: '500' },
-          filter: 'agTextColumnFilter',
-        },
-        {
-          field: 'calculatedField4',
-          headerName: 'Calc 4',
-          width: 150,
-          editable: false,
-          cellStyle: { backgroundColor: '#e3f2fd', fontWeight: '500' },
-          filter: 'agTextColumnFilter',
-        },
-        {
-          field: 'calculatedField5',
-          headerName: 'Calc 5',
-          width: 150,
-          editable: false,
-          cellStyle: { backgroundColor: '#e3f2fd', fontWeight: '500' },
-          filter: 'agTextColumnFilter',
-        },
-      ],
-    },
-    
-    // Communication Section
-    {
-      headerName: 'Communication',
-      children: [
-        {
-          headerName: 'RFIs',
-          width: 150,
-          cellRenderer: RFIBadgeRenderer,
-          filter: false,
-          sortable: false,
-        },
-      ],
-    },
-  ], [rfis]);
-
-  const defaultColDef: ColDef = useMemo(() => ({
-    sortable: true,
-    resizable: true,
-    filter: true,
-    floatingFilter: true,
-  }), []);
-
-  const gridOptions: GridOptions = useMemo(() => ({
-    enableRangeSelection: true,
-    enableCellTextSelection: true,
-    suppressMovableColumns: false,
-    suppressColumnVirtualisation: false,
-    rowSelection: 'multiple',
-    animateRows: true,
-    getContextMenuItems: (params: any) => {
-      const lineItemId = params.node?.data?.id;
-      const field = params.column?.getColId();
-      
-      if (!lineItemId || !field) return [];
-      
-      return [
-        {
-          name: `Create RFI for ${params.column?.getColDef().headerName}`,
-          icon: '<span class="ag-icon ag-icon-message"></span>',
-          action: () => {
-            setSelectedLineItemId(lineItemId);
-            setShowRFIPanel(true);
-          },
-        },
-        'separator',
-        'copy',
-        'paste',
-        'separator',
-        'export',
-      ];
-    },
-  }), []);
-
-  const onCellValueChanged = useCallback(async (event: any) => {
-    const { data, colDef } = event;
-    const field = colDef.field;
-    const newValue = data[field];
-
-    try {
-      const res = await fetch(`/api/fire-door-schedule/line-items/${data.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ [field]: newValue }),
-      });
-
-      if (!res.ok) {
-        console.error('Failed to update cell');
-        // Optionally revert the change
-      }
-    } catch (error) {
-      console.error('Error updating cell:', error);
-    }
-  }, []);
-
-  const onExportCSV = useCallback(() => {
-    gridRef.current?.api?.exportDataAsCsv();
-  }, []);
-
-  if (loading) {
+  if (!projectId || !projectInfo) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <div className="text-lg">Loading fire door schedule...</div>
+        <div className="text-center">
+          <p className="text-gray-600">No project selected</p>
+          <button
+            onClick={() => router.push('/fire-door-schedule')}
+            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Back to Projects
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
+    <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 via-white to-blue-50">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between">
+      <div className="bg-white border-b border-slate-200 shadow-sm">
+        <div className="max-w-full mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
-              onClick={() => router.push(`/fire-door-schedule/${projectId}`)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition"
+              onClick={() => router.back()}
+              className="p-2 hover:bg-slate-100 rounded-lg transition"
             >
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
+              <ArrowLeft className="w-5 h-5 text-slate-600" />
             </button>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Fire Door Order Grid</h1>
-              <p className="text-sm text-gray-500 mt-1">
-                {projectInfo ? `${projectInfo.mjsNumber} - ${projectInfo.jobName}` : 'Loading...'}
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-slate-800 to-blue-900 bg-clip-text text-transparent">
+                Fire Door Order Grid
+              </h1>
+              <p className="text-sm text-slate-600">
+                {projectInfo.mjsNumber} - {projectInfo.jobName}
               </p>
             </div>
           </div>
@@ -559,111 +105,21 @@ function FireDoorsPageContent() {
               className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition flex items-center gap-2"
             >
               <MessageSquare className="w-4 h-4" />
-              RFI Manager ({Object.values(rfis).flat().length})
-            </button>
-            <button
-              onClick={onExportCSV}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
-            >
-              Export CSV
-            </button>
-            <button
-              onClick={async () => {
-                if (!projectId || !projectInfo) {
-                  alert('No project selected');
-                  return;
-                }
-                
-                // Check if there's a fire door import for this project
-                let importId = projectInfo.fireDoorImportId;
-                
-                if (!importId) {
-                  // Create a default import if none exists
-                  try {
-                    const res = await fetch('/api/fire-door-schedule/imports', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      credentials: 'include',
-                      body: JSON.stringify({
-                        projectId,
-                        sourceName: 'Manual Entry',
-                        totalValue: 0,
-                        rowCount: 0,
-                      }),
-                    });
-                    
-                    if (!res.ok) {
-                      const errorData = await res.json();
-                      console.error('Import creation failed:', errorData);
-                      alert(`Failed to create import: ${errorData.error || 'Unknown error'}`);
-                      return;
-                    }
-                    
-                    const newImport = await res.json();
-                    importId = newImport.id;
-                    setProjectInfo({ ...projectInfo, fireDoorImportId: importId });
-                  } catch (error) {
-                    console.error('Error creating import:', error);
-                    alert(`Failed to create import: ${error instanceof Error ? error.message : 'Unknown error'}`);
-                    return;
-                  }
-                }
-                
-                if (!importId) {
-                  alert('No import ID available');
-                  return;
-                }
-                
-                // Create new line item
-                try {
-                  const res = await fetch('/api/fire-door-schedule/line-items', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include',
-                    body: JSON.stringify({
-                      fireDoorImportId: importId,
-                      rowIndex: rowData.length,
-                      doorRef: `NEW-${rowData.length + 1}`,
-                      rating: 'FD60S',
-                      doorHeight: 2040,
-                      masterWidth: 926,
-                    }),
-                  });
-                  
-                  if (!res.ok) {
-                    const errorData = await res.json();
-                    console.error('Line item creation failed:', errorData);
-                    alert(`Failed to create line item: ${errorData.error || 'Unknown error'}`);
-                    return;
-                  }
-                  
-                  const newItem = await res.json();
-                  setRowData([...rowData, newItem]);
-                } catch (error) {
-                  console.error('Error creating line item:', error);
-                  alert(`Failed to create line item: ${error instanceof Error ? error.message : 'Unknown error'}`);
-                }
-              }}
-              className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition font-medium"
-            >
-              + Add Line Item
+              RFI Manager (0)
             </button>
           </div>
         </div>
       </div>
 
-      {/* Grid */}
-      <div className="flex-1 p-4">
-        <div className="ag-theme-alpine h-full rounded-lg shadow-lg">
-          <AgGridReact
-            ref={gridRef}
-            rowData={rowData}
-            columnDefs={columnDefs}
-            defaultColDef={defaultColDef}
-            gridOptions={gridOptions}
-            onCellValueChanged={onCellValueChanged}
-          />
-        </div>
+      {/* Grid - Use FireDoorSpreadsheet component with all 223 columns */}
+      <div className="flex-1 overflow-hidden p-4">
+        {projectInfo.fireDoorImportId ? (
+          <FireDoorSpreadsheet importId={projectInfo.fireDoorImportId} />
+        ) : (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-slate-600">No fire door data available for this project</p>
+          </div>
+        )}
       </div>
 
       {/* RFI Panel */}
@@ -673,15 +129,7 @@ function FireDoorsPageContent() {
           lineItemId={selectedLineItemId}
           onClose={() => setShowRFIPanel(false)}
           onRFICreated={() => {
-            // Refetch data to update RFI counts
-            if (projectId) {
-              fetch(`/api/fire-door-schedule/${projectId}/line-items`, {
-                credentials: 'include',
-              })
-                .then(res => res.json())
-                .then(data => setRowData(data))
-                .catch(error => console.error('Error refetching:', error));
-            }
+            setShowRFIPanel(false);
           }}
         />
       )}
