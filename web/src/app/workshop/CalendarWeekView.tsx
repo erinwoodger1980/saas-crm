@@ -350,6 +350,22 @@ export default function CalendarWeekView({
             className="absolute inset-0 pointer-events-none"
             style={{ paddingTop: "3rem", zIndex: 10 }}
           >
+            {/* Row guides and badges */}
+            {projectRows.map((row, rowIdx) => (
+              <div
+                key={`guide-${rowIdx}`}
+                className="absolute inset-x-0"
+                style={{ top: `${rowIdx * 32 + 12}px`, height: 0 }}
+              >
+                <div className="border-t border-dashed border-slate-200" />
+                <div
+                  className="absolute left-1 -translate-y-1 text-[10px] px-2 py-0.5 rounded-full bg-white border border-slate-200 shadow-sm text-slate-700"
+                  title="Projects in this row"
+                >
+                  {row.length} project{row.length !== 1 ? 's' : ''}
+                </div>
+              </div>
+            ))}
             {/* Manufacturing bars */}
             {(timelineViewFilter === 'both' || timelineViewFilter === 'manufacturing') && projectRows.map((row, rowIdx) => (
               <div

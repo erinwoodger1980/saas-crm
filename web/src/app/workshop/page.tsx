@@ -1336,6 +1336,16 @@ export default function WorkshopPage() {
               </SelectContent>
             </Select>
           )}
+
+          {/* Direct Group Projects button */}
+          {!isWorkshopOnly && (
+            <Button
+              onClick={() => setGroupProjectsOpen(true)}
+              className="bg-gradient-to-r from-amber-400 via-rose-400 to-pink-400 text-white h-9"
+            >
+              📦 Group Projects
+            </Button>
+          )}
           
           {/* Timeline Filter (only shown in timeline view) */}
           {!isWorkshopOnly && viewMode === 'timeline' && (
@@ -1589,6 +1599,45 @@ export default function WorkshopPage() {
               
               {/* Project bars overlay - absolute positioned to span across days */}
               <div className="absolute inset-0 pointer-events-none" style={{ paddingTop: '2.5rem', zIndex: 10 }}>
+                {/* Row guides and badges for month overlay */}
+                {(() => {
+                  if (!projects || projects.length === 0) return null;
+                  // Build same projectRows used below to place guides consistently
+                  const daysArray = getDaysInMonth(currentMonth);
+                  const validDays = daysArray.filter(d => d !== null) as Date[];
+                  if (validDays.length === 0) return null;
+                  const monthStart = validDays[0];
+                  const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+                  const projectRows: Project[][] = [];
+                  projects.forEach(proj => {
+                    if (!proj.startDate || !proj.deliveryDate) return;
+                    const projStart = new Date(proj.startDate);
+                    const projEnd = new Date(proj.deliveryDate);
+                    if (projEnd < monthStart || projStart > monthEnd) return;
+                    let rowIndex = 0;
+                    while (rowIndex < projectRows.length) {
+                      const hasOverlap = projectRows[rowIndex].some(existingProj => {
+                        if (!existingProj.startDate || !existingProj.deliveryDate) return false;
+                        const existingStart = new Date(existingProj.startDate);
+                        const existingEnd = new Date(existingProj.deliveryDate);
+                        return !(projEnd < existingStart || projStart > existingEnd);
+                      });
+                      if (!hasOverlap) break;
+                      rowIndex++;
+                    }
+                    if (!projectRows[rowIndex]) projectRows[rowIndex] = [];
+                    projectRows[rowIndex].push(proj);
+                  });
+
+                  return projectRows.map((row, rowIdx) => (
+                    <div key={`month-guide-${rowIdx}`} style={{ position: 'absolute', top: `${rowIdx * 128 + 8}px`, left: 0, right: 0 }}>
+                      <div className="border-t border-dashed border-slate-200" />
+                      <div className="absolute left-1 -translate-y-1 text-[10px] px-2 py-0.5 rounded-full bg-white border border-slate-200 shadow-sm text-slate-700">
+                        {row.length} project{row.length !== 1 ? 's' : ''}
+                      </div>
+                    </div>
+                  ));
+                })()}
                 {(() => {
                   const daysArray = getDaysInMonth(currentMonth);
                   const validDays = daysArray.filter(d => d !== null) as Date[];
