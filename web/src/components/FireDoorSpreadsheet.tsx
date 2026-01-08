@@ -308,10 +308,6 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   const [gridConfig, setGridConfig] = useState<Record<string, any>>({});
   const [lookupOptions, setLookupOptions] = useState<Record<string, Array<{value: string; label: string}>>>({});
   const [error, setError] = useState<string | null>(null);
-  const [gridConfig, setGridConfig] = useState<Record<string, any>>({});
-  const [configModalOpen, setConfigModalOpen] = useState(false);
-  const [configModalColumn, setConfigModalColumn] = useState<string | null>(null);
-  const [lookupOptions, setLookupOptions] = useState<Record<string, Array<{value: string, label: string}>>>({});
 
   // Load fire door data from import
   useEffect(() => {
