@@ -39,29 +39,42 @@ export async function notifyManualQuote(input: NotifyInput) {
     console.warn('[notifyManualQuote] failed to log followUp:', (e as any)?.message || e);
   }
 
-  // Optional: email notification if SMTP configured
-  const smtpHost = process.env.SMTP_HOST;
-  const smtpUser = process.env.SMTP_USER;
-  const smtpPass = process.env.SMTP_PASS;
+  // Send notification via Resend if configured, otherwise fallback to SMTP
   const toListRaw = process.env.MANUAL_QUOTE_ALERT_EMAILS;
   const toList = typeof toListRaw === 'string' ? toListRaw.split(',').map(s=>s.trim()).filter(Boolean) : [];
-
-  if (smtpHost && smtpUser && smtpPass && toList.length) {
-    try {
-      const transporter = nodemailer.createTransport({
-        host: smtpHost,
-        port: Number(process.env.SMTP_PORT || 587),
-        secure: false,
-        auth: { user: smtpUser, pass: smtpPass },
-      });
-      await transporter.sendMail({
-        from: `${tenantName} <no-reply@${tenant?.slug || 'example'}.app>`,
-        to: toList,
-        subject,
-        text: body,
-      });
-    } catch (e) {
-      console.warn('[notifyManualQuote] email send failed:', (e as any)?.message || e);
+  if (toList.length) {
+    const resendKey = process.env.RESEND_API_KEY;
+    if (resendKey) {
+      try {
+        const { Resend } = require('resend');
+        const resend = new Resend(resendKey);
+        const from = process.env.EMAIL_FROM || `${tenantName} <noreply@${tenant?.slug || 'joineryai'}.app>`;
+        await resend.emails.send({ from, to: toList, subject, text: body });
+        return; // done
+      } catch (e) {
+        console.warn('[notifyManualQuote] Resend send failed, falling back to SMTP:', (e as any)?.message || e);
+      }
+    }
+    const smtpHost = process.env.SMTP_HOST;
+    const smtpUser = process.env.SMTP_USER;
+    const smtpPass = process.env.SMTP_PASS;
+    if (smtpHost && smtpUser && smtpPass) {
+      try {
+        const transporter = nodemailer.createTransport({
+          host: smtpHost,
+          port: Number(process.env.SMTP_PORT || 587),
+          secure: false,
+          auth: { user: smtpUser, pass: smtpPass },
+        });
+        await transporter.sendMail({
+          from: `${tenantName} <no-reply@${tenant?.slug || 'example'}.app>`,
+          to: toList,
+          subject,
+          text: body,
+        });
+      } catch (e) {
+        console.warn('[notifyManualQuote] SMTP email send failed:', (e as any)?.message || e);
+      }
     }
   }
 }
