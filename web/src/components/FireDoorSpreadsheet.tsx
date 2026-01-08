@@ -87,7 +87,7 @@ const COLUMNS: Column<FireDoorRow>[] = [
   { key: "doorRef", name: "Door Ref", width: 120, editable: true, frozen: true },
   { key: "location", name: "Location", width: 150, editable: true },
   
-  // SECTION 2: BASIC SPECS
+  // SECTION 2: BASIC SPECS & SOURCE
   { key: "certification", name: "Certification", width: 120 },
   { key: "doorsetType", name: "Doorset Type", width: 120 },
   { key: "rating", name: "Fire Rating", width: 100 },
@@ -187,7 +187,7 @@ const COLUMNS: Column<FireDoorRow>[] = [
   { key: "doorFinish", name: "Door Finish", width: 130, editable: true },
   { key: "fireRatingFinish", name: "Fire Rating (Finish)", width: 150 },
   { key: "handingFinish", name: "Handing", width: 110, editable: true },
-  { key: "position", name: "Position", width: 110 },
+  { key: "position", name: "Position", width: 110, editable: true },
   
   // SECTION 11: PRIMARY IRONMONGERY
   { key: "qtyOfHinges", name: "Qty Hinges", width: 100, editable: true },
@@ -259,7 +259,7 @@ const COLUMNS: Column<FireDoorRow>[] = [
   { key: "totalGlazedAreaMaster", name: "Glazed Area", width: 140 },
   { key: "fanlightSidelightGlz", name: "Fanlight/Side Glz", width: 150 },
   { key: "glazingTape", name: "Glazing Tape", width: 120 },
-  { key: "dropSeal", name: "Drop Seal", width: 110 },
+  { key: "dropSeal", name: "Drop Seal (Glaze)", width: 110 },
   
   // SECTION 16: FINAL IRONMONGERY
   { key: "hinges", name: "Hinges (Final)", width: 130 },
