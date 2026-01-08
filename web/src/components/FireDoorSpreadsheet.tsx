@@ -308,6 +308,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   const [gridConfig, setGridConfig] = useState<Record<string, any>>({});
   const [lookupOptions, setLookupOptions] = useState<Record<string, Array<{value: string; label: string}>>>({});
   const [error, setError] = useState<string | null>(null);
+  const [availableLookupTables, setAvailableLookupTables] = useState<Array<{ id: string; tableName: string; category?: string }>>([]);
 
   // Load fire door data from import
   useEffect(() => {
@@ -403,6 +404,21 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       }
     };
     loadConfigs();
+  }, []);
+
+  // Load available lookup tables for the configure modal
+  useEffect(() => {
+    const loadLookupTables = async () => {
+      try {
+        const tables = await apiFetch('/api/lookup-tables');
+        if (Array.isArray(tables)) {
+          setAvailableLookupTables(tables);
+        }
+      } catch (err) {
+        console.log('No lookup tables found');
+      }
+    };
+    loadLookupTables();
   }, []);
 
   const createComponentForField = async (lineItemId: string, fieldName: string, fieldValue: string, componentType: string) => {
@@ -884,6 +900,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
         currentConfig={gridConfig[configModalColumn]}
         onClose={() => setConfigModalOpen(false)}
         onSave={(config) => saveColumnConfig(configModalColumn, config)}
+        availableLookupTables={availableLookupTables}
       />
     </div>
   );

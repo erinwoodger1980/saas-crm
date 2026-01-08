@@ -137,6 +137,7 @@ import rfisRouter from "./routes/rfis";
 import coachingRouter from "./routes/coaching";
 import fireDoorQRRouter from "./routes/fire-door-qr";
 import lookupRouter from "./routes/lookup";
+import lookupTablesRouter from "./routes/lookup-tables";
 import wealdenRouter from "./routes/wealden";
 import lippingLookupRouter from "./routes/lipping-lookup";
 import componentsRouter from "./routes/components";
@@ -777,6 +778,8 @@ app.use("/api/fire-door-rfis", fireDoorRfisRouter);
 app.use("/api/fire-door-components", requireAuth, fireDoorComponentsRouter);
 // Generic lookup API for calculated fields
 app.use("/api/lookup", requireAuth, lookupRouter);
+// Lookup tables API (for grid configuration dropdown)
+app.use("/lookup-tables", requireAuth, lookupTablesRouter);
 // Lipping lookup table (door manufacturing lipping specifications)
 app.use("/lipping-lookup", requireAuth, lippingLookupRouter);
 // Component catalog and product type configuration
