@@ -19,6 +19,7 @@ import {
   ChevronRight,
   Users,
   ClipboardCheck,
+  LogOut,
 } from "lucide-react";
 
 import { useTenantBrand } from "@/lib/use-tenant-brand";
@@ -186,6 +187,19 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/80 px-3 py-1 font-medium text-slate-500 shadow-sm">
                 Hey, <span className="text-slate-700">{userFirstName || shortName}</span>
               </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  localStorage.removeItem("jwt");
+                  document.cookie = "jauth=; path=/; max-age=0";
+                  window.location.href = "/login";
+                }}
+                className="h-8 gap-1.5 text-slate-600 hover:text-slate-900"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                <span className="text-xs">Log out</span>
+              </Button>
               {user?.isEarlyAdopter && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 font-medium text-blue-700 shadow-sm">
                   Early access
