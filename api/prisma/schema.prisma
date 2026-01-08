@@ -4877,3 +4877,16 @@ model FireDoorRFI {
   @@index([tenantId, createdAt])
 }
 
+model GridFieldConfig {
+  id              String    @id @default(cuid())
+  fieldName       String    @unique
+  inputType       String    @default("text") // text, number, dropdown, formula, date
+  lookupTable     String?   // hinges, locks, glass, doorCore
+  formula         String?   // Formula expression for calculated fields
+  componentLink   String?   // hinges, locks, glass, doorBlank
+  required        Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([fieldName])
+}

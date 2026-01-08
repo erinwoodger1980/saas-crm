@@ -78,6 +78,7 @@ interface FireDoorRow {
 interface FireDoorSpreadsheetProps {
   importId?: string;
   onQuoteCreated?: (quoteId: string) => void;
+  onComponentCreated?: () => void;
 }
 
 // Define all 223 columns organized into logical groups
@@ -341,12 +342,16 @@ const COLUMNS: Column<FireDoorRow>[] = [
   { key: "lineTotal", name: "Line Total £", width: 120, frozen: true, cellClass: "font-bold text-green-700" },
 ];
 
-export default function FireDoorSpreadsheet({ importId, onQuoteCreated }: FireDoorSpreadsheetProps) {
+export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onComponentCreated }: FireDoorSpreadsheetProps) {
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<FireDoorRow[]>([]);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [creatingQuote, setCreatingQuote] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [gridConfig, setGridConfig] = useState<Record<string, any>>({});
+  const [configModalOpen, setConfigModalOpen] = useState(false);
+  const [configModalColumn, setConfigModalColumn] = useState<string | null>(null);
+  const [lookupOptions, setLookupOptions] = useState<Record<string, Array<{value: string, label: string}>>>({});
 
   // Load fire door data from import
   useEffect(() => {
@@ -372,6 +377,92 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated }: FireDo
 
   const handleRowsChange = useCallback((newRows: FireDoorRow[]) => {
     setRows(newRows);
+
+    // Check for component creation triggers
+    newRows.forEach((newRow, index) => {
+      const oldRow = rows[index];
+      if (!oldRow) return;
+
+      // Check each field with a component link
+      Object.entries(gridConfig).forEach(([fieldName, config]: [string, any]) => {
+        if (config.componentLink && newRow[fieldName as keyof FireDoorRow] && !oldRow[fieldName as keyof FireDoorRow]) {
+          // Field was just filled - trigger component creation
+          createComponentForField(newRow.id, fieldName, String(newRow[fieldName as keyof FireDoorRow]), config.componentLink)
+            .catch(err => console.error('Failed to create component:', err));
+        }
+      });
+    });
+  }, [rows, gridConfig]);
+
+  const createComponentForField = async (lineItemId: string, fieldName: string, fieldValue: string, componentType: string) => {
+    try {
+      // Map field names to component property mappings
+      const propertyMappings: Record<string, Record<string, string>> = {
+        hinges: {hingeType: 'hingeType', hingeQuantity: 'quantity'},
+        locks: {lockType: 'lockType', lockQuantity: 'quantity'},
+        glass: {glassType: 'glassType', glassArea: 'area'},
+        doorBlank: {doorBlankType: 'doorBlankType'},
+      };
+
+      const componentMapping: Record<string, string> = {
+        hinges: 'Hinges',
+        locks: 'Locks',
+        glass: 'Vision Glass',
+        doorBlank: 'Door Blank',
+      };
+
+      await apiFetch(`/api/fire-door-components/${lineItemId}/generate`, {
+        method: 'POST',
+        json: {
+          componentType: componentMapping[componentType],
+          triggerField: fieldName,
+          triggerValue: fieldValue,
+          propertyMap: propertyMappings[componentType] || {},
+        },
+      });
+
+      // Refresh BOM if available
+      onComponentCreated?.();
+    } catch (err) {
+      console.error(`Failed to create ${componentType} component:`, err);
+    }
+  };
+
+  // Load lookup table options
+  useEffect(() => {
+    const loadLookupOptions = async () => {
+      try {
+        // Load hinge options
+        const hinges = await apiFetch('/api/ironmongery-prices?type=hinge');
+        if (hinges && Array.isArray(hinges)) {
+          setLookupOptions(prev => ({
+            ...prev,
+            hingeType: hinges.map((h: any) => ({value: h.id, label: h.description || h.name}))
+          }));
+        }
+
+        // Load lock options
+        const locks = await apiFetch('/api/ironmongery-prices?type=lock');
+        if (locks && Array.isArray(locks)) {
+          setLookupOptions(prev => ({
+            ...prev,
+            lockType: locks.map((l: any) => ({value: l.id, label: l.description || l.name}))
+          }));
+        }
+
+        // Load glass options
+        const glass = await apiFetch('/api/glass-prices');
+        if (glass && Array.isArray(glass)) {
+          setLookupOptions(prev => ({
+            ...prev,
+            glassType: glass.map((g: any) => ({value: g.id, label: g.description || g.name}))
+          }));
+        }
+      } catch (err) {
+        console.error('Failed to load lookup options:', err);
+      }
+    };
+    loadLookupOptions();
   }, []);
 
   const columns = useMemo((): readonly Column<FireDoorRow>[] => {
@@ -379,20 +470,41 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated }: FireDo
       SelectColumn,
       ...COLUMNS.map(col => ({
         ...col,
+        headerCellClass: "cursor-pointer hover:bg-blue-50",
+        headerRenderer: (props: any) => (
+          <div 
+            className="flex items-center justify-between gap-2 h-full"
+            onClick={() => {
+              setConfigModalColumn(col.key);
+              setConfigModalOpen(true);
+            }}
+          >
+            <span>{col.name}</span>
+            <span className="text-xs text-blue-500 opacity-0 group-hover:opacity-100">⚙️</span>
+          </div>
+        ),
         renderCell: (props: any) => {
           const value = props.row[col.key];
+          const fieldConfig = gridConfig[col.key];
+          
           if (value === null || value === undefined) return <div className="px-2">-</div>;
           
           // Format currency columns
           if (['labourCost', 'materialCost', 'unitValue', 'lineTotal'].includes(col.key)) {
             return <div className="px-2 font-semibold text-green-700">£{Number(value).toFixed(2)}</div>;
           }
+
+          // Dropdown field rendering
+          if (fieldConfig?.inputType === 'dropdown' && lookupOptions[col.key]) {
+            const selectedOption = lookupOptions[col.key].find(o => o.value === value);
+            return <div className="px-2 text-blue-600">{selectedOption?.label || value}</div>;
+          }
           
           return <div className="px-2">{value}</div>;
         },
       })),
     ];
-  }, []);
+  }, [gridConfig, lookupOptions]);
 
   const selectedRowsSet = useMemo(() => {
     const set = new Set<string>();
@@ -466,8 +578,140 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated }: FireDo
     return <div className="p-4 text-center text-gray-500">No doors found in this import</div>;
   }
 
+  const currentColumnConfig = configModalColumn ? COLUMNS.find(c => c.key === configModalColumn) : null;
+
   return (
     <div className="space-y-4">
+      {/* Column Configuration Modal */}
+      {configModalOpen && currentColumnConfig && configModalColumn && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-lg max-w-md w-full p-6 space-y-4">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">{currentColumnConfig.name}</h2>
+              <p className="text-xs text-slate-500 mt-1">{currentColumnConfig.key}</p>
+            </div>
+
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Input Type</label>
+                <select 
+                  className="w-full px-3 py-2 border border-slate-300 rounded text-sm"
+                  value={gridConfig[configModalColumn]?.inputType || 'text'}
+                  onChange={(e) => setGridConfig(prev => ({
+                    ...prev,
+                    [configModalColumn]: {...(prev[configModalColumn] || {}), inputType: e.target.value}
+                  }))}
+                >
+                  <option value="text">Text</option>
+                  <option value="number">Number</option>
+                  <option value="dropdown">Dropdown</option>
+                  <option value="formula">Formula</option>
+                  <option value="date">Date</option>
+                </select>
+              </div>
+
+              {gridConfig[configModalColumn]?.inputType === 'dropdown' && (
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Lookup Table</label>
+                  <select 
+                    className="w-full px-3 py-2 border border-slate-300 rounded text-sm"
+                    value={gridConfig[configModalColumn]?.lookupTable || ''}
+                    onChange={(e) => setGridConfig(prev => ({
+                      ...prev,
+                      [configModalColumn]: {...(prev[configModalColumn] || {}), lookupTable: e.target.value}
+                    }))}
+                  >
+                    <option value="">Select a lookup table...</option>
+                    <option value="hinges">Hinges (IronmongeryPrices)</option>
+                    <option value="locks">Locks (IronmongeryPrices)</option>
+                    <option value="glass">Glass Types (GlassPrices)</option>
+                    <option value="doorCore">Door Core (DoorCorePrices)</option>
+                  </select>
+                </div>
+              )}
+
+              {gridConfig[configModalColumn]?.inputType === 'formula' && (
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Formula</label>
+                  <textarea 
+                    className="w-full px-3 py-2 border border-slate-300 rounded text-sm font-mono"
+                    rows={3}
+                    placeholder="e.g., =leafHeight * masterLeafWidth"
+                    value={gridConfig[configModalColumn]?.formula || ''}
+                    onChange={(e) => setGridConfig(prev => ({
+                      ...prev,
+                      [configModalColumn]: {...(prev[configModalColumn] || {}), formula: e.target.value}
+                    }))}
+                  />
+                  <p className="text-xs text-slate-500 mt-1">Use field names with = prefix</p>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Link to Component</label>
+                <select 
+                  className="w-full px-3 py-2 border border-slate-300 rounded text-sm"
+                  value={gridConfig[configModalColumn]?.componentLink || ''}
+                  onChange={(e) => setGridConfig(prev => ({
+                    ...prev,
+                    [configModalColumn]: {...(prev[configModalColumn] || {}), componentLink: e.target.value}
+                  }))}
+                >
+                  <option value="">None</option>
+                  <option value="hinges">Hinges Component</option>
+                  <option value="locks">Locks Component</option>
+                  <option value="glass">Vision Glass Component</option>
+                  <option value="doorBlank">Door Blank Component</option>
+                </select>
+                {gridConfig[configModalColumn]?.componentLink && (
+                  <p className="text-xs text-blue-600 mt-2">✓ Component will be auto-created when filled</p>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input 
+                  type="checkbox" 
+                  id={`required-${configModalColumn}`}
+                  className="rounded"
+                  checked={gridConfig[configModalColumn]?.required || false}
+                  onChange={(e) => setGridConfig(prev => ({
+                    ...prev,
+                    [configModalColumn]: {...(prev[configModalColumn] || {}), required: e.target.checked}
+                  }))}
+                />
+                <label htmlFor={`required-${configModalColumn}`} className="text-sm text-slate-700">Required field</label>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-4 border-t">
+              <button 
+                className="flex-1 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded text-sm font-semibold text-slate-700"
+                onClick={() => {
+                  setConfigModalOpen(false);
+                  setConfigModalColumn(null);
+                }}
+              >
+                Close
+              </button>
+              <button 
+                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm font-semibold text-white"
+                onClick={() => {
+                  // Save configuration to database
+                  apiFetch(`/api/grid-config/${configModalColumn}`, {
+                    method: 'POST',
+                    json: gridConfig[configModalColumn] || {}
+                  }).catch(err => console.error('Failed to save config:', err));
+                  
+                  setConfigModalOpen(false);
+                  setConfigModalColumn(null);
+                }}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Toolbar */}
       <div className="flex items-center justify-between bg-white/60 backdrop-blur-sm p-4 rounded-lg shadow border border-white/20">
         <div className="flex items-center gap-4">
