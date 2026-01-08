@@ -11,7 +11,6 @@ import SuppliersSection from "@/components/settings/SuppliersSection";
 import { AccountingIntegrationSection } from "@/components/settings/AccountingIntegrationSection";
 import SoftwareProfilesSection from "@/components/settings/SoftwareProfilesSection";
 import PdfTemplatesSection from "@/components/settings/PdfTemplatesSection";
-import MaterialCostDebugPanel from "@/components/settings/MaterialCostDebugPanel";
 import AdminQuestionnaireFieldsTable from "@/components/questionnaire/AdminQuestionnaireFieldsTable";
 import { ClientDatabaseFieldsDisplay } from "@/components/questionnaire/ClientDatabaseFieldsDisplay";
 import ProductTypesSection from "@/components/settings/ProductTypesSection";
@@ -251,7 +250,6 @@ export default function SettingsPage() {
     | "suppliers"
     | "software-profiles"
     | "pdf-templates"
-    | "material-costs"
     | "products"
     | "components"
     | "lookup-tables"
@@ -1160,7 +1158,6 @@ export default function SettingsPage() {
                   {[
                     { key: "software-profiles", label: "Software", icon: "💻" },
                     { key: "pdf-templates", label: "PDF Templates", icon: "📄" },
-                    { key: "material-costs", label: "Material Costs", icon: "💰" },
                     { key: "lookup-tables", label: "Lookup Tables", icon: "🔍" },
                   ].map((item) => (
                     <button
@@ -2738,12 +2735,6 @@ export default function SettingsPage() {
       {currentStage === "pdf-templates" && (
         <Section title="PDF Templates" description="View all annotated PDF templates (app-wide)">
           <PdfTemplatesSection />
-        </Section>
-      )}
-
-      {currentStage === "material-costs" && (
-        <Section title="Material Cost Debug" description="Verify material costs are visible and correct in the database">
-          <MaterialCostDebugPanel />
         </Section>
       )}
 
