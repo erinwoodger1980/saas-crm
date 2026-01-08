@@ -19,6 +19,7 @@ import ProductConfigurationSection from "@/components/settings/ProductConfigurat
 import { DiagramSvgGenerator } from "@/components/settings/DiagramSvgGenerator";
 import { ComponentLibrarySection } from "@/components/settings/ComponentLibrarySection";
 import { MaterialLibrarySection } from "@/components/settings/MaterialLibrarySection";
+import { LookupTablesSection } from "@/components/settings/LookupTablesSection";
 import {
   DEFAULT_TASK_PLAYBOOK,
   MANUAL_TASK_KEYS,
@@ -253,6 +254,7 @@ export default function SettingsPage() {
     | "material-costs"
     | "products"
     | "components"
+    | "lookup-tables"
   >(initialTab as any);
   const [s, setS] = useState<Settings | null>(null);
   const [inbox, setInbox] = useState<InboxCfg>({ gmail: false, ms365: false, intervalMinutes: 10 });
@@ -1062,6 +1064,7 @@ export default function SettingsPage() {
           { key: "software-profiles", label: "Software", icon: "💻", description: "PDF parsing profiles" },
           { key: "pdf-templates", label: "PDF Templates", icon: "📄", description: "View annotated PDF templates" },
           { key: "material-costs", label: "Material Costs", icon: "💰", description: "Debug material cost data" },
+          { key: "lookup-tables", label: "Lookup Tables", icon: "🔍", description: "Manage dropdown & lookup table data" },
           { key: "integrations", label: "Integrations", icon: "🔗", description: "Email and external connections" },
         ].map((stage) => (
           <Button
@@ -2817,6 +2820,11 @@ export default function SettingsPage() {
       </Section>
       </>
       )}
+
+      {currentStage === "lookup-tables" && (
+        <LookupTablesSection />
+      )}
+
       </div>{/* End content area */}
     </div>
   );
