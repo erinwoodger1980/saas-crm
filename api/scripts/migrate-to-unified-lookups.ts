@@ -57,10 +57,7 @@ async function migrateMaterialItems(tenantId: string) {
     // Create or get lookup table
     const lookupTable = await prisma.lookupTable.upsert({
       where: {
-        tenantId_tableName: {
-          tenantId,
-          tableName
-        }
+        id: `${tenantId}_${tableName}`
       },
       create: {
         tenantId,

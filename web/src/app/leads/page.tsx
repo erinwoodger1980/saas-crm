@@ -319,8 +319,8 @@ function LeadsPageContent() {
   }, [grouped]);
 
   useEffect(() => {
-    const leadId = searchParams.get('leadId');
-    const modal = searchParams.get('modal');
+    const leadId = searchParams?.get?.('leadId');
+    const modal = searchParams?.get?.('modal');
     if (leadId && modal === 'lead') openLeadById(leadId);
   }, [searchParams, openLeadById]);
 

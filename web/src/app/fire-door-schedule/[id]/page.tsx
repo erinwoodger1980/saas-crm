@@ -1289,7 +1289,7 @@ export default function FireDoorScheduleDetailPage() {
                             <tr key={item.id} className={`border-b border-slate-200 hover:bg-blue-50 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
                               {process.projectFields?.filter((f: any) => f.visible).map((field: any) => (
                                 <td key={`proj-${field.key}`} className="px-3 py-2 text-sm text-slate-700">
-                                  {project?.[field.key] != null ? String(project[field.key]) : '—'}
+                                  {project?.[field.key as keyof typeof project] != null ? String(project[field.key as keyof typeof project]) : '—'}
                                 </td>
                               ))}
                               {process.lineItemFields?.filter((f: any) => f.visible).map((field: any) => (

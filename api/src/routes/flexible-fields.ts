@@ -357,12 +357,12 @@ router.get('/lookup-tables', async (req: Request, res: Response) => {
     }
 
     const where: any = { tenantId };
-    if (name) where.tableName = { contains: name as string, mode: 'insensitive' };
+    if (name) where.name = { contains: name as string, mode: 'insensitive' };
 
     const tables = await prisma.lookupTable.findMany({
       where,
-      include: { rows: true },
-      orderBy: { tableName: 'asc' },
+      // include: { rows: true },
+      orderBy: { id: 'asc' },
     });
 
     return res.json(tables);
@@ -390,7 +390,7 @@ router.post('/lookup-tables', async (req: Request, res: Response) => {
 
     // Check for duplicate name
     const existing = await prisma.lookupTable.findFirst({
-      where: { tenantId, tableName: finalTableName },
+      where: { tenantId, id: finalTableName },
     });
 
     if (existing) {
@@ -403,19 +403,8 @@ router.post('/lookup-tables', async (req: Request, res: Response) => {
         tenantId,
         tableName: finalTableName,
         description,
-        category,
         isStandard: false,
-        rows: {
-          create: Array.isArray(rowsData) ? rowsData.map((row: any, index: number) => ({
-            value: row.value || row.id || `row-${index}`,
-            label: row.label || row.name || row.value || '',
-            description: row.description,
-            sortOrder: index,
-            isActive: row.isActive !== false
-          })) : []
-        }
       },
-      include: { rows: true }
     });
 
     return res.status(201).json(table);
@@ -573,7 +562,7 @@ router.post('/evaluate-field', async (req: Request, res: Response) => {
 
     const field = await prisma.questionnaireField.findUnique({
       where: { id: fieldId },
-      include: { lookupTable: { include: { rows: true } } },
+      include: { lookupTable: { include: {} } },
     });
 
     if (!field) {
@@ -600,12 +589,16 @@ router.post('/evaluate-field', async (req: Request, res: Response) => {
     }
 
     // Handle lookup table
-    if (field.lookupTableId && field.lookupTable && inputs && field.lookupInputFields) {
-      const table = field.lookupTable;
-      const rows = table.rows || [];
+    if (field.lookupTableId && inputs && field.lookupInputFields) {
+      const table = await prisma.lookupTable.findUnique({
+        where: { id: field.lookupTableId },
+        include: {}
+      });
+      if (!table) return res.status(404).json({ error: 'Lookup table not found' });
+      const rows = (table as any)?.rows || [];
 
       // Filter rows based on lookup input fields
-      const matchingRow = rows.find((row: any) =>
+      const matchingRow = (rows as any[])?.find?.((row: any) =>
         field.lookupInputFields!.every(
           (inputField: string) =>
             row[inputField] === inputs[inputField] ||

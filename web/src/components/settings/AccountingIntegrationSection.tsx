@@ -199,7 +199,7 @@ export function AccountingIntegrationSection() {
         {sageStatus?.connected && (
           <div className="flex items-center gap-2">
             <Button
-              variant="link"
+              variant="ghost"
               size="sm"
               onClick={() => window.location.href = "/settings/accounting/unlinked"}
             >

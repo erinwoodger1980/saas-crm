@@ -1105,7 +1105,6 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
     doorSets: 'Door Sets',
     leaves: 'Leaves',
     deliveryNotes: 'Delivery Notes',
-    deliveryDate: 'Delivery',
     installStart: 'Install Start',
     installEnd: 'Install End',
     snaggingStatus: 'Snagging',

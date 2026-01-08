@@ -28,7 +28,7 @@ export default function FireDoorsPage() {
 function FireDoorsPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const projectId = searchParams.get('projectId');
+  const projectId = searchParams?.get?.('projectId');
   
   const [showRFIPanel, setShowRFIPanel] = useState(false);
   const [selectedLineItemId, setSelectedLineItemId] = useState<string | undefined>(undefined);

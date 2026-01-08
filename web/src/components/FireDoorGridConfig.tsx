@@ -354,4 +354,4 @@ export function DropdownCell({
 }
 
 export { DEFAULT_GRID_CONFIG };
-export type { FireDoorGridConfig, FieldDropdownConfig, FieldComponentLink };
+// Removed duplicate export - FireDoorGridConfig exported as component default
