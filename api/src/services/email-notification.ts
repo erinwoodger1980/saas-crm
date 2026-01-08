@@ -13,23 +13,39 @@ interface EmailOptions {
  * Send email via SMTP (used for admin notifications)
  */
 export async function sendAdminEmail(options: EmailOptions): Promise<void> {
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE } = env;
-
-  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
-    console.warn("[email-notification] SMTP not configured, skipping email send");
-    return;
+  // Prefer Resend if configured
+  const resendKey = process.env.RESEND_API_KEY;
+  if (resendKey) {
+    try {
+      const { Resend } = require("resend");
+      const resend = new Resend(resendKey);
+      const from = process.env.EMAIL_FROM || "JoineryAI Notifications <noreply@joineryai.app>";
+      await resend.emails.send({
+        from,
+        to: options.to,
+        subject: options.subject,
+        html: options.html,
+        text: options.text || stripHtml(options.html),
+      });
+      console.log(`[email-notification] Resend email sent to ${options.to}: ${options.subject}`);
+      return;
+    } catch (e: any) {
+      console.warn("[email-notification] Resend send failed, falling back to SMTP:", e?.message || e);
+    }
   }
 
+  // Fallback to SMTP if available
+  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE } = env;
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
+    console.warn("[email-notification] SMTP not configured, and Resend unavailable. Skipping email send.");
+    return;
+  }
   const transporter = nodemailer.createTransport({
     host: SMTP_HOST,
     port: Number(SMTP_PORT || 587),
     secure: SMTP_SECURE === "true",
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS,
-    },
+    auth: { user: SMTP_USER, pass: SMTP_PASS },
   });
-
   try {
     await transporter.sendMail({
       from: `"JoineryAI Notifications" <${SMTP_USER}>`,
@@ -38,10 +54,9 @@ export async function sendAdminEmail(options: EmailOptions): Promise<void> {
       html: options.html,
       text: options.text || stripHtml(options.html),
     });
-
-    console.log(`[email-notification] Email sent to ${options.to}: ${options.subject}`);
+    console.log(`[email-notification] SMTP email sent to ${options.to}: ${options.subject}`);
   } catch (error: any) {
-    console.error("[email-notification] Failed to send email:", error.message);
+    console.error("[email-notification] Failed to send SMTP email:", error.message);
     throw error;
   }
 }
