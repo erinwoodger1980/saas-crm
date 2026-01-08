@@ -514,7 +514,8 @@ model ProductType {
   questionSet          QuestionSet?             @relation("ProductTypeQuestionSet", fields: [questionSetId], references: [id])
   questionSets         QuestionSet[]            @relation("QuestionSetProductType")
   standardFieldMaps    StandardFieldMapping[]   @relation("ProductTypeStandardFieldMappings")
-    componentAssignments ProductTypeComponentAssignment[] @relation("ProductTypeComponentAssignments")
+  componentAssignments ProductTypeComponentAssignment[] @relation("ProductTypeComponentAssignments")
+  fireDoorBOMs         FireDoorBOM[]            @relation("ProductTypeFireDoorBOMs")
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -2421,6 +2422,7 @@ model AiSession {
   updatedAt   DateTime @updatedAt
 
   @@index([status])
+
 }
 
 /// ===============================
@@ -5004,4 +5006,22 @@ model GridFieldConfig {
   updatedAt       DateTime  @updatedAt
 
   @@index([fieldName])
+}
+
+model FireDoorBOM {
+  id            String      @id @default(cuid())
+  fireDoorId    String      @unique
+  tenantId      String
+  productTypeId String
+  bomData       Json        // Full GeneratedBOM structure with lineItems, pricing, etc.
+  totalCost     Decimal     @db.Decimal(12, 2)
+  itemCount     Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  productType   ProductType @relation("ProductTypeFireDoorBOMs", fields: [productTypeId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([productTypeId])
+  @@index([createdAt])
 }

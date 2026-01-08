@@ -153,6 +153,7 @@ import templatesRouter from "./routes/templates";
 import accountingSageRouter from "./routes/accounting-sage";
 import fireDoorRfisRouter from "./routes/fire-door-rfis";
 import fireDoorComponentsRouter from "./routes/fire-door-components";
+import fireDoorBOMRouter from "./routes/fireDoorBOM";
 
 type BillingModule = typeof import("./routes/billing");
 type PublicSignupModule = typeof import("./routes/public-signup");
@@ -796,6 +797,8 @@ app.use("/assets", requireAuth, assetsRouter);
 app.use("/profiles", requireAuth, profilesRouter);
 // Template product generation (ProductType → ComponentTemplate → LookupTableRow)
 app.use("/templates", requireAuth, templatesRouter);
+// Fire door BOM auto-generation (generates BOMs for fire door rows)
+app.use("/fire-door-bom", requireAuth, fireDoorBOMRouter);
 // Material cost debug routes (internal debugging tool)
 app.use("/material-debug", requireAuth, materialDebugRouter);
 // Developer Console routes
