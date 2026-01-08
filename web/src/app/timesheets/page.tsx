@@ -32,6 +32,9 @@ type Timesheet = {
     id: string;
     name: string;
     email: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    emailFooter?: string | null;
     workshopColor?: string;
   };
   signedOffBy?: {
@@ -45,6 +48,9 @@ type User = {
   id: string;
   name: string;
   email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  emailFooter?: string | null;
 };
 
 type TimeEntry = {
@@ -56,7 +62,16 @@ type TimeEntry = {
 };
 
 type UserActivity = {
-  user: { id: string; name: string; email: string; workshopColor: string | null; profilePictureUrl?: string | null };
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    emailFooter?: string | null;
+    workshopColor: string | null;
+    profilePictureUrl?: string | null;
+  };
   days: Record<string, TimeEntry[]>;
   hasActiveTimer?: boolean;
 };
@@ -174,7 +189,6 @@ export default function TimesheetsPage() {
     return sunday;
   });
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [activeTimers, setActiveTimers] = useState<Record<string, boolean>>({});
 
   // Projects state
   const [projects, setProjects] = useState<Project[]>([]);
@@ -182,6 +196,17 @@ export default function TimesheetsPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [projectDetail, setProjectDetail] = useState<any>(null);
   const [addHoursProjectSearch, setAddHoursProjectSearch] = useState("");
+
+  function getUserDisplayName(user: { name?: string | null; email?: string | null; firstName?: string | null; lastName?: string | null; emailFooter?: string | null }) {
+    const footer = user.emailFooter?.trim();
+    if (footer) return footer;
+    const first = user.firstName?.trim();
+    const last = user.lastName?.trim();
+    if (first || last) return [first, last].filter(Boolean).join(" ");
+    if (user.name?.trim()) return user.name;
+    if (user.email?.trim()) return user.email.split("@")[0];
+    return "Unnamed";
+  }
 
   async function loadTimesheets() {
     setLoading(true);
@@ -1003,7 +1028,7 @@ export default function TimesheetsPage() {
                         {selectedUser.user.profilePictureUrl ? (
                           <img
                             src={selectedUser.user.profilePictureUrl}
-                            alt={selectedUser.user.name || selectedUser.user.email}
+                            alt={getUserDisplayName(selectedUser.user)}
                             className="w-16 h-16 rounded-lg object-cover"
                           />
                         ) : (
@@ -1011,11 +1036,8 @@ export default function TimesheetsPage() {
                             className="w-16 h-16 rounded-lg flex items-center justify-center text-white text-2xl font-bold"
                             style={{ backgroundColor: selectedUser.user.workshopColor || "#6b7280" }}
                           >
-                            {(selectedUser.user.name || selectedUser.user.email)[0].toUpperCase()}
+                            {getUserDisplayName(selectedUser.user)[0]?.toUpperCase() || "?"}
                           </div>
-                        )}
-                        {selectedUser.hasActiveTimer && (
-                          <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white" title="Timer running" />
                         )}
                         <label className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
                           <Upload className="w-6 h-6 text-white" />
@@ -1031,7 +1053,7 @@ export default function TimesheetsPage() {
                         </label>
                       </div>
                       <div>
-                        <h2 className="text-2xl font-bold">{selectedUser.user.name || selectedUser.user.email}</h2>
+                        <h2 className="text-2xl font-bold">{getUserDisplayName(selectedUser.user)}</h2>
                         <p className="text-muted-foreground">{selectedUser.user.email}</p>
                       </div>
                       <div className="ml-auto text-right">
@@ -1199,7 +1221,7 @@ export default function TimesheetsPage() {
                               {ua.user.profilePictureUrl ? (
                                 <img
                                   src={ua.user.profilePictureUrl}
-                                  alt={ua.user.name || ua.user.email}
+                                  alt={getUserDisplayName(ua.user)}
                                   className="w-8 h-8 rounded-full object-cover"
                                 />
                               ) : (
@@ -1207,14 +1229,14 @@ export default function TimesheetsPage() {
                                   className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold"
                                   style={{ backgroundColor: ua.user.workshopColor || "#6b7280" }}
                                 >
-                                  {(ua.user.name || ua.user.email)[0].toUpperCase()}
+                                  {getUserDisplayName(ua.user)[0]?.toUpperCase() || "?"}
                                 </div>
                               )}
-                              {ua.hasActiveTimer && (
+                              {(ua.hasActiveTimer || activeTimers[ua.user.id]) && (
                                 <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white" title="Timer running" />
                               )}
                             </div>
-                            <span className="font-medium">{ua.user.name || ua.user.email}</span>
+                            <span className="font-medium">{getUserDisplayName(ua.user)}</span>
                           </div>
                         </td>
                         {dateRange.map((date) => {
@@ -1359,155 +1381,6 @@ export default function TimesheetsPage() {
             </div>
           )}
 
-          {canAmendTime && (
-            <>
-              <div className="text-sm text-muted-foreground flex items-center gap-2 mt-10">
-                <Calendar className="h-4 w-4" />
-                {formatActivityDate(activityFrom)} – {formatActivityDate(activityTo)}
-              </div>
-
-              {activityLoading ? (
-                <div className="text-center py-12 text-muted-foreground">Loading team activity...</div>
-              ) : (
-                <div className="space-y-4">
-                  {userActivity.map((ua) => {
-                    const totalHours = Object.values(ua.days).reduce(
-                      (sum, entries) => sum + getTotalHoursForDay(entries),
-                      0
-                    );
-
-                    const userLabel = ua.user.name || ua.user.email;
-
-                    return (
-                      <Card key={ua.user.id}>
-                        <div className="p-6">
-                          <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-3">
-                              <div
-                                className="w-3 h-3 rounded-full"
-                                style={{ backgroundColor: ua.user.workshopColor || "#6b7280" }}
-                              />
-                              <div>
-                                <h3 className="text-lg font-semibold">{userLabel}</h3>
-                                <p className="text-sm text-muted-foreground">{ua.user.email}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <Badge variant="secondary" className="text-sm">
-                                <Clock className="h-3 w-3 mr-1" />
-                                {totalHours.toFixed(1)}h total
-                              </Badge>
-                              {(() => {
-                                const running = Boolean(ua.hasActiveTimer || activeTimers[ua.user.id]);
-                                return (
-                                  <>
-                                    {running ? (
-                                      <>
-                                        <Badge variant="secondary" className="text-sm bg-green-100 text-green-800">
-                                          Timer running
-                                        </Badge>
-                                        <Button variant="outline" size="sm" onClick={() => stopTimerForUser(ua.user.id)}>
-                                          Stop timer
-                                        </Button>
-                                      </>
-                                    ) : (
-                                      <Button variant="outline" size="sm" onClick={() => startTimerForUser(ua.user.id)}>
-                                        Start timer
-                                      </Button>
-                                    )}
-                                  </>
-                                );
-                              })()}
-                            </div>
-                          </div>
-                          <div className="space-y-3">
-                            {dateRange.map((date) => {
-                              const dateKey = date.toISOString().split("T")[0];
-                              const entries = ua.days[dateKey] || [];
-                              const dayHours = getTotalHoursForDay(entries);
-
-                              return (
-                                <div
-                                  key={dateKey}
-                                  className={`border rounded-lg p-3 ${
-                                    isToday(date) ? "border-primary bg-primary/5" : "border-border"
-                                  }`}
-                                >
-                                  <div className="flex items-center justify-between mb-2">
-                                    <div className="font-medium text-sm">{formatActivityDate(date)}</div>
-                                    <div className="flex items-center gap-2">
-                                      <Badge variant="outline" className="text-xs">
-                                        {dayHours.toFixed(1)}h
-                                      </Badge>
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => openAddHoursDialog(ua.user.id, userLabel, dateKey)}
-                                      >
-                                        Add hours
-                                      </Button>
-                                    </div>
-                                  </div>
-
-                                  {entries.length === 0 ? (
-                                    <div className="text-xs text-muted-foreground">No entries</div>
-                                  ) : (
-                                    <div className="space-y-2">
-                                      {entries.map((entry) => (
-                                        <div
-                                          key={entry.id}
-                                          className="flex items-start gap-2 text-sm bg-background/50 rounded p-2"
-                                        >
-                                          <div className="flex-1">
-                                            <div className="font-medium">
-                                              {entry.project ? (
-                                                <span className="text-primary">{entry.project.title}</span>
-                                              ) : (
-                                                <span className="text-muted-foreground capitalize">
-                                                  {entry.process.toLowerCase().replace(/_/g, " ")}
-                                                </span>
-                                              )}
-                                            </div>
-                                            <div className="text-xs text-muted-foreground">
-                                              {entry.process.replace(/_/g, " ")}
-                                              {entry.notes && ` • ${entry.notes}`}
-                                            </div>
-                                          </div>
-                                          <div className="flex items-center gap-2 shrink-0">
-                                            <Badge variant="secondary" className="text-xs">
-                                              {entry.hours}h
-                                            </Badge>
-                                            <Button
-                                              variant="outline"
-                                              size="sm"
-                                              onClick={() => openEditEntryDialog(userLabel, dateKey, entry)}
-                                            >
-                                              Edit
-                                            </Button>
-                                            <Button
-                                              variant="destructive"
-                                              size="sm"
-                                              onClick={() => openDeleteEntryDialog(userLabel, dateKey, entry)}
-                                            >
-                                              Delete
-                                            </Button>
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </Card>
-                    );
-                  })}
-                </div>
-              )}
-            </>
-          )}
         </TabsContent>
 
         <TabsContent value="projects" className="space-y-6 mt-6">
@@ -1690,7 +1563,7 @@ export default function TimesheetsPage() {
                 <SelectItem value="all">All Users</SelectItem>
                 {users.map((user) => (
                   <SelectItem key={user.id} value={user.id}>
-                    {user.name || user.email}
+                    {getUserDisplayName(user)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1739,10 +1612,10 @@ export default function TimesheetsPage() {
                     className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg"
                     style={{ backgroundColor: ts.user.workshopColor || "#3b82f6" }}
                   >
-                    {(ts.user.name || ts.user.email)[0].toUpperCase()}
+                    {getUserDisplayName(ts.user)[0]?.toUpperCase() || "?"}
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold">{ts.user.name || ts.user.email}</h3>
+                    <h3 className="text-lg font-semibold">{getUserDisplayName(ts.user)}</h3>
                     <p className="text-sm text-muted-foreground">
                       Week: {formatDate(ts.weekStartDate)} - {formatDate(ts.weekEndDate)}
                     </p>
