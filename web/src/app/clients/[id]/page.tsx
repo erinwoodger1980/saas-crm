@@ -13,7 +13,7 @@ import { ClientContacts } from "@/components/ClientContacts";
 import { ClientPortalAccess } from "@/components/ClientPortalAccess";
 import { FieldForm } from "@/components/fields/FieldRenderer";
 import { useFields } from "@/hooks/useFields";
-import { ArrowLeft, Save, Mail, Phone, MapPin, Building, Edit, Check, X } from "lucide-react";
+import { ArrowLeft, Save, Mail, Phone, MapPin, Building, Edit, Check, X, Trash } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -91,6 +91,7 @@ export default function ClientDetailPage() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [authHeaders, setAuthHeaders] = useState<Record<string, string>>({});
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, any>>({});
   const [savingFields, setSavingFields] = useState(false);
@@ -234,6 +235,35 @@ export default function ClientDetailPage() {
     }
   }
 
+  async function handleDelete() {
+    if (!client) return;
+    const confirmed = window.confirm("Are you sure you want to delete this client? This action cannot be undone.");
+    if (!confirmed) return;
+    setDeleting(true);
+    try {
+      await apiFetch(`/clients/${clientId}`, {
+        method: "DELETE",
+        headers: authHeaders,
+      });
+
+      toast({
+        title: "Client deleted",
+        description: `${client.name} has been removed`,
+      });
+
+      router.push("/clients");
+    } catch (error) {
+      console.error("Failed to delete client:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete client",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   if (loading) {
     return (
       <DeskSurface>
@@ -308,10 +338,16 @@ export default function ClientDetailPage() {
                 </Button>
               </>
             ) : (
-              <Button onClick={() => setEditing(true)}>
-                <Edit className="h-4 w-4 mr-2" />
-                Edit Details
-              </Button>
+              <div className="flex gap-2">
+                <Button onClick={() => setEditing(true)}>
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit Details
+                </Button>
+                <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+                  <Trash className="h-4 w-4 mr-2" />
+                  {deleting ? "Deleting..." : "Delete"}
+                </Button>
+              </div>
             )}
           </div>
         </header>
