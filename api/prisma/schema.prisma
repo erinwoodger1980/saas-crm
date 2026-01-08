@@ -131,6 +131,7 @@ model Tenant {
   sceneStates                SceneState[]
   lookupTables               LookupTable[]               @relation("LookupTables")
   fieldDisplayContexts       FieldDisplayContext[]       @relation("FieldDisplayContexts")
+  componentTemplates         ComponentTemplate[]         @relation("ComponentTemplates")
   mlTrainingEvents           MLTrainingEvent[]           @relation("MLTrainingEvents")
   architectPacks             ArchitectPack[]             @relation("ArchitectPacks")
   tenantAIUsageEvents        TenantAIUsageEvent[]        @relation("TenantAIUsageEvents")
@@ -2474,6 +2475,7 @@ model Supplier {
   bomLineItems          BOMLineItem[]          @relation("SupplierBOMItems")
   componentVariants     ComponentVariant[]     @relation("SupplierVariants")
   bomVariantLineItems   BOMVariantLineItem[]   @relation("SupplierVariantBOM")
+  lookupTableRows       LookupTableRow[]       @relation("LookupRowSupplier")
 
   @@index([tenantId])
   @@index([email])
@@ -4499,21 +4501,120 @@ model WealdenImage {
 
 // Lookup tables for dynamic dropdowns and pricing
 model LookupTable {
-  id          String               @id @default(cuid())
+  id          String            @id @default(cuid())
   tenantId    String
-  name        String
+  tableName   String            // e.g., "Timber", "Glass", "Hinges", "Lock Types"
+  category    String?           // "material", "ironmongery", "finish", "certification"
   description String?
-  columns     Json
-  rows        Json
-  isStandard  Boolean              @default(false)
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
+  isStandard  Boolean           @default(false)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
   
-  tenant      Tenant               @relation("LookupTables", fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant      Tenant            @relation("LookupTables", fields: [tenantId], references: [id], onDelete: Cascade)
+  rows        LookupTableRow[]
   fields      QuestionnaireField[] @relation("FieldLookupTable")
+  componentTemplates ComponentTemplate[] @relation("TemplateLookupTable")
+  
+  @@unique([tenantId, tableName])
+  @@index([tenantId])
+  @@index([tenantId, category])
+}
+
+// Unified lookup table row - replaces MaterialItems, IronmongeryItems, pricing tables
+model LookupTableRow {
+  id              String        @id @default(cuid())
+  lookupTableId   String
+  
+  // Display fields
+  value           String        // Unique identifier within table (e.g., "oak-european")
+  label           String        // Display name (e.g., "European Oak")
+  description     String?
+  code            String?       // Supplier/internal code
+  sortOrder       Int           @default(0)
+  isActive        Boolean       @default(true)
+  
+  // Pricing fields
+  costPerUnit     Decimal?      @default(0)
+  unitType        String?       // "sqm", "meter", "each", "kg", "pair"
+  currency        String        @default("GBP")
+  markup          Decimal?      // Percentage markup for pricing
+  
+  // Supplier/BOM fields
+  supplierId      String?
+  supplierCode    String?
+  leadTimeDays    Int?
+  weight          Decimal?      // kg per unit
+  weightUnit      String?       // "kg", "g"
+  
+  // 3D/Visual fields
+  texture         String?       // URL or material code for 3D rendering
+  colorHex        String?       // Color for visualization
+  materialType    String?       // "wood", "metal", "glass", "composite"
+  materialProps   Json?         // Material properties for 3D (roughness, metallic, etc.)
+  imageUrl        String?
+  
+  // Technical specifications
+  fireRated       Boolean       @default(false)
+  fireRating      String?       // "FD30", "FD60", etc.
+  grade           String?       // Quality/performance grade
+  finish          String?       // Surface finish type
+  dimensions      Json?         // Standard dimensions if applicable
+  
+  // Extended metadata (extensible for product-specific properties)
+  customProps     Json?         // Any additional properties specific to this item type
+  
+  // Audit
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  lookupTable     LookupTable   @relation(fields: [lookupTableId], references: [id], onDelete: Cascade)
+  supplier        Supplier?     @relation("LookupRowSupplier", fields: [supplierId], references: [id])
+  
+  @@unique([lookupTableId, value])
+  @@index([lookupTableId, isActive, sortOrder])
+  @@index([lookupTableId, value])
+}
+
+// Component template for auto-generating BOM items from field values
+model ComponentTemplate {
+  id                String    @id @default(cuid())
+  tenantId          String
+  name              String    // e.g., "Door Lipping", "Hinge Set", "Vision Glass"
+  componentCategory String    // "material", "ironmongery", "glass", "finish", "hardware"
+  description       String?
+  
+  // Trigger conditions
+  requiredFields    String[]  // Fields that must have values to create component
+  triggerFields     String[]  // Fields that trigger component creation/update
+  
+  // Lookup table linking
+  lookupTableId     String?   // Pulls pricing/specs from this lookup table
+  lookupFieldName   String?   // Field name that contains the lookup value
+  
+  // Quantity calculation
+  quantityFormula   String?   // Formula to calculate quantity (e.g., "leafHeight * 2 + leafWidth * 2")
+  quantityUnit      String?   // Unit for calculated quantity
+  
+  // Field to component property mappings
+  fieldMappings     Json      // { "lippingMaterial": "materialId", "leafHeight": "height" }
+  
+  // Default values
+  defaultProps      Json?     // Default properties if not mapped from fields
+  
+  // Conditions
+  activeWhen        Json?     // Conditions when this template should be active
+  
+  isActive          Boolean   @default(true)
+  sortOrder         Int       @default(0)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  tenant            Tenant    @relation("ComponentTemplates", fields: [tenantId], references: [id], onDelete: Cascade)
+  lookupTable       LookupTable? @relation("TemplateLookupTable", fields: [lookupTableId], references: [id])
   
   @@unique([tenantId, name])
-  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@index([tenantId, componentCategory])
 }
 
 // Field display context configuration

@@ -357,11 +357,12 @@ router.get('/lookup-tables', async (req: Request, res: Response) => {
     }
 
     const where: any = { tenantId };
-    if (name) where.name = { contains: name as string, mode: 'insensitive' };
+    if (name) where.tableName = { contains: name as string, mode: 'insensitive' };
 
     const tables = await prisma.lookupTable.findMany({
       where,
-      orderBy: { name: 'asc' },
+      include: { rows: true },
+      orderBy: { tableName: 'asc' },
     });
 
     return res.json(tables);
@@ -377,33 +378,44 @@ router.get('/lookup-tables', async (req: Request, res: Response) => {
  */
 router.post('/lookup-tables', async (req: Request, res: Response) => {
   try {
-    const { tenantId: bodyTenantId, name, description, columns, rows } = req.body;
+    const { tenantId: bodyTenantId, tableName, name, description, rows: rowsData, category } = req.body;
     const tenantId = getTenantId(req) || bodyTenantId;
+    const finalTableName = tableName || name;
 
-    if (!tenantId || !name || !columns || !rows) {
+    if (!tenantId || !finalTableName) {
       return res.status(400).json({
-        error: 'Missing required fields: tenantId, name, columns, rows for /api/flexible-fields',
+        error: 'Missing required fields: tenantId, tableName',
       });
     }
 
     // Check for duplicate name
     const existing = await prisma.lookupTable.findFirst({
-      where: { tenantId, name },
+      where: { tenantId, tableName: finalTableName },
     });
 
     if (existing) {
-      return res.status(409).json({ error: `Lookup table "${name}" already exists` });
+      return res.status(409).json({ error: `Lookup table "${finalTableName}" already exists` });
     }
 
+    // Create table with rows
     const table = await prisma.lookupTable.create({
       data: {
         tenantId,
-        name,
+        tableName: finalTableName,
         description,
-        columns,
-        rows,
+        category,
         isStandard: false,
+        rows: {
+          create: Array.isArray(rowsData) ? rowsData.map((row: any, index: number) => ({
+            value: row.value || row.id || `row-${index}`,
+            label: row.label || row.name || row.value || '',
+            description: row.description,
+            sortOrder: index,
+            isActive: row.isActive !== false
+          })) : []
+        }
       },
+      include: { rows: true }
     });
 
     return res.status(201).json(table);
@@ -561,7 +573,7 @@ router.post('/evaluate-field', async (req: Request, res: Response) => {
 
     const field = await prisma.questionnaireField.findUnique({
       where: { id: fieldId },
-      include: { lookupTable: true },
+      include: { lookupTable: { include: { rows: true } } },
     });
 
     if (!field) {
@@ -590,7 +602,7 @@ router.post('/evaluate-field', async (req: Request, res: Response) => {
     // Handle lookup table
     if (field.lookupTableId && field.lookupTable && inputs && field.lookupInputFields) {
       const table = field.lookupTable;
-      const rows = table.rows as any[];
+      const rows = table.rows || [];
 
       // Filter rows based on lookup input fields
       const matchingRow = rows.find((row: any) =>
@@ -602,7 +614,7 @@ router.post('/evaluate-field', async (req: Request, res: Response) => {
       );
 
       if (matchingRow && field.lookupOutputField) {
-        result = matchingRow[field.lookupOutputField];
+        result = (matchingRow as any)[field.lookupOutputField];
       }
     }
 

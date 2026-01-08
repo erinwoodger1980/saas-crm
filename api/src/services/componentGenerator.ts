@@ -233,7 +233,8 @@ export class ComponentGeneratorService {
   ): Promise<any> {
     try {
       const lookupTable = await this.prisma.lookupTable.findFirst({
-        where: { tenantId, name: tableName },
+        where: { tenantId, tableName },
+        include: { rows: true }
       });
 
       if (!lookupTable) {
@@ -248,17 +249,17 @@ export class ComponentGeneratorService {
       }
 
       // Find matching row
-      const rows = lookupTable.rows as any[];
-      const matchingRow = rows.find((row) =>
+      const rows = lookupTable.rows || [];
+      const matchingRow = rows.find((row: any) =>
         Object.entries(resolvedMatches).every(([key, value]) => {
           // Handle string comparison case-insensitively
-          const rowValue = String(row[key] || '').trim().toLowerCase();
+          const rowValue = String((row as any)[key] || '').trim().toLowerCase();
           const matchValue = String(value || '').trim().toLowerCase();
           return rowValue === matchValue;
         })
       );
 
-      return matchingRow?.[returnField] ?? null;
+      return (matchingRow as any)?.[returnField] ?? null;
     } catch (error) {
       console.error('[ComponentGenerator] Lookup error:', error);
       return null;
