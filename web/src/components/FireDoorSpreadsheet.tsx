@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
-import DataGrid, { Column, SelectColumn } from "react-data-grid";
+import DataGrid, { Column, SelectColumn, RenderEditCellProps } from "react-data-grid";
 import "react-data-grid/lib/styles.css";
 import { Button } from "@/components/ui/button";
+import { Settings, Download } from "lucide-react";
+import { ColumnHeaderModal } from "@/components/FireDoorGridConfig";
 
 interface FireDoorRow {
   id: string;
@@ -81,265 +83,219 @@ interface FireDoorSpreadsheetProps {
   onComponentCreated?: () => void;
 }
 
-// Define all 223 columns organized into logical groups
+// Define all columns matching the exact order and names provided (223 columns total)
 const COLUMNS: Column<FireDoorRow>[] = [
-  // SECTION 1: CORE IDENTIFICATION (frozen for reference)
   { key: "rowIndex", name: "#", width: 60, frozen: true },
+  { key: "sequence", name: "Sequence", width: 100, editable: true },
+  { key: "batchPhase", name: "Batch / Phase", width: 120, editable: true },
   { key: "doorRef", name: "Door Ref", width: 120, editable: true, frozen: true },
   { key: "location", name: "Location", width: 150, editable: true },
-  
-  // SECTION 2: BASIC SPECS & SOURCE
-  { key: "certification", name: "Certification", width: 120 },
-  { key: "doorsetType", name: "Doorset Type", width: 120 },
-  { key: "rating", name: "Fire Rating", width: 100 },
-  { key: "itemType", name: "Item Type", width: 100 },
-  { key: "code", name: "Code", width: 120 },
-  { key: "quantity", name: "Qty", width: 70, editable: true },
-  
-  // SECTION 3: CORE DIMENSIONS
-  { key: "lajRef", name: "LAJ Ref", width: 100 },
-  { key: "masterWidth", name: "Master Width", width: 110 },
-  { key: "slaveWidth", name: "Slave Width", width: 110 },
-  { key: "doorHeight", name: "Door Height", width: 110 },
-  { key: "core", name: "Core", width: 120 },
-  { key: "coreType", name: "Core Type", width: 120 },
-  
-  // SECTION 4: EDGE DIMENSIONS
-  { key: "top", name: "Top Edge", width: 90 },
-  { key: "btm", name: "Bottom Edge", width: 100 },
-  { key: "hinge", name: "Hinge Edge", width: 100 },
-  { key: "me", name: "M/E", width: 80 },
-  { key: "daExposed", name: "DA Exposed", width: 100 },
-  { key: "trim", name: "Trim", width: 80 },
-  { key: "safeHinge", name: "Safe Hinge", width: 100 },
-  { key: "pf", name: "PF", width: 70 },
-  { key: "extra", name: "Extra", width: 80 },
-  
-  // SECTION 5: REDUCED DIMENSIONS
-  { key: "masterReduced", name: "Master Reduced", width: 130 },
-  { key: "slaveWidthReduced", name: "Slave Reduced", width: 130 },
-  { key: "doorHeightReduced", name: "Height Reduced", width: 130 },
-  { key: "coreReduced", name: "Core Reduced", width: 120 },
-  
-  // SECTION 6: NOTES
-  { key: "notes1", name: "Notes 1", width: 200, editable: true },
-  { key: "notes2", name: "Notes 2", width: 200, editable: true },
-  
-  // SECTION 7: LIPPING
-  { key: "lajRefLipping", name: "LAJ Ref (Lipping)", width: 140 },
-  { key: "doorRefLipping", name: "Door Ref (Lipping)", width: 150 },
-  { key: "masterWidthLipping", name: "Master W (Lipping)", width: 150 },
-  { key: "slaveWidthLipping", name: "Slave W (Lipping)", width: 140 },
-  { key: "doorHeightLipping", name: "Height (Lipping)", width: 140 },
-  { key: "coreLipping", name: "Core (Lipping)", width: 130 },
-  { key: "ratingLipping", name: "Rating (Lipping)", width: 130 },
-  { key: "coreTypeLipping", name: "Core Type (Lipping)", width: 150 },
-  { key: "material", name: "Material", width: 130, editable: true },
-  { key: "topLipping", name: "Top (Lipping)", width: 110 },
-  { key: "btmLipping", name: "Bottom (Lipping)", width: 120 },
-  { key: "hingeLipping", name: "Hinge (Lipping)", width: 120 },
-  { key: "meLipping", name: "M/E (Lipping)", width: 110 },
-  { key: "daExposedLipping", name: "DA Exp (Lipping)", width: 130 },
-  { key: "lippingDetail", name: "Lipping Detail", width: 150, editable: true },
-  { key: "masterWidthLipping2", name: "Master W Lipping 2", width: 150 },
-  
-  // SECTION 8: EDGING / 2T
-  { key: "slaveWidthEdging", name: "Slave W (Edging)", width: 140 },
-  { key: "doorHeightEdging", name: "Height (Edging)", width: 130 },
-  { key: "coreEdging", name: "Core (Edging)", width: 130 },
-  { key: "masterWidth2T", name: "Master W (2T)", width: 130 },
-  { key: "slaveWidth2T", name: "Slave W (2T)", width: 130 },
-  { key: "doorHeight2T", name: "Height (2T)", width: 120 },
-  { key: "core2T", name: "Core (2T)", width: 110 },
-  { key: "doorType", name: "Door Type", width: 120 },
-  { key: "note1Edge", name: "Note 1 (Edge)", width: 150, editable: true },
-  { key: "note2Edge", name: "Note 2 (Edge)", width: 150, editable: true },
-  
-  // SECTION 9: FACING / CALIBRATION
-  { key: "lajRefFacing", name: "LAJ Ref (Facing)", width: 140 },
-  { key: "doorRefFacing", name: "Door Ref (Facing)", width: 150 },
-  { key: "masterWidthFacing", name: "Master W (Facing)", width: 150 },
-  { key: "slaveWidthFacing", name: "Slave W (Facing)", width: 140 },
-  { key: "doorHeightFacing", name: "Height (Facing)", width: 140 },
-  { key: "coreFacing", name: "Core (Facing)", width: 130 },
-  { key: "coreTypeFacing", name: "Core Type (Facing)", width: 150 },
-  { key: "materialFacing", name: "Material (Facing)", width: 150, editable: true },
-  { key: "topFacing", name: "Top (Facing)", width: 110 },
-  { key: "btmFacing", name: "Bottom (Facing)", width: 120 },
-  { key: "hingeFacing", name: "Hinge (Facing)", width: 120 },
-  { key: "meFacing", name: "M/E (Facing)", width: 110 },
-  { key: "daExposedFacing", name: "DA Exp (Facing)", width: 130 },
-  { key: "calibratedSize", name: "Calibrated Size", width: 140 },
-  { key: "masterDoor", name: "Master Door", width: 130 },
-  { key: "slaveDoor", name: "Slave Door", width: 120 },
-  { key: "bookMatching", name: "Book Matching", width: 130 },
-  { key: "chamferRequired", name: "Chamfer Required", width: 140 },
-  { key: "notes1Cal", name: "Notes 1 (Cal)", width: 150, editable: true },
-  { key: "note2Cal", name: "Notes 2 (Cal)", width: 150, editable: true },
-  
-  // SECTION 10: FINISH SPECS
-  { key: "lajRefFinish", name: "LAJ Ref (Finish)", width: 140 },
-  { key: "doorRefFinish", name: "Door Ref (Finish)", width: 150 },
-  { key: "masterWidthFinish", name: "Master W (Finish)", width: 150 },
-  { key: "slaveWidthFinish", name: "Slave W (Finish)", width: 140 },
-  { key: "doorHeightFinish", name: "Height (Finish)", width: 140 },
-  { key: "coreFinish", name: "Core (Finish)", width: 130 },
-  { key: "coreTypeFinish", name: "Core Type (Finish)", width: 150 },
-  { key: "doorFinish", name: "Door Finish", width: 130, editable: true },
-  { key: "fireRatingFinish", name: "Fire Rating (Finish)", width: 150 },
-  { key: "handingFinish", name: "Handing", width: 110, editable: true },
-  { key: "position", name: "Position", width: 110, editable: true },
-  
-  // SECTION 11: PRIMARY IRONMONGERY
-  { key: "qtyOfHinges", name: "Qty Hinges", width: 100, editable: true },
-  { key: "hingeType", name: "Hinge Type", width: 150, editable: true },
-  { key: "groovesForMe", name: "Grooves for M/E", width: 130 },
-  { key: "lockType", name: "Lock Type", width: 150, editable: true },
-  { key: "spindlePrep", name: "Spindle Prep", width: 120 },
-  { key: "cylinderPrep", name: "Cylinder Prep", width: 120 },
-  { key: "lockHeight", name: "Lock Height", width: 110, editable: true },
-  { key: "flushBolt", name: "Flush Bolt", width: 120 },
-  { key: "uc", name: "UC", width: 70 },
-  { key: "hingeInt", name: "Hinge Int", width: 100 },
-  { key: "lockInt", name: "Lock Int", width: 100 },
-  { key: "flushboltInt", name: "Flush Bolt Int", width: 120 },
-  
-  // SECTION 12: VISION PANELS
-  { key: "vpType", name: "VP Type", width: 120 },
-  { key: "visionPanelMaster", name: "VP Master", width: 130 },
-  { key: "visionPanelSlave", name: "VP Slave", width: 120 },
-  { key: "beadType", name: "Bead Type", width: 120 },
-  { key: "vpPosition", name: "VP Position", width: 120 },
-  { key: "visionQtyLeaf1", name: "Vision Qty L1", width: 120, editable: true },
-  { key: "vp1WidthLeaf1", name: "VP1 W L1", width: 100, editable: true },
-  { key: "vp1HeightLeaf1", name: "VP1 H L1", width: 100, editable: true },
-  { key: "vp2WidthLeaf1", name: "VP2 W L1", width: 100, editable: true },
-  { key: "vp2HeightLeaf1", name: "VP2 H L1", width: 100, editable: true },
-  { key: "visionQtyLeaf2", name: "Vision Qty L2", width: 120, editable: true },
-  { key: "vp1WidthLeaf2", name: "VP1 W L2", width: 100, editable: true },
-  { key: "vp1HeightLeaf2", name: "VP1 H L2", width: 100, editable: true },
-  { key: "vp2WidthLeaf2", name: "VP2 W L2", width: 100, editable: true },
-  { key: "vp2HeightLeaf2", name: "VP2 H L2", width: 100, editable: true },
-  
-  // SECTION 13: ADDITIONAL IRONMONGERY
-  { key: "dropseal", name: "Drop Seal", width: 120 },
-  { key: "additionalIronmongery1", name: "Additional Iron 1", width: 150, editable: true },
-  { key: "additionalIronmongery2", name: "Additional Iron 2", width: 150, editable: true },
-  { key: "doorRefSecondary", name: "Door Ref (Secondary)", width: 160 },
-  { key: "lockType2", name: "Lock Type 2", width: 130 },
-  { key: "spindlePrep2", name: "Spindle Prep 2", width: 130 },
-  { key: "cylinderPrep2", name: "Cylinder Prep 2", width: 140 },
-  { key: "lockHeight2", name: "Lock Height 2", width: 120 },
-  { key: "concealedDoorCloser", name: "Concealed Closer", width: 150 },
-  { key: "atgSize", name: "ATG Size", width: 100 },
-  { key: "atgPosition", name: "ATG Position", width: 120 },
-  { key: "safehingSureclose", name: "Safehing Sureclose", width: 150 },
-  { key: "safehingeStandardPivot", name: "Safehing Pivot", width: 150 },
-  { key: "safehingeRhinoBolts", name: "Safehing Rhino", width: 140 },
-  { key: "doorViewer", name: "Door Viewer", width: 120 },
-  { key: "letterbox", name: "Letterbox", width: 120 },
-  { key: "flushPulls", name: "Flush Pulls", width: 120 },
-  { key: "cableway", name: "Cableway", width: 120 },
-  
-  // SECTION 14: FINAL SPECS
-  { key: "lajRefFinal", name: "LAJ Ref (Final)", width: 130 },
-  { key: "doorRefFinal", name: "Door Ref (Final)", width: 140 },
-  { key: "master", name: "Master (Final)", width: 130 },
-  { key: "slave", name: "Slave (Final)", width: 120 },
-  { key: "height", name: "Height (Final)", width: 120 },
-  { key: "coreFinal", name: "Core (Final)", width: 120 },
-  { key: "fireRatingFinal", name: "Fire Rating (Final)", width: 150 },
-  { key: "doorFinishFinal", name: "Door Finish (Final)", width: 150 },
-  { key: "fireSealsInMe", name: "Fire Seals in M/E", width: 140 },
-  
-  // SECTION 15: GLAZING SYSTEM
-  { key: "glazingSystem", name: "Glazing System", width: 140 },
-  { key: "vpSize", name: "VP Size", width: 110 },
-  { key: "glassType", name: "Glass Type", width: 140, editable: true },
-  { key: "cassetteType", name: "Cassette Type", width: 140 },
-  { key: "totalGlazedAreaMaster", name: "Glazed Area", width: 140 },
-  { key: "fanlightSidelightGlz", name: "Fanlight/Side Glz", width: 150 },
-  { key: "glazingTape", name: "Glazing Tape", width: 120 },
-  { key: "dropSeal", name: "Drop Seal (Glaze)", width: 110 },
-  
-  // SECTION 16: FINAL IRONMONGERY
-  { key: "hinges", name: "Hinges (Final)", width: 130 },
-  { key: "handingFinal", name: "Handing (Final)", width: 130 },
-  { key: "lock", name: "Lock (Final)", width: 130 },
-  { key: "lockHeightOnDoor", name: "Lock Height on Door", width: 150 },
-  { key: "keep", name: "Keep", width: 100 },
-  { key: "flushBolts", name: "Flush Bolts (Final)", width: 140 },
-  { key: "fittedInFrame", name: "Fitted in Frame", width: 140 },
-  { key: "hingeLockFlushboltIntum", name: "Hinge/Lock/FB Intum", width: 160 },
-  { key: "qMarkPlug", name: "Q-Mark Plug", width: 120 },
-  
-  // SECTION 17: LEAF SPECS
-  { key: "leafHeight", name: "Leaf Height", width: 110, editable: true },
-  { key: "masterLeafWidth", name: "Master Leaf Width", width: 140, editable: true },
-  { key: "slaveLeafWidth", name: "Slave Leaf Width", width: 140, editable: true },
-  { key: "leafThickness", name: "Leaf Thickness", width: 120, editable: true },
+  { key: "doorsetLeafFrame", name: "Doorset / Leaf  / Frame", width: 160, editable: true },
+  { key: "type", name: "Type", width: 100, editable: true },
+  { key: "quantity", name: "Quantity", width: 90, editable: true },
+  { key: "rating", name: "Fire Rating", width: 110, editable: true },
+  { key: "acousticRating", name: "Acoustic Rating", width: 130, editable: true },
+  { key: "bottomSealReq", name: "Bottom Seal Requirement", width: 180, editable: true },
+  { key: "bottomSealType", name: "Bottom Seal Type", width: 150, editable: true },
+  { key: "leadLiningCode", name: "Lead Lining Code", width: 140, editable: true },
+  { key: "numLeavesIncOverpanel", name: "Number of Leaves inc solid overpanel", width: 260, editable: true },
   { key: "leafConfiguration", name: "Leaf Configuration", width: 150, editable: true },
-  { key: "ifSplitMasterSize", name: "If Split Master Size", width: 150 },
-  
-  // SECTION 18: FINISH & COLOURS
-  { key: "acousticRatingDb", name: "Acoustic (dB)", width: 120, editable: true },
-  { key: "internalColour", name: "Internal Colour", width: 140, editable: true },
-  { key: "externalColour", name: "External Colour", width: 140, editable: true },
-  { key: "frameFinish", name: "Frame Finish", width: 130, editable: true },
-  { key: "doorFinishSide1", name: "Finish Side 1", width: 130, editable: true },
-  { key: "doorFinishSide2", name: "Finish Side 2", width: 130, editable: true },
-  { key: "doorFacing", name: "Door Facing", width: 120, editable: true },
-  { key: "lippingFinish", name: "Lipping Finish", width: 130, editable: true },
-  
-  // SECTION 19: EDGE PROTECTION & UNDERCUT
-  { key: "doorEdgeProtType", name: "Edge Prot Type", width: 140 },
-  { key: "doorEdgeProtPos", name: "Edge Prot Pos", width: 130 },
-  { key: "doorUndercut", name: "Undercut", width: 100 },
-  { key: "doorUndercutMm", name: "Undercut (mm)", width: 120, editable: true },
-  
-  // SECTION 20: ADDITIONAL FEATURES
-  { key: "ironmongeryPackRef", name: "Ironmongery Ref", width: 150, editable: true },
-  { key: "closerOrFloorSpring", name: "Closer/Spring", width: 140, editable: true },
-  { key: "spindleFacePrep", name: "Spindle Face Prep", width: 140 },
-  { key: "cylinderFacePrep", name: "Cylinder Face Prep", width: 150 },
-  { key: "flushBoltSupplyPrep", name: "Flush Bolt Prep", width: 140 },
-  { key: "flushBoltQty", name: "Flush Bolt Qty", width: 120, editable: true },
-  { key: "fingerProtection", name: "Finger Protection", width: 140 },
-  { key: "fireSignage", name: "Fire Signage", width: 120 },
-  { key: "fireSignageQty", name: "Signage Qty", width: 110, editable: true },
-  { key: "fireSignageFactoryFit", name: "Signage Factory Fit", width: 160 },
-  { key: "fireIdDisc", name: "Fire ID Disc", width: 120 },
-  { key: "fireIdDiscQty", name: "ID Disc Qty", width: 110, editable: true },
-  { key: "doorViewerPosition", name: "Viewer Position", width: 140 },
-  { key: "doorViewerPrepSize", name: "Viewer Prep Size", width: 140 },
-  { key: "doorChain", name: "Door Chain", width: 110 },
-  { key: "doorViewersQty", name: "Viewers Qty", width: 110, editable: true },
-  { key: "doorChainFactoryFit", name: "Chain Factory Fit", width: 150 },
-  { key: "doorViewersFactoryFit", name: "Viewers Factory Fit", width: 160 },
-  { key: "additionNote1", name: "Additional Note", width: 200, editable: true },
-  { key: "additionNote1Qty", name: "Note Qty", width: 100, editable: true },
-  
-  // SECTION 21: CNC & CALCULATED FIELDS
-  { key: "cncBlankWidth", name: "CNC Blank Width", width: 140 },
-  { key: "cncBlankHeight", name: "CNC Blank Height", width: 140 },
-  { key: "cncTrimWidth", name: "CNC Trim Width", width: 130 },
-  { key: "cncTrimHeight", name: "CNC Trim Height", width: 130 },
-  { key: "totalLinearMeters", name: "Total Linear M", width: 130 },
-  { key: "totalSquareMeters", name: "Total Square M", width: 130 },
-  { key: "lippingLinearMeters", name: "Lipping Linear M", width: 140 },
-  { key: "facingSquareMeters", name: "Facing Square M", width: 140 },
-  { key: "fullReference", name: "Full Reference", width: 150 },
-  { key: "calculatedField1", name: "Calculated 1", width: 130 },
-  { key: "calculatedField2", name: "Calculated 2", width: 130 },
-  { key: "calculatedField3", name: "Calculated 3", width: 130 },
-  { key: "calculatedField4", name: "Calculated 4", width: 130 },
-  { key: "calculatedField5", name: "Calculated 5", width: 130 },
-  
-  // SECTION 22: PRICING (frozen on right)
-  { key: "labourCost", name: "Labour £", width: 100, cellClass: "font-semibold text-green-700" },
-  { key: "materialCost", name: "Materials £", width: 110, cellClass: "font-semibold text-green-700" },
-  { key: "unitValue", name: "Unit Price £", width: 120, cellClass: "font-semibold text-green-700" },
-  { key: "lineTotal", name: "Line Total £", width: 120, frozen: true, cellClass: "font-bold text-green-700" },
+  { key: "ifSplitMasterSize", name: "If split, Master leaf size", width: 180, editable: true },
+  { key: "action", name: "Action", width: 100, editable: true },
+  { key: "handing", name: "Handing", width: 100, editable: true },
+  { key: "hingeSupplyType", name: "Hinge Supply Type", width: 150, editable: true },
+  { key: "hingeQty", name: "Hinge Qty", width: 100, editable: true },
+  { key: "hingeType", name: "Hinge Type", width: 120, editable: true },
+  { key: "hingeConfiguration", name: "Hinge Configuration", width: 160, editable: true },
+  { key: "lockPrep", name: "Lock Prep", width: 120, editable: true },
+  { key: "lockSupplyType", name: "Lock Supply Type", width: 150, editable: true },
+  { key: "lockType1", name: "Lock Type 1", width: 140, editable: true },
+  { key: "lockHeight", name: "Lock Height", width: 120, editable: true },
+  { key: "spindleFacePrep", name: "Spindle face prep", width: 150, editable: true },
+  { key: "cylinderFacePrep", name: "Cylinder Face Prep", width: 160, editable: true },
+  { key: "lockType2", name: "Lock Type 2", width: 140, editable: true },
+  { key: "lockHeight2", name: "Lock Height 2", width: 130, editable: true },
+  { key: "spindleFacePrep2", name: "Spindle face prep - Lock 2", width: 190, editable: true },
+  { key: "cylinderFacePrep2", name: "Cylinder Face Prep - Lock 2", width: 200, editable: true },
+  { key: "flushBoltSupplyPrep", name: "Flush Bolt Supply/prep", width: 170, editable: true },
+  { key: "flushBoltQty", name: "Flush bolt qty", width: 130, editable: true },
+  { key: "leversHandles", name: "Levers & pull handles", width: 170, editable: true },
+  { key: "escutcheons", name: "Escutcheons/bathroom turn", width: 190, editable: true },
+  { key: "cylinderLock1", name: "Cylinder Lock 1", width: 140, editable: true },
+  { key: "cylinderLock2", name: "Cylinder lock 2", width: 140, editable: true },
+  { key: "fingerPlates", name: "Finger Plates", width: 130, editable: true },
+  { key: "kickPlates", name: "Kick Plates", width: 120, editable: true },
+  { key: "kickPlatePosition", name: "Kick plate position", width: 160, editable: true },
+  { key: "bumpPlate", name: "Bump Plate", width: 120, editable: true },
+  { key: "fireSignage", name: "Fire Signage", width: 130, editable: true },
+  { key: "additionalSignage", name: "Additional signage", width: 150, editable: true },
+  { key: "letterPlate", name: "Letter Plate", width: 120, editable: true },
+  { key: "letterPlatePosition", name: "Letter plate position", width: 170, editable: true },
+  { key: "doorViewer", name: "Door viewer", width: 120, editable: true },
+  { key: "doorViewerPosition", name: "Door viewer position", width: 170, editable: true },
+  { key: "doorViewerPrepSize", name: "Door viewer hole prep size", width: 200, editable: true },
+  { key: "doorChain", name: "Door Chain", width: 120, editable: true },
+  { key: "fingerProtection", name: "Finger Protection", width: 150, editable: true },
+  { key: "fireIdDisc", name: "Fire ID Disc", width: 130, editable: true },
+  { key: "factoryFitHinges", name: "Factory Fit Hinges", width: 160, editable: true },
+  { key: "factoryFitLocks", name: "Factory Fit Locks", width: 160, editable: true },
+  { key: "factoryFitFlushBolts", name: "Factory Fit Flush Bolts", width: 180, editable: true },
+  { key: "ironmongeryPackRef", name: "Ironmongery Pack REF", width: 170, editable: true },
+  { key: "comments", name: "Comments", width: 200, editable: true },
+  { key: "closerType", name: "Closer type", width: 130, editable: true },
+  { key: "closersFloorsprings", name: "Closers/floorsprings", width: 170, editable: true },
+  { key: "antiBarricade", name: "anti barricade / emergency stop", width: 220, editable: true },
+  { key: "wiringPrep", name: "Wiring prep", width: 130, editable: true },
+  { key: "cableLoop", name: "Cable loop", width: 120, editable: true },
+  { key: "addition1", name: "Addition 1 / Note 1", width: 170, editable: true },
+  { key: "addition1Qty", name: "Addition 1 Qty", width: 140, editable: true },
+  { key: "addition2", name: "Addition 2 / Note 2", width: 170, editable: true },
+  { key: "addition2Qty", name: "Addition 2 Qty", width: 140, editable: true },
+  { key: "addition3", name: "Addition 3 / Note 3", width: 170, editable: true },
+  { key: "addition3Qty", name: "Addition 3 Qty", width: 140, editable: true },
+  { key: "soWidth", name: "S/O Width", width: 110, editable: true },
+  { key: "soHeight", name: "S/O Height", width: 110, editable: true },
+  { key: "soWallThickness", name: "S/O Wall thickness", width: 160, editable: true },
+  { key: "extensionMaterial", name: "Extension Material", width: 160, editable: true },
+  { key: "extensionLiningWidthVisible", name: "Extension lining width visible", width: 220, editable: true },
+  { key: "extensionLiningWidthActual", name: "Extension lining width actual size", width: 240, editable: true },
+  { key: "overpanelDetails", name: "Overpanel details", width: 160, editable: true },
+  { key: "screenDetails", name: "Screen details", width: 150, editable: true },
+  { key: "fanlightOverpanelQty", name: "Fanlight / Overpanel Qty", width: 190, editable: true },
+  { key: "fanlightFrameThickness", name: "Fanlight Frame Thickness (Production)", width: 260, editable: true },
+  { key: "fanlightOverpanelHeight", name: "Fanlight / Overpanel height", width: 200, editable: true },
+  { key: "fanlightOverpanelWidth", name: "Fanlight / Overpanel Width", width: 200, editable: true },
+  { key: "numSidelight1", name: "Number of Sidelight 1", width: 180, editable: true },
+  { key: "sidelight1Width", name: "Sidelight 1 Width", width: 150, editable: true },
+  { key: "sidelight1Height", name: "Sidelight 1 Height", width: 160, editable: true },
+  { key: "numSidelight2", name: "Number of Sidelight 2", width: 180, editable: true },
+  { key: "sidelight2Width", name: "Sidelight 2 Width", width: 150, editable: true },
+  { key: "sidelight2Height", name: "Sidelight 2 Height", width: 160, editable: true },
+  { key: "numSidelight3", name: "Number of Sidelight 3", width: 180, editable: true },
+  { key: "sidelight3Width", name: "Sidelight 3 Width", width: 150, editable: true },
+  { key: "sidelight3Height", name: "Sidelight 3 Height", width: 160, editable: true },
+  { key: "numSidelight4", name: "Number of Sidelight 4", width: 180, editable: true },
+  { key: "sidelight4Width", name: "Sidelight 4 Width", width: 150, editable: true },
+  { key: "sidelight4Height", name: "Sidelight 4 Height", width: 160, editable: true },
+  { key: "fanlightSidelightGlazing", name: "Fanlight / Sidelight Glazing", width: 200, editable: true },
+  { key: "ofWidthDoorset", name: "O/F Width (doorset)", width: 160, editable: true },
+  { key: "ofHeightDoorset", name: "O/F Height (doorset)", width: 170, editable: true },
+  { key: "frameThickness", name: "Frame Thickness", width: 150, editable: true },
+  { key: "frameMaterial", name: "Frame Material", width: 150, editable: true },
+  { key: "frameMaterialProduction", name: "Frame Material (Production)", width: 210, editable: true },
+  { key: "liningThicknessJambs", name: "Lining Thickness - Jambs", width: 190, editable: true },
+  { key: "jambProfileHanging", name: "Jamb Profile - Hanging Edge", width: 210, editable: true },
+  { key: "jambProfileLeading", name: "Jamb Profile - Leading Edge Edge", width: 240, editable: true },
+  { key: "liningThicknessHeads", name: "Lining Thickness - Heads", width: 190, editable: true },
+  { key: "frameFinish", name: "Frame Finish", width: 140, editable: true },
+  { key: "frameType", name: "Frame Type", width: 130, editable: true },
+  { key: "stopMaterial", name: "Stop Material", width: 140, editable: true },
+  { key: "stopMaterialProduction", name: "Stop Material (Production)", width: 210, editable: true },
+  { key: "rebateStopWidth", name: "Rebate / Stop Width", width: 170, editable: true },
+  { key: "rebateStopDepth", name: "Rebate / Stop Depth", width: 170, editable: true },
+  { key: "arcMaterial", name: "Arc Material", width: 140, editable: true },
+  { key: "arcDetail", name: "Arc Detail", width: 130, editable: true },
+  { key: "arcWidth", name: "Arc Width", width: 110, editable: true },
+  { key: "arcDepth", name: "Arc Depth", width: 110, editable: true },
+  { key: "mLeafWidth", name: "M Leaf Width", width: 130, editable: true },
+  { key: "sLeafWidth", name: "S Leaf Width", width: 130, editable: true },
+  { key: "leafHeight", name: "Leaf Height", width: 120, editable: true },
+  { key: "leafThickness", name: "Leaf Thickness", width: 140, editable: true },
+  { key: "coreType", name: "Core Type", width: 130, editable: true },
+  { key: "leafStyle", name: "Leaf Style", width: 130, editable: true },
+  { key: "visionPanelQtyLeaf1", name: "Vision Panel Qty, Leaf 1", width: 190, editable: true },
+  { key: "leaf1Aperture1Width", name: "Leaf Aperture 1 Width", width: 180, editable: true },
+  { key: "leaf1Aperture1Height", name: "Leaf Aperture 1 Height", width: 190, editable: true },
+  { key: "leaf1Aperture1WidthProduction", name: "Leaf Aperture 1 Width (Production)", width: 260, editable: true },
+  { key: "leaf1Aperture1HeightProduction", name: "Leaf Aperture 1 Height (Production)", width: 270, editable: true },
+  { key: "aperturePosition1", name: "Aperture Position 1", width: 170, editable: true },
+  { key: "leaf1Aperture2Width", name: "Leaf 1 Aperture 2 Width", width: 190, editable: true },
+  { key: "leaf1Aperture2Height", name: "Leaf 1 Aperture 2 Height", width: 200, editable: true },
+  { key: "leaf1Aperture2WidthProduction", name: "Leaf 1 Aperture 2 Width (Production)", width: 270, editable: true },
+  { key: "leaf1Aperture2HeightProduction", name: "Leaf 1 Aperture 2 Height (Production)", width: 280, editable: true },
+  { key: "aperturePosition2", name: "Aperture Position 2", width: 170, editable: true },
+  { key: "airTransferGrilleReq", name: "Air Transfer grille requirement", width: 230, editable: true },
+  { key: "airTransferGrilleQty", name: "Air Transfer Grille Qty", width: 190, editable: true },
+  { key: "airTransferGrilleSize", name: "Air Transfer grille Size", width: 190, editable: true },
+  { key: "airTransferGrillePosition", name: "Air Transfer grille Position", width: 220, editable: true },
+  { key: "visionPanelQtyLeaf2", name: "Vision Panel Qty, Leaf 2", width: 190, editable: true },
+  { key: "leaf2Aperture1Width", name: "Leaf 2 Cutout Aperture 1 Width", width: 240, editable: true },
+  { key: "leaf2Aperture1Height", name: "Leaf 2 Cutout Aperture 1 Height", width: 250, editable: true },
+  { key: "leaf2Aperture1WidthProduction", name: "Leaf 2 Aperture 1 Width (Production)", width: 280, editable: true },
+  { key: "leaf2Aperture1HeightProduction", name: "Leaf 2 Aperture 1 Height (Production)", width: 290, editable: true },
+  { key: "leaf2Aperture2Width", name: "Leaf 2 Cutout Aperture 2 Width", width: 240, editable: true },
+  { key: "leaf2Aperture2Height", name: "Leaf 2 Cutout Aperture 2 Height", width: 250, editable: true },
+  { key: "leaf2Aperture2WidthProduction", name: "Leaf 2 Aperture 2 Width (Production)", width: 280, editable: true },
+  { key: "leaf2Aperture2HeightProduction", name: "Leaf 2 Aperture 2 Height (Production)", width: 290, editable: true },
+  { key: "visionPanelSizeDetail", name: "Vision Panel Size Detail", width: 200, editable: true },
+  { key: "tempGlassCheck", name: "Temp Glass Check", width: 160, editable: true },
+  { key: "glassConcat", name: "Glass Concat", width: 140, editable: true },
+  { key: "glassType", name: "Glass Type", width: 130, editable: true },
+  { key: "beadType", name: "Bead Type", width: 130, editable: true },
+  { key: "beadMaterial", name: "Bead Material", width: 140, editable: true },
+  { key: "beadMaterialProduction", name: "Bead Material (Production)", width: 210, editable: true },
+  { key: "totalGlazedAreaMaster", name: "Total Glazed Area Master Leaf (msq)", width: 270, editable: true },
+  { key: "glazingTape", name: "Glazing Tape", width: 140, editable: true },
+  { key: "maxPermittedGlazedArea", name: "Max Permitted Glazed Area (Based on Strebord)", width: 320, editable: true },
+  { key: "doorFacing", name: "Door Facing", width: 140, editable: true },
+  { key: "doorFinishSide1", name: "Door Finish - Side 1 (Push)", width: 210, editable: true },
+  { key: "doorFinishSide2", name: "Door Finish - Side 2 (Pull)", width: 210, editable: true },
+  { key: "doorColour", name: "Door Colour", width: 140, editable: true },
+  { key: "lippingMaterial", name: "Lipping Material", width: 160, editable: true },
+  { key: "lippingMaterialProduction", name: "Lipping Material (Production)", width: 230, editable: true },
+  { key: "lippingStyle", name: "Lipping Style", width: 140, editable: true },
+  { key: "lippingThickness", name: "Lipping Thickness", width: 160, editable: true },
+  { key: "lippingFinish", name: "Lipping Finish", width: 150, editable: true },
+  { key: "doorEdgeProtType", name: "Door Edge Protection Type", width: 210, editable: true },
+  { key: "doorEdgeProtPosition", name: "Door Edge Protection Position", width: 230, editable: true },
+  { key: "pvcFaceProtection", name: "PVC Face Protection", width: 180, editable: true },
+  { key: "pvcColour", name: "PVC Colour", width: 130, editable: true },
+  { key: "doorUndercut", name: "Door Undercut", width: 140, editable: true },
+  { key: "certification", name: "Certification", width: 140, editable: true },
+  { key: "qMarkPlugOuterColour", name: "Q Mark Plug Outer Colour", width: 210, editable: true },
+  { key: "qMarkTreeColour", name: "Q Mark Tree Colour", width: 180, editable: true },
+  { key: "qMarkVisionPanelPlug", name: "Q Mark Vision Panel Plug", width: 210, editable: true },
+  { key: "materialSustainability", name: "Material Sustainability", width: 190, editable: true },
+  { key: "doorRef7", name: "Door Ref7", width: 130, editable: true },
+  { key: "priceEa", name: "Price Ea", width: 110, editable: true },
+  { key: "qty2", name: "Qty2", width: 90, editable: true },
+  { key: "linePrice", name: "Line Price", width: 120, editable: true, frozen: true },
+  { key: "importantNotes", name: "Important notes for Fire Rating", width: 240, editable: true },
+  { key: "clientNotes1", name: "Client Notes 1", width: 160, editable: true },
+  { key: "clientNotes2", name: "Client Notes 2", width: 160, editable: true },
+  { key: "clientNotes3", name: "Client Notes 3", width: 160, editable: true },
+  { key: "clientNotes4", name: "Client Notes 4", width: 160, editable: true },
+  { key: "testCertificateUsed", name: "Test Certificate Used", width: 180, editable: true },
+  { key: "associatedDocument", name: "Associated Document", width: 180, editable: true },
+  { key: "masterLeafWeight", name: "Master Leaf Weight (Approx) kg", width: 230, editable: true },
+  { key: "fireRating2", name: "Fire Rating2", width: 130, editable: true },
+  { key: "latchedUnlatched", name: "Latched/Unlatched", width: 160, editable: true },
+  { key: "singleDoubleAction", name: "Single Action / Double Action", width: 240, editable: true },
+  { key: "singleDoubleDoor", name: "Single Door / Double Door", width: 200, editable: true },
+  { key: "doorLeafType", name: "Door Leaf Type", width: 150, editable: true },
+  { key: "wizardoorerRef", name: "Wizardoorer Ref (If used)", width: 210, editable: true },
+  { key: "leafConcat", name: "Leaf Concat", width: 140, editable: true },
+  { key: "masterLeafArea", name: "Master Leaf Area", width: 160, editable: true },
+  { key: "slaveLeafArea", name: "Slave Leaf Area", width: 150, editable: true },
+  { key: "leafWeightCode", name: "Leaf Weight Code", width: 160, editable: true },
+  { key: "leafWeightMsq", name: "Leaf Weight msq", width: 150, editable: true },
+  { key: "slaveLeafWeight", name: "Slave Leaf Weight (Approx) kg", width: 230, editable: true },
+  { key: "liningVolume", name: "Lining Volume", width: 150, editable: true },
+  { key: "liningMaterial", name: "Lining Material", width: 160, editable: true },
+  { key: "liningMaterialWeightMsq", name: "Lining Material Weight msq", width: 210, editable: true },
+  { key: "liningWeight", name: "Lining Weight (Approx) kg", width: 210, editable: true },
+  { key: "stopVolume", name: "Stop Volume", width: 140, editable: true },
+  { key: "stopMaterial2", name: "Stop Material2", width: 160, editable: true },
+  { key: "stopMaterialDensity", name: "Stop Material Density", width: 190, editable: true },
+  { key: "stopWeight", name: "Stop Weight (Approx) kg", width: 200, editable: true },
+  { key: "arcVolume", name: "Arc Volume", width: 130, editable: true },
+  { key: "arcMaterial3", name: "Arc Material3", width: 150, editable: true },
+  { key: "arcMaterialDensity", name: "Arc Material Density", width: 190, editable: true },
+  { key: "arcWeight", name: "Arc Weight (Approx) kg", width: 200, editable: true },
+  { key: "fanlight", name: "Fanlight", width: 120, editable: true },
+  { key: "screen", name: "Screen", width: 110, editable: true },
+  { key: "frameWeight", name: "Frame Weight (Approx) kg", width: 200, editable: true },
+  { key: "doorsetWeight", name: "Doorset Weight (Approx) kg - Ironmongery not allowed for", width: 380, editable: true },
 ];
 
 export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onComponentCreated }: FireDoorSpreadsheetProps) {
@@ -347,6 +303,10 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   const [rows, setRows] = useState<FireDoorRow[]>([]);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [creatingQuote, setCreatingQuote] = useState(false);
+  const [configModalOpen, setConfigModalOpen] = useState(false);
+  const [configModalColumn, setConfigModalColumn] = useState<string>("");
+  const [gridConfig, setGridConfig] = useState<Record<string, any>>({});
+  const [lookupOptions, setLookupOptions] = useState<Record<string, Array<{value: string; label: string}>>>({});
   const [error, setError] = useState<string | null>(null);
   const [gridConfig, setGridConfig] = useState<Record<string, any>>({});
   const [configModalOpen, setConfigModalOpen] = useState(false);
@@ -394,6 +354,25 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     });
   }, [rows, gridConfig]);
 
+  // Load grid field configurations
+  useEffect(() => {
+    const loadConfigs = async () => {
+      try {
+        const configs = await apiFetch('/api/grid-config/all');
+        if (configs && Array.isArray(configs)) {
+          const configMap: Record<string, any> = {};
+          configs.forEach((cfg: any) => {
+            configMap[cfg.fieldName] = cfg;
+          });
+          setGridConfig(configMap);
+        }
+      } catch (err) {
+        console.log('No grid configs found, using defaults');
+      }
+    };
+    loadConfigs();
+  }, []);
+
   const createComponentForField = async (lineItemId: string, fieldName: string, fieldValue: string, componentType: string) => {
     try {
       // Map field names to component property mappings
@@ -428,34 +407,49 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     }
   };
 
-  // Load lookup table options
+  // Load lookup table options dynamically based on grid config
   useEffect(() => {
     const loadLookupOptions = async () => {
       try {
-        // Load hinge options
+        // Load all flexible lookup tables
+        const tables = await apiFetch('/api/flexible-fields/lookup-tables');
+        if (tables && Array.isArray(tables)) {
+          const optionsMap: Record<string, Array<{value: string; label: string}>> = {};
+          
+          tables.forEach((table: any) => {
+            if (table.rows && Array.isArray(table.rows)) {
+              optionsMap[table.tableName] = table.rows.map((row: any) => ({
+                value: row.value || row.id || '',
+                label: row.label || row.name || row.description || row.value || ''
+              }));
+            }
+          });
+          
+          setLookupOptions(optionsMap);
+        }
+
+        // Also load legacy pricing tables
         const hinges = await apiFetch('/api/ironmongery-prices?type=hinge');
         if (hinges && Array.isArray(hinges)) {
           setLookupOptions(prev => ({
             ...prev,
-            hingeType: hinges.map((h: any) => ({value: h.id, label: h.description || h.name}))
+            hinges: hinges.map((h: any) => ({value: h.id, label: h.description || h.name}))
           }));
         }
 
-        // Load lock options
         const locks = await apiFetch('/api/ironmongery-prices?type=lock');
         if (locks && Array.isArray(locks)) {
           setLookupOptions(prev => ({
             ...prev,
-            lockType: locks.map((l: any) => ({value: l.id, label: l.description || l.name}))
+            locks: locks.map((l: any) => ({value: l.id, label: l.description || l.name}))
           }));
         }
 
-        // Load glass options
         const glass = await apiFetch('/api/glass-prices');
         if (glass && Array.isArray(glass)) {
           setLookupOptions(prev => ({
             ...prev,
-            glassType: glass.map((g: any) => ({value: g.id, label: g.description || g.name}))
+            glass: glass.map((g: any) => ({value: g.id, label: g.description || g.name}))
           }));
         }
       } catch (err) {
@@ -463,46 +457,136 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       }
     };
     loadLookupOptions();
-  }, []);
+  }, [gridConfig]);
+
+  // Dropdown cell component
+  const DropdownCell = ({ row, column, onRowChange }: RenderEditCellProps<FireDoorRow>) => {
+    const fieldConfig = gridConfig[column.key];
+    const options = fieldConfig?.lookupTable ? lookupOptions[fieldConfig.lookupTable] || [] : [];
+
+    return (
+      <select
+        className="w-full h-full px-2 border-0 outline-none bg-white"
+        value={row[column.key] || ''}
+        onChange={(e) => {
+          const newValue = e.target.value;
+          onRowChange({ ...row, [column.key]: newValue }, true);
+          
+          // Trigger component creation if configured
+          if (fieldConfig?.componentLink && newValue) {
+            createComponentForField(row.id, column.key, newValue, fieldConfig.componentLink);
+          }
+        }}
+        autoFocus
+      >
+        <option value="">Select...</option>
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+    );
+  };
+
+  // Save column configuration
+  const saveColumnConfig = async (fieldName: string, config: any) => {
+    try {
+      await apiFetch(`/api/grid-config/${fieldName}`, {
+        method: 'POST',
+        json: config,
+      });
+      
+      // Reload configs
+      setGridConfig(prev => ({
+        ...prev,
+        [fieldName]: config,
+      }));
+      
+      setConfigModalOpen(false);
+    } catch (err) {
+      console.error('Failed to save config:', err);
+    }
+  };
+
+  // Evaluate formulas
+  const evaluateFormula = (formula: string, row: FireDoorRow): any => {
+    try {
+      // Simple formula evaluation - replace field names with values
+      let expression = formula;
+      Object.keys(row).forEach(key => {
+        const value = row[key];
+        if (typeof value === 'number') {
+          expression = expression.replace(new RegExp(`\\b${key}\\b`, 'g'), String(value));
+        }
+      });
+      
+      // Evaluate using Function constructor (safe in this context)
+      return new Function('return ' + expression)();
+    } catch (err) {
+      console.error('Formula evaluation error:', err);
+      return null;
+    }
+  };
 
   const columns = useMemo((): readonly Column<FireDoorRow>[] => {
     return [
       SelectColumn,
-      ...COLUMNS.map(col => ({
-        ...col,
-        headerCellClass: "cursor-pointer hover:bg-blue-50",
-        headerRenderer: (props: any) => (
-          <div 
-            className="flex items-center justify-between gap-2 h-full"
-            onClick={() => {
-              setConfigModalColumn(col.key);
-              setConfigModalOpen(true);
-            }}
-          >
-            <span>{col.name}</span>
-            <span className="text-xs text-blue-500 opacity-0 group-hover:opacity-100">⚙️</span>
-          </div>
-        ),
-        renderCell: (props: any) => {
-          const value = props.row[col.key];
-          const fieldConfig = gridConfig[col.key];
+      ...COLUMNS.map(col => {
+        const fieldConfig = gridConfig[col.key];
+        const isDropdown = fieldConfig?.inputType === 'dropdown' && fieldConfig?.lookupTable;
+        const isFormula = fieldConfig?.inputType === 'formula';
+        
+        return {
+          ...col,
+          editable: isFormula ? false : col.editable,
+          headerCellClass: "cursor-pointer hover:bg-blue-50 transition-colors",
+          renderHeaderCell: (props: any) => (
+            <div 
+              className="flex items-center justify-between gap-1 h-full px-2 group"
+              onClick={(e) => {
+                e.stopPropagation();
+                setConfigModalColumn(col.key);
+                setConfigModalOpen(true);
+              }}
+            >
+              <span className="truncate" title={col.name}>{col.name}</span>
+              <Settings className="w-3 h-3 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+            </div>
+          ),
+          renderEditCell: isDropdown ? DropdownCell : undefined,
+          renderCell: (props: any) => {
+            const row = props.row;
+            let value = row[col.key];
+            
+            // Evaluate formula if configured
+            if (isFormula && fieldConfig?.formula) {
+              value = evaluateFormula(fieldConfig.formula, row);
+            }
+            
+            if (value === null || value === undefined) return <div className="px-2 text-gray-400">-</div>;
+            
+            // Format currency columns
+            if (['labourCost', 'materialCost', 'unitValue', 'lineTotal', 'priceEa', 'linePrice'].includes(col.key)) {
+              return <div className="px-2 font-semibold text-green-700">£{Number(value).toFixed(2)}</div>;
+            }
+            
+            // Show lookup label if configured
+            if (isDropdown && fieldConfig?.lookupTable) {
+              const options = lookupOptions[fieldConfig.lookupTable] || [];
+              const option = options.find(opt => opt.value === value);
+              return <div className="px-2">{option?.label || value}</div>;
+            }
+            
+            // Formula indicator
+            if (isFormula) {
+              return <div className="px-2 bg-blue-50 text-blue-700 font-mono text-xs">{value}</div>;
+            }
           
-          if (value === null || value === undefined) return <div className="px-2">-</div>;
-          
-          // Format currency columns
-          if (['labourCost', 'materialCost', 'unitValue', 'lineTotal'].includes(col.key)) {
-            return <div className="px-2 font-semibold text-green-700">£{Number(value).toFixed(2)}</div>;
-          }
-
-          // Dropdown field rendering
-          if (fieldConfig?.inputType === 'dropdown' && lookupOptions[col.key]) {
-            const selectedOption = lookupOptions[col.key].find(o => o.value === value);
-            return <div className="px-2 text-blue-600">{selectedOption?.label || value}</div>;
-          }
-          
-          return <div className="px-2">{value}</div>;
-        },
-      })),
+            return <div className="px-2">{value}</div>;
+          },
+        };
+      }),
     ];
   }, [gridConfig, lookupOptions]);
 
@@ -760,6 +844,15 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
           </span>
         </div>
       </div>
+
+      {/* Column Configuration Modal */}
+      <ColumnHeaderModal
+        isOpen={configModalOpen}
+        fieldName={configModalColumn}
+        currentConfig={gridConfig[configModalColumn]}
+        onClose={() => setConfigModalOpen(false)}
+        onSave={(config) => saveColumnConfig(configModalColumn, config)}
+      />
     </div>
   );
 }
