@@ -652,7 +652,7 @@ export default function ClientDetailPage() {
               {leads.map((lead) => (
                 <Link
                   key={lead.id}
-                  href={`/leads?id=${lead.id}`}
+                  href={`/leads?leadId=${lead.id}&modal=lead`}
                   className="flex items-center justify-between p-4 rounded-lg border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all"
                 >
                   <div>

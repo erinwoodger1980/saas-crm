@@ -279,6 +279,12 @@ export default function AISearchBar() {
           else if (action.params && action.params.action === 'create' && action.target === '/tasks/center') {
             setTaskData(action.params);
             setShowTaskModal(true);
+          } else if (action.params && action.params.modal === 'lead' && action.params.leadId) {
+            // For lead modals, navigate with URL params to open the modal on the leads page
+            const url = new URL(action.target, window.location.origin);
+            url.searchParams.set('leadId', action.params.leadId);
+            url.searchParams.set('modal', 'lead');
+            router.push(url.pathname + url.search);
           } else if (action.params) {
             // For other modal actions, navigate to the page with URL params
             const url = new URL(action.target, window.location.origin);
