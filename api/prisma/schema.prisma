@@ -77,6 +77,7 @@ model Tenant {
   ms365UserConnections       Ms365UserConnection[]       @relation("Ms365UserConnections")
   notifications              Notification[]
   opportunities              Opportunity[]
+  opportunityGroups          OpportunityGroup[]          @relation("TenantOpportunityGroups")
   processPlans               ProcessPlan[]
   projectProcessAssignments  ProjectProcessAssignment[]
   purchaseOrders             PurchaseOrder[]
@@ -966,7 +967,7 @@ model PublicProject {
 model Opportunity {
   id                       String                     @id @default(cuid())
   tenantId                 String
-  leadId                   String                     @unique
+  leadId                   String?                    @unique // Optional - allows direct project creation
   clientId                 String?
   title                    String
   number                   String?
@@ -1002,12 +1003,18 @@ model Opportunity {
   budgetHours              Decimal?
   materialTotal            Decimal?
   materialsToDate          Decimal?
+  // Project grouping and splitting
+  groupId                  String? // Link to OpportunityGroup for batching
+  parentOpportunityId      String? // Parent project if this is a split sub-project
   emailMessages            EmailMessage[]
   emailThreads             EmailThread[]
   client                   Client?                    @relation(fields: [clientId], references: [id])
   clientAccount            ClientAccount?             @relation(fields: [clientAccountId], references: [id])
-  lead                     Lead                       @relation(fields: [leadId], references: [id])
+  lead                     Lead?                      @relation(fields: [leadId], references: [id])
   tenant                   Tenant                     @relation(fields: [tenantId], references: [id])
+  group                    OpportunityGroup?          @relation("GroupedOpportunities", fields: [groupId], references: [id])
+  parentOpportunity        Opportunity?               @relation("OpportunitySplit", fields: [parentOpportunityId], references: [id])
+  childOpportunities       Opportunity[]              @relation("OpportunitySplit")
   processPlans             ProcessPlan[]
   projectProcesses         ProjectProcessAssignment[]
   supplierQuoteRequests    SupplierQuoteRequest[]
@@ -1020,6 +1027,29 @@ model Opportunity {
   @@index([clientId])
   @@index([clientAccountId])
   @@index([tenantId, clientId])
+  @@index([groupId])
+  @@index([parentOpportunityId])
+}
+
+// OpportunityGroup - for batching multiple projects through workshop together
+model OpportunityGroup {
+  id                 String        @id @default(cuid())
+  tenantId           String
+  name               String
+  description        String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  // Workshop scheduling fields
+  scheduledStartDate DateTime?
+  scheduledEndDate   DateTime?
+  budgetHours        Decimal? // Total hours allocated for the group
+  status             String?       @default("PLANNED") // PLANNED, IN_PROGRESS, COMPLETED
+  tenant             Tenant        @relation("TenantOpportunityGroups", fields: [tenantId], references: [id], onDelete: Cascade)
+  opportunities      Opportunity[] @relation("GroupedOpportunities")
+  timeEntries        TimeEntry[]   @relation("GroupTimeEntries")
+
+  @@index([tenantId])
+  @@index([tenantId, status])
 }
 
 model EmailIngest {
@@ -2196,23 +2226,26 @@ model ProcessPlan {
 }
 
 model TimeEntry {
-  id        String       @id @default(cuid())
+  id        String             @id @default(cuid())
   tenantId  String
   projectId String? // Nullable for generic processes (cleaning, admin, etc.)
+  groupId   String? // Link to OpportunityGroup for batch time tracking
   process   String // Changed from enum to String to support generic processes (CLEANING, ADMIN, etc.)
   userId    String
   date      DateTime
-  hours     Decimal      @default(0)
+  hours     Decimal            @default(0)
   notes     String?
-  createdAt DateTime     @default(now())
-  project   Opportunity? @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  tenant    Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user      User         @relation(fields: [userId], references: [id])
+  createdAt DateTime           @default(now())
+  project   Opportunity?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  group     OpportunityGroup?  @relation("GroupTimeEntries", fields: [groupId], references: [id], onDelete: Cascade)
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User               @relation(fields: [userId], references: [id])
 
   @@index([tenantId, projectId, process])
   @@index([tenantId, date])
   @@index([tenantId, date], map: "TimeEntry_tenant_date_idx")
   @@index([tenantId, projectId, process], map: "TimeEntry_tenant_project_process_idx")
+  @@index([groupId])
 }
 
 model Holiday {
