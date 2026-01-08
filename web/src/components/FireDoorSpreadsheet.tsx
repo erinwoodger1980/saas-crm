@@ -450,16 +450,31 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       try {
         // Get all questionnaire fields for the tenant
         const fields = await apiFetch('/api/questionnaire-fields');
-        if (Array.isArray(fields)) {
-          setAvailableFields(
-            fields.map((field: any) => ({
-              name: field.key || field.name,
-              type: field.type || 'text',
-            }))
-          );
+        const fieldList = Array.isArray(fields) ? fields : [];
+        
+        // Combine API fields with fire door grid columns
+        const apiFields = fieldList.map((field: any) => ({
+          name: field.key || field.name,
+          type: field.type || 'text',
+        }));
+        
+        // Add all fire door columns as available fields for formulas
+        const columnFields = COLUMNS.map((col) => ({
+          name: col.key,
+          type: 'text',
+        }));
+        
+        // Merge and deduplicate by name
+        const allFields = [...apiFields];
+        for (const colField of columnFields) {
+          if (!allFields.some(f => f.name === colField.name)) {
+            allFields.push(colField);
+          }
         }
+        
+        setAvailableFields(allFields);
       } catch (err) {
-        // Fallback: add common fire door fields if API fails
+        // Fallback: add all fire door columns
         setAvailableFields(COLUMNS.map((col) => ({
           name: col.key,
           type: 'text',
