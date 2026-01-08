@@ -1049,39 +1049,165 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Stage Navigation */}
-      <div className="flex gap-1 rounded-xl bg-slate-100/80 p-1 mb-6">
-        {[
-          { key: "business", label: "Business", icon: "🏢", description: "Company profile and quote settings" },
-          { key: "data-fields", label: "Data Fields", icon: "📋", description: "Custom fields for leads, quotes & projects" },
-          { key: "products", label: "Products", icon: "📦", description: "Manage product types and images" },
-          { key: "email-templates", label: "Email Templates", icon: "📧", description: "Customize email templates" },
-          { key: "marketing", label: "Marketing", icon: "�", description: "Landing pages and SEO" },
-          { key: "automation", label: "Automation", icon: "⚡", description: "Task playbooks and workflows" },
-          { key: "workshop-processes", label: "Workshop", icon: "🛠️", description: "Workshop processes" },
-          { key: "suppliers", label: "Suppliers", icon: "🏗️", description: "Manage supplier contacts" },
-          { key: "components", label: "Components", icon: "🔧", description: "Component catalog & product configuration" },
-          { key: "software-profiles", label: "Software", icon: "💻", description: "PDF parsing profiles" },
-          { key: "pdf-templates", label: "PDF Templates", icon: "📄", description: "View annotated PDF templates" },
-          { key: "material-costs", label: "Material Costs", icon: "💰", description: "Debug material cost data" },
-          { key: "lookup-tables", label: "Lookup Tables", icon: "🔍", description: "Manage dropdown & lookup table data" },
-          { key: "integrations", label: "Integrations", icon: "🔗", description: "Email and external connections" },
-        ].map((stage) => (
-          <Button
-            key={stage.key}
-            variant={currentStage === stage.key ? "default" : "ghost"}
-            onClick={() => setCurrentStage(stage.key as any)}
-            className="flex-1"
-          >
-            <div className="flex items-center justify-center gap-2">
-              <span>{stage.icon}</span>
-              <span className="hidden sm:inline">{stage.label}</span>
-            </div>
-          </Button>
-        ))}
-      </div>
+      {/* Settings Layout - Sidebar + Content */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* Sidebar Navigation */}
+        <div className="lg:col-span-1">
+          <div className="sticky top-6 rounded-xl border bg-white shadow-sm p-4">
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">Settings</div>
+            <nav className="space-y-4">
+              {/* Setup Section */}
+              <div>
+                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide px-3 mb-2">Setup</div>
+                <div className="space-y-1">
+                  {[
+                    { key: "business", label: "Business", icon: "🏢" },
+                    { key: "data-fields", label: "Data Fields", icon: "📋" },
+                    { key: "products", label: "Products", icon: "📦" },
+                  ].map((item) => (
+                    <button
+                      key={item.key}
+                      onClick={() => setCurrentStage(item.key as any)}
+                      className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 border-l-2 ${
+                        currentStage === item.key
+                          ? "bg-blue-50 text-blue-700 border-l-blue-500"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 border-l-transparent"
+                      }`}
+                    >
+                      <span className="text-base">{item.icon}</span>
+                      <span>{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-      <div className="rounded-xl border bg-slate-50/50 p-6">{/* Content area with background */}
+              {/* Communications Section */}
+              <div>
+                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide px-3 mb-2">Communications</div>
+                <div className="space-y-1">
+                  {[
+                    { key: "email-templates", label: "Email Templates", icon: "📧" },
+                    { key: "marketing", label: "Marketing", icon: "📢" },
+                  ].map((item) => (
+                    <button
+                      key={item.key}
+                      onClick={() => setCurrentStage(item.key as any)}
+                      className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 border-l-2 ${
+                        currentStage === item.key
+                          ? "bg-blue-50 text-blue-700 border-l-blue-500"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 border-l-transparent"
+                      }`}
+                    >
+                      <span className="text-base">{item.icon}</span>
+                      <span>{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Workflows Section */}
+              <div>
+                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide px-3 mb-2">Workflows</div>
+                <div className="space-y-1">
+                  {[
+                    { key: "automation", label: "Automation", icon: "⚡" },
+                    { key: "workshop-processes", label: "Workshop", icon: "🛠️" },
+                  ].map((item) => (
+                    <button
+                      key={item.key}
+                      onClick={() => setCurrentStage(item.key as any)}
+                      className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 border-l-2 ${
+                        currentStage === item.key
+                          ? "bg-blue-50 text-blue-700 border-l-blue-500"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 border-l-transparent"
+                      }`}
+                    >
+                      <span className="text-base">{item.icon}</span>
+                      <span>{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Organization Section */}
+              <div>
+                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide px-3 mb-2">Organization</div>
+                <div className="space-y-1">
+                  {[
+                    { key: "suppliers", label: "Suppliers", icon: "🏗️" },
+                    { key: "components", label: "Components", icon: "🔧" },
+                  ].map((item) => (
+                    <button
+                      key={item.key}
+                      onClick={() => setCurrentStage(item.key as any)}
+                      className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 border-l-2 ${
+                        currentStage === item.key
+                          ? "bg-blue-50 text-blue-700 border-l-blue-500"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 border-l-transparent"
+                      }`}
+                    >
+                      <span className="text-base">{item.icon}</span>
+                      <span>{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Data & Reports Section */}
+              <div>
+                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide px-3 mb-2">Data & Reports</div>
+                <div className="space-y-1">
+                  {[
+                    { key: "software-profiles", label: "Software", icon: "💻" },
+                    { key: "pdf-templates", label: "PDF Templates", icon: "📄" },
+                    { key: "material-costs", label: "Material Costs", icon: "💰" },
+                    { key: "lookup-tables", label: "Lookup Tables", icon: "🔍" },
+                  ].map((item) => (
+                    <button
+                      key={item.key}
+                      onClick={() => setCurrentStage(item.key as any)}
+                      className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 border-l-2 ${
+                        currentStage === item.key
+                          ? "bg-blue-50 text-blue-700 border-l-blue-500"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 border-l-transparent"
+                      }`}
+                    >
+                      <span className="text-base">{item.icon}</span>
+                      <span>{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Integrations Section */}
+              <div>
+                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide px-3 mb-2">Integrations</div>
+                <div className="space-y-1">
+                  {[
+                    { key: "integrations", label: "Integrations", icon: "🔗" },
+                  ].map((item) => (
+                    <button
+                      key={item.key}
+                      onClick={() => setCurrentStage(item.key as any)}
+                      className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 border-l-2 ${
+                        currentStage === item.key
+                          ? "bg-blue-50 text-blue-700 border-l-blue-500"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 border-l-transparent"
+                      }`}
+                    >
+                      <span className="text-base">{item.icon}</span>
+                      <span>{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </nav>
+          </div>
+        </div>
+
+        {/* Content Area */}
+        <div className="lg:col-span-3">
+          <div className="rounded-xl border bg-slate-50/50 p-6">{/* Content area with background */}
 
       {currentStage === "business" && (
       <>
@@ -2825,7 +2951,9 @@ export default function SettingsPage() {
         <LookupTablesSection />
       )}
 
-      </div>{/* End content area */}
+          </div>{/* End content area */}
+        </div>{/* End lg:col-span-3 */}
+      </div>{/* End grid layout */}
     </div>
   );
 }
