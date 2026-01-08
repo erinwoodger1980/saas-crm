@@ -31,6 +31,7 @@ import { fetchQuestionnaireFields } from "@/lib/questionnaireFields";
 import { UnifiedQuoteLineItems } from "@/components/quotes/UnifiedQuoteLineItems";
 import { ClientSelector } from "@/components/ClientSelector";
 import { CustomFieldsPanel } from "@/components/fields/CustomFieldsPanel";
+import { SplitProjectModal } from "../opportunities/SplitProjectModal";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -576,6 +577,13 @@ export default function LeadModal({
   const [wkUsers, setWkUsers] = useState<ProcUser[]>([]);
   const [wkAssignments, setWkAssignments] = useState<ProcAssignment[]>([]);
   const [wkSavingId, setWkSavingId] = useState<string | null>(null);
+  const [projectActualHours, setProjectActualHours] = useState<number | null>(null);
+  const [processLoggedHours, setProcessLoggedHours] = useState<Record<string, number>>({});
+
+  // Project split modal state
+  const [splitProjectOpen, setSplitProjectOpen] = useState(false);
+  const [splitProjectId, setSplitProjectId] = useState<string>("");
+  const [splitProjectTitle, setSplitProjectTitle] = useState<string>("");
 
   // Quote lines state
   const [quoteLines, setQuoteLines] = useState<any[]>([]);
@@ -1167,6 +1175,32 @@ export default function LeadModal({
         }));
         setWkAssignments(norm);
 
+        // Aggregate logged hours for this project (total + per process)
+        if (actualOpportunityId) {
+          try {
+            const hoursRes = await apiFetch<any>(`/workshop/projects/${encodeURIComponent(actualOpportunityId)}`).catch(() => null);
+            const perProcess: Record<string, number> = {};
+            (hoursRes?.breakdown || []).forEach((b: any) => {
+              (b.processes || []).forEach((p: any) => {
+                const key = String(p?.process || "").trim();
+                if (!key) return;
+                const hrs = Number(p?.hours || 0);
+                perProcess[key] = (perProcess[key] || 0) + (Number.isFinite(hrs) ? hrs : 0);
+              });
+            });
+            const totalLogged = Number(hoursRes?.project?.totalHours ?? 0);
+            setProjectActualHours(Number.isFinite(totalLogged) ? totalLogged : null);
+            setProcessLoggedHours(perProcess);
+          } catch (err) {
+            console.error('[LeadModal] workshop project hours fetch error:', err);
+            setProjectActualHours(null);
+            setProcessLoggedHours({});
+          }
+        } else {
+          setProjectActualHours(null);
+          setProcessLoggedHours({});
+        }
+
         // Load material dates and project details from the opportunity data
         console.log('[LeadModal] oppDetails response:', oppDetails);
         const opp = resolvedOpp;
@@ -1225,6 +1259,27 @@ export default function LeadModal({
   function getAssignmentFor(defId: string): ProcAssignment | undefined {
     return wkAssignments.find((a) => (a.processDefinitionId === defId) || (a.processCode && wkDefs.find(d => d.id===defId)?.code === a.processCode));
   }
+
+  const expectedHours = useMemo(() => {
+    if (wkDefs.length === 0) return null;
+    const total = wkDefs.reduce((sum, def) => {
+      const asn = getAssignmentFor(def.id);
+      const required = asn?.required ?? def.requiredByDefault ?? true;
+      const est = asn?.estimatedHours ?? def.estimatedHours ?? 0;
+      if (!required) return sum;
+      const num = Number(est);
+      return Number.isFinite(num) ? sum + num : sum;
+    }, 0);
+    return Number.isFinite(total) ? total : null;
+  }, [wkDefs, wkAssignments]);
+
+  const totalLoggedHours = useMemo(() => {
+    if (projectActualHours != null && !Number.isNaN(Number(projectActualHours))) {
+      return Number(projectActualHours);
+    }
+    const sum = Object.values(processLoggedHours).reduce((acc, hrs) => acc + (Number(hrs) || 0), 0);
+    return sum > 0 ? sum : null;
+  }, [projectActualHours, processLoggedHours]);
 
   async function saveProjectAssignment(def: ProcDef, patch: { required?: boolean; assignedUserId?: string|null; estimatedHours?: number|null }) {
     const projectId = opportunityId || lead?.id;
@@ -1303,6 +1358,18 @@ export default function LeadModal({
       console.error('[LeadModal] ensureOpportunity error:', err);
     }
     return null;
+  }
+
+  async function openSplitProject() {
+    const id = opportunityId || (await ensureOpportunity());
+    if (!id) {
+      alert("Project not ready yet. Save the order first.");
+      return;
+    }
+    const title = lead?.description || lead?.contactName || lead?.number || "Project";
+    setSplitProjectId(id);
+    setSplitProjectTitle(title);
+    setSplitProjectOpen(true);
   }
 
   async function saveMaterialDates() {
@@ -3253,6 +3320,16 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
 
           <Button
             variant="outline"
+            onClick={openSplitProject}
+            disabled={busyTask || saving}
+            title="Split this project into sub-projects (e.g., Windows/Doors)"
+          >
+            <span aria-hidden="true">🪚</span>
+            Split Project
+          </Button>
+
+          <Button
+            variant="outline"
             onClick={requestSupplierPrice}
             disabled={busyTask}
             title="Ask your supplier for pricing — we’ll handle the magic behind the scenes"
@@ -5047,58 +5124,114 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                     </section>
 
                     {/* Workshop processes */}
-                    <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5 shadow-sm backdrop-blur space-y-3">
-                      <div className="mb-3 flex items-center justify-between">
+                    <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5 shadow-sm backdrop-blur space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex items-center gap-2 text-sm font-semibold text-emerald-900">
                           <span aria-hidden>🛠️</span>
                           Workshop processes for this project
                         </div>
-                        <button
-                          type="button"
-                          className="text-xs text-emerald-700 hover:text-emerald-900"
-                          onClick={async () => {
-                            setWkLoading(true);
-                            try {
-                              const pid = opportunityId || lead.id;
-                              const project = await apiFetch<any>(
-                                `/workshop-processes/project/${encodeURIComponent(pid)}`
-                              ).catch(() => []);
-                              const arr = Array.isArray(
-                                project?.assignments || project
-                              )
-                                ? project.assignments || project
-                                : [];
-                              const norm: ProcAssignment[] = arr.map((it: any) => ({
-                                id: String(
-                                  it.id || it.assignmentId || crypto.randomUUID()
-                                ),
-                                processDefinitionId:
-                                  it.processDefinitionId || it.processDefinition?.id,
-                                processCode:
-                                  it.processCode || it.processDefinition?.code,
-                                processName:
-                                  it.processName || it.processDefinition?.name,
-                                required: Boolean(it.required ?? true),
-                                estimatedHours:
-                                  it.estimatedHours ??
-                                  it.processDefinition?.estimatedHours ??
-                                  null,
-                                assignedUser: it.assignedUser
-                                  ? {
-                                      id: it.assignedUser.id,
-                                      name: it.assignedUser.name ?? null,
-                                      email: it.assignedUser.email,
-                                    }
-                                  : null,
-                              }));
-                              setWkAssignments(norm);
-                            } finally {
-                              setWkLoading(false);
-                            }
-                          }}
-                        >
-                          Refresh
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-xs font-medium text-emerald-800 shadow-sm hover:bg-emerald-50 disabled:opacity-50"
+                            onClick={openSplitProject}
+                            disabled={wkLoading}
+                          >
+                            Split project
+                          </button>
+                          <button
+                            type="button"
+                            className="text-xs text-emerald-700 hover:text-emerald-900 disabled:opacity-50"
+                            onClick={async () => {
+                              setWkLoading(true);
+                              try {
+                                const pid = opportunityId || lead.id;
+                                const project = await apiFetch<any>(
+                                  `/workshop-processes/project/${encodeURIComponent(pid)}`
+                                ).catch(() => []);
+                                const arr = Array.isArray(
+                                  project?.assignments || project
+                                )
+                                  ? project.assignments || project
+                                  : [];
+                                const norm: ProcAssignment[] = arr.map((it: any) => ({
+                                  id: String(
+                                    it.id || it.assignmentId || crypto.randomUUID()
+                                  ),
+                                  processDefinitionId:
+                                    it.processDefinitionId || it.processDefinition?.id,
+                                  processCode:
+                                    it.processCode || it.processDefinition?.code,
+                                  processName:
+                                    it.processName || it.processDefinition?.name,
+                                  required: Boolean(it.required ?? true),
+                                  estimatedHours:
+                                    it.estimatedHours ??
+                                    it.processDefinition?.estimatedHours ??
+                                    null,
+                                  assignedUser: it.assignedUser
+                                    ? {
+                                        id: it.assignedUser.id,
+                                        name: it.assignedUser.name ?? null,
+                                        email: it.assignedUser.email,
+                                      }
+                                    : null,
+                                }));
+                                setWkAssignments(norm);
+
+                                try {
+                                  const hoursRes = await apiFetch<any>(
+                                    `/workshop/projects/${encodeURIComponent(pid)}`
+                                  ).catch(() => null);
+                                  const perProcess: Record<string, number> = {};
+                                  (hoursRes?.breakdown || []).forEach((b: any) => {
+                                    (b.processes || []).forEach((p: any) => {
+                                      const key = String(p?.process || "").trim();
+                                      if (!key) return;
+                                      const hrs = Number(p?.hours || 0);
+                                      perProcess[key] = (perProcess[key] || 0) + (Number.isFinite(hrs) ? hrs : 0);
+                                    });
+                                  });
+                                  const totalLogged = Number(hoursRes?.project?.totalHours ?? 0);
+                                  setProjectActualHours(Number.isFinite(totalLogged) ? totalLogged : null);
+                                  setProcessLoggedHours(perProcess);
+                                } catch {
+                                  setProjectActualHours(null);
+                                  setProcessLoggedHours({});
+                                }
+                              } finally {
+                                setWkLoading(false);
+                              }
+                            }}
+                          >
+                            Refresh
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-xl border border-white/50 bg-white/80 p-3 shadow-sm">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+                            Expected hours (est.)
+                          </div>
+                          <div className="text-xl font-semibold text-slate-900">
+                            {expectedHours != null ? `${expectedHours.toFixed(1)}h` : "—"}
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            Sum of required process estimates
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-white/50 bg-white/80 p-3 shadow-sm">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+                            Actual hours logged
+                          </div>
+                          <div className="text-xl font-semibold text-slate-900">
+                            {totalLoggedHours != null ? `${totalLoggedHours.toFixed(1)}h` : "—"}
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            Based on workshop time entries
+                          </div>
+                        </div>
                       </div>
 
                       {wkLoading ? (
@@ -5118,10 +5251,15 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                             const est =
                               (asn?.estimatedHours ?? def.estimatedHours) ?? null;
                             const userIdSel = asn?.assignedUser?.id || "";
+                            const logged = Number(
+                              processLoggedHours[def.code] ||
+                                processLoggedHours[def.processCode || ""] ||
+                                0
+                            );
                             return (
                               <div
                                 key={def.id}
-                                className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto_auto_auto] items-center gap-2 rounded-xl border bg-white/80 px-3 py-2"
+                                className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto_auto_auto_auto] items-center gap-2 rounded-xl border bg-white/80 px-3 py-2"
                               >
                                 <div>
                                   <div className="text-sm font-medium text-slate-900">
@@ -5191,6 +5329,22 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                     }}
                                     disabled={wkSavingId === def.id}
                                   />
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-xs text-slate-600">Logged</div>
+                                  <div className="text-sm font-semibold text-slate-900">
+                                    {logged.toFixed(1)}h
+                                  </div>
+                                  {est ? (
+                                    <div className="text-[11px] text-slate-500">
+                                      {Math.round(
+                                        Math.min(999, (logged / Number(est || 1)) * 100)
+                                      )}
+                                      % of estimate
+                                    </div>
+                                  ) : (
+                                    <div className="text-[11px] text-slate-500">—</div>
+                                  )}
                                 </div>
                                 <div className="text-right">
                                   {asn ? (
@@ -5864,6 +6018,16 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
           </div>
         </div>
       )}
+
+      <SplitProjectModal
+        open={splitProjectOpen}
+        onOpenChange={setSplitProjectOpen}
+        opportunityId={splitProjectId}
+        opportunityTitle={splitProjectTitle || "Project"}
+        onSplit={() => {
+          setSplitProjectOpen(false);
+        }}
+      />
 
     </div>
   );

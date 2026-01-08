@@ -202,9 +202,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Send confirmation email via tenant's email provider
-    // Uses the sendEmailViaTenant service which connects to Gmail/MS365
+    // Uses the sendEmailViaTenant service (stubbed in dev; replace with real provider in production)
     try {
-      const { sendEmailViaTenant } = require('@/lib/backend-only/email-sender');
+      const { sendEmailViaTenant } = await import('@/lib/backend-only/email-sender');
       
       const emailHtml = buildEstimateConfirmationEmail({
         clientName: clientInfo.name,

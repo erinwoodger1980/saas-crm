@@ -359,6 +359,17 @@ function OpportunitiesPageContent() {
     });
   }
 
+  function openSplitForLead(lead: Lead) {
+    const oppId = lead.opportunityId || lead.id;
+    if (!oppId) {
+      toast({ title: "Split unavailable", description: "No project ID for this lead." });
+      return;
+    }
+    setSplitProjectId(oppId);
+    setSplitProjectTitle(lead.contactName || "Project");
+    setSplitProjectOpen(true);
+  }
+
   function openLead(lead: Lead) {
     setSelected(lead);
     setOpen(true);
@@ -470,9 +481,21 @@ function OpportunitiesPageContent() {
                     setOpen(true);
                   }}
                   actionArea={
-                    <span className="rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-[11px] text-amber-900">
-                      {STATUS_LABELS.QUOTE_SENT}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-[11px] text-amber-900">
+                        {STATUS_LABELS.QUOTE_SENT}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openSplitForLead(l);
+                        }}
+                      >
+                        Split
+                      </Button>
+                    </div>
                   }
                 />
               ))}
@@ -506,9 +529,21 @@ function OpportunitiesPageContent() {
                   setOpen(true);
                 }}
                 actionArea={
-                  <span className="rounded-full border bg-white px-2 py-0.5 text-[11px] text-slate-700">
-                    {STATUS_LABELS[tab]}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full border bg-white px-2 py-0.5 text-[11px] text-slate-700">
+                      {STATUS_LABELS[tab]}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openSplitForLead(l);
+                      }}
+                    >
+                      Split
+                    </Button>
+                  </div>
                 }
               />
             ))
