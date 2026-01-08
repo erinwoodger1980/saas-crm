@@ -309,6 +309,8 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   const [lookupOptions, setLookupOptions] = useState<Record<string, Array<{value: string; label: string}>>>({});
   const [error, setError] = useState<string | null>(null);
   const [availableLookupTables, setAvailableLookupTables] = useState<Array<{ id: string; tableName: string; category?: string }>>([]);
+  const [availableComponents, setAvailableComponents] = useState<Array<{ id: string; code: string; name: string }>>([]);
+  const [availableFields, setAvailableFields] = useState<Array<{ name: string; type: string }>>([]);
 
   // Load fire door data from import
   useEffect(() => {
@@ -419,6 +421,52 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       }
     };
     loadLookupTables();
+  }, []);
+
+  // Load available components for the configure modal
+  useEffect(() => {
+    const loadComponents = async () => {
+      try {
+        const components = await apiFetch('/api/components');
+        if (Array.isArray(components)) {
+          setAvailableComponents(
+            components.map((comp: any) => ({
+              id: comp.id,
+              code: comp.code,
+              name: comp.name,
+            }))
+          );
+        }
+      } catch (err) {
+        console.log('No components found');
+      }
+    };
+    loadComponents();
+  }, []);
+
+  // Load available fields (questionnaire fields) for the configure modal
+  useEffect(() => {
+    const loadFields = async () => {
+      try {
+        // Get all questionnaire fields for the tenant
+        const fields = await apiFetch('/api/questionnaire-fields');
+        if (Array.isArray(fields)) {
+          setAvailableFields(
+            fields.map((field: any) => ({
+              name: field.key || field.name,
+              type: field.type || 'text',
+            }))
+          );
+        }
+      } catch (err) {
+        // Fallback: add common fire door fields if API fails
+        setAvailableFields(COLUMNS.map((col) => ({
+          name: col.key,
+          type: 'text',
+        })));
+      }
+    };
+    loadFields();
   }, []);
 
   const createComponentForField = async (lineItemId: string, fieldName: string, fieldValue: string, componentType: string) => {
@@ -901,6 +949,8 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
         onClose={() => setConfigModalOpen(false)}
         onSave={(config) => saveColumnConfig(configModalColumn, config)}
         availableLookupTables={availableLookupTables}
+        availableComponents={availableComponents}
+        availableFields={availableFields}
       />
     </div>
   );

@@ -4,6 +4,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
+import { FormulaWizard } from "./FormulaWizard";
+import { Sparkles } from "lucide-react";
+import { apiFetch } from "@/lib/api";
 
 interface FieldDropdownConfig {
   field: string;
@@ -80,6 +83,8 @@ interface ColumnHeaderModalProps {
   onClose: () => void;
   onSave: (config: FieldDropdownConfig) => void;
   availableLookupTables?: Array<{ id: string; tableName: string; category?: string }>;
+  availableComponents?: Array<{ id: string; code: string; name: string }>;
+  availableFields?: Array<{ name: string; type: string }>;
 }
 
 export function ColumnHeaderModal({
@@ -89,11 +94,15 @@ export function ColumnHeaderModal({
   onClose,
   onSave,
   availableLookupTables = [],
+  availableComponents = [],
+  availableFields = [],
 }: ColumnHeaderModalProps) {
   const [formData, setFormData] = useState<Partial<FieldDropdownConfig & { componentId?: string; triggerFields?: string }>>(
     currentConfig || { field: fieldName }
   );
   const [showAdvanced, setShowAdvanced] = useState(!!currentConfig?.valueField);
+  const [showFormulaWizard, setShowFormulaWizard] = useState(false);
+  const [formulaInput, setFormulaInput] = useState<string>("");
 
   useEffect(() => {
     if (currentConfig) {
@@ -188,25 +197,65 @@ export function ColumnHeaderModal({
                   <div className="mt-3 space-y-3 bg-blue-50 p-3 rounded">
                     <div>
                       <label className="block text-sm font-medium mb-1">Component ID</label>
-                      <Input
-                        placeholder="e.g., hinges-component"
-                        value={(formData as any).componentId || ''}
-                        onChange={(e) =>
-                          setFormData({ ...formData, componentId: e.target.value })
-                        }
-                      />
+                      {availableComponents.length > 0 ? (
+                        <Select
+                          value={(formData as any).componentId || ''}
+                          onValueChange={(value) =>
+                            setFormData({ ...formData, componentId: value })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a component..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableComponents.map((comp) => (
+                              <SelectItem key={comp.id} value={comp.id}>
+                                {comp.name} ({comp.code})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input
+                          placeholder="e.g., hinges-component"
+                          value={(formData as any).componentId || ''}
+                          onChange={(e) =>
+                            setFormData({ ...formData, componentId: e.target.value })
+                          }
+                        />
+                      )}
                       <p className="text-xs text-gray-500 mt-1">Leave empty to disable component linking</p>
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium mb-1">Trigger Field Names (comma-separated)</label>
-                      <Input
-                        placeholder="e.g., hingeType, hingeQuantity"
-                        value={(formData as any).triggerFields || ''}
-                        onChange={(e) =>
-                          setFormData({ ...formData, triggerFields: e.target.value })
-                        }
-                      />
+                      <label className="block text-sm font-medium mb-1">Trigger Field Names</label>
+                      {availableFields.length > 0 ? (
+                        <Select
+                          value={(formData as any).triggerFields || ''}
+                          onValueChange={(value) =>
+                            setFormData({ ...formData, triggerFields: value })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select fields (comma-separated)..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableFields.map((field) => (
+                              <SelectItem key={field.name} value={field.name}>
+                                {field.name} ({field.type})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input
+                          placeholder="e.g., hingeType, hingeQuantity"
+                          value={(formData as any).triggerFields || ''}
+                          onChange={(e) =>
+                            setFormData({ ...formData, triggerFields: e.target.value })
+                          }
+                        />
+                      )}
                       <p className="text-xs text-gray-500 mt-1">Fields that will trigger component creation when filled</p>
                     </div>
 
@@ -217,6 +266,32 @@ export function ColumnHeaderModal({
             </>
           )}
 
+          {/* Formula input section */}
+          <div className="border-t pt-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-medium">Formula (Optional)</label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowFormulaWizard(true)}
+                className="gap-1.5"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Formula Wizard
+              </Button>
+            </div>
+            <Input
+              placeholder="e.g., ${masterWidth} * 2 + ${trim}"
+              value={formulaInput}
+              onChange={(e) => setFormulaInput(e.target.value)}
+              className="font-mono text-xs"
+            />
+            <p className="text-xs text-gray-500">
+              Use ${'{fieldName}'} to reference other fields, or use the wizard to build formulas visually
+            </p>
+          </div>
+
           <div className="flex gap-2 pt-4">
             <Button variant="outline" onClick={onClose}>
               Cancel
@@ -224,7 +299,10 @@ export function ColumnHeaderModal({
             <Button
               onClick={() => {
                 if (formData.field && formData.lookupTableName && formData.displayField && formData.valueField) {
-                  onSave(formData as FieldDropdownConfig);
+                  onSave({
+                    ...formData as FieldDropdownConfig,
+                    formulaExpression: formulaInput || undefined,
+                  } as any);
                 }
               }}
             >
@@ -233,6 +311,18 @@ export function ColumnHeaderModal({
           </div>
         </div>
       </DialogContent>
+
+      {/* Formula Wizard Modal */}
+      <FormulaWizard
+        isOpen={showFormulaWizard}
+        onClose={() => setShowFormulaWizard(false)}
+        onSave={(formula) => {
+          setFormulaInput(formula);
+          setShowFormulaWizard(false);
+        }}
+        availableFields={availableFields}
+        availableLookupTables={availableLookupTables}
+      />
     </Dialog>
   );
 }
