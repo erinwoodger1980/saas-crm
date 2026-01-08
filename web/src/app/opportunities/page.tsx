@@ -3,6 +3,8 @@
 import React, { useEffect, useMemo, useState, Suspense, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
+import { CreateProjectModal } from "./CreateProjectModal";
+import { SplitProjectModal } from "./SplitProjectModal";
 // Lazy-load LeadModal with SSR disabled and a robust fallback
 type LeadModalProps = {
   open: boolean;
@@ -96,6 +98,15 @@ function OpportunitiesPageContent() {
   const [loadingPlan, setLoadingPlan] = useState(false);
   const [oppRows, setOppRows] = useState<Opp[]>([]);
   const [workshopProcesses, setWorkshopProcesses] = useState<Array<{ code: string; name: string }>>([]);
+
+  // Create Project modal state
+  const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [clients, setClients] = useState<Array<{ id: string; name: string }>>([]);
+
+  // Split Project modal state
+  const [splitProjectOpen, setSplitProjectOpen] = useState(false);
+  const [splitProjectId, setSplitProjectId] = useState<string>("");
+  const [splitProjectTitle, setSplitProjectTitle] = useState<string>("");
 
   // view toggle state
   const [viewMode, setViewMode] = useState<'cards' | 'grid'>(() => {
@@ -201,6 +212,14 @@ function OpportunitiesPageContent() {
       setWorkshopProcesses(processes || []);
     } catch {
       setWorkshopProcesses([]);
+    }
+
+    // 5) Load clients for Create Project modal
+    try {
+      const clientsList = await apiFetch<Array<{ id: string; name: string }>>("/clients");
+      setClients(clientsList || []);
+    } catch {
+      setClients([]);
     }
   }
 
@@ -393,6 +412,12 @@ function OpportunitiesPageContent() {
             {shortName && <span className="hidden sm:inline text-slate-400">· {shortName}</span>}
           </div>
           <div className="flex gap-2">
+            <Button
+              onClick={() => setCreateProjectOpen(true)}
+              className="bg-gradient-to-r from-amber-400 via-rose-400 to-pink-400 text-white"
+            >
+              + Create Project
+            </Button>
             <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1">
               <button
                 onClick={() => handleViewModeToggle('cards')}
@@ -578,6 +603,21 @@ function OpportunitiesPageContent() {
           onSave={(options, colors) => handleSaveDropdownOptions(editingField, options, colors)}
         />
       )}
+
+      <CreateProjectModal
+        open={createProjectOpen}
+        onOpenChange={setCreateProjectOpen}
+        clients={clients}
+        onCreated={load}
+      />
+
+      <SplitProjectModal
+        open={splitProjectOpen}
+        onOpenChange={setSplitProjectOpen}
+        opportunityId={splitProjectId}
+        opportunityTitle={splitProjectTitle}
+        onSplit={load}
+      />
     </>
   );
 }
