@@ -105,8 +105,13 @@ r.post("/search", async (req, res) => {
           subtitle: opp.lead?.email || opp.lead?.contactName || undefined,
           description: `£${opp.valueGBP || 0} opportunity`,
           action: {
-            type: 'navigate',
-            target: `/dashboard?opportunityId=${opp.id}`
+            type: 'modal',
+            target: '/opportunities',
+            params: {
+              modal: 'opportunity',
+              opportunityId: opp.id,
+              leadId: opp.leadId || undefined
+            }
           },
           score: calculateRelevanceScore(query, [opp.title, opp.lead?.contactName].filter((item): item is string => item !== null))
         });

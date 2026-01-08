@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useEffect, useMemo, useState, Suspense } from "react";
+import React, { useEffect, useMemo, useState, Suspense, useRef } from "react";
 import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
 // Lazy-load LeadModal with SSR disabled and a robust fallback
 type LeadModalProps = {
   open: boolean;
@@ -139,6 +140,9 @@ export default function OpportunitiesPage() {
 
   const [editingField, setEditingField] = useState<string | null>(null);
 
+  const searchParams = useSearchParams();
+  const hasAutoOpened = useRef(false);
+
   // Dynamically build available fields including workshop processes
   const AVAILABLE_FIELDS = useMemo(() => {
     const baseFields = [
@@ -204,6 +208,31 @@ export default function OpportunitiesPage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
+
+  useEffect(() => {
+    if (hasAutoOpened.current) return;
+
+    const modal = searchParams?.get('modal');
+    const opportunityId = searchParams?.get('opportunityId');
+    const leadId = searchParams?.get('leadId');
+
+    if (modal !== 'opportunity' || (!opportunityId && !leadId)) return;
+
+    const allLeads: Lead[] = Object.values(grouped || {}).flat();
+    const matched = allLeads.find((l) => {
+      if (opportunityId && l.opportunityId === opportunityId) return true;
+      if (leadId && l.id === leadId) return true;
+      return false;
+    });
+
+    if (matched) {
+      hasAutoOpened.current = true;
+      if (matched.status) {
+        setTab(String(matched.status).toUpperCase() as QuoteStatus);
+      }
+      openLead(matched);
+    }
+  }, [searchParams, grouped]);
 
   // Counts for all tabs
   const counts = useMemo(

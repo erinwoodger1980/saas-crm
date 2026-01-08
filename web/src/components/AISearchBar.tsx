@@ -285,6 +285,17 @@ export default function AISearchBar() {
             url.searchParams.set('leadId', action.params.leadId);
             url.searchParams.set('modal', 'lead');
             router.push(url.pathname + url.search);
+          } else if (action.params && action.params.modal === 'opportunity' && (action.params.opportunityId || action.params.leadId)) {
+            // For opportunity modals, navigate with URL params so the opportunities page can open the modal
+            const url = new URL(action.target, window.location.origin);
+            if (action.params.opportunityId) {
+              url.searchParams.set('opportunityId', action.params.opportunityId);
+            }
+            if (action.params.leadId) {
+              url.searchParams.set('leadId', action.params.leadId);
+            }
+            url.searchParams.set('modal', 'opportunity');
+            router.push(url.pathname + url.search);
           } else if (action.params) {
             // For other modal actions, navigate to the page with URL params
             const url = new URL(action.target, window.location.origin);
