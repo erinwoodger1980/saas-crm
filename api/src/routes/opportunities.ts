@@ -956,4 +956,142 @@ router.patch("/:id", async (req: any, res: any) => {
   res.json({ ok: true, opportunity: updated });
 });
 
+/**
+ * POST /opportunities
+ * Create a new opportunity (project) directly without requiring a lead
+ * Body: { title, clientId?, valueGBP?, startDate?, deliveryDate?, stage?, description? }
+ */
+router.post("/", async (req: any, res: any) => {
+  const { tenantId, userId } = getAuth(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  const {
+    title,
+    clientId,
+    valueGBP,
+    startDate,
+    deliveryDate,
+    stage = "WON", // Default to WON for direct project creation
+    description,
+    contactName,
+    email,
+    phone,
+  } = req.body || {};
+
+  if (!title) {
+    return res.status(400).json({ error: "title is required" });
+  }
+
+  try {
+    // Create the opportunity directly (leadId is now optional)
+    const data: any = {
+      tenantId,
+      title,
+      stage,
+      clientId: clientId || undefined,
+      valueGBP: valueGBP ? parseFloat(valueGBP) : undefined,
+      description: description || undefined,
+    };
+
+    // Set wonAt if stage is WON
+    if (stage === "WON") {
+      data.wonAt = new Date();
+    }
+
+    // Parse dates
+    if (startDate) {
+      try {
+        data.startDate = new Date(startDate);
+      } catch (e) {
+        console.warn("[opportunities.post] Invalid startDate:", startDate);
+      }
+    }
+    if (deliveryDate) {
+      try {
+        data.deliveryDate = new Date(deliveryDate);
+      } catch (e) {
+        console.warn("[opportunities.post] Invalid deliveryDate:", deliveryDate);
+      }
+    }
+
+    // If contact info provided but no clientId, we could create a client
+    // For now, just create the opportunity
+    const opportunity = await prisma.opportunity.create({
+      data,
+      include: {
+        client: true,
+        lead: true,
+      },
+    });
+
+    // Link to ClientAccount if clientId provided
+    if (clientId) {
+      linkOpportunityToClientAccount(opportunity.id).catch((err: any) => 
+        console.warn("[opportunities.post] Failed to link to ClientAccount:", err)
+      );
+    }
+
+    res.json({ ok: true, opportunity });
+  } catch (err: any) {
+    console.error("[opportunities.post] Error creating opportunity:", err);
+    res.status(500).json({ error: err.message || "failed_to_create_opportunity" });
+  }
+});
+
+/**
+ * POST /opportunities/:id/split
+ * Split an opportunity into multiple child opportunities (e.g., windows vs doors)
+ * Body: { splits: [{ title, description?, valueGBP? }] }
+ */
+router.post("/:id/split", async (req: any, res: any) => {
+  const { tenantId } = getAuth(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  const id = String(req.params.id);
+  const { splits } = req.body || {};
+
+  if (!splits || !Array.isArray(splits) || splits.length === 0) {
+    return res.status(400).json({ error: "splits array is required" });
+  }
+
+  try {
+    // Verify parent opportunity exists
+    const parent = await prisma.opportunity.findFirst({
+      where: { id, tenantId },
+      include: { client: true, lead: true },
+    });
+
+    if (!parent) {
+      return res.status(404).json({ error: "opportunity_not_found" });
+    }
+
+    // Create child opportunities
+    const children = await Promise.all(
+      splits.map((split: any) =>
+        prisma.opportunity.create({
+          data: {
+            tenantId,
+            parentOpportunityId: id,
+            leadId: parent.leadId,
+            clientId: parent.clientId,
+            clientAccountId: parent.clientAccountId,
+            title: split.title || `${parent.title} - Split`,
+            description: split.description || parent.description,
+            valueGBP: split.valueGBP ? parseFloat(split.valueGBP) : undefined,
+            stage: parent.stage,
+            wonAt: parent.wonAt,
+            startDate: parent.startDate,
+            deliveryDate: parent.deliveryDate,
+          },
+        })
+      )
+    );
+
+    res.json({ ok: true, parent, children });
+  } catch (err: any) {
+    console.error("[opportunities.split] Error splitting opportunity:", err);
+    res.status(500).json({ error: err.message || "failed_to_split_opportunity" });
+  }
+});
+
 export default router;

@@ -125,6 +125,7 @@ export async function linkOpportunityToClientAccount(opportunityId: string): Pro
     include: {
       lead: {
         select: {
+          id: true,
           email: true,
           contactName: true,
           clientAccountId: true,
@@ -135,6 +136,11 @@ export async function linkOpportunityToClientAccount(opportunityId: string): Pro
 
   if (!opportunity || opportunity.clientAccountId) {
     return; // Already linked or opportunity not found
+  }
+
+  // If no lead, can't create ClientAccount from email/name
+  if (!opportunity.lead) {
+    return;
   }
 
   // Use Lead's clientAccountId if available
@@ -148,11 +154,11 @@ export async function linkOpportunityToClientAccount(opportunityId: string): Pro
 
   // Otherwise find/create from Lead data
   const clientAccountId = await findOrCreateClientAccount(opportunity.tenantId, {
-    email: opportunity.lead.email,
+    email: opportunity.lead.email || undefined,
     contactName: opportunity.lead.contactName,
   });
 
-  if (clientAccountId) {
+  if (clientAccountId && opportunity.lead.id) {
     // Update both opportunity and lead
     await prisma.$transaction([
       prisma.opportunity.update({
@@ -160,7 +166,7 @@ export async function linkOpportunityToClientAccount(opportunityId: string): Pro
         data: { clientAccountId },
       }),
       prisma.lead.update({
-        where: { id: opportunity.leadId },
+        where: { id: opportunity.lead.id },
         data: { clientAccountId },
       }),
     ]);
