@@ -52,6 +52,7 @@ import { ColumnConfigModal } from "@/components/ColumnConfigModal";
 import DropdownOptionsEditor from "@/components/DropdownOptionsEditor";
 import { Table, LayoutGrid } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { CreateProjectModal } from "../opportunities/CreateProjectModal";
 
 type OrderStatus = "WON" | "COMPLETED";
 type Order = {
@@ -81,6 +82,8 @@ export default function OrdersPage() {
   const [rows, setRows] = useState<Order[]>([]);
   const { shortName } = useTenantBrand();
   const { toast } = useToast();
+  const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [clients, setClients] = useState<Array<{ id: string; name: string }>>([]);
 
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Order | null>(null);
@@ -172,6 +175,14 @@ export default function OrdersPage() {
     } catch {
       setWorkshopProcesses([]);
     }
+
+    // 3) Load clients for Create Project modal
+    try {
+      const clientsList = await apiFetch<Array<{ id: string; name: string }>>("/clients");
+      setClients(clientsList || []);
+    } catch {
+      setClients([]);
+    }
   }
 
   useEffect(() => {
@@ -204,7 +215,7 @@ export default function OrdersPage() {
               frozen: true, 
               width: 250, 
               type: 'custom',
-              render: (row: Order) => row.number ? `${row.number} - ${row.contactName || row.description || "Order"}` : row.contactName || row.description || "Order"
+              render: (row: Order) => (row.contactName || row.description || "Order") + (row.number ? ` - ${row.number}` : '')
             },
             { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
             { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown', dropdownOptions: ['WON', 'COMPLETED'] },
@@ -220,7 +231,7 @@ export default function OrdersPage() {
             frozen: true, 
             width: 250, 
             type: 'custom',
-            render: (row: Order) => row.number ? `${row.number} - ${row.contactName || row.description || "Order"}` : row.contactName || row.description || "Order"
+            render: (row: Order) => (row.contactName || row.description || "Order") + (row.number ? ` - ${row.number}` : '')
           },
           { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
           { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown', dropdownOptions: ['WON', 'COMPLETED'] },
@@ -330,6 +341,12 @@ export default function OrdersPage() {
             {shortName && <span className="hidden sm:inline text-slate-400">· {shortName}</span>}
           </div>
           <div className="flex gap-2">
+            <Button
+              onClick={() => setCreateProjectOpen(true)}
+              className="bg-gradient-to-r from-amber-400 via-rose-400 to-pink-400 text-white"
+            >
+              + Create Project
+            </Button>
             <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1">
               <button
                 onClick={() => handleViewModeToggle('cards')}
@@ -412,6 +429,15 @@ export default function OrdersPage() {
           )}
         </section>
       </DeskSurface>
+      <CreateProjectModal
+        open={createProjectOpen}
+        onOpenChange={setCreateProjectOpen}
+        clients={clients}
+        onCreated={() => {
+          setCreateProjectOpen(false);
+          load();
+        }}
+      />
 
       {selected && (
         <ErrorBoundary fallback={<div className="p-6 text-sm text-red-600">Order modal failed to load.</div>}>
@@ -485,7 +511,7 @@ function CardRow({
         </span>
         <div className="flex-1 min-w-0">
           <div className="truncate text-sm font-medium">
-            {order.number ? `${order.number} - ${order.contactName || order.description || "Order"}` : order.contactName || order.description || "Order"}
+            {(order.contactName || order.description || "Order") + (order.number ? ` - ${order.number}` : '')}
           </div>
           <div className="text-[11px] text-slate-500">
             {order.custom?.source ? `Source: ${order.custom.source}` : "Source: —"}

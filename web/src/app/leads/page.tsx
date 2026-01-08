@@ -256,7 +256,7 @@ function LeadsPageContent() {
               frozen: true, 
               width: 250, 
               type: 'custom',
-              render: (row: Lead) => row.number ? `${row.number} - ${row.contactName || row.description || "Lead"}` : row.contactName || row.description || "Lead"
+              render: (row: Lead) => (row.contactName || row.description || "Lead") + (row.number ? ` - ${row.number}` : '')
             },
             { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
             { field: 'phone', label: 'Phone', visible: true, frozen: false, width: 150 },
@@ -273,7 +273,7 @@ function LeadsPageContent() {
             frozen: true, 
             width: 250, 
             type: 'custom',
-            render: (row: Lead) => row.number ? `${row.number} - ${row.contactName || row.description || "Lead"}` : row.contactName || row.description || "Lead"
+            render: (row: Lead) => (row.contactName || row.description || "Lead") + (row.number ? ` - ${row.number}` : '')
           },
           { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
           { field: 'phone', label: 'Phone', visible: true, frozen: false, width: 150 },
@@ -1507,7 +1507,7 @@ function LeadCard({
             </span>
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold text-slate-900">
-                {lead.number ? `${lead.number} - ${lead.contactName || lead.description || "Lead"}` : lead.contactName || lead.description || "Lead"}
+                {(lead.contactName || lead.description || "Lead") + (lead.number ? ` - ${lead.number}` : '')}
               </div>
               {lead.email && <div className="truncate text-xs text-slate-500">{lead.email}</div>}
             </div>

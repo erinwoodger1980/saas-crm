@@ -3,7 +3,6 @@
 import React, { useEffect, useMemo, useState, Suspense, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
-import { CreateProjectModal } from "./CreateProjectModal";
 import { SplitProjectModal } from "./SplitProjectModal";
 // Lazy-load LeadModal with SSR disabled and a robust fallback
 type LeadModalProps = {
@@ -99,9 +98,7 @@ function OpportunitiesPageContent() {
   const [oppRows, setOppRows] = useState<Opp[]>([]);
   const [workshopProcesses, setWorkshopProcesses] = useState<Array<{ code: string; name: string }>>([]);
 
-  // Create Project modal state
-  const [createProjectOpen, setCreateProjectOpen] = useState(false);
-  const [clients, setClients] = useState<Array<{ id: string; name: string }>>([]);
+  // Create Project modal moved to Orders tab
 
   // Split Project modal state
   const [splitProjectOpen, setSplitProjectOpen] = useState(false);
@@ -214,13 +211,7 @@ function OpportunitiesPageContent() {
       setWorkshopProcesses([]);
     }
 
-    // 5) Load clients for Create Project modal
-    try {
-      const clientsList = await apiFetch<Array<{ id: string; name: string }>>("/clients");
-      setClients(clientsList || []);
-    } catch {
-      setClients([]);
-    }
+    // Clients not needed here
   }
 
   useEffect(() => {
@@ -412,12 +403,7 @@ function OpportunitiesPageContent() {
             {shortName && <span className="hidden sm:inline text-slate-400">· {shortName}</span>}
           </div>
           <div className="flex gap-2">
-            <Button
-              onClick={() => setCreateProjectOpen(true)}
-              className="bg-gradient-to-r from-amber-400 via-rose-400 to-pink-400 text-white"
-            >
-              + Create Project
-            </Button>
+            {/* Create Project available on Orders tab */}
             <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1">
               <button
                 onClick={() => handleViewModeToggle('cards')}
@@ -604,12 +590,7 @@ function OpportunitiesPageContent() {
         />
       )}
 
-      <CreateProjectModal
-        open={createProjectOpen}
-        onOpenChange={setCreateProjectOpen}
-        clients={clients}
-        onCreated={load}
-      />
+      {/* CreateProjectModal removed from Opportunities */}
 
       <SplitProjectModal
         open={splitProjectOpen}
