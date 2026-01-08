@@ -4,6 +4,7 @@ import { useRef, useState as useReactState } from "react";
 import MaterialLinkDialog from "@/components/workshop/MaterialLinkDialog";
 import MaterialReceivedDialog from "@/components/workshop/MaterialReceivedDialog";
 import MaterialOrderDialog from "@/components/workshop/MaterialOrderDialog";
+import { GroupProjectsModal } from "@/app/workshop/GroupProjectsModal";
 // Type definitions for QuickLogModal
 interface QuickLogUser {
   id: string;
@@ -397,6 +398,7 @@ export default function WorkshopPage() {
   const [showMaterialOrder, setShowMaterialOrder] = useState<{taskId: string; taskTitle: string; materialType: string; opportunityId: string} | null>(null);
   const [myTasksCount, setMyTasksCount] = useState(0);
   const [showQRScanner, setShowQRScanner] = useState(false);
+  const [groupProjectsOpen, setGroupProjectsOpen] = useState(false);
 
   async function loadWorkshopTasks() {
     if (!user?.id) return;
@@ -1302,6 +1304,7 @@ export default function WorkshopPage() {
               else if (value === 'quicklog') setShowQuickLog(true);
               else if (value === 'holidays') setShowHolidayModal(true);
               else if (value === 'usercolors') setShowUserColors(true);
+              else if (value === 'groupprojects') setGroupProjectsOpen(true);
             }}>
               <SelectTrigger className="w-[140px] h-9">
                 <SelectValue placeholder="Actions" />
@@ -1311,6 +1314,7 @@ export default function WorkshopPage() {
                 <SelectItem value="timesheets">📋 View Timesheets</SelectItem>
                 <SelectItem value="holidays">🏖️ Holidays</SelectItem>
                 <SelectItem value="usercolors">🎨 User Colors</SelectItem>
+                <SelectItem value="groupprojects">📦 Group Projects</SelectItem>
               </SelectContent>
             </Select>
           )}
@@ -2263,6 +2267,23 @@ export default function WorkshopPage() {
           onClose={() => setShowHolidayModal(false)}
         />
       )}
+
+      {/* Group Projects Modal */}
+      <GroupProjectsModal
+        open={groupProjectsOpen}
+        onOpenChange={setGroupProjectsOpen}
+        opportunities={projects.map(p => ({
+          id: p.id,
+          title: p.name,
+          valueGBP: typeof p.valueGBP === 'number' ? p.valueGBP : (p.valueGBP ? Number(p.valueGBP) : null),
+          stage: p.wonAt ? 'WON' : 'OPEN',
+          client: null,
+        }))}
+        onGroupCreated={() => {
+          loadAll();
+        }}
+      />
+
       {showHoursModal && (
         <div 
           className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50"
