@@ -225,6 +225,7 @@ model ComponentLookup {
   variants           ComponentVariant[]    @relation("ComponentVariants")
   fields             QuestionnaireField[]  @relation("FieldComponentLookup")
   productTypeAssignments ProductTypeComponentAssignment[] @relation("ComponentProductTypeAssignments")
+  componentTemplates ComponentTemplate[]   @relation("TemplateComponentLookup")
   
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -4576,6 +4577,7 @@ model LookupTableRow {
 }
 
 // Component template for auto-generating BOM items from field values
+// Links ProductTypes, LookupTables, and ComponentLookups for unified product configuration
 model ComponentTemplate {
   id                String    @id @default(cuid())
   tenantId          String
@@ -4583,13 +4585,16 @@ model ComponentTemplate {
   componentCategory String    // "material", "ironmongery", "glass", "finish", "hardware"
   description       String?
   
-  // Trigger conditions
+  // Link to global component library
+  componentLookupId String?   // If set, creates instance of this ComponentLookup
+  
+  // Trigger conditions (for auto-generation from fields)
   requiredFields    String[]  // Fields that must have values to create component
   triggerFields     String[]  // Fields that trigger component creation/update
   
-  // Lookup table linking
+  // Lookup table linking (material/product selection)
   lookupTableId     String?   // Pulls pricing/specs from this lookup table
-  lookupFieldName   String?   // Field name that contains the lookup value
+  lookupFieldName   String?   // Field name that contains the lookup value (e.g., "lippingMaterial")
   
   // Quantity calculation
   quantityFormula   String?   // Formula to calculate quantity (e.g., "leafHeight * 2 + leafWidth * 2")
@@ -4601,6 +4606,13 @@ model ComponentTemplate {
   // Default values
   defaultProps      Json?     // Default properties if not mapped from fields
   
+  // AI/ML integration
+  aiCategories      String[]  @default([]) // Categories AI should recognize (e.g., ["door", "window", "lipping"])
+  aiKeywords        String[]  @default([]) // Keywords for AI matching (e.g., ["oak", "hinge", "glass"])
+  
+  // Product type linking (which product types use this template)
+  productTypeIds    String[]  @default([]) // ProductType IDs this template applies to
+  
   // Conditions
   activeWhen        Json?     // Conditions when this template should be active
   
@@ -4611,10 +4623,12 @@ model ComponentTemplate {
   
   tenant            Tenant    @relation("ComponentTemplates", fields: [tenantId], references: [id], onDelete: Cascade)
   lookupTable       LookupTable? @relation("TemplateLookupTable", fields: [lookupTableId], references: [id])
+  componentLookup   ComponentLookup? @relation("TemplateComponentLookup", fields: [componentLookupId], references: [id])
   
   @@unique([tenantId, name])
   @@index([tenantId, isActive])
   @@index([tenantId, componentCategory])
+  @@index([componentLookupId])
 }
 
 // Field display context configuration

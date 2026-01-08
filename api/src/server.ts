@@ -149,6 +149,7 @@ import materialsRouter from "./routes/materials";
 import sceneStateRouter from "./routes/scene-state";
 import assetsRouter from "./routes/assets";
 import profilesRouter from "./routes/profiles";
+import templatesRouter from "./routes/templates";
 import accountingSageRouter from "./routes/accounting-sage";
 import fireDoorRfisRouter from "./routes/fire-door-rfis";
 import fireDoorComponentsRouter from "./routes/fire-door-components";
@@ -793,6 +794,8 @@ app.use("/materials", requireAuth, materialsRouter);
 app.use("/assets", requireAuth, assetsRouter);
 // 2D profile storage (SVG/DXF files for component extrusion)
 app.use("/profiles", requireAuth, profilesRouter);
+// Template product generation (ProductType → ComponentTemplate → LookupTableRow)
+app.use("/templates", requireAuth, templatesRouter);
 // Material cost debug routes (internal debugging tool)
 app.use("/material-debug", requireAuth, materialDebugRouter);
 // Developer Console routes
