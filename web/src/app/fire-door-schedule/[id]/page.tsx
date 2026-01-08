@@ -16,6 +16,7 @@ import { useCurrentUser } from "@/lib/use-current-user";
 import FireDoorSpreadsheet from "@/components/FireDoorSpreadsheet";
 import { ColoredSelect } from "@/components/ColoredSelect";
 import { FireDoorBOM } from "@/components/FireDoorBOM";
+import { FireDoorBOMPanel } from "@/app/_components/FireDoorBOMPanel";
 
 const ironmongeryStatusOptions = [
   "Not in BOM",
@@ -1194,8 +1195,28 @@ export default function FireDoorScheduleDetailPage() {
                     </div>
 
                     {selectedLineItemId && (
-                      <div className="pt-4 border-t border-slate-200">
-                        <FireDoorBOM lineItemId={selectedLineItemId} />
+                      <div className="pt-4 border-t border-slate-200 space-y-6">
+                        <div>
+                          <h3 className="text-lg font-semibold text-slate-800 mb-4">Unified BOM Generation</h3>
+                          <FireDoorBOMPanel
+                            fireDoorId={selectedLineItemId}
+                            fireDoorRowData={{
+                              height: lineItems.find((item: any) => item.id === selectedLineItemId)?.doorHeight,
+                              width: lineItems.find((item: any) => item.id === selectedLineItemId)?.masterWidth,
+                              fireRating: lineItems.find((item: any) => item.id === selectedLineItemId)?.fireRating,
+                              location: lineItems.find((item: any) => item.id === selectedLineItemId)?.location,
+                              doorRef: lineItems.find((item: any) => item.id === selectedLineItemId)?.doorRef,
+                            }}
+                            onBOMGenerated={(bom) => {
+                              console.log('BOM generated:', bom);
+                              toast({ title: 'Success', description: 'BOM generated successfully' });
+                            }}
+                          />
+                        </div>
+                        <div className="border-t border-slate-200 pt-6">
+                          <h3 className="text-lg font-semibold text-slate-800 mb-4">Legacy Line Item Details</h3>
+                          <FireDoorBOM lineItemId={selectedLineItemId} />
+                        </div>
                       </div>
                     )}
                   </div>
