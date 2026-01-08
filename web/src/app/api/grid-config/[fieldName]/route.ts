@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentUserId } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(
@@ -7,12 +6,11 @@ export async function POST(
   { params }: { params: { fieldName: string } }
 ) {
   try {
-    const userId = await getCurrentUserId();
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const fieldName = params.fieldName;
+    if (!fieldName) {
+      return NextResponse.json({ error: "fieldName required" }, { status: 400 });
     }
 
-    const fieldName = params.fieldName;
     const config = await request.json();
 
     // Save or update grid field configuration
@@ -52,12 +50,10 @@ export async function GET(
   { params }: { params: { fieldName: string } }
 ) {
   try {
-    const userId = await getCurrentUserId();
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const fieldName = params.fieldName;
+    if (!fieldName) {
+      return NextResponse.json({ error: "fieldName required" }, { status: 400 });
+    }
 
     const config = await prisma.gridFieldConfig.findUnique({
       where: { fieldName },
