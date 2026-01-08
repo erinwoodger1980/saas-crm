@@ -334,6 +334,42 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   const handleRowsChange = useCallback((newRows: FireDoorRow[]) => {
     setRows(newRows);
 
+    // Auto-generate BOMs for all rows
+    const batchGenerateBOMs = async () => {
+      try {
+        const bomRows = newRows.map(row => ({
+          id: row.id,
+          fieldValues: {
+            height: row.leafHeight,
+            width: row.masterLeafWidth || row.mLeafWidth,
+            fireRating: row.rating,
+            location: row.location,
+            doorRef: row.doorRef,
+            coreType: row.coreType,
+            leafCount: row.leafConfiguration?.includes('Double') ? 2 : 1,
+          },
+        }));
+
+        // Only batch generate if we have valid data
+        if (bomRows.some(r => r.fieldValues.height && r.fieldValues.width)) {
+          await fetch('/fire-door-bom/batch-generate', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${localStorage.getItem('jwt')}`,
+            },
+            body: JSON.stringify({ rows: bomRows }),
+          });
+        }
+      } catch (err) {
+        console.error('Failed to auto-generate BOMs:', err);
+      }
+    };
+
+    // Debounce BOM generation
+    const timer = setTimeout(batchGenerateBOMs, 1000);
+    return () => clearTimeout(timer);
+
     // Check for component creation triggers
     newRows.forEach((newRow, index) => {
       const oldRow = rows[index];

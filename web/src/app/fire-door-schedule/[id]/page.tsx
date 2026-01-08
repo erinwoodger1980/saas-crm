@@ -667,6 +667,30 @@ export default function FireDoorScheduleDetailPage() {
                     <Button onClick={saveNetValueOverride}>Save</Button>
                   </div>
                 </div>
+                <div className="mt-4 flex gap-2">
+                  <Button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    variant="outline"
+                    className="gap-2"
+                  >
+                    <Upload className="w-4 h-4" />
+                    {uploading ? "Importing..." : "Import CSV"}
+                  </Button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        handleCSVImport(file);
+                        e.target.value = "";
+                      }
+                    }}
+                  />
+                </div>
               </div>
 
         <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6">
