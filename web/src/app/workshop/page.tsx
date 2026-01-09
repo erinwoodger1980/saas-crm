@@ -6,6 +6,7 @@ import MaterialReceivedDialog from "@/components/workshop/MaterialReceivedDialog
 import MaterialOrderDialog from "@/components/workshop/MaterialOrderDialog";
 import { GroupProjectsModal } from "@/app/workshop/GroupProjectsModal";
 import { TaskCard } from "@/components/tasks/TaskCard";
+import { TaskModal } from "@/components/tasks/TaskModal";
 // Type definitions for QuickLogModal
 interface QuickLogUser {
   id: string;
@@ -440,6 +441,7 @@ export default function WorkshopPage() {
   const [myTasksCount, setMyTasksCount] = useState(0);
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [groupProjectsOpen, setGroupProjectsOpen] = useState(false);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   async function loadWorkshopTasks() {
     if (!user?.id) return;
@@ -2006,8 +2008,7 @@ export default function WorkshopPage() {
                     }
                   }}
                   onEdit={() => {
-                    // Could open full task modal here if needed
-                    alert('Full task editing coming soon!');
+                    setSelectedTaskId(task.id);
                   }}
                   onChecklistToggle={async (itemId) => {
                     try {
@@ -2292,6 +2293,20 @@ export default function WorkshopPage() {
           loadAll();
         }}
       />
+
+      {/* Task Modal for editing */}
+      {selectedTaskId && (
+        <TaskModal
+          taskId={selectedTaskId}
+          open={!!selectedTaskId}
+          onOpenChange={(open) => {
+            if (!open) {
+              setSelectedTaskId(null);
+              loadWorkshopTasks();
+            }
+          }}
+        />
+      )}
 
       {showHoursModal && (
         <div 

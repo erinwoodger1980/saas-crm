@@ -2014,6 +2014,7 @@ model Task {
   followUpHistory        FollowUpHistory[]
   emailConversations     EmailConversation[]
   timeEntries            TimeEntry[]
+  workshopTimers         WorkshopTimer[]
 
   @@index([tenantId, status, dueAt])
   @@index([tenantId, relatedType, relatedId])
@@ -2288,6 +2289,7 @@ model WorkshopTimer {
   tenant           Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   project          Opportunity? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task             Task?        @relation(fields: [taskId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, userId])
   @@index([userId])
