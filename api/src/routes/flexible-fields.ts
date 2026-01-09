@@ -357,32 +357,42 @@ router.get('/lookup-tables', async (req: Request, res: Response) => {
     }
 
     const where: any = { tenantId };
-    if (name) where.name = { contains: name as string, mode: 'insensitive' };
+    if (name) where.tableName = { contains: name as string, mode: 'insensitive' };
 
     const tables = await prisma.lookupTable.findMany({
       where,
-      include: { 
+      select: {
+        id: true,
+        tenantId: true,
+        name: true,
+        tableName: true,
+        category: true,
+        description: true,
+        columns: true,
+        isStandard: true,
+        createdAt: true,
+        updatedAt: true,
         rows: {
+          select: {
+            id: true,
+            data: true,
+            createdAt: true,
+          },
           orderBy: { createdAt: 'asc' }
         }
       },
-      orderBy: { id: 'asc' },
+      orderBy: { createdAt: 'desc' },
     });
 
     console.log(`[lookup-tables] Found ${tables.length} tables for tenant ${tenantId}`);
     
     // Transform the response to match the expected format
-    // Map lookupTableRow objects to the rows array
-    const formattedTables = tables.map((table: any) => {
-      const transformedTable = {
-        ...table,
-        rows: table.rows && Array.isArray(table.rows) 
-          ? table.rows.map((row: any) => row.data || {})
-          : []
-      };
-      console.log(`[lookup-tables] Table "${table.name}": ${table.columns?.length || 0} columns, ${transformedTable.rows.length} rows`);
-      return transformedTable;
-    });
+    const formattedTables = tables.map((table: any) => ({
+      ...table,
+      rows: Array.isArray(table.rows) 
+        ? table.rows.map((row: any) => row.data || {})
+        : []
+    }));
 
     console.log(`[lookup-tables] Returning ${formattedTables.length} formatted tables`);
     return res.json(formattedTables);
