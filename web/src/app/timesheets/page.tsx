@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -86,10 +87,17 @@ type Project = {
   status: string;
 };
 
-export default function TimesheetsPage() {
+export function TimesheetsManagement({ redirectAdminsToSettings = false }: { redirectAdminsToSettings?: boolean }) {
+  const router = useRouter();
   const { toast } = useToast();
   const { user: currentUser } = useCurrentUser();
   const canAmendTime = ["owner", "admin"].includes(String(currentUser?.role || "").toLowerCase());
+
+  useEffect(() => {
+    if (redirectAdminsToSettings && canAmendTime) {
+      router.replace("/settings/holidays?tab=time-tracking");
+    }
+  }, [redirectAdminsToSettings, canAmendTime, router]);
   const [activeTab, setActiveTab] = useState<string>("overview");
   const [timesheets, setTimesheets] = useState<Timesheet[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -1665,4 +1673,8 @@ export default function TimesheetsPage() {
       </div>
     </>
   );
+}
+
+export default function TimesheetsPage() {
+  return <TimesheetsManagement redirectAdminsToSettings />;
 }

@@ -1,6 +1,8 @@
 "use client";
+"use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -11,6 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TimesheetsManagement } from "../../timesheets/page";
 
 interface HolidayRequest {
   id: string;
@@ -38,7 +42,7 @@ interface UserBalance {
   remaining: number;
 }
 
-export default function HolidayManagementPage() {
+function HolidayRequestsPanel() {
   const [requests, setRequests] = useState<HolidayRequest[]>([]);
   const [balances, setBalances] = useState<Record<string, UserBalance>>({});
   const [loading, setLoading] = useState(true);
@@ -54,7 +58,6 @@ export default function HolidayManagementPage() {
         const data = await res.json();
         setRequests(data.requests || []);
 
-        // Load balances for each unique user
         const uniqueUserIds = Array.from(new Set(data.requests.map((r: HolidayRequest) => r.userId)));
         const balancePromises = uniqueUserIds.map(async (userId) => {
           const balanceRes = await fetch(`/api/workshop/holiday-balance?userId=${userId}`);
@@ -74,52 +77,6 @@ export default function HolidayManagementPage() {
       }
     } catch (error) {
       console.error("Failed to load holiday requests:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadRequests();
-  }, []);
-
-  const handleApprove = async (requestId: string) => {
-    if (processingId) return;
-    
-    setProcessingId(requestId);
-    try {
-      const res = await fetch(`/api/workshop/holiday-requests/${requestId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          status: "approved",
-          adminNotes: adminNotes[requestId] || null,
-        }),
-      });
-
-      if (res.ok) {
-        await loadRequests();
-        setAdminNotes((prev) => {
-          const updated = { ...prev };
-          delete updated[requestId];
-          return updated;
-        });
-      } else {
-        alert("Failed to approve request");
-      }
-    } catch (error) {
-      console.error("Failed to approve:", error);
-      alert("Error approving request");
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
-  const handleDeny = async (requestId: string) => {
-    if (processingId) return;
-
-    const notes = adminNotes[requestId];
-    if (!notes?.trim()) {
       alert("Please provide a reason for denial in the admin notes");
       return;
     }
@@ -198,25 +155,23 @@ export default function HolidayManagementPage() {
       case "pending":
         return "text-yellow-600 bg-yellow-50";
       default:
-        return "text-gray-600 bg-gray-50";
+        return "text-slate-600 bg-slate-50";
     }
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-2">Holiday Management</h1>
-        <p className="text-gray-600">Review and manage employee holiday requests</p>
-      </div>
-
-      {/* Filter */}
-      <div className="mb-6">
-        <Select value={filter} onValueChange={(v: any) => setFilter(v)}>
-          <SelectTrigger className="w-64">
-            <SelectValue />
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold">Holiday Requests</h2>
+          <p className="text-muted-foreground text-sm">Approve, deny, and manage team holiday requests.</p>
+        </div>
+        <Select value={filter} onValueChange={(val) => setFilter(val as any)}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Filter" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Requests</SelectItem>
+            <SelectItem value="all">All</SelectItem>
             <SelectItem value="pending">Pending</SelectItem>
             <SelectItem value="approved">Approved</SelectItem>
             <SelectItem value="denied">Denied</SelectItem>
@@ -224,121 +179,127 @@ export default function HolidayManagementPage() {
         </Select>
       </div>
 
-      {/* Requests List */}
       {loading ? (
-        <div className="text-center py-12">Loading...</div>
+        <div className="text-center text-muted-foreground">Loading requests...</div>
       ) : filteredRequests.length === 0 ? (
-        <Card className="p-8 text-center text-gray-500">
-          No {filter !== "all" ? filter : ""} holiday requests found
-        </Card>
+        <div className="text-center text-muted-foreground">No holiday requests found.</div>
       ) : (
-        <div className="space-y-4">
-          {filteredRequests.map((request) => {
-            const balance = balances[request.userId];
-            return (
-              <Card key={request.id} className="p-6">
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                  {/* User Info */}
-                  <div className="md:col-span-3">
-                    <div className="font-semibold">{request.user.name || "Unknown"}</div>
-                    <div className="text-sm text-gray-500">{request.user.email}</div>
-                    {balance && (
-                      <div className="text-xs text-gray-600 mt-1">
-                        Balance: {balance.remaining}/{balance.allowance} days
-                      </div>
-                    )}
+        <div className="grid gap-4">
+          {filteredRequests.map((req) => (
+            <Card key={req.id} className="p-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <span>{formatDate(req.startDate)}</span>
+                    <span>→</span>
+                    <span>{formatDate(req.endDate)}</span>
+                    <span className="text-xs text-muted-foreground">({req.days} days)</span>
                   </div>
-
-                  {/* Dates */}
-                  <div className="md:col-span-3">
-                    <div className="text-sm text-gray-500">Dates</div>
-                    <div className="font-medium">
-                      {formatDate(request.startDate)} - {formatDate(request.endDate)}
-                    </div>
-                    <div className="text-sm text-gray-600">{request.days} day{request.days !== 1 ? "s" : ""}</div>
+                  <div className="text-lg font-semibold">{req.user.name || req.user.email}</div>
+                  <div className="text-sm text-muted-foreground">Allowance: {req.user.holidayAllowance} days</div>
+                  {req.reason && <div className="mt-2 text-sm">Reason: {req.reason}</div>}
+                  <div className="mt-3 text-sm">
+                    <div className="text-xs font-medium text-muted-foreground mb-1">Admin notes</div>
+                    <Textarea
+                      value={adminNotes[req.id] || ""}
+                      onChange={(e) => setAdminNotes((prev) => ({ ...prev, [req.id]: e.target.value }))}
+                      placeholder="Optional notes for approval/denial"
+                    />
                   </div>
-
-                  {/* Reason */}
-                  <div className="md:col-span-3">
-                    <div className="text-sm text-gray-500">Reason</div>
-                    <div className="text-sm">{request.reason || "—"}</div>
-                    {request.adminNotes && (
-                      <div className="text-xs text-gray-500 mt-1 italic">
-                        Admin: {request.adminNotes}
-                      </div>
-                    )}
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(req.status)}`}>
+                    {req.status.toUpperCase()}
+                  </span>
+                  <div className="text-right text-xs text-muted-foreground">
+                    <div>Used: {balances[req.userId]?.used ?? 0}d</div>
+                    <div>Remaining: {balances[req.userId]?.remaining ?? req.user.holidayAllowance}d</div>
                   </div>
-
-                  {/* Status & Actions */}
-                  <div className="md:col-span-3">
-                    <div className="mb-2">
-                      <span
-                        className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(
-                          request.status
-                        )}`}
+                  <div className="flex gap-2 mt-auto">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleDelete(req.id)}
+                      disabled={processingId === req.id}
+                    >
+                      Delete
+                    </Button>
+                    {req.status !== "approved" && (
+                      <Button
+                        size="sm"
+                        onClick={() => handleApprove(req.id)}
+                        disabled={processingId === req.id}
                       >
-                        {request.status.toUpperCase()}
-                      </span>
-                    </div>
-
-                    {request.status === "pending" && (
-                      <div className="space-y-2">
-                        <Textarea
-                          placeholder="Admin notes (optional for approval, required for denial)"
-                          value={adminNotes[request.id] || ""}
-                          onChange={(e) =>
-                            setAdminNotes((prev) => ({
-                              ...prev,
-                              [request.id]: e.target.value,
-                            }))
-                          }
-                          className="text-xs h-16"
-                        />
-                        <div className="flex gap-2">
-                          <Button
-                            onClick={() => handleApprove(request.id)}
-                            disabled={processingId === request.id}
-                            className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1"
-                            size="sm"
-                          >
-                            ✓ Approve
-                          </Button>
-                          <Button
-                            onClick={() => handleDeny(request.id)}
-                            disabled={processingId === request.id}
-                            variant="destructive"
-                            className="text-xs px-3 py-1"
-                            size="sm"
-                          >
-                            ✗ Deny
-                          </Button>
-                        </div>
-                      </div>
+                        Approve
+                      </Button>
                     )}
-
-                    {request.status !== "pending" && (
-                      <div className="space-y-2">
-                        <div className="text-xs text-gray-500">
-                          {request.approvedAt ? `Processed: ${formatDate(request.approvedAt)}` : ""}
-                        </div>
-                        <Button
-                          onClick={() => handleDelete(request.id)}
-                          disabled={processingId === request.id}
-                          variant="outline"
-                          className="text-xs px-3 py-1"
-                          size="sm"
-                        >
-                          Delete
-                        </Button>
-                      </div>
+                    {req.status !== "denied" && (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => handleDeny(req.id)}
+                        disabled={processingId === req.id}
+                      >
+                        Deny
+                      </Button>
                     )}
                   </div>
                 </div>
-              </Card>
-            );
-          })}
+              </div>
+            </Card>
+          ))}
         </div>
       )}
     </div>
+  );
+}
+
+const TAB_TIME = "time-tracking";
+const TAB_HOLIDAYS = "holidays";
+
+function TimeTrackingSettingsPageInner() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const initialTab = searchParams?.get("tab") === TAB_HOLIDAYS ? TAB_HOLIDAYS : TAB_TIME;
+  const [tab, setTab] = useState<string>(initialTab);
+
+  useEffect(() => {
+    router.replace(`?tab=${tab}`, { scroll: false });
+  }, [tab, router]);
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Time Tracking & Holidays</h1>
+          <p className="text-muted-foreground">Manage timesheets, approvals, and holiday requests in one place.</p>
+        </div>
+      </div>
+
+      <Tabs value={tab} onValueChange={setTab} className="space-y-6">
+        <TabsList className="bg-white/80 border shadow-sm">
+          <TabsTrigger value={TAB_TIME}>Time Tracking</TabsTrigger>
+          <TabsTrigger value={TAB_HOLIDAYS}>Holidays</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value={TAB_TIME} className="space-y-4">
+          <div className="rounded-xl border bg-white/90 shadow-sm">
+            <TimesheetsManagement redirectAdminsToSettings={false} />
+          </div>
+        </TabsContent>
+
+        <TabsContent value={TAB_HOLIDAYS} className="space-y-4">
+          <HolidayRequestsPanel />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+export default function TimeTrackingSettingsPage() {
+  return (
+    <Suspense>
+      <TimeTrackingSettingsPageInner />
+    </Suspense>
   );
 }
