@@ -369,15 +369,22 @@ router.get('/lookup-tables', async (req: Request, res: Response) => {
       orderBy: { id: 'asc' },
     });
 
+    console.log(`[lookup-tables] Found ${tables.length} tables for tenant ${tenantId}`);
+    
     // Transform the response to match the expected format
     // Map lookupTableRow objects to the rows array
-    const formattedTables = tables.map((table: any) => ({
-      ...table,
-      rows: table.rows && Array.isArray(table.rows) 
-        ? table.rows.map((row: any) => row.data || {})
-        : []
-    }));
+    const formattedTables = tables.map((table: any) => {
+      const transformedTable = {
+        ...table,
+        rows: table.rows && Array.isArray(table.rows) 
+          ? table.rows.map((row: any) => row.data || {})
+          : []
+      };
+      console.log(`[lookup-tables] Table "${table.name}": ${table.columns?.length || 0} columns, ${transformedTable.rows.length} rows`);
+      return transformedTable;
+    });
 
+    console.log(`[lookup-tables] Returning ${formattedTables.length} formatted tables`);
     return res.json(formattedTables);
   } catch (error) {
     console.error('Error fetching lookup tables:', error);
