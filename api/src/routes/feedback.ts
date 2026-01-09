@@ -205,13 +205,16 @@ router.post("/", async (req: any, res) => {
     }
 
     // Send email notification to admin (non-blocking)
+    console.log("[feedback] Feedback submitted, attempting to send email notification...");
     (async () => {
       try {
+        console.log("[feedback] Fetching tenant for email...");
         const tenant = await prisma.tenant.findUnique({
           where: { id: auth.tenantId },
           select: { name: true },
         });
 
+        console.log("[feedback] Calling sendFeedbackNotification for tenant:", tenant?.name);
         await sendFeedbackNotification({
           tenantName: tenant?.name || auth.tenantId,
           tenantId: auth.tenantId,
@@ -223,6 +226,7 @@ router.post("/", async (req: any, res) => {
           sourceUrl: row.sourceUrl || undefined,
           createdAt: row.createdAt,
         });
+        console.log("[feedback] Email notification sent successfully");
       } catch (emailError) {
         console.error("[feedback] Failed to send email notification:", emailError);
         // Don't fail the request if email fails
