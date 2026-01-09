@@ -373,18 +373,6 @@ router.get('/lookup-tables', async (req: Request, res: Response) => {
       where,
       include: {
         rows: {
-          select: {
-            id: true,
-            value: true,
-            label: true,
-            description: true,
-            code: true,
-            sortOrder: true,
-            isActive: true,
-            costPerUnit: true,
-            unitType: true,
-            currency: true
-          },
           orderBy: { sortOrder: 'asc' }
         }
       },
