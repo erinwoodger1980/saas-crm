@@ -36,6 +36,7 @@ model Tenant {
   activityLogs               ActivityLog[]
   automationRules            AutomationRule[]
   clients                    Client[]
+  linkedClients              Client[]                    @relation("ClientLinkedTenant") // Clients that link to this tenant
   clientAccounts             ClientAccount[]
   doorCores                  DoorCore[]
   emailIngests               EmailIngest[]
@@ -834,31 +835,33 @@ model SignupToken {
 }
 
 model Client {
-  id            String          @id @default(cuid())
-  tenantId      String
-  userId        String?
-  name          String
-  email         String?
-  phone         String?
-  address       String?
-  city          String?
-  postcode      String?
-  country       String?         @default("UK")
-  contactPerson String?
-  companyName   String?
-  type          String?         @default("public")
-  source        String?
-  isActive      Boolean         @default(true)
-  notes         String?
-  tags          String[]        @default([])
-  custom        Json?
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user          User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
-  leads         Lead[]
-  opportunities Opportunity[]
-  contacts      ClientContact[]
+  id                String          @id @default(cuid())
+  tenantId          String
+  userId            String?
+  linkedTenantId    String?         // Link to actual tenant (for tracking JoineryAI clients)
+  name              String
+  email             String?
+  phone             String?
+  address           String?
+  city              String?
+  postcode          String?
+  country           String?         @default("UK")
+  contactPerson     String?
+  companyName       String?
+  type              String?         @default("public")
+  source            String?
+  isActive          Boolean         @default(true)
+  notes             String?
+  tags              String[]        @default([])
+  custom            Json?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  tenant            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user              User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  linkedTenant      Tenant?         @relation("ClientLinkedTenant", fields: [linkedTenantId], references: [id], onDelete: SetNull)
+  leads             Lead[]
+  opportunities     Opportunity[]
+  contacts          ClientContact[]
 
   @@unique([tenantId, name, email])
   @@index([tenantId])
@@ -867,6 +870,7 @@ model Client {
   @@index([tenantId, type])
   @@index([tenantId, source])
   @@index([userId])
+  @@index([linkedTenantId])
 }
 
 model ClientContact {
