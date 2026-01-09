@@ -352,12 +352,22 @@ router.get('/lookup-tables', async (req: Request, res: Response) => {
     const { name } = req.query;
     const tenantId = getTenantId(req);
 
+    console.log('[lookup-tables] Auth context:', {
+      hasAuth: !!req.auth,
+      authTenantId: req.auth?.tenantId,
+      queryTenantId: req.query.tenantId,
+      resolvedTenantId: tenantId
+    });
+
     if (!tenantId) {
+      console.error('[lookup-tables] No tenantId found in auth or query');
       return res.status(400).json({ error: 'tenantId is required for /api/flexible-fields' });
     }
 
     const where: any = { tenantId };
     if (name) where.tableName = { contains: name as string, mode: 'insensitive' };
+
+    console.log('[lookup-tables] Querying with where:', where);
 
     const tables = await prisma.lookupTable.findMany({
       where,
@@ -373,7 +383,19 @@ router.get('/lookup-tables', async (req: Request, res: Response) => {
         createdAt: true,
         updatedAt: true,
         rows: {
-          orderBy: { createdAt: 'asc' }
+          select: {
+            id: true,
+            value: true,
+            label: true,
+            description: true,
+            code: true,
+            sortOrder: true,
+            isActive: true,
+            costPerUnit: true,
+            unitType: true,
+            currency: true
+          },
+          orderBy: { sortOrder: 'asc' }
         }
       },
       orderBy: { createdAt: 'desc' },
@@ -385,8 +407,11 @@ router.get('/lookup-tables', async (req: Request, res: Response) => {
     console.log(`[lookup-tables] Returning ${tables.length} lookup tables`);
     return res.json(tables);
   } catch (error) {
-    console.error('Error fetching lookup tables:', error);
-    return res.status(500).json({ error: 'Failed to fetch lookup tables' });
+    console.error('[lookup-tables] Error fetching lookup tables:', error);
+    return res.status(500).json({ 
+      error: 'Failed to fetch lookup tables',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 });
 
