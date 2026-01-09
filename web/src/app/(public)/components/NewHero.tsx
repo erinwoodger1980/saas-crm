@@ -14,25 +14,42 @@ export default function NewHero({ onOpenDemo, onCtaClick }: NewHeroProps) {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
     setLoading(true);
 
     try {
-      const { API_BASE: apiBase } = await import("@/lib/api-base");
-      const response = await fetch(`${apiBase}/api/interest`, {
+      const { getApiBase } = await import("@/lib/api-base");
+      const apiBase = getApiBase();
+      const endpoint = apiBase.includes("/api") ? `${apiBase}/interest` : `${apiBase}/api/interest`;
+      
+      console.log("Submitting interest to:", endpoint);
+      
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
 
+      console.log("Interest response:", response.status);
+
       if (response.ok) {
+        const data = await response.json();
+        console.log("Interest success:", data);
         setSubmitted(true);
+        setEmail("");
         onCtaClick?.("hero-trial");
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        setError(errorData.error || "Failed to register interest. Please try again.");
+        console.error("Interest failed:", response.status, errorData);
       }
     } catch (err) {
       console.error("Failed to submit:", err);
+      setError("Network error. Please check your connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -119,7 +136,8 @@ export default function NewHero({ onOpenDemo, onCtaClick }: NewHeroProps) {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@company.com"
                     required
-                    className="flex-1 rounded-lg border border-white/20 bg-white/10 px-4 py-3 text-white placeholder-white/50 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
+                    disabled={loading}
+                    className="flex-1 rounded-lg border border-white/20 bg-white/10 px-4 py-3 text-white placeholder-white/50 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 disabled:opacity-50"
                   />
                   <Button
                     type="submit"
@@ -127,18 +145,33 @@ export default function NewHero({ onOpenDemo, onCtaClick }: NewHeroProps) {
                     disabled={loading}
                     className="gap-2"
                   >
-                    Join March Cohort
+                    {loading ? "Registering..." : "Join March Cohort"}
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </div>
                 <p className="text-xs text-white/60">Our February cohort is full. Register your interest for our March launch.</p>
+                {error && (
+                  <p className="text-sm text-red-400">{error}</p>
+                )}
               </form>
             ) : (
-              <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-4">
-                <p className="font-semibold text-emerald-300">✓ You're on the list!</p>
-                <p className="mt-1 text-sm text-white/80">
-                  We'll contact you with details for our March cohort launch.
+              <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-6 space-y-3">
+                <p className="font-semibold text-emerald-300 text-lg">✓ Thank you for registering!</p>
+                <p className="text-white/90">
+                  We've sent a confirmation email to <strong>{email}</strong>.
                 </p>
+                <p className="text-sm text-white/80">
+                  We'll contact you with details about our March cohort launch and special early-bird pricing.
+                </p>
+                <button
+                  onClick={() => {
+                    setSubmitted(false);
+                    setEmail("");
+                  }}
+                  className="text-sm text-emerald-300 hover:text-emerald-200 underline mt-4"
+                >
+                  Register another email
+                </button>
               </div>
             )}
           </div>
