@@ -141,6 +141,14 @@ router.get("/:id", async (req, res) => {
         userId: true,
         createdAt: true,
         updatedAt: true,
+        linkedTenantId: true,
+        linkedTenant: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+          },
+        },
         contacts: {
           select: {
             id: true,
@@ -387,6 +395,7 @@ router.patch("/:id", async (req, res) => {
       notes,
       tags,
       type,
+      linkedTenantId,
     } = req.body;
 
     // Verify client exists and belongs to tenant
@@ -413,6 +422,7 @@ router.patch("/:id", async (req, res) => {
     if (notes !== undefined) updateData.notes = notes?.trim() || null;
     if (tags !== undefined) updateData.tags = Array.isArray(tags) ? tags : [];
     if (type !== undefined) updateData.type = ["trade", "public", "reseller"].includes(type) ? type : "public";
+    if (linkedTenantId !== undefined) updateData.linkedTenantId = linkedTenantId || null;
 
     const client = await prisma.client.update({
       where: { id },

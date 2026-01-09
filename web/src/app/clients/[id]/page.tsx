@@ -45,6 +45,12 @@ type Client = {
   tags?: string[];
   createdAt: string;
   contacts?: ClientContact[];
+  linkedTenantId?: string | null;
+  linkedTenant?: {
+    id: string;
+    name: string;
+    slug: string;
+  } | null;
 };
 
 type Lead = {
@@ -95,6 +101,7 @@ export default function ClientDetailPage() {
   const [authHeaders, setAuthHeaders] = useState<Record<string, string>>({});
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, any>>({});
   const [savingFields, setSavingFields] = useState(false);
+  const [tenants, setTenants] = useState<Array<{ id: string; name: string; slug: string }>>([]);
 
   const { fields, isLoading: fieldsLoading } = useFields({
     scope: "client",
@@ -112,6 +119,7 @@ export default function ClientDetailPage() {
     postcode: "",
     notes: "",
     tags: [] as string[],
+    linkedTenantId: "" as string,
   });
 
   useEffect(() => {
@@ -128,6 +136,7 @@ export default function ClientDetailPage() {
     if (!authHeaders["x-tenant-id"] || !clientId) return;
     loadClient();
     loadRelatedData();
+    loadTenants();
   }, [authHeaders, clientId]);
 
   async function loadClient() {
@@ -148,6 +157,7 @@ export default function ClientDetailPage() {
         postcode: data.postcode || "",
         notes: data.notes || "",
         tags: data.tags || [],
+        linkedTenantId: data.linkedTenantId || "",
       });
       
       // Load custom field values
@@ -204,6 +214,15 @@ export default function ClientDetailPage() {
       setQuotes(quotesData || []);
     } catch (error) {
       console.error("Failed to load related data:", error);
+    }
+  }
+
+  async function loadTenants() {
+    try {
+      const result = await apiFetch<{ ok: boolean; tenants: Array<{ id: string; name: string; slug: string }> }>(`/dev/tenants`, { headers: authHeaders });
+      setTenants(result.tenants || []);
+    } catch (error) {
+      console.error("Failed to load tenants:", error);
     }
   }
 
@@ -325,6 +344,7 @@ export default function ClientDetailPage() {
                       postcode: client.postcode || "",
                       notes: client.notes || "",
                       tags: client.tags || [],
+                      linkedTenantId: client.linkedTenantId || "",
                     });
                   }}
                   disabled={saving}
@@ -450,6 +470,37 @@ export default function ClientDetailPage() {
                 />
               ) : (
                 <p className="text-slate-900">{client.phone || "—"}</p>
+              )}
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                <Building className="inline h-4 w-4 mr-1" />
+                Linked JoineryAI Tenant
+              </label>
+              {editing ? (
+                <select
+                  value={formData.linkedTenantId}
+                  onChange={(e) => setFormData({ ...formData, linkedTenantId: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500"
+                >
+                  <option value="">Not linked</option>
+                  {tenants.map((tenant) => (
+                    <option key={tenant.id} value={tenant.id}>
+                      {tenant.name} ({tenant.slug})
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="text-slate-900">
+                  {client.linkedTenant ? (
+                    <Link href={`/admin/tenants/${client.linkedTenant.id}`} className="text-sky-600 hover:underline">
+                      {client.linkedTenant.name} ({client.linkedTenant.slug})
+                    </Link>
+                  ) : (
+                    "—"
+                  )}
+                </p>
               )}
             </div>
           </div>
