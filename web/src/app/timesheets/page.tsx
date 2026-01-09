@@ -168,6 +168,7 @@ export default function TimesheetsPage() {
   // Team activity state
   const [activityLoading, setActivityLoading] = useState(false);
   const [userActivity, setUserActivity] = useState<UserActivity[]>([]);
+  const [activeTimers, setActiveTimers] = useState<Record<string, boolean>>({});
   const [activityFrom, setActivityFrom] = useState<Date>(() => {
     // Get Monday of current week
     const today = new Date();
