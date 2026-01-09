@@ -4,18 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { API_BASE } from '@/lib/api-base';
-
-function apiBase() { return API_BASE; }
-
-function forwardHeaders(req: NextRequest) {
-  const headers: Record<string, string> = {};
-  const auth = req.headers.get('authorization');
-  if (auth) headers['authorization'] = auth;
-  const cookie = req.headers.get('cookie');
-  if (cookie) headers['cookie'] = cookie;
-  return headers;
-}
+import { getBackendApiBase, forwardAuthHeaders } from '@/lib/api-route-helpers';
 
 export const runtime = 'nodejs';
 
@@ -26,7 +15,7 @@ export const runtime = 'nodejs';
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const url = new URL(apiBase() + '/flexible-fields/fields');
+    const url = new URL(getBackendApiBase() + '/flexible-fields/fields');
     
     // Forward query parameters (scope, displayContext, etc.)
     searchParams.forEach((value, key) => {
@@ -34,7 +23,7 @@ export async function GET(request: NextRequest) {
     });
     
     const res = await fetch(url.toString(), {
-      headers: forwardHeaders(request),
+      headers: forwardAuthHeaders(request),
       credentials: 'include',
     });
     
@@ -57,10 +46,10 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    const res = await fetch(apiBase() + '/flexible-fields/fields', {
+    const res = await fetch(getBackendApiBase() + '/flexible-fields/fields', {
       method: 'POST',
       headers: {
-        ...forwardHeaders(request),
+        ...forwardAuthHeaders(request),
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
