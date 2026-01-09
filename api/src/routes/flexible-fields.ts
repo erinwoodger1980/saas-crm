@@ -371,17 +371,7 @@ router.get('/lookup-tables', async (req: Request, res: Response) => {
 
     const tables = await prisma.lookupTable.findMany({
       where,
-      select: {
-        id: true,
-        tenantId: true,
-        name: true,
-        tableName: true,
-        category: true,
-        description: true,
-        columns: true,
-        isStandard: true,
-        createdAt: true,
-        updatedAt: true,
+      include: {
         rows: {
           select: {
             id: true,
