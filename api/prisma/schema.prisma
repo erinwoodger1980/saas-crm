@@ -4539,7 +4539,7 @@ model WealdenImage {
 model LookupTable {
   id          String            @id @default(cuid())
   tenantId    String
-  name        String            // Display name (e.g., "Fire door core pricing")
+  name        String?           // Display name (e.g., "Fire door core pricing")
   tableName   String            // e.g., "Timber", "Glass", "Hinges", "Lock Types"
   category    String?           // "material", "ironmongery", "finish", "certification"
   description String?
