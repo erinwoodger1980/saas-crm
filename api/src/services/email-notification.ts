@@ -46,7 +46,7 @@ export async function sendAdminEmail(options: EmailOptions): Promise<void> {
   }
 
   // Fallback to SMTP if available
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE } = env;
+  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE, SMTP_FROM } = env;
   console.log("[email-notification] SMTP config available:", !!SMTP_HOST && !!SMTP_USER && !!SMTP_PASS);
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
     console.error("[email-notification] SMTP not configured, and Resend unavailable or failed. Cannot send email to:", options.to);
@@ -58,9 +58,14 @@ export async function sendAdminEmail(options: EmailOptions): Promise<void> {
     secure: SMTP_SECURE === "true",
     auth: { user: SMTP_USER, pass: SMTP_PASS },
   });
+  
+  // Use SMTP_FROM if available, otherwise construct from SMTP_USER
+  const smtpFromAddress = SMTP_FROM || 
+    (SMTP_USER.includes('@') ? SMTP_USER : `noreply@joineryai.app`);
+  
   try {
     await transporter.sendMail({
-      from: `"JoineryAI Notifications" <${SMTP_USER}>`,
+      from: `"JoineryAI Notifications" <${smtpFromAddress}>`,
       to: options.to,
       subject: options.subject,
       html: options.html,

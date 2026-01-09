@@ -119,6 +119,7 @@ export const env = {
   SMTP_USER: process.env.SMTP_USER ?? "",
   SMTP_PASS: process.env.SMTP_PASS ?? "",
   SMTP_SECURE: process.env.SMTP_SECURE ?? "false",
+  SMTP_FROM: process.env.SMTP_FROM ?? "", // Optional: specific sender address for SMTP
 
   // Web URL for deep links in emails
   WEB_URL: process.env.WEB_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://app.joineryai.app",
