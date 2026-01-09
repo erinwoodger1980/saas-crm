@@ -18,7 +18,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import { useCurrentUser } from "@/lib/use-current-user";
-import { Clock, Check, X, Download, Calendar, Users, ChevronLeft, ChevronRight, Upload, Edit, Trash2 } from "lucide-react";
+import { Clock, Check, X, Download, Calendar, Users, ChevronLeft, ChevronRight, Upload, Edit, Trash2, Plus } from "lucide-react";
 
 type Timesheet = {
   id: string;
@@ -177,6 +177,8 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
   const [activityLoading, setActivityLoading] = useState(false);
   const [userActivity, setUserActivity] = useState<UserActivity[]>([]);
   const [activeTimers, setActiveTimers] = useState<Record<string, boolean>>({});
+  const [showAddUserPicker, setShowAddUserPicker] = useState(false);
+  const [selectedUserForAdd, setSelectedUserForAdd] = useState<{ id: string; name: string } | null>(null);
   const [activityFrom, setActivityFrom] = useState<Date>(() => {
     // Get Monday of current week
     const today = new Date();
@@ -473,6 +475,15 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
 
   function getTotalHoursForDay(entries: TimeEntry[]) {
     return entries.reduce((sum, e) => sum + e.hours, 0);
+  }
+
+  function formatHours(decimalHours: number): string {
+    const hours = Math.floor(decimalHours);
+    const minutes = Math.round((decimalHours - hours) * 60);
+    if (hours === 0 && minutes === 0) return "0m";
+    if (hours === 0) return `${minutes}m`;
+    if (minutes === 0) return `${hours}h`;
+    return `${hours}h ${minutes}m`;
   }
 
   function openEditEntryDialog(userLabel: string, dateKey: string, entry: TimeEntry) {
@@ -948,6 +959,38 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
         </DialogContent>
       </Dialog>
 
+      <Dialog open={showAddUserPicker} onOpenChange={setShowAddUserPicker}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Select user to add hours for</DialogTitle>
+            <DialogDescription>Choose which team member to log time for</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-[300px] overflow-y-auto">
+            {userActivity.map((ua) => (
+              <button
+                key={ua.user.id}
+                onClick={() => {
+                  setSelectedUserForAdd({ id: ua.user.id, name: getUserDisplayName(ua.user) });
+                  setShowAddUserPicker(false);
+                  // Open the add hours dialog for this user
+                  const today = new Date().toISOString().split("T")[0];
+                  openAddHoursDialog(ua.user.id, getUserDisplayName(ua.user), today);
+                }}
+                className="w-full text-left p-3 rounded-lg border border-border hover:bg-slate-50 transition-colors flex items-center gap-3"
+              >
+                <div
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold"
+                  style={{ backgroundColor: ua.user.workshopColor || "#6b7280" }}
+                >
+                  {getUserDisplayName(ua.user)[0]?.toUpperCase() || "?"}
+                </div>
+                <span className="font-medium">{getUserDisplayName(ua.user)}</span>
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div className="p-8 space-y-6 bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
       <div className="flex items-center justify-between">
         <div>
@@ -1067,7 +1110,7 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
                         <p className="text-muted-foreground">{selectedUser.user.email}</p>
                       </div>
                       <div className="ml-auto text-right">
-                        <div className="text-3xl font-bold text-blue-600">{userTotal.toFixed(1)} HOURS</div>
+                        <div className="text-3xl font-bold text-blue-600">{formatHours(userTotal)}</div>
                       </div>
                     </div>
                   </Card>
@@ -1129,12 +1172,12 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
                                       hours
                                     )} ${isToday(date) ? "ring-2 ring-primary ring-inset" : ""}`}
                                   >
-                                    {hours > 0 ? hours.toFixed(1) : ""}
+                                    {hours > 0 ? formatHours(hours) : ""}
                                   </td>
                                 );
                               })}
                               <td className="border border-border p-3 text-right font-bold sticky right-0 bg-background z-10">
-                                {projectTotal.toFixed(1)}
+                                {formatHours(projectTotal)}
                               </td>
                             </tr>
                           );
@@ -1172,12 +1215,12 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
                                   isToday(date) ? "bg-primary/10" : ""
                                 }`}
                               >
-                                {dayTotal > 0 ? dayTotal.toFixed(1) : ""}
+                                {dayTotal > 0 ? formatHours(dayTotal) : ""}
                               </td>
                             );
                           })}
                           <td className="border border-border p-3 text-right sticky right-0 bg-muted z-10">
-                            {userTotal.toFixed(1)}
+                            {formatHours(userTotal)}
                           </td>
                         </tr>
                       </tbody>
@@ -1271,7 +1314,7 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
                                 dayHours
                               )} ${isToday(date) ? "ring-2 ring-primary ring-inset" : ""}`}
                             >
-                              {dayHours > 0 ? dayHours.toFixed(1) : ""}
+                              {dayHours > 0 ? formatHours(dayHours) : ""}
                             </td>
                           );
                         })}
@@ -1324,6 +1367,28 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
 
         <TabsContent value="team-activity" className="space-y-6 mt-6">
           {/* Team Activity - Itemized Entries with Edit Capability */}
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold">Team Activity - Time Entries</h3>
+            {canAmendTime && (
+              <Button
+                size="sm"
+                onClick={() => {
+                  // If no user activity, we still show the prompt
+                  if (userActivity.length === 0) {
+                    toast({ title: "Select a user", description: "No users with logged time in this period." });
+                    return;
+                  }
+                  // Show a simple prompt-style selection or use first user
+                  // For now, we'll just show all users and let them pick
+                  setShowAddUserPicker(true);
+                }}
+                className="gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Add Entry
+              </Button>
+            )}
+          </div>
           {activityLoading ? (
             <div className="text-center py-12 text-muted-foreground">Loading team activity...</div>
           ) : userActivity.length === 0 ? (
@@ -1361,7 +1426,7 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
                     </div>
                     <span className="font-semibold">{getUserDisplayName(ua.user)}</span>
                     <span className="ml-auto text-sm text-muted-foreground">
-                      {Object.values(ua.days).reduce((sum, entries) => sum + getTotalHoursForDay(entries), 0).toFixed(1)}h
+                      {formatHours(Object.values(ua.days).reduce((sum, entries) => sum + getTotalHoursForDay(entries), 0))}
                     </span>
                   </div>
 
@@ -1387,7 +1452,7 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
                                 {entry.notes && <div className="text-xs text-slate-600 mt-1">{entry.notes}</div>}
                               </div>
                               <div className="flex items-center gap-2 flex-shrink-0">
-                                <span className="font-semibold text-blue-600 min-w-[45px] text-right">{entry.hours}h</span>
+                                <span className="font-semibold text-blue-600 min-w-[45px] text-right">{formatHours(entry.hours)}</span>
                                 <Button
                                   size="sm"
                                   variant="ghost"
@@ -1483,7 +1548,7 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
                   </div>
                   <div className="text-right">
                     <div className="text-3xl font-bold text-blue-600">
-                      {projectDetail.project.totalHours.toFixed(1)} HOURS
+                      {formatHours(projectDetail.project.totalHours)}
                     </div>
                   </div>
                 </div>
@@ -1507,7 +1572,7 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className="text-xl font-bold text-blue-600">{item.total.toFixed(1)}h</div>
+                          <div className="text-xl font-bold text-blue-600">{formatHours(item.total)}</div>
                         </div>
                       </div>
                       <div className="ml-14 space-y-1">
@@ -1519,7 +1584,7 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
                             <div className="text-muted-foreground italic">
                               - {proc.process.toLowerCase().replace(/_/g, " ")}
                             </div>
-                            <div className="font-medium">{proc.hours.toFixed(1)}h</div>
+                            <div className="font-medium">{formatHours(proc.hours)}</div>
                           </div>
                         ))}
                       </div>
