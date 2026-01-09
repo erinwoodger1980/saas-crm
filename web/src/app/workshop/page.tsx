@@ -5,6 +5,7 @@ import MaterialLinkDialog from "@/components/workshop/MaterialLinkDialog";
 import MaterialReceivedDialog from "@/components/workshop/MaterialReceivedDialog";
 import MaterialOrderDialog from "@/components/workshop/MaterialOrderDialog";
 import { GroupProjectsModal } from "@/app/workshop/GroupProjectsModal";
+import { TaskCard } from "@/components/tasks/TaskCard";
 // Type definitions for QuickLogModal
 interface QuickLogUser {
   id: string;
@@ -1973,110 +1974,53 @@ export default function WorkshopPage() {
                 <p>No tasks found for the selected filter.</p>
               </Card>
             ) : (
-              workshopTasks.map((task) => {
-                const project = projects.find(p => p.id === task.relatedId);
-                const dueDate = task.dueAt ? new Date(task.dueAt) : null;
-                const isOverdue = dueDate && dueDate < new Date();
-                const priorityColors = {
-                  URGENT: 'bg-red-100 text-red-800 border-red-200',
-                  HIGH: 'bg-orange-100 text-orange-800 border-orange-200',
-                  MEDIUM: 'bg-blue-100 text-blue-800 border-blue-200',
-                  LOW: 'bg-gray-100 text-gray-800 border-gray-200',
-                };
-                
-                return (
-                  <Card key={task.id} className="p-4 hover:shadow-md transition-shadow">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <h3 className="font-semibold text-lg">{task.title}</h3>
-                          <Badge className={priorityColors[task.priority as keyof typeof priorityColors] || priorityColors.MEDIUM}>
-                            {task.priority}
-                          </Badge>
-                          {isOverdue && (
-                            <Badge variant="destructive">Overdue</Badge>
-                          )}
-                        </div>
-                        
-                        {task.description && (
-                          <p className="text-sm text-muted-foreground mb-2">{task.description}</p>
-                        )}
-                        
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                          {project && (
-                            <div className="flex items-center gap-1">
-                              <span className="font-medium">Project:</span>
-                              <span>{project.name}</span>
-                            </div>
-                          )}
-                          {dueDate && (
-                            <div className="flex items-center gap-1">
-                              <span className="font-medium">Due:</span>
-                              <span className={isOverdue ? 'text-red-600 font-medium' : ''}>
-                                {dueDate.toLocaleDateString()}
-                              </span>
-                            </div>
-                          )}
-                          <div className="flex items-center gap-1">
-                            <span className="font-medium">Status:</span>
-                            <span>{task.status.replace('_', ' ')}</span>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="flex flex-col gap-2">
-                        {task.status !== 'DONE' && (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setShowMaterialLink({taskId: task.id, taskTitle: task.title})}
-                            >
-                              Link Material
-                            </Button>
-                            <Button
-                              size="sm"
-                              onClick={async () => {
-                                // Check if task has linked material
-                                const materialType = task.meta?.linkedMaterialType;
-                                const opportunityId = task.meta?.linkedOpportunityId;
-                                
-                                if (materialType && opportunityId) {
-                                  // Show material order dialog to collect dates
-                                  setShowMaterialOrder({
-                                    taskId: task.id,
-                                    taskTitle: task.title,
-                                    materialType,
-                                    opportunityId
-                                  });
-                                } else {
-                                  // Just mark done without material prompt
-                                  try {
-                                    await apiFetch(`/tasks/${task.id}/complete`, {
-                                      method: 'POST',
-                                    });
-                                    await loadWorkshopTasks();
-                                    await loadAll();
-                                  } catch (e: any) {
-                                    alert('Failed to complete task: ' + (e?.message || 'Unknown error'));
-                                  }
-                                }
-                              }}
-                            >
-                              Mark Done
-                            </Button>
-                          </>
-                        )}
-                        {task.meta?.linkedMaterialType && (
-                          <div className="text-xs text-muted-foreground mt-1">
-                            🔗 {task.meta.linkedMaterialType}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </Card>
-                );
-              })
+              workshopTasks.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  compact={true}
+                  onComplete={async () => {
+                    // Check if task has linked material
+                    const materialType = task.meta?.linkedMaterialType;
+                    const opportunityId = task.meta?.linkedOpportunityId;
+                    
+                    if (materialType && opportunityId) {
+                      // Show material order dialog to collect dates
+                      setShowMaterialOrder({
+                        taskId: task.id,
+                        taskTitle: task.title,
+                        materialType,
+                        opportunityId
+                      });
+                    } else {
+                      // Just mark done without material prompt
+                      try {
+                        await apiFetch(`/tasks/${task.id}/complete`, {
+                          method: 'POST',
+                        });
+                        await loadWorkshopTasks();
+                        await loadAll();
+                      } catch (e: any) {
+                        alert('Failed to complete task: ' + (e?.message || 'Unknown error'));
+                      }
+                    }
+                  }}
+                  onEdit={() => {
+                    // Could open full task modal here if needed
+                    alert('Full task editing coming soon!');
+                  }}
+                  onChecklistToggle={async (itemId) => {
+                    try {
+                      await apiFetch(`/tasks/${task.id}/checklist/${itemId}/toggle`, {
+                        method: 'POST',
+                      });
+                      await loadWorkshopTasks();
+                    } catch (e: any) {
+                      console.error('Failed to toggle checklist item:', e);
+                    }
+                  }}
+                />
+              ))
             )}
           </div>
         </div>
