@@ -71,11 +71,11 @@ export default function NewHero({ onOpenDemo, onCtaClick }: NewHeroProps) {
         <div className="grid gap-12 lg:grid-cols-2 lg:items-center">
           <div className="space-y-8">
             {/* Badge */}
-            <div className="inline-flex items-center gap-3 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-4 py-2 text-sm font-semibold">
-              <span className="rounded-full bg-emerald-500/90 px-3 py-1 text-xs uppercase tracking-wide text-slate-900">
-                Now Available
+            <div className="inline-flex items-center gap-3 rounded-full border border-amber-400/30 bg-amber-500/10 px-4 py-2 text-sm font-semibold">
+              <span className="rounded-full bg-amber-500/90 px-3 py-1 text-xs uppercase tracking-wide text-slate-900">
+                February Cohort Full
               </span>
-              <span>14-day free trial</span>
+              <span>Now taking interest for March</span>
             </div>
 
             {/* Main headline */}
@@ -127,17 +127,17 @@ export default function NewHero({ onOpenDemo, onCtaClick }: NewHeroProps) {
                     disabled={loading}
                     className="gap-2"
                   >
-                    Get Access
+                    Join March Cohort
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </div>
-                <p className="text-xs text-white/60">No credit card required. Full access for 14 days.</p>
+                <p className="text-xs text-white/60">Our February cohort is full. Register your interest for our March launch.</p>
               </form>
             ) : (
               <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-4">
-                <p className="font-semibold text-emerald-300">✓ Check your inbox!</p>
+                <p className="font-semibold text-emerald-300">✓ You're on the list!</p>
                 <p className="mt-1 text-sm text-white/80">
-                  We've sent you trial access details. You're ready to start.
+                  We'll contact you with details for our March cohort launch.
                 </p>
               </div>
             )}
