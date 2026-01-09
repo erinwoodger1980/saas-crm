@@ -373,11 +373,6 @@ router.get('/lookup-tables', async (req: Request, res: Response) => {
         createdAt: true,
         updatedAt: true,
         rows: {
-          select: {
-            id: true,
-            data: true,
-            createdAt: true,
-          },
           orderBy: { createdAt: 'asc' }
         }
       },
@@ -386,16 +381,9 @@ router.get('/lookup-tables', async (req: Request, res: Response) => {
 
     console.log(`[lookup-tables] Found ${tables.length} tables for tenant ${tenantId}`);
     
-    // Transform the response to match the expected format
-    const formattedTables = tables.map((table: any) => ({
-      ...table,
-      rows: Array.isArray(table.rows) 
-        ? table.rows.map((row: any) => row.data || {})
-        : []
-    }));
-
-    console.log(`[lookup-tables] Returning ${formattedTables.length} formatted tables`);
-    return res.json(formattedTables);
+    // Return as-is - rows contain all the LookupTableRow fields
+    console.log(`[lookup-tables] Returning ${tables.length} lookup tables`);
+    return res.json(tables);
   } catch (error) {
     console.error('Error fetching lookup tables:', error);
     return res.status(500).json({ error: 'Failed to fetch lookup tables' });
