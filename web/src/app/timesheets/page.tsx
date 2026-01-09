@@ -205,6 +205,7 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [projectDetail, setProjectDetail] = useState<any>(null);
   const [addHoursProjectSearch, setAddHoursProjectSearch] = useState("");
+  const [showCompletedProjects, setShowCompletedProjects] = useState(false);
 
   function getUserDisplayName(user: { name?: string | null; email?: string | null; firstName?: string | null; lastName?: string | null; emailFooter?: string | null }) {
     const footer = user.emailFooter?.trim();
@@ -1535,7 +1536,33 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
           ) : (
             // Projects List View
             (
-            <div className="overflow-x-auto">
+            <div className="space-y-4">
+              {/* Filter Toggle */}
+              <div className="flex items-center justify-between bg-white/80 border border-indigo-200/70 rounded-lg p-4 shadow-sm">
+                <div>
+                  <h3 className="font-semibold">Project Status</h3>
+                  <p className="text-sm text-muted-foreground">Filter projects by completion status</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant={!showCompletedProjects ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setShowCompletedProjects(false)}
+                  >
+                    Current Projects
+                  </Button>
+                  <Button
+                    variant={showCompletedProjects ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setShowCompletedProjects(true)}
+                  >
+                    Completed Projects
+                  </Button>
+                </div>
+              </div>
+
+              {/* Projects Table */}
+              <div className="overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="border-b border-border">
@@ -1547,7 +1574,9 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
                   </tr>
                 </thead>
                 <tbody>
-                  {projects.map((project) => {
+                  {projects.filter(p => 
+                    showCompletedProjects ? p.status === "completed" : p.status !== "completed"
+                  ).map((project) => {
                     const formatProjectDate = (dateStr: string | null) => {
                       if (!dateStr) return "-";
                       return new Date(dateStr).toLocaleDateString("en-GB", {
@@ -1594,13 +1623,14 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
                   {projects.length === 0 && (
                     <tr>
                       <td colSpan={5} className="p-12 text-center text-muted-foreground">
-                        No active projects found
+                        No {showCompletedProjects ? "completed" : "active"} projects found
                       </td>
                     </tr>
                   )}
                 </tbody>
               </table>
             </div>
+              </div>
             )
           )}
         </TabsContent>
