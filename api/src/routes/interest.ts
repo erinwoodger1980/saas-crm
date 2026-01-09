@@ -57,7 +57,7 @@ router.post("/", async (req, res) => {
     let leadId: string | null = null;
 
     if (erinTenant) {
-      console.log(`✅ Found Erin Woodger tenant: ${erinTenant.id}`);
+      console.log(`✅ Found Erin Woodger tenant: ${erinTenant.id} (name: ${erinTenant.name})`);
       
       // Find a user for lead creation
       let systemUser = await prisma.user.findFirst({
@@ -91,10 +91,21 @@ router.post("/", async (req, res) => {
           console.log(`✅ Created lead in Erin Woodger tenant: ${lead.id}`);
         } catch (leadError: any) {
           console.error(`⚠️ Failed to create lead:`, leadError.message);
+          console.error(`⚠️ Lead creation error details:`, leadError);
         }
       }
     } else {
-      console.warn(`⚠️ Erin Woodger tenant not found`);
+      console.warn(`⚠️ Erin Woodger tenant not found - checking available tenants`);
+      // List available tenants for debugging
+      try {
+        const allTenants = await prisma.tenant.findMany({
+          take: 10,
+          select: { id: true, name: true, slug: true },
+        });
+        console.log(`Available tenants:`, allTenants.map(t => `${t.name} (${t.slug})`).join(", "));
+      } catch (err: any) {
+        console.error("Failed to list tenants:", err.message);
+      }
     }
 
     // Send email notifications regardless of lead creation
@@ -142,76 +153,113 @@ router.post("/", async (req, res) => {
       `;
 
       // Send to both email addresses and confirmation to user
-      await Promise.all([
-            sendAdminEmail({
-              to: "erin@erinwoodger.com",
-              subject: `New JoineryAI Interest: ${name || normalizedEmail}`,
-              html: emailHtml,
-            }),
-            sendAdminEmail({
-              to: "naomi@erinwoodger.com",
-              subject: `New JoineryAI Interest: ${name || normalizedEmail}`,
-              html: emailHtml,
-            }),
-            // Send confirmation email to the user
-            sendAdminEmail({
-              to: normalizedEmail,
-              subject: "Thank you for your interest in JoineryAI",
-              html: `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                  <style>
-                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                    .header { background: linear-gradient(135deg, #10b981 0%, #06b6d4 100%); color: white; padding: 30px; border-radius: 8px 8px 0 0; text-align: center; }
-                    .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
-                    .cta { display: inline-block; background: #059669; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 20px; }
-                    .cta:hover { background: #047857; }
-                  </style>
-                </head>
-                <body>
-                  <div class="container">
-                    <div class="header">
-                      <h1 style="margin: 0;">Welcome to JoineryAI! 🎯</h1>
-                    </div>
-                    <div class="content">
-                      <p>Hi ${name || 'there'},</p>
-                      
-                      <p>Thank you for registering your interest in JoineryAI! We're excited that you want to join our March cohort.</p>
-                      
-                      <p><strong>What's next?</strong></p>
-                      <ul>
-                        <li>We'll be in touch within the next few days with details about our March launch</li>
-                        <li>You'll get special early-bird pricing as a member of this cohort</li>
-                        <li>We'll arrange a time to walk you through how JoineryAI works for your business</li>
-                      </ul>
-                      
-                      <p>In the meantime, feel free to explore:</p>
-                      <ul>
-                        <li><strong>How we quote:</strong> Automated quotes from supplier PDFs in minutes</li>
-                        <li><strong>How we track leads:</strong> Email integration captures every inquiry automatically</li>
-                        <li><strong>Real job costing:</strong> See exactly what you actually made on each job</li>
-                        <li><strong>Workshop visibility:</strong> From timesheets to job board to live visibility</li>
-                      </ul>
-                      
-                      <p>Questions? Just reply to this email and we'll help.</p>
-                      
-                      <p>Excited to work with you!</p>
-                      <p><strong>The JoineryAI Team</strong></p>
-                      
-                      <p style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #999;">
-                        This is a confirmation email for your JoineryAI interest registration.
-                      </p>
-                    </div>
+      const emailPromises = [];
+      
+      try {
+        emailPromises.push(
+          sendAdminEmail({
+            to: "erin@erinwoodger.com",
+            subject: `New JoineryAI Interest: ${name || normalizedEmail}`,
+            html: emailHtml,
+          })
+        );
+        console.log("[interest] Queued email to erin@erinwoodger.com");
+      } catch (err: any) {
+        console.error("[interest] Failed to queue email to erin:", err.message);
+      }
+      
+      try {
+        emailPromises.push(
+          sendAdminEmail({
+            to: "naomi@erinwoodger.com",
+            subject: `New JoineryAI Interest: ${name || normalizedEmail}`,
+            html: emailHtml,
+          })
+        );
+        console.log("[interest] Queued email to naomi@erinwoodger.com");
+      } catch (err: any) {
+        console.error("[interest] Failed to queue email to naomi:", err.message);
+      }
+      
+      // Send confirmation email to the user
+      try {
+        emailPromises.push(
+          sendAdminEmail({
+            to: normalizedEmail,
+            subject: "Thank you for your interest in JoineryAI",
+            html: `
+              <!DOCTYPE html>
+              <html>
+              <head>
+                <style>
+                  body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                  .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                  .header { background: linear-gradient(135deg, #10b981 0%, #06b6d4 100%); color: white; padding: 30px; border-radius: 8px 8px 0 0; text-align: center; }
+                  .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
+                  .cta { display: inline-block; background: #059669; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 20px; }
+                  .cta:hover { background: #047857; }
+                </style>
+              </head>
+              <body>
+                <div class="container">
+                  <div class="header">
+                    <h1 style="margin: 0;">Welcome to JoineryAI! 🎯</h1>
                   </div>
-                </body>
-                </html>
-              `,
-            }),
-          ]);
+                  <div class="content">
+                    <p>Hi ${name || 'there'},</p>
+                    
+                    <p>Thank you for registering your interest in JoineryAI! We're excited that you want to join our March cohort.</p>
+                    
+                    <p><strong>What's next?</strong></p>
+                    <ul>
+                      <li>We'll be in touch within the next few days with details about our March launch</li>
+                      <li>You'll get special early-bird pricing as a member of this cohort</li>
+                      <li>We'll arrange a time to walk you through how JoineryAI works for your business</li>
+                    </ul>
+                    
+                    <p>In the meantime, feel free to explore:</p>
+                    <ul>
+                      <li><strong>How we quote:</strong> Automated quotes from supplier PDFs in minutes</li>
+                      <li><strong>How we track leads:</strong> Email integration captures every inquiry automatically</li>
+                      <li><strong>Real job costing:</strong> See exactly what you actually made on each job</li>
+                      <li><strong>Workshop visibility:</strong> From timesheets to job board to live visibility</li>
+                    </ul>
+                    
+                    <p>Questions? Just reply to this email and we'll help.</p>
+                    
+                    <p>Excited to work with you!</p>
+                    <p><strong>The JoineryAI Team</strong></p>
+                    
+                    <p style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #999;">
+                      This is a confirmation email for your JoineryAI interest registration.
+                    </p>
+                  </div>
+                </div>
+              </body>
+              </html>
+            `,
+          })
+        );
+        console.log("[interest] Queued confirmation email to", normalizedEmail);
+      } catch (err: any) {
+        console.error("[interest] Failed to queue confirmation email:", err.message);
+      }
 
-      console.log(`📧 Sent notifications to erin@erinwoodger.com, naomi@erinwoodger.com, and ${normalizedEmail}`);
+      // Wait for all emails
+      if (emailPromises.length > 0) {
+        const results = await Promise.allSettled(emailPromises);
+        const succeeded = results.filter(r => r.status === "fulfilled").length;
+        const failed = results.filter(r => r.status === "rejected").length;
+        console.log(`[interest] Email results: ${succeeded} succeeded, ${failed} failed`);
+        
+        if (failed > 0) {
+          results.forEach((result, idx) => {
+            if (result.status === "rejected") {
+              console.error(`[interest] Email ${idx} failed:`, result.reason?.message || result.reason);
+            }
+          });
+        }
+      }
     } catch (emailError: any) {
       console.error(`⚠️ Failed to send email notifications:`, emailError.message);
       // Don't fail the request if email fails
@@ -220,6 +268,7 @@ router.post("/", async (req, res) => {
     res.json({
       success: true,
       message: "Thanks for your interest! We'll be in touch soon.",
+      email: normalizedEmail,
     });
   } catch (error: any) {
     console.error("Failed to register interest:", error);

@@ -42,7 +42,8 @@ export default function NewHero({ onOpenDemo, onCtaClick }: NewHeroProps) {
         const data = await response.json();
         console.log("Interest success:", data);
         setSubmitted(true);
-        setEmail("");
+        // Use returned email from API or fall back to input
+        setEmail(data.email || email);
         onCtaClick?.("hero-trial");
       } else {
         const errorData = await response.json().catch(() => ({}));
