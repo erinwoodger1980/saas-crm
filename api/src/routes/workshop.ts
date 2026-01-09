@@ -653,7 +653,8 @@ router.get("/schedule", async (req: any, res) => {
     where: { tenantId, stage: "WON" },
     select: ({ 
       id: true, 
-      title: true, 
+      title: true,
+      number: true,
       valueGBP: true, 
       wonAt: true, 
       startDate: true, 
@@ -776,6 +777,7 @@ router.get("/schedule", async (req: any, res) => {
   const out = (projects as any[]).map((proj: any) => ({
     id: proj.id,
     name: proj.title,
+    number: proj.number,
     valueGBP: proj.valueGBP,
     wonAt: proj.wonAt,
     startDate: proj.startDate,

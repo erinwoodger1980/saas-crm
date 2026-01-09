@@ -201,6 +201,7 @@ type ProcessAssignment = {
 type Project = {
   id: string;
   name: string;
+  number?: string | null;
   valueGBP?: string | number | null;
   wonAt?: string | null;
   startDate?: string | null;
@@ -258,6 +259,45 @@ function formatProcess(p: string) {
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
+}
+
+function getProjectDisplayName(proj: Project): string {
+  if (proj.number) {
+    return `${proj.number} - ${proj.name}`;
+  }
+  return proj.name;
+}
+
+// Calculate project rows for stacking (to avoid overlaps in calendar view)
+function calculateProjectRows(projects: Project[], monthStart: Date, monthEnd: Date): Project[][] {
+  const projectRows: Project[][] = [];
+  projects.forEach(proj => {
+    if (!proj.startDate || !proj.deliveryDate) return;
+    
+    const projStart = new Date(proj.startDate);
+    const projEnd = new Date(proj.deliveryDate);
+    
+    // Only include projects that overlap with the given date range
+    if (projEnd < monthStart || projStart > monthEnd) return;
+    
+    // Find first row where this project doesn't overlap with existing projects
+    let rowIndex = 0;
+    while (rowIndex < projectRows.length) {
+      const hasOverlap = projectRows[rowIndex].some(existingProj => {
+        if (!existingProj.startDate || !existingProj.deliveryDate) return false;
+        const existingStart = new Date(existingProj.startDate);
+        const existingEnd = new Date(existingProj.deliveryDate);
+        return !(projEnd < existingStart || projStart > existingEnd);
+      });
+      if (!hasOverlap) break;
+      rowIndex++;
+    }
+    
+    if (!projectRows[rowIndex]) projectRows[rowIndex] = [];
+    projectRows[rowIndex].push(proj);
+  });
+  
+  return projectRows;
 }
 
 function getUserColor(userId: string, users: UserLite[]): string {
@@ -1564,8 +1604,27 @@ export default function WorkshopPage() {
             </div>
             
             {/* Calendar body - days with date numbers only */}
-            <div className="grid grid-cols-7 relative" style={{ minHeight: '600px' }}>
-              {getDaysInMonth(currentMonth).map((date, idx) => {
+            {(() => {
+              // Calculate required height based on number of project rows
+              const daysArray = getDaysInMonth(currentMonth);
+              const validDays = daysArray.filter(d => d !== null) as Date[];
+              const monthStart = validDays.length > 0 ? validDays[0] : new Date();
+              const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+              const projectRows = calculateProjectRows(projects, monthStart, monthEnd);
+              
+              // Calculate weeks in month
+              const weeksInMonth = Math.ceil(daysArray.length / 7);
+              
+              // Each day row is 128px (min-h-32)
+              // Each project row needs space: 24px (mfg) + 20px (install) + some padding
+              // Manufacturing bar: 24px, Installation bar: 20px (positioned at rowIdx * 128 + 24)
+              // So each project row needs 128px of vertical space per calendar week row
+              const rowHeight = 128; // matches min-h-32 (32 * 4 = 128px)
+              const minHeight = Math.max(600, weeksInMonth * rowHeight);
+              
+              return (
+                <div className="grid grid-cols-7 relative" style={{ minHeight: `${minHeight}px` }}>
+                  {daysArray.map((date, idx) => {
                 const isToday = date && 
                   date.getDate() === new Date().getDate() &&
                   date.getMonth() === new Date().getMonth() &&
@@ -1602,32 +1661,12 @@ export default function WorkshopPage() {
                 {/* Row guides and badges for month overlay */}
                 {(() => {
                   if (!projects || projects.length === 0) return null;
-                  // Build same projectRows used below to place guides consistently
                   const daysArray = getDaysInMonth(currentMonth);
                   const validDays = daysArray.filter(d => d !== null) as Date[];
                   if (validDays.length === 0) return null;
                   const monthStart = validDays[0];
                   const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
-                  const projectRows: Project[][] = [];
-                  projects.forEach(proj => {
-                    if (!proj.startDate || !proj.deliveryDate) return;
-                    const projStart = new Date(proj.startDate);
-                    const projEnd = new Date(proj.deliveryDate);
-                    if (projEnd < monthStart || projStart > monthEnd) return;
-                    let rowIndex = 0;
-                    while (rowIndex < projectRows.length) {
-                      const hasOverlap = projectRows[rowIndex].some(existingProj => {
-                        if (!existingProj.startDate || !existingProj.deliveryDate) return false;
-                        const existingStart = new Date(existingProj.startDate);
-                        const existingEnd = new Date(existingProj.deliveryDate);
-                        return !(projEnd < existingStart || projStart > existingEnd);
-                      });
-                      if (!hasOverlap) break;
-                      rowIndex++;
-                    }
-                    if (!projectRows[rowIndex]) projectRows[rowIndex] = [];
-                    projectRows[rowIndex].push(proj);
-                  });
+                  const projectRows = calculateProjectRows(projects, monthStart, monthEnd);
 
                   return projectRows.map((row, rowIdx) => (
                     <div key={`month-guide-${rowIdx}`} style={{ position: 'absolute', top: `${rowIdx * 128 + 8}px`, left: 0, right: 0 }}>
@@ -1644,36 +1683,11 @@ export default function WorkshopPage() {
                   if (validDays.length === 0) return null;
                   
                   const monthStart = validDays[0];
+                  const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
                   const firstDayOffset = daysArray.findIndex(d => d !== null);
                   
                   // Group projects by row to avoid overlaps
-                  const projectRows: Project[][] = [];
-                  projects.forEach(proj => {
-                    if (!proj.startDate || !proj.deliveryDate) return;
-                    
-                    const projStart = new Date(proj.startDate);
-                    const projEnd = new Date(proj.deliveryDate);
-                    
-                    // Only show projects that overlap with current month
-                    const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
-                    if (projEnd < monthStart || projStart > monthEnd) return;
-                    
-                    // Find first row where this project doesn't overlap with existing projects
-                    let rowIndex = 0;
-                    while (rowIndex < projectRows.length) {
-                      const hasOverlap = projectRows[rowIndex].some(existingProj => {
-                        if (!existingProj.startDate || !existingProj.deliveryDate) return false;
-                        const existingStart = new Date(existingProj.startDate);
-                        const existingEnd = new Date(existingProj.deliveryDate);
-                        return !(projEnd < existingStart || projStart > existingEnd);
-                      });
-                      if (!hasOverlap) break;
-                      rowIndex++;
-                    }
-                    
-                    if (!projectRows[rowIndex]) projectRows[rowIndex] = [];
-                    projectRows[rowIndex].push(proj);
-                  });
+                  const projectRows = calculateProjectRows(projects, monthStart, monthEnd);
                   
                   return (
                     <>
@@ -1743,7 +1757,7 @@ export default function WorkshopPage() {
                                   draggable
                                   onDragStart={() => handleDragStart(proj.id)}
                                   onClick={() => setShowProjectDetails(proj.id)}
-                                  title={`${proj.name} (${progress}% complete)${usersSummary}`}
+                                  title={`${getProjectDisplayName(proj)} (${progress}% complete)${usersSummary}`}
                                 >
                                   {segIdx === 0 && (
                                     <div className="flex gap-0.5 shrink-0 items-center pl-1 pr-0.5 py-1 bg-white rounded-l">
@@ -1766,7 +1780,7 @@ export default function WorkshopPage() {
                                     </div>
                                   )}
                                   <div className={`flex items-center gap-1 px-2 py-1 flex-1 ${segIdx === 0 ? 'rounded-r' : 'rounded'}`} style={{ background }}>
-                                    <div className="truncate flex-1">{proj.name}</div>
+                                    <div className="truncate flex-1">{getProjectDisplayName(proj)}</div>
                                     {assignedUsers.length > 0 && (
                                       <div className="text-[10px] opacity-90 truncate shrink-0">
                                         👤 {assignedUsers.slice(0, 2).join(', ')}
@@ -1828,7 +1842,7 @@ export default function WorkshopPage() {
                                   border: '2px dashed rgba(255,255,255,0.7)'
                                 }}
                                 onClick={() => setShowProjectDetails(proj.id)}
-                                title={`${proj.name} – Installation`}
+                                title={`${getProjectDisplayName(proj)} – Installation`}
                               >
                                 <div className="flex items-center gap-1 px-2 py-0.5">
                                   <span>🔧</span>
@@ -1843,7 +1857,9 @@ export default function WorkshopPage() {
                   );
                 })()}
               </div>
-            </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Week Summary below calendar - Removed per request */}
