@@ -2532,6 +2532,7 @@ router.get("/workshop", async (req: any, res) => {
   const tenantId = resolveTenantId(req);
   const userId = resolveUserId(req);
   const status = req.query.status as string | undefined;
+  const includeCounts = req.query.includeCounts === "true";
 
   if (!tenantId || !userId) {
     return res.status(401).json({ error: "unauthorized" });
@@ -2563,7 +2564,35 @@ router.get("/workshop", async (req: any, res) => {
       ],
     });
 
-    return res.json({ ok: true, tasks });
+    // If includeCounts requested, calculate task statistics
+    let counts;
+    if (includeCounts) {
+      const now = new Date();
+      const { start: todayStart, end: todayEnd } = todayRange();
+      
+      const dueTodayTasks = tasks.filter(t => 
+        t.dueAt && 
+        t.dueAt >= todayStart && 
+        t.dueAt <= todayEnd &&
+        (t.status === "OPEN" || t.status === "IN_PROGRESS")
+      );
+      
+      const overdueTasks = tasks.filter(t => 
+        t.dueAt && 
+        t.dueAt < todayStart &&
+        (t.status === "OPEN" || t.status === "IN_PROGRESS")
+      );
+
+      counts = {
+        total: tasks.length,
+        dueToday: dueTodayTasks.length,
+        overdue: overdueTasks.length,
+        dueTodayIds: dueTodayTasks.map(t => t.id),
+        overdueIds: overdueTasks.map(t => t.id),
+      };
+    }
+
+    return res.json({ ok: true, tasks, counts });
   } catch (e: any) {
     console.error("[tasks/workshop]", e);
     return res.status(500).json({ error: "internal_error" });

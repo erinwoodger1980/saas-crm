@@ -14,6 +14,15 @@ interface Project {
   title: string;
 }
 
+interface Task {
+  id: string;
+  title: string;
+  taskType: string;
+  relatedType: string | null;
+  relatedId: string | null;
+  dueAt: string | null;
+}
+
 interface Timer {
   id: string;
   projectId: string | null;
@@ -22,6 +31,8 @@ interface Timer {
   notes?: string | null;
   project?: { id: string; title: string } | null;
   user: { id: string; name: string | null; email: string };
+  taskId?: string | null;
+  task?: Task | null;
 }
 
 interface WorkshopTimerProps {
@@ -64,6 +75,12 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);
   const [completionMode, setCompletionMode] = useState<"stop" | "swap">("stop");
   
+  // Task state for quick-start from tasks
+  const [dueTodayTasks, setDueTodayTasks] = useState<Task[]>([]);
+  const [overdueTasks, setOverdueTasks] = useState<Task[]>([]);
+  const [loadingTasks, setLoadingTasks] = useState(false);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  
   // Filter processes based on user's allowed processes
   // If workshopProcessCodes is empty or undefined, show all processes
   const allowedProcesses = processes.filter(p => {
@@ -103,6 +120,13 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
     loadTimer();
   }, []);
 
+  // Fetch tasks when start modal opens
+  useEffect(() => {
+    if (showStart) {
+      loadTasks();
+    }
+  }, [showStart]);
+
   // Update elapsed time every second when timer is active
   useEffect(() => {
     if (!activeTimer) return;
@@ -128,6 +152,46 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
     }
   }
 
+  async function loadTasks() {
+    setLoadingTasks(true);
+    try {
+      const response = await apiFetch<{ 
+        ok: boolean; 
+        tasks: Task[];
+        counts?: { dueToday: number; overdue: number; dueTodayIds: string[]; overdueIds: string[] };
+      }>("/tasks/workshop?includeCounts=true");
+      
+      if (response.ok && response.counts) {
+        // Filter tasks into due today and overdue
+        const dueToday = response.tasks.filter(t => response.counts!.dueTodayIds.includes(t.id));
+        const overdue = response.tasks.filter(t => response.counts!.overdueIds.includes(t.id));
+        setDueTodayTasks(dueToday);
+        setOverdueTasks(overdue);
+      }
+    } catch (e) {
+      console.error("Failed to load tasks:", e);
+    } finally {
+      setLoadingTasks(false);
+    }
+  }
+
+  async function startFromTask(task: Task) {
+    // Auto-fill project and process from task
+    if (task.relatedType === "OPPORTUNITY" && task.relatedId) {
+      setProjectId(task.relatedId);
+      setProjectSearch("");
+    }
+    
+    // Set task ID for linking
+    setSelectedTaskId(task.id);
+    
+    // Pre-fill notes with task title
+    setNotes(task.title);
+    
+    // If we can infer a process from task type, set it
+    // For now, user will need to select the process manually
+  }
+
   async function startTimer() {
     if (!process) return;
     const procDef = allowedProcesses.find(p => p.code === process);
@@ -141,6 +205,11 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
       // Only include projectId for non-generic processes
       if (!isGeneric) {
         payload.projectId = projectId;
+      }
+      
+      // Include taskId if a task was selected
+      if (selectedTaskId) {
+        payload.taskId = selectedTaskId;
       }
       
       // Attempt to capture geolocation
@@ -173,6 +242,7 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
         setProjectId("");
         setProcess("");
         setNotes("");
+        setSelectedTaskId(null);
         if (onTimerChange) onTimerChange();
         
         // Show geofence warning if outside designated area
@@ -186,6 +256,21 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
     } finally {
       setLoading(false);
     }
+  }
+
+  async function startFromTask(task: Task) {
+    // Auto-fill form from task
+    setSelectedTaskId(task.id);
+    setNotes(task.title);
+    
+    // If task is linked to a project, pre-select it
+    if (task.relatedType === "opportunity" && task.relatedId) {
+      setProjectId(task.relatedId);
+    }
+    
+    // Try to infer process from task type if possible
+    // For now, user will need to select process manually
+    // Could enhance this later with task-to-process mapping
   }
 
   async function swapTimer() {
@@ -402,6 +487,23 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
           });
         }
         
+        // Complete task if timer was linked to a task
+        if (activeTimer.taskId) {
+          console.log("[handleStopTimerComplete] Completing linked task");
+          try {
+            await apiFetch(`/tasks/${activeTimer.taskId}/complete`, {
+              method: "POST",
+              json: {
+                completed: true,
+                notes: comments || undefined,
+              },
+            });
+          } catch (taskErr) {
+            console.error("Failed to complete task:", taskErr);
+            // Don't fail the whole operation if task completion fails
+          }
+        }
+        
         setActiveTimer(null);
         setElapsed("");
         setShowCompletionDialog(false);
@@ -435,6 +537,22 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
       });
       
       if (response.ok) {
+        // Complete task if timer was linked to a task (even if skipping process completion)
+        if (activeTimer.taskId) {
+          console.log("[handleStopTimerSkip] Completing linked task");
+          try {
+            await apiFetch(`/tasks/${activeTimer.taskId}/complete`, {
+              method: "POST",
+              json: {
+                completed: true,
+              },
+            });
+          } catch (taskErr) {
+            console.error("Failed to complete task:", taskErr);
+            // Don't fail the whole operation if task completion fails
+          }
+        }
+        
         setActiveTimer(null);
         setElapsed("");
         setShowCompletionDialog(false);
@@ -508,6 +626,20 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
           
           {/* Project and process info */}
           <div className="space-y-1 pt-2 border-t">
+            {activeTimer.taskId && activeTimer.task && (
+              <div className="bg-blue-50 border border-blue-200 rounded p-2 mb-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-blue-700">Linked Task:</span>
+                  <span className="text-xs text-blue-600">{activeTimer.task.taskType}</span>
+                </div>
+                <div className="text-sm font-medium mt-1">{activeTimer.task.title}</div>
+                {activeTimer.task.dueAt && (
+                  <div className="text-xs text-muted-foreground mt-1">
+                    Due: {new Date(activeTimer.task.dueAt).toLocaleString()}
+                  </div>
+                )}
+              </div>
+            )}
             {activeTimer.projectId && (
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Project:</span>
@@ -708,6 +840,59 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
               <X className="w-4 h-4" />
             </Button>
           </div>
+
+          {/* Tasks due today section */}
+          {loadingTasks && (
+            <div className="text-sm text-muted-foreground">Loading tasks...</div>
+          )}
+          
+          {!loadingTasks && overdueTasks.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 space-y-2">
+              <div className="text-sm font-medium text-red-700">⚠️ Overdue Tasks</div>
+              {overdueTasks.map(task => (
+                <div key={task.id} className="bg-white rounded p-2 space-y-1">
+                  <div className="text-sm font-medium">{task.title}</div>
+                  {task.dueAt && (
+                    <div className="text-xs text-red-600">
+                      Due: {new Date(task.dueAt).toLocaleDateString()}
+                    </div>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="w-full mt-1"
+                    onClick={() => startFromTask(task)}
+                  >
+                    Start Timer for This Task
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+          
+          {!loadingTasks && dueTodayTasks.length > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
+              <div className="text-sm font-medium text-blue-700">📅 Due Today</div>
+              {dueTodayTasks.map(task => (
+                <div key={task.id} className="bg-white rounded p-2 space-y-1">
+                  <div className="text-sm font-medium">{task.title}</div>
+                  {task.dueAt && (
+                    <div className="text-xs text-muted-foreground">
+                      Due: {new Date(task.dueAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="default"
+                    className="w-full mt-1"
+                    onClick={() => startFromTask(task)}
+                  >
+                    Start Timer for This Task
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
           
           <div className="space-y-3">
             {!isGenericProcess && (

@@ -10,6 +10,7 @@ interface ProcessCompletionDialogProps {
   onComplete: (comments: string) => void | Promise<void>;
   onSkip: () => void;
   isLastProcess?: boolean;
+  taskTitle?: string | null;
 }
 
 export default function ProcessCompletionDialog({
@@ -17,6 +18,7 @@ export default function ProcessCompletionDialog({
   onComplete,
   onSkip,
   isLastProcess = false,
+  taskTitle,
 }: ProcessCompletionDialogProps) {
   const [comments, setComments] = useState("");
   const [loading, setLoading] = useState(false);

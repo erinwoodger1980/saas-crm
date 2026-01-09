@@ -2013,6 +2013,7 @@ model Task {
   assignees              TaskAssignee[]
   followUpHistory        FollowUpHistory[]
   emailConversations     EmailConversation[]
+  timeEntries            TimeEntry[]
 
   @@index([tenantId, status, dueAt])
   @@index([tenantId, relatedType, relatedId])
@@ -2234,6 +2235,7 @@ model TimeEntry {
   tenantId  String
   projectId String? // Nullable for generic processes (cleaning, admin, etc.)
   groupId   String? // Link to OpportunityGroup for batch time tracking
+  taskId    String? // Link to task if time was tracked for a specific task
   process   String // Changed from enum to String to support generic processes (CLEANING, ADMIN, etc.)
   userId    String
   date      DateTime
@@ -2242,6 +2244,7 @@ model TimeEntry {
   createdAt DateTime           @default(now())
   project   Opportunity?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   group     OpportunityGroup?  @relation("GroupTimeEntries", fields: [groupId], references: [id], onDelete: Cascade)
+  task      Task?              @relation(fields: [taskId], references: [id], onDelete: SetNull)
   tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user      User               @relation(fields: [userId], references: [id])
 
@@ -2250,6 +2253,7 @@ model TimeEntry {
   @@index([tenantId, date], map: "TimeEntry_tenant_date_idx")
   @@index([tenantId, projectId, process], map: "TimeEntry_tenant_project_process_idx")
   @@index([groupId])
+  @@index([taskId])
 }
 
 model Holiday {
@@ -2272,6 +2276,7 @@ model WorkshopTimer {
   tenantId         String
   userId           String
   projectId        String?
+  taskId           String? // Link to task if timer is for a specific task
   process          String // Changed from enum to String to support generic processes (CLEANING, ADMIN, etc.)
   startedAt        DateTime     @default(now())
   notes            String?

@@ -1329,6 +1329,7 @@ router.get("/timer", async (req: any, res) => {
     include: {
       project: { select: { id: true, title: true } },
       user: { select: { id: true, name: true, email: true } },
+      task: { select: { id: true, title: true, taskType: true, relatedType: true, relatedId: true, dueAt: true } },
     },
     orderBy: { startedAt: 'desc' },
   });
@@ -1337,15 +1338,16 @@ router.get("/timer", async (req: any, res) => {
 });
 
 // POST /workshop/timer/start - Start a new timer
-// Body: { projectId?, process, notes?, latitude?, longitude?, accuracy? }
+// Body: { projectId?, process, notes?, latitude?, longitude?, accuracy?, taskId? }
 // projectId is optional for generic processes like HOLIDAY, ADMIN, CLEANING
+// taskId is optional to link the timer to a specific task
 router.post("/timer/start", async (req: any, res) => {
   let assignmentWarning = null;
   try {
     const tenantId = req.auth.tenantId as string;
     const authUserId = req.auth.userId as string;
     const role = String(req.auth?.role || "").toLowerCase();
-    const { projectId, process, notes, latitude, longitude, accuracy, userId: requestedUserId } = req.body || {};
+    const { projectId, process, notes, latitude, longitude, accuracy, userId: requestedUserId, taskId } = req.body || {};
     const userId = (requestedUserId && (role === "owner" || role === "admin")) ? String(requestedUserId) : authUserId;
 
     console.log(`[timer/start] tenant=${tenantId} user=${userId} projectId=${projectId} process=${process} location=${latitude},${longitude}`);
@@ -1426,6 +1428,7 @@ router.post("/timer/start", async (req: any, res) => {
               hours: finalHours,
               notes: existing.notes || null,
               date: startedAt, // Use original start time, not now
+              taskId: existing.taskId, // Link time entry to task if timer was started from task
             },
           });
           await (tx as any).workshopTimer.delete({ where: { id: existing.id } });
@@ -1459,6 +1462,7 @@ router.post("/timer/start", async (req: any, res) => {
           locationAccuracy: accuracy || null,
           locationCaptured: (latitude && longitude) ? new Date() : null,
           outsideGeofence,
+          taskId: taskId ? String(taskId) : null,
         },
         include: includeClause,
       });
@@ -1572,6 +1576,7 @@ router.post("/timer/stop", async (req: any, res) => {
       date: startedAt,
       hours: finalHours,
       notes: timer.notes,
+      taskId: timer.taskId, // Link time entry to task if timer was started from task
     },
   });
 
