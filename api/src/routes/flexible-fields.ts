@@ -361,11 +361,24 @@ router.get('/lookup-tables', async (req: Request, res: Response) => {
 
     const tables = await prisma.lookupTable.findMany({
       where,
-      // include: { rows: true },
+      include: { 
+        rows: {
+          orderBy: { createdAt: 'asc' }
+        }
+      },
       orderBy: { id: 'asc' },
     });
 
-    return res.json(tables);
+    // Transform the response to match the expected format
+    // Map lookupTableRow objects to the rows array
+    const formattedTables = tables.map((table: any) => ({
+      ...table,
+      rows: table.rows && Array.isArray(table.rows) 
+        ? table.rows.map((row: any) => row.data || {})
+        : []
+    }));
+
+    return res.json(formattedTables);
   } catch (error) {
     console.error('Error fetching lookup tables:', error);
     return res.status(500).json({ error: 'Failed to fetch lookup tables' });
