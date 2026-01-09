@@ -18,7 +18,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import { useCurrentUser } from "@/lib/use-current-user";
-import { Clock, Check, X, Download, Calendar, Users, ChevronLeft, ChevronRight, Upload } from "lucide-react";
+import { Clock, Check, X, Download, Calendar, Users, ChevronLeft, ChevronRight, Upload, Edit, Trash2 } from "lucide-react";
 
 type Timesheet = {
   id: string;
@@ -1322,74 +1322,122 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
         </TabsContent>
 
         <TabsContent value="team-activity" className="space-y-6 mt-6">
-          {/* Timesheets List */}
-          {loading ? (
-            <div className="text-center py-12 text-muted-foreground">Loading timesheets...</div>
-          ) : timesheets.length === 0 ? (
+          {/* Team Activity - Itemized Entries with Edit Capability */}
+          {activityLoading ? (
+            <div className="text-center py-12 text-muted-foreground">Loading team activity...</div>
+          ) : userActivity.length === 0 ? (
             <Card className="p-12 text-center">
-              <Calendar className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-lg text-muted-foreground">No timesheets found</p>
+              <Clock className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-lg text-muted-foreground">No activity recorded</p>
               <p className="text-sm text-muted-foreground mt-2">
-                Timesheets are automatically created when users log workshop hours
+                Time entries will appear here as users log their hours
               </p>
             </Card>
           ) : (
             <div className="space-y-4">
-              {timesheets.map((ts) => (
-                <Card key={ts.id} className="p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-4">
-                      <div
-                        className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg"
-                        style={{ backgroundColor: ts.user.workshopColor || "#3b82f6" }}
-                      >
-                        {(ts.user.name || ts.user.email)[0].toUpperCase()}
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-semibold">{ts.user.name || ts.user.email}</h3>
-                        <p className="text-sm text-muted-foreground">
-                          Week: {formatDate(ts.weekStartDate)} - {formatDate(ts.weekEndDate)}
-                        </p>
-                      </div>
+              {userActivity.map((ua) => (
+                <div key={ua.user.id} className="space-y-3">
+                  {/* User header */}
+                  <div className="flex items-center gap-3 px-4 py-2 bg-gradient-to-r from-slate-50 to-slate-100 rounded-lg border border-slate-200">
+                    <div className="relative">
+                      {ua.user.profilePictureUrl ? (
+                        <img
+                          src={ua.user.profilePictureUrl}
+                          alt={getUserDisplayName(ua.user)}
+                          className="w-10 h-10 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div
+                          className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold"
+                          style={{ backgroundColor: ua.user.workshopColor || "#6b7280" }}
+                        >
+                          {getUserDisplayName(ua.user)[0]?.toUpperCase() || "?"}
+                        </div>
+                      )}
+                      {(ua.hasActiveTimer || activeTimers[ua.user.id]) && (
+                        <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
+                      )}
                     </div>
-                    <div className="flex items-center gap-3">
-                      {getStatusBadge(ts.status)}
-                      <div className="text-right">
-                        <div className="text-3xl font-bold text-blue-600">{ts.totalHours}h</div>
-                        <div className="text-xs text-muted-foreground">Total Hours</div>
-                      </div>
-                    </div>
+                    <span className="font-semibold">{getUserDisplayName(ua.user)}</span>
+                    <span className="ml-auto text-sm text-muted-foreground">
+                      {Object.values(ua.days).reduce((sum, entries) => sum + getTotalHoursForDay(entries), 0).toFixed(1)}h
+                    </span>
                   </div>
 
-                  {ts.signedOffBy && (
-                    <div className="text-sm text-muted-foreground mb-4">
-                      Signed off by {ts.signedOffBy.name} on {formatDate(ts.signedOffAt!)}
-                    </div>
-                  )}
-
-                  {ts.notes && (
-                    <div className="text-sm bg-slate-50 p-3 rounded mb-4">
-                      <strong>Notes:</strong> {ts.notes}
-                    </div>
-                  )}
-
-                  {ts.status === "pending" && (
-                    <div className="flex gap-2">
-                      <Button onClick={() => signOff(ts.id)} size="sm" className="bg-green-600 hover:bg-green-700">
-                        <Check className="w-4 h-4 mr-2" />
-                        Sign Off
-                      </Button>
-                      <Button onClick={() => reject(ts.id)} size="sm" variant="outline">
-                        <X className="w-4 h-4 mr-2" />
-                        Reject
-                      </Button>
-                    </div>
-                  )}
-                </Card>
+                  {/* Itemized entries for this user */}
+                  <div className="pl-4 space-y-2">
+                    {Object.entries(ua.days).map(([dateKey, entries]) => (
+                      <div key={dateKey} className="space-y-2">
+                        {entries.length > 0 && (
+                          <div className="text-xs font-semibold text-slate-600 py-1">
+                            {new Date(dateKey + "T00:00:00").toLocaleDateString("en-GB", {
+                              weekday: "short",
+                              day: "2-digit",
+                              month: "short",
+                            })}
+                          </div>
+                        )}
+                        {entries.map((entry) => (
+                          <Card key={entry.id} className="p-3 bg-white border-l-4 border-l-blue-500 hover:shadow-md transition-shadow">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-sm">{entry.project?.title || "Unassigned Project"}</div>
+                                <div className="text-xs text-muted-foreground">{entry.process}</div>
+                                {entry.notes && <div className="text-xs text-slate-600 mt-1">{entry.notes}</div>}
+                              </div>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                <span className="font-semibold text-blue-600 min-w-[45px] text-right">{entry.hours}h</span>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() =>
+                                    setEditEntryDialog({
+                                      open: true,
+                                      entryId: entry.id,
+                                      userLabel: getUserDisplayName(ua.user),
+                                      dateKey,
+                                      projectTitle: entry.project?.title || null,
+                                      process: entry.process,
+                                      hours: String(entry.hours),
+                                      notes: entry.notes || "",
+                                    })
+                                  }
+                                  className="h-7 w-7 p-0"
+                                >
+                                  <Edit className="w-3.5 h-3.5" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() =>
+                                    setDeleteEntryDialog({
+                                      open: true,
+                                      entryId: entry.id,
+                                      userLabel: getUserDisplayName(ua.user),
+                                      dateKey,
+                                      projectTitle: entry.project?.title || null,
+                                      process: entry.process,
+                                      hours: entry.hours,
+                                    })
+                                  }
+                                  className="h-7 w-7 p-0"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                </Button>
+                              </div>
+                            </div>
+                          </Card>
+                        ))}
+                      </div>
+                    ))}
+                    {Object.values(ua.days).flat().length === 0 && (
+                      <div className="text-sm text-muted-foreground italic py-2">No entries logged</div>
+                    )}
+                  </div>
+                </div>
               ))}
             </div>
           )}
-
         </TabsContent>
 
         <TabsContent value="projects" className="space-y-6 mt-6">

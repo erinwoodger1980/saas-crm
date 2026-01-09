@@ -1,5 +1,4 @@
 "use client";
-"use client";
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -77,6 +76,52 @@ function HolidayRequestsPanel() {
       }
     } catch (error) {
       console.error("Failed to load holiday requests:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadRequests();
+  }, []);
+
+  const handleApprove = async (requestId: string) => {
+    if (processingId) return;
+    
+    setProcessingId(requestId);
+    try {
+      const res = await fetch(`/api/workshop/holiday-requests/${requestId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          status: "approved",
+          adminNotes: adminNotes[requestId] || null,
+        }),
+      });
+
+      if (res.ok) {
+        await loadRequests();
+        setAdminNotes((prev) => {
+          const updated = { ...prev };
+          delete updated[requestId];
+          return updated;
+        });
+      } else {
+        alert("Failed to approve request");
+      }
+    } catch (error) {
+      console.error("Failed to approve:", error);
+      alert("Error approving request");
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleDeny = async (requestId: string) => {
+    if (processingId) return;
+
+    const notes = adminNotes[requestId];
+    if (!notes?.trim()) {
       alert("Please provide a reason for denial in the admin notes");
       return;
     }
