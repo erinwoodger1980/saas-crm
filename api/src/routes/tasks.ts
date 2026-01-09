@@ -1454,9 +1454,16 @@ router.get("/stats/:userId", async (req: any, res) => {
     // Sort dates
     const sortedDates = Array.from(completionDates).sort().reverse();
 
-    // Calculate current streak
+    // Calculate current streak (weekdays only: Mon-Fri)
     let checkDate = new Date(today);
     for (let i = 0; i < 365; i++) {
+      const dayOfWeek = checkDate.getDay();
+      // Skip weekends (Saturday = 6, Sunday = 0)
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        checkDate.setDate(checkDate.getDate() - 1);
+        continue;
+      }
+      
       const dateStr = checkDate.toISOString().split("T")[0];
       if (completionDates.has(dateStr)) {
         currentStreak++;
@@ -1466,15 +1473,43 @@ router.get("/stats/:userId", async (req: any, res) => {
       checkDate.setDate(checkDate.getDate() - 1);
     }
 
-    // Calculate longest streak
+    // Calculate longest streak (weekdays only: Mon-Fri)
     for (let i = 0; i < sortedDates.length; i++) {
-      if (i === 0 || 
-          new Date(sortedDates[i - 1]).getTime() - new Date(sortedDates[i]).getTime() === 86400000) {
-        tempStreak++;
-        longestStreak = Math.max(longestStreak, tempStreak);
-      } else {
-        tempStreak = 1;
+      const currentDate = new Date(sortedDates[i]);
+      const prevDate = i > 0 ? new Date(sortedDates[i - 1]) : null;
+      const currentDayOfWeek = currentDate.getDay();
+      
+      // Check if current date is a weekday
+      const isWeekday = currentDayOfWeek !== 0 && currentDayOfWeek !== 6;
+      
+      if (!isWeekday) {
+        // Skip weekends
+        continue;
       }
+      
+      if (i === 0) {
+        tempStreak = 1;
+      } else if (prevDate) {
+        // Calculate days between dates, accounting for skipped weekends
+        let daysBetween = 0;
+        let tempCheckDate = new Date(prevDate);
+        while (tempCheckDate > currentDate) {
+          tempCheckDate.setDate(tempCheckDate.getDate() - 1);
+          const dayOfWeek = tempCheckDate.getDay();
+          if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+            daysBetween++;
+          }
+        }
+        
+        // If consecutive weekdays (1 business day apart)
+        if (daysBetween === 1) {
+          tempStreak++;
+        } else {
+          tempStreak = 1;
+        }
+      }
+      
+      longestStreak = Math.max(longestStreak, tempStreak);
     }
 
     // Tasks completed today
