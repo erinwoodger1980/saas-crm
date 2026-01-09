@@ -24,7 +24,9 @@ export default function NewHero({ onOpenDemo, onCtaClick }: NewHeroProps) {
     try {
       const { getApiBase } = await import("@/lib/api-base");
       const apiBase = getApiBase();
-      const endpoint = apiBase.includes("/api") ? `${apiBase}/interest` : `${apiBase}/api/interest`;
+      // apiBase is always /api, http://api.example.com/api, or similar
+      // Simply append /interest to it
+      const endpoint = `${apiBase}/interest`;
       
       console.log("Submitting interest to:", endpoint);
       
