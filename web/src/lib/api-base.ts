@@ -14,7 +14,11 @@
  */
 export function getApiBase() {
   const base = (process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL || '').trim();
-  if (base) return base.replace(/\/$/, '');
+  if (base) {
+    // Ensure the base ends with /api if it doesn't already
+    const trimmed = base.replace(/\/$/, '');
+    return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+  }
 
   if (typeof window !== 'undefined') {
     // Same-origin fallback – assume Next.js API routes or reverse proxy at /api
