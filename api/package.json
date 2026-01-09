@@ -25,6 +25,7 @@
     "seed:laj-tenant": "tsx prisma/seedTenantLaj.ts",
     "seed:laj-materials": "tsx prisma/seedMaterialsLaj.ts",
     "seed:cmgt7e": "tsx src/scripts/seedTenantCmgt7e.ts",
+    "populate-columns": "tsx scripts/populate-lookup-table-columns.ts",
     "audit:ml-samples": "tsx src/scripts/auditMLSamples.ts",
     "postinstall": "node scripts/prisma-postinstall.mjs && if [ \"$PUPPETEER_SKIP_DOWNLOAD\" != \"1\" ]; then npx puppeteer browsers install chrome; else echo 'Skipping puppeteer browser download'; fi",
     "test:supplier": "ts-node-dev --transpile-only scripts/test-supplier-parse.ts",
