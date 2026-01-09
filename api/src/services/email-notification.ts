@@ -16,10 +16,14 @@ interface EmailOptions {
 export async function sendAdminEmail(options: EmailOptions): Promise<void> {
   // Prefer Resend if configured
   const resendKey = process.env.RESEND_API_KEY;
+  console.log("[email-notification] Attempting to send email to:", options.to);
+  console.log("[email-notification] Resend API key configured:", !!resendKey);
+  
   if (resendKey) {
     try {
       const resend = new Resend(resendKey);
       const from = process.env.EMAIL_FROM || "JoineryAI Notifications <noreply@joineryai.app>";
+      console.log("[email-notification] Sending via Resend from:", from);
       const result = await resend.emails.send({
         from,
         to: options.to,
@@ -28,21 +32,25 @@ export async function sendAdminEmail(options: EmailOptions): Promise<void> {
         text: options.text || stripHtml(options.html),
       });
       if (result.error) {
-        console.warn("[email-notification] Resend error:", result.error);
-        throw new Error(result.error.message);
+        console.error("[email-notification] Resend API error response:", JSON.stringify(result.error));
+        throw new Error(`Resend error: ${result.error.message}`);
       }
-      console.log(`[email-notification] Resend email sent to ${options.to}: ${options.subject}`);
+      console.log(`[email-notification] Resend email sent successfully to ${options.to}: ${options.subject}`);
       return;
     } catch (e: any) {
-      console.warn("[email-notification] Resend send failed, falling back to SMTP:", e?.message || e);
+      console.error("[email-notification] Resend send failed:", e?.message || e);
+      console.error("[email-notification] Full error:", e);
     }
+  } else {
+    console.log("[email-notification] Resend API key not configured");
   }
 
   // Fallback to SMTP if available
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE } = env;
+  console.log("[email-notification] SMTP config available:", !!SMTP_HOST && !!SMTP_USER && !!SMTP_PASS);
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
-    console.warn("[email-notification] SMTP not configured, and Resend unavailable. Skipping email send.");
-    return;
+    console.error("[email-notification] SMTP not configured, and Resend unavailable or failed. Cannot send email to:", options.to);
+    throw new Error("No email service configured: neither Resend nor SMTP available");
   }
   const transporter = nodemailer.createTransport({
     host: SMTP_HOST,
