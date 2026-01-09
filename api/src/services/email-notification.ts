@@ -1,5 +1,6 @@
 // api/src/services/email-notification.ts
 import nodemailer from "nodemailer";
+import { Resend } from "resend";
 import { env } from "../env";
 
 interface EmailOptions {
@@ -17,16 +18,19 @@ export async function sendAdminEmail(options: EmailOptions): Promise<void> {
   const resendKey = process.env.RESEND_API_KEY;
   if (resendKey) {
     try {
-      const { Resend } = require("resend");
       const resend = new Resend(resendKey);
       const from = process.env.EMAIL_FROM || "JoineryAI Notifications <noreply@joineryai.app>";
-      await resend.emails.send({
+      const result = await resend.emails.send({
         from,
         to: options.to,
         subject: options.subject,
         html: options.html,
         text: options.text || stripHtml(options.html),
       });
+      if (result.error) {
+        console.warn("[email-notification] Resend error:", result.error);
+        throw new Error(result.error.message);
+      }
       console.log(`[email-notification] Resend email sent to ${options.to}: ${options.subject}`);
       return;
     } catch (e: any) {
