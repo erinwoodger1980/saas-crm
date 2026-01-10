@@ -1,3 +1,5 @@
+# Private secrets for local automation (DO NOT COMMIT DB CREDENTIALS)
+.secrets/
 # Node / Next
 node_modules/
 .next/
