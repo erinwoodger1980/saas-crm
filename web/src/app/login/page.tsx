@@ -38,7 +38,9 @@ export default function LoginPage() {
       const authToken = res?.jwt;
       if (authToken) {
         setJwt(authToken);
-        router.push("/dashboard");
+        // Use window.location instead of router.push to force a full page refresh
+        // This ensures the jauth cookie is sent to the Next.js middleware
+        window.location.href = "/dashboard";
       } else {
         throw new Error("Invalid login response");
       }
