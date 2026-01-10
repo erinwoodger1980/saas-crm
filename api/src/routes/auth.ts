@@ -35,7 +35,8 @@ const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 // In production we need Secure + cross-site domain to support app.joineryai.app → api.joineryai.app
 // For local development (localhost) we omit domain and set secure=false so the browser will accept the cookie.
 const isProd = process.env.NODE_ENV === "production";
-const cookieDomain = isProd ? ".joineryai.app" : undefined;
+// Allow overriding cookie domain (needed for staging/onrender where joineryai.app is not used)
+const cookieDomain = process.env.COOKIE_DOMAIN || (isProd ? ".joineryai.app" : undefined);
 const COOKIE_OPTS = {
   httpOnly: true,
   // require Secure only in production; sameSite must be 'none' in prod for cross-site cookies
