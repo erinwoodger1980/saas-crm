@@ -20,6 +20,14 @@ function inferApiBase(): string {
 
   if (typeof window !== "undefined") {
     const { hostname } = window.location;
+    // Staging on Render: ensure we talk to the staging API directly
+    // Avoid Cloudflare DNS issues with api-staging.joineryai.app
+    if (/onrender\.com$/i.test(hostname)) {
+      // Explicit known host for our staging web service
+      if (/^joineryai-web-staging\.onrender\.com$/i.test(hostname) || /web-staging/i.test(hostname)) {
+        return "https://joineryai-api-staging.onrender.com";
+      }
+    }
     // Production heuristic: joineryai.app / www.joineryai.app should talk to api.joineryai.app
     if (/\.?(joineryai)\.app$/i.test(hostname)) {
       return "https://api.joineryai.app";
