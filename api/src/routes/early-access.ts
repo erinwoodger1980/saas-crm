@@ -91,7 +91,7 @@ router.post("/signup", async (req, res) => {
         // Set cookie
         res.cookie(COOKIE_NAME, token, {
           httpOnly: true,
-          secure: isOnRender ? false : isProd,
+          secure: isProd,
           sameSite: (isProd && !isOnRender ? "none" : "lax") as "none" | "lax",
           maxAge: COOKIE_MAX_AGE,
           domain: cookieDomain,
@@ -176,7 +176,7 @@ router.post("/signup", async (req, res) => {
     // Set cookie
     res.cookie(COOKIE_NAME, token, {
       httpOnly: true,
-      secure: isOnRender ? false : isProd,
+      secure: isProd,
       sameSite: (isProd && !isOnRender ? "none" : "lax") as "none" | "lax",
       maxAge: COOKIE_MAX_AGE,
       domain: cookieDomain,

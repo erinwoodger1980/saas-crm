@@ -37,13 +37,13 @@ const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 const isProd = process.env.NODE_ENV === "production";
 // Allow overriding cookie domain (needed for staging/onrender where joineryai.app is not used)
 const cookieDomain = process.env.COOKIE_DOMAIN || (isProd ? ".joineryai.app" : undefined);
-// On onrender.com staging (where sameSite=none causes issues), use lax and secure=false. Otherwise use none for cross-site.
+// On onrender.com staging, use sameSite=lax (same-site). For production cross-site, use sameSite=none.
 const isOnRender = cookieDomain === ".onrender.com";
 const COOKIE_OPTS = {
   httpOnly: true,
-  // For onrender staging: secure=false (HTTPS but not true cross-site). For production: secure=true
-  secure: isOnRender ? false : isProd,
-  // For joineryai.app cross-site: sameSite=none. For onrender.com same-domain: sameSite=lax
+  // Always use secure=true in production (HTTPS required). For dev, secure=false.
+  secure: isProd,
+  // For joineryai.app cross-site: sameSite=none. For onrender.com same-site: sameSite=lax
   sameSite: (isProd && !isOnRender ? "none" : "lax") as "none" | "lax",
   ...(cookieDomain ? { domain: cookieDomain } : {}),
   path: "/",
