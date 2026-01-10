@@ -13,6 +13,8 @@ const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 const isProd = process.env.NODE_ENV === "production";
 // Allow overriding cookie domain (needed for staging/onrender where joineryai.app is not used)
 const cookieDomain = process.env.COOKIE_DOMAIN || (isProd ? ".joineryai.app" : undefined);
+// On onrender.com staging (where sameSite=none causes issues), use lax. Otherwise use none for cross-site.
+const isOnRender = cookieDomain === ".onrender.com";
 
 // Helper to generate unique tenant slug
 async function generateUniqueSlug(baseName: string): Promise<string> {
@@ -90,7 +92,7 @@ router.post("/signup", async (req, res) => {
         res.cookie(COOKIE_NAME, token, {
           httpOnly: true,
           secure: isProd,
-          sameSite: isProd ? "none" : "lax",
+          sameSite: (isProd && !isOnRender ? "none" : "lax") as "none" | "lax",
           maxAge: COOKIE_MAX_AGE,
           domain: cookieDomain,
         });
@@ -175,7 +177,7 @@ router.post("/signup", async (req, res) => {
     res.cookie(COOKIE_NAME, token, {
       httpOnly: true,
       secure: isProd,
-      sameSite: isProd ? "none" : "lax",
+      sameSite: (isProd && !isOnRender ? "none" : "lax") as "none" | "lax",
       maxAge: COOKIE_MAX_AGE,
       domain: cookieDomain,
     });
