@@ -174,19 +174,6 @@ export async function apiFetch<T = unknown>(
   });
 
   const text = await res.text();
-  
-  // Debug: Log response details
-  if (url.includes('/auth/login')) {
-    console.log('[apiFetch] Login response:', {
-      status: res.status,
-      statusText: res.statusText,
-      contentType: res.headers.get('content-type'),
-      textLength: text.length,
-      text: text.substring(0, 500),
-      url,
-    });
-  }
-  
   const parsed = text ? safeJson(text) : null;
 
   const details = parsed ?? (text || null);

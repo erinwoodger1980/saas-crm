@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const AUTH_COOKIE_NAME = "jauth"; // Changed from "jid" to "jauth" to match API server expectations
+// Prefer HttpOnly `jauth` when available, but allow legacy `jid/jwt` cookies
+// (set client-side by `setJwt()`), which is critical for staging on onrender.com
+// where sharing a cookie across sibling subdomains may be blocked.
+const AUTH_COOKIE_NAMES = ["jauth", "jid", "jwt"] as const;
 const APP_HOME_PATH = "/dashboard";
 
 const PUBLIC_EXACT = new Set([
@@ -42,7 +45,7 @@ function requiresAuth(pathname: string) {
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const authToken = req.cookies.get(AUTH_COOKIE_NAME)?.value;
+  const authToken = AUTH_COOKIE_NAMES.map((n) => req.cookies.get(n)?.value).find(Boolean);
   // Extract role from a lightweight JWT (no verification here) to gate workshop-only users
   let role: string | null = null;
   if (authToken) {
