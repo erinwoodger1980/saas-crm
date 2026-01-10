@@ -48,6 +48,14 @@ const COOKIE_OPTS = {
   maxAge: COOKIE_MAX_AGE,
 };
 
+console.log('[auth] Cookie config:', {
+  isProd,
+  cookieDomain,
+  secure: COOKIE_OPTS.secure,
+  sameSite: COOKIE_OPTS.sameSite,
+  COOKIE_DOMAIN_ENV: process.env.COOKIE_DOMAIN,
+});
+
 // ---- Stripe (used only to link/create tenant & user) ----
 const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || "").trim();
 const stripe: Stripe | null = billingEnabled
