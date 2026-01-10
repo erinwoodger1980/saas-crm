@@ -69,7 +69,9 @@ services:
     autoDeploy: true  # Auto-deploy staging when staging branch updates
     envVars:
       - key: NODE_ENV
-        value: staging
+        value: production
+      - key: COOKIE_DOMAIN
+        value: .onrender.com
       - key: ML_URL
         value: https://new-ml-zo9l.onrender.com
       - key: ML_TIMEOUT_MS
@@ -81,7 +83,7 @@ services:
       - key: SKIP_PRISMA_POSTINSTALL
         value: "1"
       - key: WEB_ORIGIN
-        sync: false  # Set to https://staging.joineryai.app in Render dashboard
+        value: https://joineryai-web-staging.onrender.com
       - key: DATABASE_URL
         sync: false  # Set to staging database in Render dashboard
   
@@ -99,11 +101,13 @@ services:
       - key: NODE_ENV
         value: staging
       - key: API_ORIGIN
-        sync: false  # Set to https://api-staging.joineryai.app in Render dashboard
+        value: https://joineryai-api-staging.onrender.com
       - key: NEXT_PUBLIC_API_BASE
-        sync: false  # Set to https://api-staging.joineryai.app in Render dashboard
+        value: https://joineryai-api-staging.onrender.com
+      - key: NEXT_PUBLIC_API_BASE_URL
+        value: https://joineryai-api-staging.onrender.com
       - key: NEXT_PUBLIC_WEB_ORIGIN
-        sync: false  # Set to https://staging.joineryai.app in Render dashboard
+        value: https://joineryai-web-staging.onrender.com
       - key: OPENAI_API_KEY
         sync: false  # Set this in Render dashboard
   - type: web
