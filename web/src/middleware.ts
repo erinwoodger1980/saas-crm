@@ -46,6 +46,14 @@ function requiresAuth(pathname: string) {
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const authToken = AUTH_COOKIE_NAMES.map((n) => req.cookies.get(n)?.value).find(Boolean);
+
+  // Guard against accidental relative navigations creating nested paths like /login/dashboard.
+  // If a user is already authenticated, send them home; otherwise normalize to /login.
+  if (pathname.startsWith("/login/") || pathname.startsWith("/signin/")) {
+    const url = req.nextUrl.clone();
+    url.pathname = authToken ? APP_HOME_PATH : "/login";
+    return NextResponse.redirect(url);
+  }
   // Extract role from a lightweight JWT (no verification here) to gate workshop-only users
   let role: string | null = null;
   if (authToken) {

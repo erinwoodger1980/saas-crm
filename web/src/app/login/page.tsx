@@ -17,6 +17,22 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  function getSafeNextPath(): string {
+    if (typeof window === "undefined") return "/dashboard";
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const raw = (sp.get("next") || "").trim();
+      if (!raw) return "/dashboard";
+
+      // Allow only same-site absolute paths (no protocol/host)
+      if (!raw.startsWith("/")) return "/dashboard";
+      if (raw.startsWith("//")) return "/dashboard";
+      return raw;
+    } catch {
+      return "/dashboard";
+    }
+  }
+
   async function doLogin(loginEmail: string, loginPassword: string) {
     setError("");
     setLoading(true);
@@ -40,7 +56,8 @@ export default function LoginPage() {
         setJwt(authToken);
         // Use window.location instead of router.push to force a full page refresh
         // This ensures the jauth cookie is sent to the Next.js middleware
-        window.location.href = "/dashboard";
+        const nextPath = getSafeNextPath();
+        window.location.assign(new URL(nextPath, window.location.origin).toString());
       } else {
         throw new Error("Invalid login response");
       }
