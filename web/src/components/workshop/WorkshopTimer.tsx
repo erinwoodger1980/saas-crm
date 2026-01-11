@@ -175,67 +175,55 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
     }
   }
 
-  async function startFromTask(task: Task) {
-    // Auto-fill project and process from task
-    if (task.relatedType === "OPPORTUNITY" && task.relatedId) {
-      setProjectId(task.relatedId);
-      setProjectSearch("");
-    }
-    
-    // Set task ID for linking
-    setSelectedTaskId(task.id);
-    
-    // Pre-fill notes with task title
-    setNotes(task.title);
-    
-    // If we can infer a process from task type, set it
-    // For now, user will need to select the process manually
-  }
-
-  async function startTimer() {
-    if (!process) return;
-    const procDef = allowedProcesses.find(p => p.code === process);
+  async function startTimerWith(payloadBase: { process: string; projectId?: string; notes?: string; taskId?: string }) {
+    const procDef = allowedProcesses.find((p) => p.code === payloadBase.process);
     const isGeneric = procDef?.isGeneric || false;
-    // For non-generic timers, projectId is required
-    if (!isGeneric && !projectId) return;
-    
+    if (!payloadBase.process) {
+      alert("Select a process to start the timer.");
+      return;
+    }
+    if (!procDef) {
+      alert("You can’t start a timer for this process (not permitted). Choose a process manually.");
+      return;
+    }
+    if (!isGeneric && !payloadBase.projectId) {
+      alert("This timer needs a project. Link the task to a job or pick a project/process manually.");
+      return;
+    }
+
     setLoading(true);
     try {
-      const payload: any = { process, notes: notes || undefined };
-      // Only include projectId for non-generic processes
+      const payload: any = { process: payloadBase.process, notes: payloadBase.notes || undefined };
       if (!isGeneric) {
-        payload.projectId = projectId;
+        payload.projectId = payloadBase.projectId;
       }
-      
-      // Include taskId if a task was selected
-      if (selectedTaskId) {
-        payload.taskId = selectedTaskId;
+      if (payloadBase.taskId) {
+        payload.taskId = payloadBase.taskId;
       }
-      
+
       // Attempt to capture geolocation
       if ("geolocation" in navigator) {
         try {
           const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, { 
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
               timeout: 5000,
-              enableHighAccuracy: false 
+              enableHighAccuracy: false,
             });
           });
-          
+
           payload.latitude = position.coords.latitude;
           payload.longitude = position.coords.longitude;
           payload.accuracy = position.coords.accuracy;
         } catch (geoError: any) {
           console.warn("Could not capture location:", geoError.message);
-          // Continue without location - it's optional
         }
       }
-      
+
       const response = await apiFetch<{ ok: boolean; timer: Timer; warning?: string; outsideGeofence?: boolean }>("/workshop/timer/start", {
         method: "POST",
         json: payload,
       });
-      
+
       if (response.ok && response.timer) {
         setActiveTimer(response.timer);
         setShowStart(false);
@@ -244,8 +232,7 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
         setNotes("");
         setSelectedTaskId(null);
         if (onTimerChange) onTimerChange();
-        
-        // Show geofence warning if outside designated area
+
         if (response.warning) {
           alert(response.warning);
         }
@@ -258,19 +245,61 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
     }
   }
 
+  async function startTimer() {
+    if (!process) return;
+    const procDef = allowedProcesses.find((p) => p.code === process);
+    const isGeneric = procDef?.isGeneric || false;
+    if (!isGeneric && !projectId) return;
+
+    await startTimerWith({
+      process,
+      projectId: isGeneric ? undefined : projectId,
+      notes: notes || undefined,
+      taskId: selectedTaskId || undefined,
+    });
+  }
+
   async function startFromTask(task: Task) {
-    // Auto-fill form from task
+    const relatedType = String(task.relatedType || "").toLowerCase();
+    const taskProjectId = relatedType === "opportunity" && task.relatedId ? String(task.relatedId) : "";
+
+    // Optimistically update the form so the user sees what started
     setSelectedTaskId(task.id);
     setNotes(task.title);
-    
-    // If task is linked to a project, pre-select it
-    if (task.relatedType === "opportunity" && task.relatedId) {
-      setProjectId(task.relatedId);
+    if (taskProjectId) {
+      setProjectId(taskProjectId);
+      setProjectSearch("");
     }
-    
-    // Try to infer process from task type if possible
-    // For now, user will need to select process manually
-    // Could enhance this later with task-to-process mapping
+
+    // Best-effort process inference
+    const byCode = allowedProcesses.find((p) => String(p.code).toLowerCase() === String(task.taskType || "").toLowerCase());
+    const byName = allowedProcesses.find((p) => String(p.name).toLowerCase() === String(task.taskType || "").toLowerCase());
+    const admin = allowedProcesses.find((p) => p.code === "ADMIN");
+    const firstGeneric = allowedProcesses.find((p) => p.isGeneric);
+    const fallback = allowedProcesses[0];
+
+    let chosen = byCode || byName || admin || firstGeneric || fallback;
+    if (!chosen) return;
+
+    // If the inferred process requires a project but we don't have one, fall back to a generic process.
+    if (!chosen.isGeneric && !taskProjectId) {
+      chosen = firstGeneric || admin || chosen;
+    }
+
+    // If we still don't have a viable (generic OR project-linked) start, don't fail silently.
+    if (!taskProjectId && !chosen.isGeneric) {
+      alert("This task isn’t linked to a job, so a project-based timer can’t start. Link the task to a job or choose a generic process (e.g. ADMIN). ");
+      return;
+    }
+
+    setProcess(chosen.code);
+
+    await startTimerWith({
+      process: chosen.code,
+      projectId: chosen.isGeneric ? undefined : taskProjectId || undefined,
+      notes: task.title,
+      taskId: task.id,
+    });
   }
 
   async function swapTimer() {

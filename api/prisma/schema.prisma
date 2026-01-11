@@ -2240,6 +2240,8 @@ model TimeEntry {
   process   String // Changed from enum to String to support generic processes (CLEANING, ADMIN, etc.)
   userId    String
   date      DateTime
+  startedAt DateTime?
+  endedAt   DateTime?
   hours     Decimal            @default(0)
   notes     String?
   createdAt DateTime           @default(now())

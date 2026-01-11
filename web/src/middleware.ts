@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Prefer HttpOnly `jauth` when available, but allow legacy `jid/jwt` cookies
-// (set client-side by `setJwt()`), which is critical for staging on onrender.com
-// where sharing a cookie across sibling subdomains may be blocked.
-const AUTH_COOKIE_NAMES = ["jauth", "jid", "jwt"] as const;
+// Auth is via HttpOnly `jauth` cookie.
+const AUTH_COOKIE_NAMES = ["jauth"] as const;
 const APP_HOME_PATH = "/dashboard";
 
 const PUBLIC_EXACT = new Set([

@@ -60,6 +60,8 @@ type TimeEntry = {
   hours: number;
   notes: string | null;
   project: { id: string; title: string } | null;
+  startedAt?: string | null;
+  endedAt?: string | null;
 };
 
 type UserActivity = {
@@ -93,6 +95,23 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
   const { user: currentUser } = useCurrentUser();
   const canAmendTime = ["owner", "admin"].includes(String(currentUser?.role || "").toLowerCase());
 
+  function toLocalDateTimeInputValue(iso: string) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const min = String(d.getMinutes()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+  }
+
+  function fromLocalDateTimeInputValue(value: string) {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toISOString();
+  }
+
   useEffect(() => {
     if (redirectAdminsToSettings && canAmendTime) {
       router.replace("/settings/holidays?tab=time-tracking");
@@ -118,21 +137,27 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
   const [editEntryDialog, setEditEntryDialog] = useState<{
     open: boolean;
     entryId: string | null;
+    userId: string | null;
     userLabel: string;
     dateKey: string;
     projectTitle: string | null;
     process: string;
     hours: string;
     notes: string;
+    startedAt: string;
+    endedAt: string;
   }>({
     open: false,
     entryId: null,
+    userId: null,
     userLabel: "",
     dateKey: "",
     projectTitle: null,
     process: "",
     hours: "",
     notes: "",
+    startedAt: "",
+    endedAt: "",
   });
 
   const [deleteEntryDialog, setDeleteEntryDialog] = useState<{
@@ -162,6 +187,8 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
     process: string;
     hours: string;
     notes: string;
+    startedAt: string;
+    endedAt: string;
   }>({
     open: false,
     userId: null,
@@ -171,6 +198,8 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
     process: "ADMIN",
     hours: "",
     notes: "",
+    startedAt: "",
+    endedAt: "",
   });
 
   // Team activity state
@@ -486,16 +515,19 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
     return `${hours}h ${minutes}m`;
   }
 
-  function openEditEntryDialog(userLabel: string, dateKey: string, entry: TimeEntry) {
+  function openEditEntryDialog(userId: string, userLabel: string, dateKey: string, entry: TimeEntry) {
     setEditEntryDialog({
       open: true,
       entryId: entry.id,
+      userId,
       userLabel,
       dateKey,
       projectTitle: entry.project?.title ?? null,
       process: entry.process,
       hours: String(entry.hours ?? ""),
       notes: entry.notes ?? "",
+      startedAt: entry.startedAt ? toLocalDateTimeInputValue(entry.startedAt) : "",
+      endedAt: entry.endedAt ? toLocalDateTimeInputValue(entry.endedAt) : "",
     });
   }
 
@@ -519,6 +551,21 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
       return;
     }
 
+    const startedAtIso = editEntryDialog.startedAt ? fromLocalDateTimeInputValue(editEntryDialog.startedAt) : null;
+    const endedAtIso = editEntryDialog.endedAt ? fromLocalDateTimeInputValue(editEntryDialog.endedAt) : null;
+    if (editEntryDialog.startedAt && !startedAtIso) {
+      toast({ title: "Invalid start time", description: "Enter a valid start date/time.", variant: "destructive" });
+      return;
+    }
+    if (editEntryDialog.endedAt && !endedAtIso) {
+      toast({ title: "Invalid end time", description: "Enter a valid end date/time.", variant: "destructive" });
+      return;
+    }
+    if (startedAtIso && endedAtIso && new Date(endedAtIso) < new Date(startedAtIso)) {
+      toast({ title: "Invalid time range", description: "End time must be after start time.", variant: "destructive" });
+      return;
+    }
+
     try {
       await apiFetch<{ ok: boolean; entry: any }>(`/workshop/time/${editEntryDialog.entryId}`, {
         method: "PATCH",
@@ -526,10 +573,12 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
           hours: hoursNum,
           notes: editEntryDialog.notes?.trim() ? editEntryDialog.notes.trim() : null,
         },
+            startedAt: startedAtIso,
+            endedAt: endedAtIso,
       });
 
       toast({ title: "Time entry updated" });
-      setEditEntryDialog({ open: false, entryId: null, userLabel: "", dateKey: "", projectTitle: null, process: "", hours: "", notes: "" });
+      setEditEntryDialog({ open: false, entryId: null, userId: null, userLabel: "", dateKey: "", projectTitle: null, process: "", hours: "", notes: "", startedAt: "", endedAt: "" });
       await loadTeamActivity();
       await loadTimesheets();
     } catch (e: any) {
@@ -581,6 +630,8 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
       process: "ADMIN",
       hours: "",
       notes: "",
+      startedAt: "",
+      endedAt: "",
     });
   }
 
@@ -600,6 +651,21 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
       return;
     }
 
+    const startedAtIso = addHoursDialog.startedAt ? fromLocalDateTimeInputValue(addHoursDialog.startedAt) : null;
+    const endedAtIso = addHoursDialog.endedAt ? fromLocalDateTimeInputValue(addHoursDialog.endedAt) : null;
+    if (addHoursDialog.startedAt && !startedAtIso) {
+      toast({ title: "Invalid start time", description: "Enter a valid start date/time.", variant: "destructive" });
+      return;
+    }
+    if (addHoursDialog.endedAt && !endedAtIso) {
+      toast({ title: "Invalid end time", description: "Enter a valid end date/time.", variant: "destructive" });
+      return;
+    }
+    if (startedAtIso && endedAtIso && new Date(endedAtIso) < new Date(startedAtIso)) {
+      toast({ title: "Invalid time range", description: "End time must be after start time.", variant: "destructive" });
+      return;
+    }
+
     try {
       await apiFetch<{ ok: boolean; entry: any }>("/workshop/time", {
         method: "POST",
@@ -610,11 +676,13 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
           notes: addHoursDialog.notes?.trim() ? addHoursDialog.notes.trim() : null,
           process: addHoursDialog.process.trim(),
           projectId: addHoursDialog.projectId ? addHoursDialog.projectId : null,
+          startedAt: startedAtIso,
+          endedAt: endedAtIso,
         },
       });
 
       toast({ title: "Hours added" });
-      setAddHoursDialog({ open: false, userId: null, userLabel: "", dateKey: "", projectId: "", process: "ADMIN", hours: "", notes: "" });
+      setAddHoursDialog({ open: false, userId: null, userLabel: "", dateKey: "", projectId: "", process: "ADMIN", hours: "", notes: "", startedAt: "", endedAt: "" });
       await loadTeamActivity();
       await loadTimesheets();
     } catch (e: any) {
@@ -655,18 +723,19 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
     
     Object.entries(days).forEach(([dateKey, entries]) => {
       entries.forEach((entry) => {
-        const projectId = entry.project?.id || `process_${entry.process}`;
-        const projectName = entry.project?.title || entry.process.replace(/_/g, " ");
+        const baseId = entry.project?.id || "unassigned";
+        const compositeId = `${baseId}__${entry.process}`;
+        const projectName = entry.project?.title || "Unassigned Project";
         
-        if (!projectMap.has(projectId)) {
-          projectMap.set(projectId, {
+        if (!projectMap.has(compositeId)) {
+          projectMap.set(compositeId, {
             name: projectName,
             process: entry.process,
             entries: {},
           });
         }
         
-        const project = projectMap.get(projectId)!;
+        const project = projectMap.get(compositeId)!;
         project.entries[dateKey] = (project.entries[dateKey] || 0) + entry.hours;
       });
     });
@@ -704,12 +773,13 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
             ...prev,
             open,
             entryId: open ? prev.entryId : null,
+            userId: open ? prev.userId : null,
           }))
         }
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit time entry</DialogTitle>
+            <DialogTitle>Time log</DialogTitle>
             <DialogDescription>
               {editEntryDialog.userLabel}
               {editEntryDialog.dateKey ? ` • ${editEntryDialog.dateKey}` : ""}
@@ -718,6 +788,26 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium mb-1 block">Start</label>
+                <input
+                  type="datetime-local"
+                  value={editEntryDialog.startedAt}
+                  onChange={(e) => setEditEntryDialog((prev) => ({ ...prev, startedAt: e.target.value }))}
+                  className="w-full border border-border rounded-md px-3 py-2 bg-background"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1 block">End</label>
+                <input
+                  type="datetime-local"
+                  value={editEntryDialog.endedAt}
+                  onChange={(e) => setEditEntryDialog((prev) => ({ ...prev, endedAt: e.target.value }))}
+                  className="w-full border border-border rounded-md px-3 py-2 bg-background"
+                />
+              </div>
+            </div>
             <div>
               <label className="text-sm font-medium mb-1 block">Hours</label>
               <input
@@ -740,10 +830,40 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setEditEntryDialog({ open: false, entryId: null, userLabel: "", dateKey: "", projectTitle: null, process: "", hours: "", notes: "" })}
+              onClick={() => setEditEntryDialog({ open: false, entryId: null, userId: null, userLabel: "", dateKey: "", projectTitle: null, process: "", hours: "", notes: "", startedAt: "", endedAt: "" })}
             >
               Cancel
             </Button>
+            {canAmendTime && (
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  if (!editEntryDialog.entryId) return;
+                  setDeleteEntryDialog({
+                    open: true,
+                    entryId: editEntryDialog.entryId,
+                    userLabel: editEntryDialog.userLabel,
+                    dateKey: editEntryDialog.dateKey,
+                    projectTitle: editEntryDialog.projectTitle,
+                    process: editEntryDialog.process,
+                    hours: Number(editEntryDialog.hours) || null,
+                  });
+                }}
+              >
+                Delete
+              </Button>
+            )}
+            {canAmendTime && (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  if (!editEntryDialog.userId) return;
+                  openAddHoursDialog(editEntryDialog.userId, editEntryDialog.userLabel, editEntryDialog.dateKey);
+                }}
+              >
+                Add
+              </Button>
+            )}
             <Button onClick={confirmEditEntry}>Save</Button>
           </DialogFooter>
         </DialogContent>
@@ -776,6 +896,26 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
                 onChange={(e) => setAddHoursDialog((prev) => ({ ...prev, dateKey: e.target.value }))}
                 className="w-full border border-border rounded-md px-3 py-2 bg-background"
               />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium mb-1 block">Start (optional)</label>
+                <input
+                  type="datetime-local"
+                  value={addHoursDialog.startedAt}
+                  onChange={(e) => setAddHoursDialog((prev) => ({ ...prev, startedAt: e.target.value }))}
+                  className="w-full border border-border rounded-md px-3 py-2 bg-background"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1 block">End (optional)</label>
+                <input
+                  type="datetime-local"
+                  value={addHoursDialog.endedAt}
+                  onChange={(e) => setAddHoursDialog((prev) => ({ ...prev, endedAt: e.target.value }))}
+                  className="w-full border border-border rounded-md px-3 py-2 bg-background"
+                />
+              </div>
             </div>
             <div>
               <label className="text-sm font-medium mb-1 block">Project (optional)</label>
@@ -1226,6 +1366,83 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
                       </tbody>
                     </table>
                   </div>
+
+                  {/* Time logs */}
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-semibold">Time logs</h3>
+                    <div className="space-y-3">
+                      {dateRange.map((date) => {
+                        const dateKey = date.toISOString().split("T")[0];
+                        const entries = selectedUser.days[dateKey] || [];
+                        if (entries.length === 0) return null;
+                        return (
+                          <div key={dateKey} className="space-y-2">
+                            <div className="text-xs font-semibold text-slate-600 py-1">
+                              {new Date(dateKey + "T00:00:00").toLocaleDateString("en-GB", {
+                                weekday: "short",
+                                day: "2-digit",
+                                month: "short",
+                              })}
+                            </div>
+                            {entries.map((entry) => (
+                              <Card
+                                key={entry.id}
+                                className="p-3 bg-white border-l-4 border-l-blue-500 hover:shadow-md transition-shadow cursor-pointer"
+                                onClick={() => openEditEntryDialog(selectedUser.user.id, getUserDisplayName(selectedUser.user), dateKey, entry)}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-medium text-sm">{entry.project?.title || "Unassigned Project"}</div>
+                                    <div className="text-xs text-muted-foreground">{entry.process}</div>
+                                    {(entry.startedAt || entry.endedAt) && (
+                                      <div className="text-xs text-slate-600 mt-1">
+                                        {entry.startedAt ? new Date(entry.startedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "—"}
+                                        {" – "}
+                                        {entry.endedAt ? new Date(entry.endedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "—"}
+                                      </div>
+                                    )}
+                                    {entry.notes && <div className="text-xs text-slate-600 mt-1">{entry.notes}</div>}
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-shrink-0">
+                                    <span className="font-semibold text-blue-600 min-w-[45px] text-right">{formatHours(entry.hours)}</span>
+                                    {canAmendTime && (
+                                      <>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            openEditEntryDialog(selectedUser.user.id, getUserDisplayName(selectedUser.user), dateKey, entry);
+                                          }}
+                                          className="h-7 w-7 p-0"
+                                        >
+                                          <Edit className="w-3.5 h-3.5" />
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            openDeleteEntryDialog(getUserDisplayName(selectedUser.user), dateKey, entry);
+                                          }}
+                                          className="h-7 w-7 p-0"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                        </Button>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </Card>
+                            ))}
+                          </div>
+                        );
+                      })}
+                      {Object.values(selectedUser.days).flat().length === 0 && (
+                        <div className="text-sm text-muted-foreground italic py-2">No entries logged</div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               );
             })()
@@ -1444,11 +1661,22 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
                           </div>
                         )}
                         {entries.map((entry) => (
-                          <Card key={entry.id} className="p-3 bg-white border-l-4 border-l-blue-500 hover:shadow-md transition-shadow">
+                          <Card
+                            key={entry.id}
+                            className="p-3 bg-white border-l-4 border-l-blue-500 hover:shadow-md transition-shadow cursor-pointer"
+                            onClick={() => openEditEntryDialog(ua.user.id, getUserDisplayName(ua.user), dateKey, entry)}
+                          >
                             <div className="flex items-center justify-between gap-2">
                               <div className="flex-1 min-w-0">
                                 <div className="font-medium text-sm">{entry.project?.title || "Unassigned Project"}</div>
                                 <div className="text-xs text-muted-foreground">{entry.process}</div>
+                                {(entry.startedAt || entry.endedAt) && (
+                                  <div className="text-xs text-slate-600 mt-1">
+                                    {entry.startedAt ? new Date(entry.startedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "—"}
+                                    {" – "}
+                                    {entry.endedAt ? new Date(entry.endedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "—"}
+                                  </div>
+                                )}
                                 {entry.notes && <div className="text-xs text-slate-600 mt-1">{entry.notes}</div>}
                               </div>
                               <div className="flex items-center gap-2 flex-shrink-0">
@@ -1456,18 +1684,10 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
                                 <Button
                                   size="sm"
                                   variant="ghost"
-                                  onClick={() =>
-                                    setEditEntryDialog({
-                                      open: true,
-                                      entryId: entry.id,
-                                      userLabel: getUserDisplayName(ua.user),
-                                      dateKey,
-                                      projectTitle: entry.project?.title || null,
-                                      process: entry.process,
-                                      hours: String(entry.hours),
-                                      notes: entry.notes || "",
-                                    })
-                                  }
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openEditEntryDialog(ua.user.id, getUserDisplayName(ua.user), dateKey, entry);
+                                  }}
                                   className="h-7 w-7 p-0"
                                 >
                                   <Edit className="w-3.5 h-3.5" />
@@ -1475,7 +1695,8 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
                                 <Button
                                   size="sm"
                                   variant="ghost"
-                                  onClick={() =>
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     setDeleteEntryDialog({
                                       open: true,
                                       entryId: entry.id,
@@ -1484,8 +1705,8 @@ export function TimesheetsManagement({ redirectAdminsToSettings = false }: { red
                                       projectTitle: entry.project?.title || null,
                                       process: entry.process,
                                       hours: entry.hours,
-                                    })
-                                  }
+                                    });
+                                  }}
                                   className="h-7 w-7 p-0"
                                 >
                                   <Trash2 className="w-3.5 h-3.5 text-red-500" />

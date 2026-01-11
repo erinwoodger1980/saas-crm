@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { apiFetch, setJwt } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -47,20 +47,14 @@ export default function LoginPage() {
         payload.username = identifier;
       }
       
-      const res = await apiFetch<{ jwt: string }>("/auth/login", {
+      await apiFetch("/auth/login", {
         method: "POST",
         json: payload,
       });
-      const authToken = res?.jwt;
-      if (authToken) {
-        setJwt(authToken);
-        // Use window.location instead of router.push to force a full page refresh
-        // This ensures the jauth cookie is sent to the Next.js middleware
-        const nextPath = getSafeNextPath();
-        window.location.assign(new URL(nextPath, window.location.origin).toString());
-      } else {
-        throw new Error("Invalid login response");
-      }
+      // Use window.location instead of router.push to force a full page refresh
+      // so middleware sees the freshly-set HttpOnly auth cookie.
+      const nextPath = getSafeNextPath();
+      window.location.assign(new URL(nextPath, window.location.origin).toString());
     } catch (err: any) {
       console.error(err);
       const status = err?.status;
