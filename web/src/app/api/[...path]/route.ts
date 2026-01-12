@@ -1,13 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
 function pickBackendOrigin(req: NextRequest): string {
-  const configured = (process.env.API_ORIGIN || process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_BASE_URL || "").trim();
-
-  // Prefer explicit config when it looks reasonable.
-  if (configured && /^https?:\/\//i.test(configured)) {
-    return configured.replace(/\/+$/g, "");
-  }
-
   const host = (req.headers.get("host") || "").toLowerCase();
 
   // Render staging: keep it deterministic and bypass any broken custom DNS.
@@ -23,6 +16,15 @@ function pickBackendOrigin(req: NextRequest): string {
   // Production: default to the public API.
   if (host === "joineryai.app" || host === "www.joineryai.app" || host.endsWith(".joineryai.app")) {
     return "https://api.joineryai.app";
+  }
+
+  const configured = (process.env.API_ORIGIN || process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_BASE_URL || "").trim();
+
+  // Prefer explicit config when it looks reasonable (but only after host-based routing).
+  // This prevents a bad env var (e.g. a broken Cloudflare staging domain) from overriding
+  // deterministic staging routing.
+  if (configured && /^https?:\/\//i.test(configured)) {
+    return configured.replace(/\/+$/g, "");
   }
 
   // Local dev fallback.
@@ -72,6 +74,11 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path?: string[] 
   const headers = new Headers();
   const incomingCookie = req.headers.get("cookie");
   if (incomingCookie) headers.set("cookie", incomingCookie);
+
+  const tenantId = req.headers.get("x-tenant-id");
+  if (tenantId) headers.set("x-tenant-id", tenantId);
+  const userId = req.headers.get("x-user-id");
+  if (userId) headers.set("x-user-id", userId);
 
   const incomingAuth = req.headers.get("authorization");
   if (incomingAuth) headers.set("authorization", incomingAuth);

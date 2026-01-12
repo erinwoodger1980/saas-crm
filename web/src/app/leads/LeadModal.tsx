@@ -38,6 +38,8 @@ import { SplitProjectModal } from "../opportunities/SplitProjectModal";
 export type Lead = {
   id: string;
   number?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
   contactName?: string | null;
   email?: string | null;
   phone?: string | null;
@@ -361,9 +363,18 @@ function toIsoOrUndefined(localValue: string): string | undefined {
   return d.toISOString();
 }
 
+function isoToDateInput(value: any): string {
+  if (!value) return "";
+  try {
+    return new Date(value).toISOString().split("T")[0];
+  } catch {
+    return "";
+  }
+}
+
 /* ----------------------------- Component ----------------------------- */
 
-type Stage = 'client' | 'quote' | 'tasks' | 'order';
+type Stage = 'client' | 'quote' | 'dates' | 'finance' | 'tasks' | 'order';
 
 export default function LeadModal({
   open,
@@ -620,6 +631,17 @@ export default function LeadModal({
   const [opportunityId, setOpportunityId] = useState<string | null>(null);
   const [opportunityStage, setOpportunityStage] = useState<string | null>(null);
 
+  // Opportunity meta dates (useful for Dates tab)
+  const [opportunityCreatedAt, setOpportunityCreatedAt] = useState<string | null>(null);
+  const [opportunityWonAt, setOpportunityWonAt] = useState<string | null>(null);
+  const [opportunityLostAt, setOpportunityLostAt] = useState<string | null>(null);
+
+  // Finance fields (stored on lead.custom.finance)
+  const [depositAmountGBP, setDepositAmountGBP] = useState<string>("");
+  const [depositRaisedAt, setDepositRaisedAt] = useState<string>("");
+  const [depositReceivedAt, setDepositReceivedAt] = useState<string>("");
+  const financeHydratedLeadIdRef = useRef<string | null>(null);
+
   const lastSavedServerStatusRef = useRef<string | null>(null);
 
   // Email preview state
@@ -768,6 +790,18 @@ export default function LeadModal({
       description: 'Questionnaire and quote information'
     },
     {
+      id: 'dates' as const,
+      title: 'Dates',
+      icon: '📅',
+      description: 'Key project dates (created, quote sent, order placed, etc.)'
+    },
+    {
+      id: 'finance' as const,
+      title: 'Finance',
+      icon: '💷',
+      description: 'Project value and deposit tracking'
+    },
+    {
       id: 'tasks' as const,
       title: 'Tasks & Follow-ups',
       icon: '✨',
@@ -887,6 +921,10 @@ export default function LeadModal({
 
     // Reset pinned lead id for this modal session
     setResolvedLeadId(null);
+    financeHydratedLeadIdRef.current = null;
+    setDepositAmountGBP("");
+    setDepositRaisedAt("");
+    setDepositReceivedAt("");
 
     (async () => {
       setLoading(true);
@@ -967,6 +1005,8 @@ export default function LeadModal({
           // Some API responses may include an Opportunity ID in `row.id`, which breaks
           // subsequent /leads/:id PATCH calls and custom field loads.
           id: actualLeadId,
+          createdAt: (row as any)?.createdAt ?? null,
+          updatedAt: (row as any)?.updatedAt ?? null,
           contactName,
           email,
           phone: (row as any)?.phone ?? null,
@@ -985,6 +1025,22 @@ export default function LeadModal({
         };
         setLead(normalized);
         setUiStatus(sUi);
+
+        // Hydrate finance fields once per lead id
+        if (financeHydratedLeadIdRef.current !== actualLeadId) {
+          const finance =
+            normalized.custom && typeof normalized.custom === "object" && !Array.isArray(normalized.custom)
+              ? (normalized.custom as any)?.finance
+              : null;
+          setDepositAmountGBP(
+            finance?.depositAmountGBP != null && finance?.depositAmountGBP !== ""
+              ? String(finance.depositAmountGBP)
+              : ""
+          );
+          setDepositRaisedAt(isoToDateInput(finance?.depositRaisedAt));
+          setDepositReceivedAt(isoToDateInput(finance?.depositReceivedAt));
+          financeHydratedLeadIdRef.current = actualLeadId;
+        }
 
         // Fetch tenant users for assignment dropdown
         if (tenantId) {
@@ -1214,6 +1270,9 @@ export default function LeadModal({
           if (opp.id) {
             setOpportunityId(String(opp.id));
           }
+          setOpportunityCreatedAt(opp.createdAt ? String(opp.createdAt) : null);
+          setOpportunityWonAt(opp.wonAt ? String(opp.wonAt) : null);
+          setOpportunityLostAt(opp.lostAt ? String(opp.lostAt) : null);
           // Store opportunity stage for conditional labeling
           if (opp.stage) {
             setOpportunityStage(opp.stage);
@@ -1260,6 +1319,17 @@ export default function LeadModal({
     })();
     return () => { cancelled = true; };
   }, [open, lead?.id, resolvedLeadId, uiStatus, authHeaders, opportunityId]);
+
+  async function saveFinanceField(patch: { depositAmountGBP?: number | null; depositRaisedAt?: string | null; depositReceivedAt?: string | null; }) {
+    const currentCustom = (lead?.custom && typeof lead.custom === "object" && !Array.isArray(lead.custom))
+      ? (lead.custom as any)
+      : {};
+    const prevFinance = (currentCustom as any)?.finance && typeof (currentCustom as any).finance === "object"
+      ? { ...(currentCustom as any).finance }
+      : {};
+    const nextFinance = { ...prevFinance, ...patch };
+    await savePatch({ custom: { finance: nextFinance } });
+  }
 
   function getAssignmentFor(defId: string): ProcAssignment | undefined {
     return wkAssignments.find((a) => (a.processDefinitionId === defId) || (a.processCode && wkDefs.find(d => d.id===defId)?.code === a.processCode));
@@ -1509,6 +1579,12 @@ export default function LeadModal({
       lastSavedServerStatusRef.current = row.status;
     }
     setLead((current) => {
+      const toMaybeIsoString = (val: any): string | null => {
+        if (val === undefined || val === null || val === "") return null;
+        if (val instanceof Date) return val.toISOString();
+        if (typeof val === "string") return val;
+        return String(val);
+      };
       const toMaybeNumber = (val: any): number | null => {
         if (val === undefined || val === null || val === "") return null;
         const num = Number(val);
@@ -1518,6 +1594,8 @@ export default function LeadModal({
         ? { ...current }
         : {
             id: row.id ?? "",
+            createdAt: toMaybeIsoString(row.createdAt),
+            updatedAt: toMaybeIsoString(row.updatedAt),
             contactName: row.contactName ?? null,
             email: row.email ?? null,
             phone: (row as any)?.phone ?? null,
@@ -1536,6 +1614,8 @@ export default function LeadModal({
 
       const next: Lead = {
         ...base,
+        createdAt: toMaybeIsoString(row.createdAt) ?? base.createdAt ?? null,
+        updatedAt: toMaybeIsoString(row.updatedAt) ?? base.updatedAt ?? null,
         contactName: row.contactName ?? base.contactName ?? null,
         email: row.email ?? base.email ?? null,
         phone: (row as any)?.phone ?? base.phone ?? null,
@@ -4667,6 +4747,246 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                     </div>
                   </section>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* DATES STAGE */}
+          {currentStage === "dates" && (
+            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-indigo-50/60 min-h-[60vh]">
+              <div className="max-w-4xl mx-auto space-y-6">
+                <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
+                    <span aria-hidden="true">📅</span>
+                    Key Dates
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border border-slate-200/70 bg-white/70 p-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                        Lead
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-slate-600">Created</span>
+                          <span className="font-medium text-slate-800">
+                            {(lead.createdAt || lead.capturedAt)
+                              ? new Date((lead.createdAt || lead.capturedAt) as string).toLocaleString("en-GB")
+                              : "—"}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-slate-600">Quote sent</span>
+                          <span className="font-medium text-slate-800">
+                            {lead.dateQuoteSent
+                              ? new Date(lead.dateQuoteSent).toLocaleDateString("en-GB")
+                              : "—"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200/70 bg-white/70 p-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                        Opportunity / Order
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-slate-600">Opportunity created</span>
+                          <span className="font-medium text-slate-800">
+                            {opportunityCreatedAt
+                              ? new Date(opportunityCreatedAt).toLocaleString("en-GB")
+                              : "—"}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-slate-600">Order placed (Won)</span>
+                          <span className="font-medium text-slate-800">
+                            {opportunityWonAt
+                              ? new Date(opportunityWonAt).toLocaleString("en-GB")
+                              : "—"}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-slate-600">Lost</span>
+                          <span className="font-medium text-slate-800">
+                            {opportunityLostAt
+                              ? new Date(opportunityLostAt).toLocaleString("en-GB")
+                              : "—"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border border-slate-200/70 bg-white/70 p-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                        Project Dates
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-slate-600">Start date</span>
+                          <span className="font-medium text-slate-800">{projectStartDate || "—"}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-slate-600">Completion date</span>
+                          <span className="font-medium text-slate-800">{projectDeliveryDate || "—"}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-slate-600">Installation start</span>
+                          <span className="font-medium text-slate-800">{projectInstallationStartDate || "—"}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-slate-600">Installation end</span>
+                          <span className="font-medium text-slate-800">{projectInstallationEndDate || "—"}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200/70 bg-white/70 p-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                        Materials
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-slate-600">Timber ordered</span>
+                          <span className="font-medium text-slate-800">{materialDates.timberOrderedAt || "—"}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-slate-600">Timber expected</span>
+                          <span className="font-medium text-slate-800">{materialDates.timberExpectedAt || "—"}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-slate-600">Timber received</span>
+                          <span className="font-medium text-slate-800">{materialDates.timberReceivedAt || "—"}</span>
+                        </div>
+
+                        <div className="mt-3 pt-3 border-t border-slate-200/70 space-y-2">
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="text-slate-600">Glass ordered</span>
+                            <span className="font-medium text-slate-800">{materialDates.glassOrderedAt || "—"}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="text-slate-600">Glass expected</span>
+                            <span className="font-medium text-slate-800">{materialDates.glassExpectedAt || "—"}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="text-slate-600">Glass received</span>
+                            <span className="font-medium text-slate-800">{materialDates.glassReceivedAt || "—"}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </div>
+          )}
+
+          {/* FINANCE STAGE */}
+          {currentStage === "finance" && (
+            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 min-h-[60vh]">
+              <div className="max-w-4xl mx-auto space-y-6">
+                <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
+                    <span aria-hidden="true">💷</span>
+                    Finance
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="rounded-xl border border-slate-200/70 bg-white/70 p-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                        Values
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-slate-600">Estimated value</span>
+                          <span className="font-medium text-slate-800">
+                            {lead.estimatedValue != null ? `£${Number(lead.estimatedValue).toLocaleString()}` : "—"}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-slate-600">Quoted value</span>
+                          <span className="font-medium text-slate-800">
+                            {lead.quotedValue != null ? `£${Number(lead.quotedValue).toLocaleString()}` : "—"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-1 gap-3">
+                        <label className="block">
+                          <span className="text-xs text-slate-600 font-medium mb-1 block">Project value (GBP)</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="w-full rounded-md border px-3 py-2 text-sm"
+                            value={projectValueGBP}
+                            onChange={(e) => setProjectValueGBP(e.target.value)}
+                            onBlur={() => {
+                              if (projectValueGBP) {
+                                saveOpportunityField("valueGBP", Number(projectValueGBP));
+                              }
+                            }}
+                            placeholder="0.00"
+                          />
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200/70 bg-white/70 p-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                        Deposit
+                      </div>
+                      <div className="grid grid-cols-1 gap-3">
+                        <label className="block">
+                          <span className="text-xs text-slate-600 font-medium mb-1 block">Deposit raised (date)</span>
+                          <input
+                            type="date"
+                            className="w-full rounded-md border px-3 py-2 text-sm"
+                            value={depositRaisedAt}
+                            onChange={(e) => setDepositRaisedAt(e.target.value)}
+                            onBlur={async () => {
+                              const iso = depositRaisedAt ? (toIsoOrUndefined(depositRaisedAt) || null) : null;
+                              await saveFinanceField({ depositRaisedAt: iso });
+                            }}
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className="text-xs text-slate-600 font-medium mb-1 block">Deposit amount (GBP)</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="w-full rounded-md border px-3 py-2 text-sm"
+                            value={depositAmountGBP}
+                            onChange={(e) => setDepositAmountGBP(e.target.value)}
+                            onBlur={async () => {
+                              const trimmed = String(depositAmountGBP || "").trim();
+                              const num = trimmed ? Number(trimmed) : null;
+                              await saveFinanceField({ depositAmountGBP: Number.isFinite(Number(num)) ? (num as any) : null });
+                            }}
+                            placeholder="0.00"
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className="text-xs text-slate-600 font-medium mb-1 block">Deposit received (date)</span>
+                          <input
+                            type="date"
+                            className="w-full rounded-md border px-3 py-2 text-sm"
+                            value={depositReceivedAt}
+                            onChange={(e) => setDepositReceivedAt(e.target.value)}
+                            onBlur={async () => {
+                              const iso = depositReceivedAt ? (toIsoOrUndefined(depositReceivedAt) || null) : null;
+                              await saveFinanceField({ depositReceivedAt: iso });
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </section>
               </div>
             </div>
           )}
