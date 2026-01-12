@@ -38,28 +38,8 @@ const nextConfig: NextConfig = {
       destination: "/free-guide.pdf",
     });
 
-    // Prefer an explicit API origin when provided (works in prod or dev)
-    const configured = (process.env.API_ORIGIN || process.env.NEXT_PUBLIC_API_BASE || "").trim();
-    if (configured) {
-      const base = configured.replace(/\/+$/g, "");
-      rewrites.push({
-        source: "/api/:path*",
-        destination: `${base}/:path*`,
-      });
-      return rewrites;
-    }
-
-    // Fallback: in dev, proxy to local API (port 4000)
-    const isProd = process.env.NODE_ENV === "production";
-    if (!isProd) {
-      rewrites.push({
-        source: "/api/:path*",
-        destination: "http://localhost:4000/:path*",
-      });
-      return rewrites;
-    }
-
-    // In prod with no configured origin, return just the tenant landing rewrite
+    // NOTE: /api/* is handled by Next.js Route Handlers in web/src/app/api/**.
+    // This avoids brittle rewrites to external domains (especially in staging).
     return rewrites;
   },
 };
