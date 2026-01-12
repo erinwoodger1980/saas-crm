@@ -117,6 +117,17 @@ export default function FieldsPage() {
         </p>
       </header>
 
+      <SectionCard title="Public Estimator Fields">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-slate-600">
+            Customer-facing public estimator fields are managed in the legacy questionnaire editor.
+          </p>
+          <a href="/settings?tab=public-questionnaire" className="inline-flex">
+            <Button variant="outline">Open Public Questionnaire Editor</Button>
+          </a>
+        </div>
+      </SectionCard>
+
       {/* Scope Selector */}
       <SectionCard title="Field Scope">
         <div className="flex flex-wrap gap-2">

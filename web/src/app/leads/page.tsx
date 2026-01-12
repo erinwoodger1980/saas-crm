@@ -308,17 +308,24 @@ function LeadsPageContent() {
       return false;
     });
 
+    // Prefer fetching canonical lead data for modal opens so we don't
+    // accidentally use a board-normalized status (e.g. ESTIMATE).
+    try {
+      const res = await apiFetch<any>(`/leads/${leadId}`, {
+        headers: buildAuthHeaders(),
+      });
+      const l = (res && typeof res === "object" && "lead" in res ? (res as any).lead : res) as Lead | null;
+      if (l?.id) {
+        openLead(l);
+        return;
+      }
+    } catch {
+      // fall back
+    }
+
     if (found) {
       openLead(found);
       return;
-    }
-    try {
-      const l = await apiFetch<Lead>(`/leads/${leadId}`, {
-        headers: buildAuthHeaders(),
-      });
-      if (l?.id) openLead(l);
-    } catch {
-      // ignore
     }
   }, [grouped]);
 

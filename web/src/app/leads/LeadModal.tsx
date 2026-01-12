@@ -1155,9 +1155,9 @@ export default function LeadModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, leadPreview?.id]);
 
-  // Load workshop data when lead is WON and modal is open
+  // Load workshop data when lead is WON/COMPLETED and modal is open
   useEffect(() => {
-    if (!open || !lead?.id || uiStatus !== "WON") return;
+    if (!open || !lead?.id || (uiStatus !== "WON" && uiStatus !== "COMPLETED")) return;
     let cancelled = false;
     (async () => {
       setWkLoading(true);
@@ -2963,7 +2963,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       questionnaireFields.filter((field) => {
         if (!field.showOnLead) return false;
         if (field.visibleAfterOrder) {
-          return uiStatus === "WON";
+          return uiStatus === "WON" || uiStatus === "COMPLETED";
         }
         
         // Filter by product types if field has productTypes specified
@@ -4664,8 +4664,8 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                     </section>
                   )}
 
-                  {/* Manufacturing Fields (WON only) */}
-                  {uiStatus === "WON" && manufacturingFields.length > 0 && (
+                  {/* Manufacturing Fields (after order) */}
+                  {(uiStatus === "WON" || uiStatus === "COMPLETED") && manufacturingFields.length > 0 && (
                     <section className="rounded-2xl border border-green-100 bg-white/85 p-5 shadow-sm backdrop-blur">
                       <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
                         <span aria-hidden="true">🏭</span>
@@ -4855,23 +4855,62 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
                         Project Dates
                       </div>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="text-slate-600">Start date</span>
-                          <span className="font-medium text-slate-800">{projectStartDate || "—"}</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="text-slate-600">Completion date</span>
-                          <span className="font-medium text-slate-800">{projectDeliveryDate || "—"}</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="text-slate-600">Installation start</span>
-                          <span className="font-medium text-slate-800">{projectInstallationStartDate || "—"}</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="text-slate-600">Installation end</span>
-                          <span className="font-medium text-slate-800">{projectInstallationEndDate || "—"}</span>
-                        </div>
+                      <div className="grid grid-cols-1 gap-3">
+                        <label className="block">
+                          <span className="text-xs text-slate-600 font-medium mb-1 block">Start date</span>
+                          <input
+                            type="date"
+                            className="w-full rounded-md border px-3 py-2 text-sm"
+                            value={projectStartDate}
+                            onChange={(e) => setProjectStartDate(e.target.value)}
+                            onBlur={() => {
+                              const iso = projectStartDate ? (toIsoOrUndefined(projectStartDate) || null) : null;
+                              saveOpportunityField("startDate", iso);
+                            }}
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className="text-xs text-slate-600 font-medium mb-1 block">Completion date</span>
+                          <input
+                            type="date"
+                            className="w-full rounded-md border px-3 py-2 text-sm"
+                            value={projectDeliveryDate}
+                            onChange={(e) => setProjectDeliveryDate(e.target.value)}
+                            onBlur={() => {
+                              const iso = projectDeliveryDate ? (toIsoOrUndefined(projectDeliveryDate) || null) : null;
+                              saveOpportunityField("deliveryDate", iso);
+                            }}
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className="text-xs text-slate-600 font-medium mb-1 block">Installation start</span>
+                          <input
+                            type="date"
+                            className="w-full rounded-md border px-3 py-2 text-sm"
+                            value={projectInstallationStartDate}
+                            onChange={(e) => setProjectInstallationStartDate(e.target.value)}
+                            onBlur={() => {
+                              const iso = projectInstallationStartDate ? (toIsoOrUndefined(projectInstallationStartDate) || null) : null;
+                              saveOpportunityField("installationStartDate", iso);
+                            }}
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className="text-xs text-slate-600 font-medium mb-1 block">Installation end</span>
+                          <input
+                            type="date"
+                            className="w-full rounded-md border px-3 py-2 text-sm"
+                            value={projectInstallationEndDate}
+                            onChange={(e) => setProjectInstallationEndDate(e.target.value)}
+                            onBlur={() => {
+                              const iso = projectInstallationEndDate ? (toIsoOrUndefined(projectInstallationEndDate) || null) : null;
+                              saveOpportunityField("installationEndDate", iso);
+                            }}
+                          />
+                        </label>
                       </div>
                     </div>
 
@@ -5402,14 +5441,14 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
           {currentStage === "order" && (
             <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-emerald-50/70 to-teal-50/60 min-h-[60vh]">
               <div className="max-w-6xl mx-auto space-y-6">
-                {uiStatus !== "WON" && (
+                {uiStatus !== "WON" && uiStatus !== "COMPLETED" && (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                     Mark this lead as <strong>Won</strong> to unlock workshop scheduling and
                     material tracking.
                   </div>
                 )}
 
-                {uiStatus === "WON" && (
+                {(uiStatus === "WON" || uiStatus === "COMPLETED") && (
                   <>
                     {/* Project dates / value */}
                     <section className="rounded-2xl border border-emerald-200 bg-white/80 p-5 shadow-sm backdrop-blur space-y-4">
@@ -6416,8 +6455,38 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         onOpenChange={setSplitProjectOpen}
         opportunityId={splitProjectId}
         opportunityTitle={splitProjectTitle || "Project"}
-        onSplit={() => {
+        onSplit={async () => {
           setSplitProjectOpen(false);
+
+          // Immediately refresh split children so the UI reflects the split.
+          if (splitProjectId) {
+            setSubProjectsLoading(true);
+            try {
+              const c = await apiFetch<any>(
+                `/opportunities/${encodeURIComponent(splitProjectId)}/children`,
+                { headers: authHeaders }
+              ).catch(() => null);
+              const list = (c?.children || c?.items || c || []) as any[];
+              setSubProjects(
+                (Array.isArray(list) ? list : []).map((it: any) => ({
+                  id: String(it.id),
+                  title: it.title != null ? String(it.title) : null,
+                  stage: it.stage != null ? String(it.stage) : null,
+                  valueGBP:
+                    typeof it.valueGBP === 'number'
+                      ? it.valueGBP
+                      : (it.valueGBP != null ? Number(it.valueGBP) : null),
+                  createdAt: it.createdAt != null ? String(it.createdAt) : null,
+                }))
+              );
+            } finally {
+              setSubProjectsLoading(false);
+            }
+          }
+
+          if (typeof onUpdated === "function") {
+            await onUpdated();
+          }
         }}
       />
 
