@@ -16,8 +16,20 @@ const RAW_API_BASE = (typeof process !== "undefined" && (
 )) as string;
 
 function inferApiBase(): string {
+  // In the browser, always prefer same-origin /api.
+  // This keeps auth cookies first-party to the web origin and avoids relying on
+  // hosting-provider cookie domains (e.g. *.onrender.com), which some browsers reject.
+  if (typeof window !== "undefined") {
+    return "/api";
+  }
+
+  // Server-side: use explicit backend base when provided.
+  // Note: Node fetch requires absolute URLs; avoid returning relative paths here
+  // unless the calling code is guaranteed to run only in the browser.
   if (RAW_API_BASE) return String(RAW_API_BASE).replace(/\/+$/g, "");
-  // Fall back to same-origin /api so Next rewrites/dev proxies can route to the backend.
+
+  // Fall back to /api (for local dev via rewrites). If you hit this in production SSR,
+  // set NEXT_PUBLIC_API_BASE(_URL) or API_ORIGIN.
   return "/api";
 }
 

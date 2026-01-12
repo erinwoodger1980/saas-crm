@@ -36,9 +36,12 @@ const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 // For local development (localhost) we omit domain and set secure=false so the browser will accept the cookie.
 const isProd = process.env.NODE_ENV === "production";
 // Allow overriding cookie domain (needed for staging/onrender where joineryai.app is not used)
-const cookieDomain = process.env.COOKIE_DOMAIN || (isProd ? ".joineryai.app" : undefined);
+const rawCookieDomain = process.env.COOKIE_DOMAIN || (isProd ? ".joineryai.app" : undefined);
 // On onrender.com staging, use sameSite=lax (same-site). For production cross-site, use sameSite=none.
-const isOnRender = cookieDomain === ".onrender.com";
+const isOnRender = rawCookieDomain === ".onrender.com";
+// Some hosted shared domains (including many *.onrender.com setups) cannot be used as cookie domains.
+// Prefer omitting Domain entirely on Render and rely on the web app's same-origin /api proxy instead.
+const cookieDomain = isOnRender ? undefined : rawCookieDomain;
 const COOKIE_OPTS = {
   httpOnly: true,
   // Always use secure=true in production (HTTPS required). For dev, secure=false.
