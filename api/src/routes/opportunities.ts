@@ -682,6 +682,7 @@ router.get("/by-lead/:leadId", async (req: any, res: any) => {
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
+      parentOpportunityId: true,
       title: true,
       stage: true,
       valueGBP: true,
@@ -728,6 +729,7 @@ router.get("/:id", async (req: any, res: any) => {
     select: {
       id: true,
       leadId: true,
+      parentOpportunityId: true,
       title: true,
       stage: true,
       valueGBP: true,

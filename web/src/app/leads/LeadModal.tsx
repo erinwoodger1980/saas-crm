@@ -3513,6 +3513,31 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
             <span aria-hidden="true">📎</span>
             Upload Supplier Quote
           </Button>
+
+          {(() => {
+            const rawParentId = get(lead, "custom.splitParentOpportunityId");
+            const parentId = typeof rawParentId === "string" && rawParentId.trim() ? rawParentId.trim() : null;
+            const isSplitChild = Boolean(parentId);
+            const isSplitParent = Array.isArray(subProjects) && subProjects.length > 0;
+            if (!isSplitChild && !isSplitParent) return null;
+
+            const label = isSplitChild
+              ? "Split sub-project"
+              : `Split project (${subProjects.length} sub-project${subProjects.length === 1 ? "" : "s"})`;
+
+            const cls = isSplitChild
+              ? "border-amber-200 bg-amber-50/70 text-amber-800"
+              : "border-emerald-200 bg-emerald-50/70 text-emerald-900";
+
+            return (
+              <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${cls}`}
+                title={isSplitChild ? (parentId ? `Parent project: ${parentId}` : "") : ""}
+              >
+                <span aria-hidden="true">🪚</span>
+                {label}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Body */}
@@ -5718,6 +5743,21 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           </button>
                         </div>
                       </div>
+
+                      {(() => {
+                        const rawParentId = get(lead, "custom.splitParentOpportunityId");
+                        const parentId = typeof rawParentId === "string" && rawParentId.trim() ? rawParentId.trim() : null;
+                        const isSplitChild = Boolean(parentId);
+                        const isSplitParent = Array.isArray(subProjects) && subProjects.length > 0;
+                        if (!isSplitChild && !isSplitParent) return null;
+                        return (
+                          <div className="text-xs text-emerald-800">
+                            {isSplitChild
+                              ? "This order is a split sub-project."
+                              : `This order is split into ${subProjects.length} sub-project${subProjects.length === 1 ? "" : "s"}.`}
+                          </div>
+                        );
+                      })()}
 
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div className="rounded-xl border border-white/50 bg-white/80 p-3 shadow-sm">
