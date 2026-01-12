@@ -1,4 +1,4 @@
-import { Zap, Mail, TrendingUp, Clock, DollarSign, Flame } from "lucide-react";
+import { Zap, Mail, TrendingUp, Clock, PoundSterling, Flame } from "lucide-react";
 
 const FEATURES = [
   {
@@ -26,7 +26,7 @@ const FEATURES = [
       "Real-time time tracking, digital job board, process assignments. Fire door QR codes auto-start timers from factory floor.",
   },
   {
-    icon: DollarSign,
+    icon: PoundSterling,
     title: "Profitability Intelligence",
     description:
       "See actual job costs: labour + materials + overhead. Compare supplier quotes. Know what you made on every job.",

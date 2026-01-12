@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { 
   Plus, Search, Filter, TrendingUp, Clock, CheckCircle2, 
   AlertCircle, Calendar, Package, Wrench, Truck, FileText,
-  BarChart3, ArrowUpRight, Download, ArrowUpDown, ChevronUp, ChevronDown, DollarSign
+  BarChart3, ArrowUpRight, Download, ArrowUpDown, ChevronUp, ChevronDown, PoundSterling
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import ProductionLogModal from "@/components/ProductionLogModal";
@@ -1975,7 +1975,7 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
                       £{parseFloat(monthlyValue.totalManufacturingValue).toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                     </h3>
                     <p className="text-xs text-slate-500 mt-2 flex items-center gap-1">
-                      <DollarSign className="w-3 h-3" />
+                      <PoundSterling className="w-3 h-3" />
                       {monthlyValue.projectCount} projects, {monthlyValue.logCount} logs
                     </p>
                   </div>

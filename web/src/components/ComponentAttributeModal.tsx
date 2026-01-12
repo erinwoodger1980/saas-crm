@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Plus, Trash2, DollarSign } from "lucide-react";
+import { X, Plus, Trash2, PoundSterling } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
 
@@ -346,7 +346,7 @@ export default function ComponentAttributeModal({
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">
-                          <DollarSign className="h-3 w-3 inline mr-0.5" />
+                          <PoundSterling className="h-3 w-3 inline mr-0.5" />
                           Price Modifier (£)
                         </label>
                         <input

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, DollarSign, Package, Truck, TrendingUp } from "lucide-react";
+import { X, PoundSterling, Package, Truck, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
 
@@ -436,7 +436,7 @@ export default function ComponentVariantModal({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  <DollarSign className="inline h-4 w-4 mr-1" />
+                  <PoundSterling className="inline h-4 w-4 mr-1" />
                   Price Modifier (£)
                 </label>
                 <input

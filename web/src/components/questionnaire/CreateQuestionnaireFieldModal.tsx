@@ -8,6 +8,10 @@ export interface NewFieldPayload {
   costingInputKey?: string;
   options?: string[]; // only for select
   scope?: "client" | "item" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal";
+  showInPublicForm?: boolean;
+  showInQuote?: boolean;
+  isHidden?: boolean;
+  isActive?: boolean;
 }
 
 interface Props {
@@ -37,6 +41,10 @@ export const CreateQuestionnaireFieldModal: React.FC<Props> = ({ open, onClose, 
   const [costKey, setCostKey] = useState("");
   const [optionsText, setOptionsText] = useState("[") // encourage JSON entry
   const [scope, setScope] = useState<NonNullable<NewFieldPayload["scope"]>>(defaultScope);
+  const [showInPublicForm, setShowInPublicForm] = useState<boolean>(defaultScope === 'public' || defaultScope === 'client');
+  const [showInQuote, setShowInQuote] = useState<boolean>(true);
+  const [isHidden, setIsHidden] = useState<boolean>(false);
+  const [isActive, setIsActive] = useState<boolean>(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,6 +55,10 @@ export const CreateQuestionnaireFieldModal: React.FC<Props> = ({ open, onClose, 
     setCostKey("");
     setOptionsText("[");
     setScope(defaultScope);
+    setShowInPublicForm(defaultScope === 'public' || defaultScope === 'client');
+    setShowInQuote(true);
+    setIsHidden(false);
+    setIsActive(true);
     setError(null);
   }
 
@@ -79,7 +91,11 @@ export const CreateQuestionnaireFieldModal: React.FC<Props> = ({ open, onClose, 
         required, 
         costingInputKey: costKey.trim() || undefined, 
         options, 
-        scope 
+        scope,
+        showInPublicForm,
+        showInQuote,
+        isHidden,
+        isActive,
       });
       reset();
       onClose();
@@ -136,7 +152,14 @@ export const CreateQuestionnaireFieldModal: React.FC<Props> = ({ open, onClose, 
           <select
             className="w-full rounded border px-2 py-1 text-sm bg-white"
             value={scope}
-            onChange={(e) => setScope(e.target.value as any)}
+            onChange={(e) => {
+              const next = e.target.value as any;
+              setScope(next);
+              // Sensible defaults for public-estimate scopes
+              if (next === 'public' || next === 'client') {
+                setShowInPublicForm(true);
+              }
+            }}
           >
             {SCOPE_OPTIONS.map((s) => (
               <option key={s} value={s}>
@@ -157,25 +180,66 @@ export const CreateQuestionnaireFieldModal: React.FC<Props> = ({ open, onClose, 
             />
           </label>
         )}
-        <div className="flex items-center justify-between text-xs">
-          <label className="inline-flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={required}
-              onChange={(e) => setRequired(e.target.checked)}
-              className="h-4 w-4"
-            />
-            Required
-          </label>
-          <label className="flex-1 text-xs ml-4 space-y-1">
-            <span className="font-medium">Costing Key (optional)</span>
-            <input
-              className="w-full rounded border px-2 py-1 text-sm"
-              value={costKey}
-              onChange={(e) => setCostKey(e.target.value)}
-              placeholder="e.g. height_mm"
-            />
-          </label>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={required}
+                onChange={(e) => setRequired(e.target.checked)}
+                className="h-4 w-4"
+              />
+              Required
+            </label>
+            <label className="flex-1 text-xs ml-4 space-y-1">
+              <span className="font-medium">Costing Key (optional)</span>
+              <input
+                className="w-full rounded border px-2 py-1 text-sm"
+                value={costKey}
+                onChange={(e) => setCostKey(e.target.value)}
+                placeholder="e.g. height_mm"
+              />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showInPublicForm}
+                onChange={(e) => setShowInPublicForm(e.target.checked)}
+                className="h-4 w-4"
+              />
+              Ask in public estimate
+            </label>
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showInQuote}
+                onChange={(e) => setShowInQuote(e.target.checked)}
+                className="h-4 w-4"
+              />
+              Show to client on quote
+            </label>
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={isHidden}
+                onChange={(e) => setIsHidden(e.target.checked)}
+                className="h-4 w-4"
+              />
+              Hidden
+            </label>
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={isActive}
+                onChange={(e) => setIsActive(e.target.checked)}
+                className="h-4 w-4"
+              />
+              Active
+            </label>
+          </div>
         </div>
         {error && <div className="text-xs text-red-600">{error}</div>}
         <div className="pt-2 flex gap-2 justify-end">

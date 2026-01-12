@@ -76,9 +76,14 @@ router.post("/", requireAuth, async (req: any, res) => {
       placeholder,
       helpText,
       config,
+      options,
       sortOrder = 0,
       costingInputKey,
       isActive = true,
+      isHidden,
+      showInPublicForm,
+      showInQuote,
+      isReadOnly,
       questionnaireId: incomingQuestionnaireId,
       productTypes,
     } = req.body;
@@ -141,10 +146,15 @@ router.post("/", requireAuth, async (req: any, res) => {
         placeholder,
         helpText,
         config: config || undefined,
+        options: options !== undefined ? (options as any) : undefined,
         sortOrder: Number(sortOrder) || 0,
         costingInputKey: costingInputKey || null,
         scope: scope || "item",
         isActive,
+        isHidden: isHidden === undefined ? undefined : Boolean(isHidden),
+        showInPublicForm: showInPublicForm === undefined ? undefined : Boolean(showInPublicForm),
+        showInQuote: showInQuote === undefined ? undefined : Boolean(showInQuote),
+        isReadOnly: isReadOnly === undefined ? undefined : Boolean(isReadOnly),
         productTypes: Array.isArray(productTypes) ? productTypes : [],
       },
     });
@@ -152,6 +162,87 @@ router.post("/", requireAuth, async (req: any, res) => {
     return res.json(field);
   } catch (e: any) {
     console.error("[POST /questionnaire-fields] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
+/**
+ * PATCH /questionnaire-fields/:id
+ * Alias for partial updates (some clients use PATCH).
+ */
+router.patch("/:id", requireAuth, async (req: any, res) => {
+  req.method = "PUT";
+  // Reuse the PUT handler by calling next route via internal dispatch is non-trivial;
+  // keep logic duplicated via calling prisma.update with same parsing rules.
+  try {
+    const tenantId = req.auth.tenantId as string;
+    const id = String(req.params.id);
+
+    const existing = await prisma.questionnaireField.findFirst({ where: { id, tenantId } });
+    if (!existing) return res.status(404).json({ error: "field not found" });
+
+    const {
+      label,
+      type,
+      required,
+      placeholder,
+      helpText,
+      config,
+      options,
+      sortOrder,
+      costingInputKey,
+      isActive,
+      isHidden,
+      showInPublicForm,
+      showInQuote,
+      isReadOnly,
+      scope,
+      questionnaireId: newQuestionnaireId,
+      productTypes,
+    } = req.body;
+
+    let normalizedType: string | undefined = undefined;
+    if (type !== undefined) {
+      const validTypes = ["TEXT", "NUMBER", "SELECT", "BOOLEAN", "TEXTAREA", "DATE"];
+      normalizedType = String(type).trim().toUpperCase();
+      if (!validTypes.includes(normalizedType)) {
+        return res.status(400).json({ error: `invalid type. Must be one of: ${validTypes.join(", ")}` });
+      }
+    }
+
+    let questionnaireUpdate: { questionnaireId?: string } = {};
+    if (newQuestionnaireId) {
+      const q = await prisma.questionnaire.findFirst({ where: { id: newQuestionnaireId, tenantId } });
+      if (!q) return res.status(404).json({ error: "questionnaire_not_found" });
+      questionnaireUpdate.questionnaireId = q.id;
+    }
+
+    const updated = await prisma.questionnaireField.update({
+      where: { id },
+      data: {
+        ...(label !== undefined && { label }),
+        ...(normalizedType !== undefined && { type: normalizedType as any }),
+        ...(required !== undefined && { required }),
+        ...(placeholder !== undefined && { placeholder }),
+        ...(helpText !== undefined && { helpText }),
+        ...(config !== undefined && { config }),
+        ...(options !== undefined && { options: options as any }),
+        ...(sortOrder !== undefined && { sortOrder: Number(sortOrder) }),
+        ...(costingInputKey !== undefined && { costingInputKey }),
+        ...(scope !== undefined && { scope }),
+        ...(isActive !== undefined && { isActive }),
+        ...(isHidden !== undefined && { isHidden: Boolean(isHidden) }),
+        ...(showInPublicForm !== undefined && { showInPublicForm: Boolean(showInPublicForm) }),
+        ...(showInQuote !== undefined && { showInQuote: Boolean(showInQuote) }),
+        ...(isReadOnly !== undefined && { isReadOnly: Boolean(isReadOnly) }),
+        ...(productTypes !== undefined && { productTypes: Array.isArray(productTypes) ? productTypes : [] }),
+        ...questionnaireUpdate,
+      },
+    });
+
+    return res.json(updated);
+  } catch (e: any) {
+    console.error("[PATCH /questionnaire-fields/:id] failed:", e?.message || e);
     return res.status(500).json({ error: "internal_error" });
   }
 });
@@ -179,10 +270,15 @@ router.put("/:id", requireAuth, async (req: any, res) => {
       placeholder,
       helpText,
       config,
+      options,
       sortOrder,
       costingInputKey,
       isActive,
       scope,
+      isHidden,
+      showInPublicForm,
+      showInQuote,
+      isReadOnly,
       questionnaireId: newQuestionnaireId,
       productTypes,
     } = req.body;
@@ -214,10 +310,15 @@ router.put("/:id", requireAuth, async (req: any, res) => {
         ...(placeholder !== undefined && { placeholder }),
         ...(helpText !== undefined && { helpText }),
         ...(config !== undefined && { config }),
+        ...(options !== undefined && { options: options as any }),
         ...(sortOrder !== undefined && { sortOrder: Number(sortOrder) }),
         ...(costingInputKey !== undefined && { costingInputKey }),
         ...(scope !== undefined && { scope }),
         ...(isActive !== undefined && { isActive }),
+        ...(isHidden !== undefined && { isHidden: Boolean(isHidden) }),
+        ...(showInPublicForm !== undefined && { showInPublicForm: Boolean(showInPublicForm) }),
+        ...(showInQuote !== undefined && { showInQuote: Boolean(showInQuote) }),
+        ...(isReadOnly !== undefined && { isReadOnly: Boolean(isReadOnly) }),
         ...(productTypes !== undefined && { productTypes: Array.isArray(productTypes) ? productTypes : [] }),
         ...questionnaireUpdate,
       },

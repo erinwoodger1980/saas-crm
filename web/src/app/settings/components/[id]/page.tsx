@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, Edit2, Trash2, Package, DollarSign, Tag, Layers, Clock } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Trash2, Package, PoundSterling, Tag, Layers, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { apiFetch } from '@/lib/api';
@@ -250,7 +250,7 @@ export default function ComponentDetailPage() {
             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
               <div className="rounded-xl border bg-white p-6 shadow-sm">
                 <div className="flex items-center gap-3">
-                  <DollarSign className="h-5 w-5 text-green-600" />
+                  <PoundSterling className="h-5 w-5 text-green-600" />
                   <div>
                     <p className="text-sm text-slate-600">Base Price</p>
                     <p className="text-2xl font-bold text-slate-900">£{component.basePrice.toFixed(2)}</p>

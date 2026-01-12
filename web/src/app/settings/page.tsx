@@ -1975,8 +1975,8 @@ export default function SettingsPage() {
                 <p className="text-xs font-semibold text-slate-700">Lead & Quote Management</p>
                 <div className="flex flex-wrap gap-2">
                   {([
-                    { key: "client", label: "Client Details", description: "Name, email, phone, address" },
-                    { key: "item", label: "Item Details", description: "Per-door/window: dimensions, materials, specs" },
+                    { key: "client", label: "Client Questions", description: "Customer details asked in the estimate (name, email, phone, etc.)" },
+                    { key: "item", label: "Line Item Questions", description: "Per door/window: dimensions, materials, specs" },
                     { key: "manufacturing", label: "Manufacturing", description: "Installation dates, production notes" },
                   ] as const).map(({ key, label, description }) => (
                     <button

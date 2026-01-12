@@ -19,25 +19,37 @@ export interface QuestionnaireFieldRow {
   order: number;
   options?: string[] | null;
   isStandard?: boolean;
-  scope?: "project_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public";
+  scope?: "client" | "item" | "project_details" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal";
   productTypes?: string[];
+  showInPublicForm?: boolean;
+  showInQuote?: boolean;
+  isHidden?: boolean;
+  isActive?: boolean;
 }
 
 const FIELD_TYPES: Array<QuestionnaireFieldRow["type"]> = ["text", "number", "select", "boolean"];
 const SCOPE_OPTIONS: Array<NonNullable<QuestionnaireFieldRow["scope"]>> = [
+  "client",
+  "quote_details",
+  "item",
   "project_details",
   "manufacturing",
   "fire_door_schedule",
   "fire_door_line_items",
   "public",
+  "internal",
 ];
 
 const SCOPE_INFO: Record<string, { title: string; description: string; location: string; icon: string }> = {
+  "client": { title: "Client Details", description: "Customer/contact questions", location: "Public Estimator → Contact Details", icon: "👤" },
   "project_details": { title: "Project Details", description: "Lead/quote-specific information & internal tracking", location: "Lead Modal → Project Details Section", icon: "🗂️" },
+  "quote_details": { title: "Quote Details", description: "Quote-specific fields (shown on quote if enabled)", location: "Quote → Details", icon: "🧾" },
+  "item": { title: "Line Item Details", description: "Per-item fields (legacy scope; treated as Public)", location: "Public Estimator / Quote Items", icon: "📦" },
   "manufacturing": { title: "Manufacturing", description: "Production details (visible after WON)", location: "Lead Modal → Workshop Stage", icon: "🏭" },
   "fire_door_schedule": { title: "Fire Door Schedule", description: "Fire door tracking fields", location: "Fire Door Portal", icon: "🚪" },
   "fire_door_line_items": { title: "Fire Door Line Items", description: "Door specifications & BOM", location: "Fire Door Portal", icon: "📋" },
   "public": { title: "Public Questionnaire", description: "Customer-facing questions", location: "Public Estimator", icon: "🌐" },
+  "internal": { title: "Internal Only", description: "Staff-only fields", location: "Internal Tools", icon: "🔒" },
 };
 
 const fetcher = (url: string) => fetch(url, { credentials: 'include' }).then((r) => r.json());
@@ -142,6 +154,45 @@ function EditFieldModal({ field, isOpen, onClose, onSave, onDelete }: { field: Q
               className="rounded"
             />
             <span className="text-xs font-medium text-slate-700">Required field</span>
+          </label>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={edits.showInPublicForm || false}
+              onChange={(e) => setEdits({ ...edits, showInPublicForm: e.target.checked })}
+              className="rounded"
+            />
+            <span className="text-xs font-medium text-slate-700">Ask in public estimate</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={edits.showInQuote ?? true}
+              onChange={(e) => setEdits({ ...edits, showInQuote: e.target.checked })}
+              className="rounded"
+            />
+            <span className="text-xs font-medium text-slate-700">Show to client on quote</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={edits.isHidden || false}
+              onChange={(e) => setEdits({ ...edits, isHidden: e.target.checked })}
+              className="rounded"
+            />
+            <span className="text-xs font-medium text-slate-700">Hidden</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={edits.isActive ?? true}
+              onChange={(e) => setEdits({ ...edits, isActive: e.target.checked })}
+              className="rounded"
+            />
+            <span className="text-xs font-medium text-slate-700">Active</span>
           </label>
         </div>
 
@@ -266,7 +317,13 @@ function FieldRow({ field, onEdit, onDelete, canDelete }: { field: Questionnaire
         </div>
       </td>
       <td className="py-3 px-2 text-center">
-        {field.required && <span className="inline-block px-2 py-0.5 rounded bg-red-100 text-red-700 text-[10px] font-semibold">Required</span>}
+        <div className="flex flex-wrap gap-1 justify-center">
+          {field.required && <span className="inline-block px-2 py-0.5 rounded bg-red-100 text-red-700 text-[10px] font-semibold">Required</span>}
+          {field.showInPublicForm && <span className="inline-block px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[10px] font-semibold">Public</span>}
+          {(field.showInQuote ?? true) && <span className="inline-block px-2 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px] font-semibold">Client</span>}
+          {field.isHidden && <span className="inline-block px-2 py-0.5 rounded bg-slate-200 text-slate-700 text-[10px] font-semibold">Hidden</span>}
+          {field.isActive === false && <span className="inline-block px-2 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-semibold">Inactive</span>}
+        </div>
       </td>
       <td className="py-3 px-2 text-right">
         <button
@@ -316,6 +373,10 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
         isStandard: f.isStandard || false,
         scope: f.scope === "item" ? "public" : (f.scope || "public"),
         productTypes: f.productTypes,
+        showInPublicForm: !!f.showInPublicForm,
+        showInQuote: f.showInQuote === undefined ? true : !!f.showInQuote,
+        isHidden: !!f.isHidden,
+        isActive: f.isActive === undefined ? true : !!f.isActive,
       })) as QuestionnaireFieldRow[];
       normalized.sort((a, b) => a.order - b.order);
       setRows(normalized);
@@ -376,7 +437,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
         delete body.order;
       }
       await fetch(baseUrl + "/" + id, {
-        method: "PATCH",
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: 'include',
         body: JSON.stringify(body),

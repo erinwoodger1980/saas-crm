@@ -122,7 +122,7 @@ async function testFireDoorPricing() {
     }
 
     // Summary
-    console.log('💵 Summary:');
+    console.log('💷 Summary:');
     console.log(`  Materials Cost:     £${breakdown.materialsCostTotal.toFixed(2)}`);
     console.log(`  Labour Cost:        £${breakdown.labourCostTotal.toFixed(2)}`);
     console.log(`  Subtotal:           £${breakdown.subtotal.toFixed(2)}`);
