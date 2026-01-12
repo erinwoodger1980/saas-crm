@@ -15,6 +15,11 @@ function pickBackendOrigin(req: NextRequest): string {
     return "https://joineryai-api-staging.onrender.com";
   }
 
+  // Custom staging domains under joineryai.app should still hit staging API.
+  if (host.includes("staging") && host.endsWith(".joineryai.app")) {
+    return "https://joineryai-api-staging.onrender.com";
+  }
+
   // Production: default to the public API.
   if (host === "joineryai.app" || host === "www.joineryai.app" || host.endsWith(".joineryai.app")) {
     return "https://api.joineryai.app";
