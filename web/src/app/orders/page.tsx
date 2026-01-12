@@ -8,7 +8,7 @@ type LeadModalProps = {
   onOpenChange: (v: boolean) => void;
   leadPreview: any;
   onUpdated?: () => void | Promise<void>;
-  initialStage?: 'overview' | 'details' | 'questionnaire' | 'tasks' | 'follow-up';
+  initialStage?: 'client' | 'quote' | 'dates' | 'finance' | 'tasks' | 'order';
   showFollowUp?: boolean;
 };
 
@@ -456,7 +456,7 @@ export default function OrdersPage() {
                 custom: selected.custom
               }}
               onUpdated={load}
-              initialStage="overview"
+              initialStage="order"
               showFollowUp={false}
             />
           </Suspense>

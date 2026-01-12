@@ -1487,22 +1487,27 @@ router.post("/", async (req, res) => {
       number,
       description,
       assignedUserId,
+      noEmail = false,
     }: {
       contactName: string;
-      email?: string;
+      email?: string | null;
       status?: UiStatus;
       custom?: any;
       number?: string;
       description?: string;
       assignedUserId?: string;
+      noEmail?: boolean;
     } = req.body || {};
 
     if (!contactName) return res.status(400).json({ error: "contactName required" });
+    const allowNoEmail = Boolean(noEmail);
     const normalizedEmail = normalizeEmail(email);
-    if (!normalizedEmail) return res.status(400).json({ error: "email required" });
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(normalizedEmail)) {
-      return res.status(400).json({ error: "invalid email" });
+    if (!allowNoEmail) {
+      if (!normalizedEmail) return res.status(400).json({ error: "email required" });
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(normalizedEmail)) {
+        return res.status(400).json({ error: "invalid email" });
+      }
     }
 
     const uiStatus: UiStatus = status || "NEW_ENQUIRY";
@@ -1537,18 +1542,20 @@ router.post("/", async (req, res) => {
       customData.dateOrderPlaced = now.toISOString().split('T')[0];
     }
 
-    // Always link/create Client when an email exists (required)
+    // Link/create Client only when we have an email
     let clientId: string | null = null;
-    try {
-      clientId = await upsertClientForImport({
-        tenantId,
-        userId,
-        leadData: { contactName, email: normalizedEmail },
-        clientData: {},
-        clientCustomData: {},
-      });
-    } catch (e) {
-      console.warn("[leads] client upsert failed:", (e as any)?.message || e);
+    if (normalizedEmail) {
+      try {
+        clientId = await upsertClientForImport({
+          tenantId,
+          userId,
+          leadData: { contactName, email: normalizedEmail },
+          clientData: {},
+          clientCustomData: {},
+        });
+      } catch (e) {
+        console.warn("[leads] client upsert failed:", (e as any)?.message || e);
+      }
     }
 
     let lead = await prisma.lead.create({
@@ -1557,7 +1564,7 @@ router.post("/", async (req, res) => {
         createdById: userId,
         ...(clientId ? { clientId } : {}),
         contactName: String(contactName),
-        email: normalizedEmail,
+        email: normalizedEmail || null,
         status: uiToDb(uiStatus),
         number: number ?? null,
         description: description ?? null,

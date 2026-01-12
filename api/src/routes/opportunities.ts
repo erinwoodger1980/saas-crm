@@ -764,6 +764,31 @@ router.get("/:id", async (req: any, res: any) => {
 });
 
 /**
+ * GET /opportunities/:id/children
+ * Returns split sub-projects for a parent opportunity.
+ */
+router.get("/:id/children", async (req: any, res: any) => {
+  const { tenantId } = getAuth(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  const id = String(req.params.id);
+
+  const children = await prisma.opportunity.findMany({
+    where: { tenantId, parentOpportunityId: id },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      title: true,
+      stage: true,
+      valueGBP: true,
+      createdAt: true,
+    },
+  });
+
+  res.json({ ok: true, children });
+});
+
+/**
  * POST /opportunities/ensure-for-lead/:leadId
  * Idempotently returns the opportunity for a given lead, creating one if missing.
  */

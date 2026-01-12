@@ -16,7 +16,7 @@ interface LeadModalProps {
   onOpenChange: (v: boolean) => void;
   leadPreview: Lead | null;
   onUpdated?: () => void | Promise<void>;
-  initialStage?: 'overview' | 'details' | 'questionnaire' | 'tasks' | 'follow-up';
+  initialStage?: 'client' | 'quote' | 'dates' | 'finance' | 'tasks' | 'order';
   showFollowUp?: boolean;
 }
 
@@ -181,7 +181,7 @@ function LeadsPageContent() {
   // modal
   const [open, setOpen] = useState(false);
   const [leadPreview, setLeadPreview] = useState<Lead | null>(null);
-  const [leadModalInitialStage, setLeadModalInitialStage] = useState<'client' | 'communication' | 'products' | 'notes'>('communication');
+  const [leadModalInitialStage, setLeadModalInitialStage] = useState<'client' | 'quote' | 'tasks'>('tasks');
   const [csvImportOpen, setCsvImportOpen] = useState(false);
   const { toast } = useToast();
 
@@ -235,6 +235,7 @@ function LeadsPageContent() {
   const [newLeadModalOpen, setNewLeadModalOpen] = useState(false);
   const [newLeadDescription, setNewLeadDescription] = useState("");
   const [newLeadEmail, setNewLeadEmail] = useState("");
+  const [newLeadNoEmail, setNewLeadNoEmail] = useState(false);
   const [newLeadName, setNewLeadName] = useState("");
   const [newLeadClientId, setNewLeadClientId] = useState<string | null>(null);
   const [creatingLead, setCreatingLead] = useState(false);
@@ -382,7 +383,7 @@ function LeadsPageContent() {
   function openLead(l: Lead) {
     setLeadPreview(l);
     // If lead has a clientId or came from new lead creation, open to client tab
-    setLeadModalInitialStage(l.clientId ? 'client' : 'communication');
+    setLeadModalInitialStage(l.clientId ? 'client' : 'tasks');
     setOpen(true);
   }
 
@@ -594,18 +595,21 @@ function LeadsPageContent() {
     });
   }, [columnConfig, latestTaskByLeadId, refreshGrouped]);
 
-  async function handleCreateLeadManual(input: { email: string; contactName?: string; description?: string; clientId?: string | null }) {
+  async function handleCreateLeadManual(input: { email?: string; noEmail?: boolean; contactName?: string; description?: string; clientId?: string | null }) {
+    const noEmail = Boolean(input.noEmail);
     const email = (input.email || "").trim();
     const contactName = (input.contactName || "").trim();
     const description = (input.description || "").trim();
-    if (!email) {
-      toast({ title: "Email required", description: "Enter an email to create the lead.", variant: "destructive" });
-      return;
-    }
-    // Simple client-side validation to prevent empty/obviously invalid values
-    if (!/^\S+@\S+\.\S+$/.test(email)) {
-      toast({ title: "Invalid email", description: "Enter a valid email address.", variant: "destructive" });
-      return;
+    if (!noEmail) {
+      if (!email) {
+        toast({ title: "Email required", description: "Enter an email to create the lead (or tick No email).", variant: "destructive" });
+        return;
+      }
+      // Simple client-side validation to prevent empty/obviously invalid values
+      if (!/^\S+@\S+\.\S+$/.test(email)) {
+        toast({ title: "Invalid email", description: "Enter a valid email address.", variant: "destructive" });
+        return;
+      }
     }
     
     setCreatingLead(true);
@@ -618,9 +622,10 @@ function LeadsPageContent() {
         headers: buildAuthHeaders(),
         json: {
           contactName: contactName || "Manual Lead",
-          email,
+          ...(noEmail ? { noEmail: true } : { email }),
           description: description || null,
-          clientId: input.clientId || null,
+          // When no email is provided, skip trying to link to a client.
+          ...(noEmail ? {} : { clientId: input.clientId || null }),
           custom: { provider: "manual" },
         },
       });
@@ -654,7 +659,7 @@ function LeadsPageContent() {
       
       toast({
         title: "Lead created",
-        description: `${email} added to your inbox.`,
+        description: noEmail ? `${contactName || "Lead"} created.` : `${email} added to your inbox.`,
       });
     } catch (e: any) {
       console.error("Lead creation error:", e);
@@ -663,7 +668,7 @@ function LeadsPageContent() {
       if (leadCreated) {
         toast({
           title: "Lead created",
-          description: `${email} added to your inbox.`,
+          description: noEmail ? `${contactName || "Lead"} created.` : `${email} added to your inbox.`,
         });
         await refreshGrouped();
         return;
@@ -681,6 +686,7 @@ function LeadsPageContent() {
       setNewLeadModalOpen(false);
       setNewLeadDescription("");
       setNewLeadEmail("");
+      setNewLeadNoEmail(false);
       setNewLeadName("");
       setNewLeadClientId(null);
     }
@@ -690,6 +696,7 @@ function LeadsPageContent() {
     setNewLeadModalOpen(true);
     setNewLeadDescription("");
     setNewLeadEmail("");
+    setNewLeadNoEmail(false);
     setNewLeadName("");
     setNewLeadClientId(null);
     loadAvailableClients();
@@ -709,6 +716,7 @@ function LeadsPageContent() {
   }
 
   function handleClientSelect(clientId: string) {
+    if (newLeadNoEmail) return;
     setNewLeadClientId(clientId);
     const client = availableClients.find(c => c.id === clientId);
     if (client) {
@@ -1327,7 +1335,7 @@ function LeadsPageContent() {
                 <select
                   value={newLeadClientId || ""}
                   onChange={(e) => handleClientSelect(e.target.value)}
-                  disabled={creatingLead}
+                  disabled={creatingLead || newLeadNoEmail}
                   className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-500"
                 >
                   <option value="">Select a client...</option>
@@ -1347,10 +1355,28 @@ function LeadsPageContent() {
                   placeholder="customer@example.com"
                   value={newLeadEmail}
                   onChange={(e) => setNewLeadEmail(e.target.value)}
-                  disabled={creatingLead}
+                  disabled={creatingLead || newLeadNoEmail}
                   className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-500"
                 />
               </div>
+
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={newLeadNoEmail}
+                  onChange={(e) => {
+                    const next = e.target.checked;
+                    setNewLeadNoEmail(next);
+                    if (next) {
+                      setNewLeadEmail("");
+                      setNewLeadClientId(null);
+                    }
+                  }}
+                  disabled={creatingLead}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                No email
+              </label>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Name (optional)</label>
@@ -1388,8 +1414,8 @@ function LeadsPageContent() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleCreateLeadManual({ email: newLeadEmail, contactName: newLeadName, description: newLeadDescription, clientId: newLeadClientId })}
-                  disabled={creatingLead || !newLeadEmail.trim()}
+                  onClick={() => handleCreateLeadManual({ email: newLeadEmail, noEmail: newLeadNoEmail, contactName: newLeadName, description: newLeadDescription, clientId: newLeadClientId })}
+                  disabled={creatingLead || (!newLeadNoEmail && !newLeadEmail.trim())}
                   className="px-4 py-2 rounded-lg bg-blue-600 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
                 >
                   {creatingLead ? "Creating..." : "Create Lead"}

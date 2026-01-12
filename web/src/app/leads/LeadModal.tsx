@@ -636,6 +636,10 @@ export default function LeadModal({
   const [opportunityWonAt, setOpportunityWonAt] = useState<string | null>(null);
   const [opportunityLostAt, setOpportunityLostAt] = useState<string | null>(null);
 
+  // Split sub-projects (child opportunities)
+  const [subProjects, setSubProjects] = useState<Array<{ id: string; title?: string | null; stage?: string | null; valueGBP?: number | null; createdAt?: string | null }>>([]);
+  const [subProjectsLoading, setSubProjectsLoading] = useState(false);
+
   // Finance fields (stored on lead.custom.finance)
   const [depositAmountGBP, setDepositAmountGBP] = useState<string>("");
   const [depositRaisedAt, setDepositRaisedAt] = useState<string>("");
@@ -1213,6 +1217,33 @@ export default function LeadModal({
           } catch (err) {
             console.error('[LeadModal] ensure-for-lead failed:', err);
           }
+        }
+
+        // Load split sub-projects for display
+        if (actualOpportunityId) {
+          if (!cancelled) setSubProjectsLoading(true);
+          try {
+            const c = await apiFetch<any>(`/opportunities/${encodeURIComponent(actualOpportunityId)}/children`, { headers: authHeaders }).catch(() => null);
+            const list = (c?.children || c?.items || c || []) as any[];
+            if (!cancelled) {
+              setSubProjects(
+                (Array.isArray(list) ? list : []).map((it: any) => ({
+                  id: String(it.id),
+                  title: it.title != null ? String(it.title) : null,
+                  stage: it.stage != null ? String(it.stage) : null,
+                  valueGBP: typeof it.valueGBP === 'number' ? it.valueGBP : (it.valueGBP != null ? Number(it.valueGBP) : null),
+                  createdAt: it.createdAt != null ? String(it.createdAt) : null,
+                }))
+              );
+            }
+          } catch (err) {
+            console.error('[LeadModal] /opportunities/:id/children fetch error:', err);
+            if (!cancelled) setSubProjects([]);
+          } finally {
+            if (!cancelled) setSubProjectsLoading(false);
+          }
+        } else {
+          if (!cancelled) setSubProjects([]);
         }
 
         const projectData = actualOpportunityId
@@ -4879,6 +4910,43 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       </div>
                     </div>
                   </div>
+                </section>
+
+                <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
+                    <span aria-hidden="true">🧩</span>
+                    Sub-projects
+                  </div>
+
+                  {subProjectsLoading ? (
+                    <div className="text-sm text-slate-500">Loading…</div>
+                  ) : subProjects.length === 0 ? (
+                    <div className="text-sm text-slate-500">No sub-projects found</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {subProjects.map((sp) => (
+                        <div key={sp.id} className="rounded-xl border border-slate-200/70 bg-white/70 p-4">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-slate-900 truncate">
+                                {sp.title || "Sub-project"}
+                              </div>
+                              <div className="text-xs text-slate-500">
+                                {sp.stage ? `Stage: ${sp.stage}` : ""}
+                                {sp.stage && sp.createdAt ? " • " : ""}
+                                {sp.createdAt ? `Created: ${new Date(sp.createdAt).toLocaleDateString("en-GB")}` : ""}
+                              </div>
+                            </div>
+                            <div className="text-right text-sm font-medium text-slate-800">
+                              {sp.valueGBP != null && Number.isFinite(Number(sp.valueGBP))
+                                ? `£${Number(sp.valueGBP).toLocaleString()}`
+                                : ""}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </section>
               </div>
             </div>
