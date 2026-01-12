@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
 import { apiFetch } from "@/lib/api";
 import { setCustomerPortalToken } from "@/lib/customer-portal-auth";
+import { Eye, EyeOff } from "lucide-react";
 
 export default function CustomerPortalLoginPage() {
   const router = useRouter();
@@ -15,6 +16,7 @@ export default function CustomerPortalLoginPage() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
@@ -41,6 +43,23 @@ export default function CustomerPortalLoginPage() {
 
       // Make wrong-credentials cases explicit and friendly
       if (status === 401) {
+        const code = String(apiError || "").toLowerCase();
+        if (code === "user_not_found") {
+          toast({
+            title: "Email not found",
+            description: "Check it and try again.",
+            variant: "destructive",
+          });
+          return;
+        }
+        if (code === "invalid_password") {
+          toast({
+            title: "Incorrect password",
+            description: "Check it and try again.",
+            variant: "destructive",
+          });
+          return;
+        }
         toast({
           title: "Incorrect email or password",
           description: "Please check your details and try again.",
@@ -97,13 +116,25 @@ export default function CustomerPortalLoginPage() {
 
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700">Password</label>
-                <Input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="current-password"
-                  required
-                />
+                <div className="relative">
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password"
+                    required
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-900"
+                    onClick={() => setShowPassword((s) => !s)}
+                    tabIndex={0}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
 
               <Button type="submit" className="w-full" disabled={submitting}>

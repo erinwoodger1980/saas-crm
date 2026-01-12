@@ -41,7 +41,7 @@ router.post("/login", async (req, res) => {
     });
 
     if (!clientUser) {
-      return res.status(401).json({ error: "Invalid email or password" });
+      return res.status(401).json({ error: "user_not_found" });
     }
 
     if (!clientUser.isActive || !clientUser.clientAccount.isActive) {
@@ -51,7 +51,7 @@ router.post("/login", async (req, res) => {
     // Verify password
     const passwordMatch = await bcrypt.compare(password, clientUser.passwordHash);
     if (!passwordMatch) {
-      return res.status(401).json({ error: "Invalid email or password" });
+      return res.status(401).json({ error: "invalid_password" });
     }
 
     // Update last login

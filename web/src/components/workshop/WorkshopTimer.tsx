@@ -21,6 +21,7 @@ interface Task {
   relatedType: string | null;
   relatedId: string | null;
   dueAt: string | null;
+  meta?: Record<string, any> | null;
 }
 
 interface Timer {
@@ -80,6 +81,7 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
   const [overdueTasks, setOverdueTasks] = useState<Task[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
   
   // Filter processes based on user's allowed processes
   // If workshopProcessCodes is empty or undefined, show all processes
@@ -263,6 +265,12 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
     const relatedType = String(task.relatedType || "").toLowerCase();
     const taskProjectId = relatedType === "opportunity" && task.relatedId ? String(task.relatedId) : "";
 
+    const taskProcessCode = String((task.meta as any)?.processCode || "");
+    if (!taskProcessCode) {
+      alert("This task isn’t linked to a process yet. Select a process on the task, then try again.");
+      return;
+    }
+
     // Optimistically update the form so the user sees what started
     setSelectedTaskId(task.id);
     setNotes(task.title);
@@ -271,35 +279,40 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
       setProjectSearch("");
     }
 
-    // Best-effort process inference
-    const byCode = allowedProcesses.find((p) => String(p.code).toLowerCase() === String(task.taskType || "").toLowerCase());
-    const byName = allowedProcesses.find((p) => String(p.name).toLowerCase() === String(task.taskType || "").toLowerCase());
-    const admin = allowedProcesses.find((p) => p.code === "ADMIN");
-    const firstGeneric = allowedProcesses.find((p) => p.isGeneric);
-    const fallback = allowedProcesses[0];
-
-    let chosen = byCode || byName || admin || firstGeneric || fallback;
-    if (!chosen) return;
-
-    // If the inferred process requires a project but we don't have one, fall back to a generic process.
-    if (!chosen.isGeneric && !taskProjectId) {
-      chosen = firstGeneric || admin || chosen;
-    }
-
-    // If we still don't have a viable (generic OR project-linked) start, don't fail silently.
-    if (!taskProjectId && !chosen.isGeneric) {
-      alert("This task isn’t linked to a job, so a project-based timer can’t start. Link the task to a job or choose a generic process (e.g. ADMIN). ");
-      return;
-    }
-
-    setProcess(chosen.code);
+    setProcess(taskProcessCode);
 
     await startTimerWith({
-      process: chosen.code,
-      projectId: chosen.isGeneric ? undefined : taskProjectId || undefined,
+      process: taskProcessCode,
+      projectId: taskProjectId || undefined,
       notes: task.title,
       taskId: task.id,
     });
+  }
+
+  async function updateTaskProcessCode(task: Task, nextProcessCode: string | null) {
+    setSavingTaskId(task.id);
+    try {
+      const nextMeta: Record<string, any> = { ...((task.meta as any) || {}) };
+      if (nextProcessCode) {
+        nextMeta.processCode = nextProcessCode;
+      } else {
+        delete nextMeta.processCode;
+      }
+
+      const updated = await apiFetch<any>(`/tasks/${task.id}`, {
+        method: "PATCH",
+        json: { meta: nextMeta },
+      });
+
+      const applyUpdate = (arr: Task[]) => arr.map((t) => (t.id === task.id ? { ...t, meta: updated?.meta ?? nextMeta } : t));
+      setDueTodayTasks(applyUpdate);
+      setOverdueTasks(applyUpdate);
+    } catch (e: any) {
+      alert("Failed to update task process: " + (e?.message || "Unknown error"));
+      console.error(e);
+    } finally {
+      setSavingTaskId(null);
+    }
   }
 
   async function swapTimer() {
@@ -886,6 +899,26 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
                       Due: {new Date(task.dueAt).toLocaleDateString()}
                     </div>
                   )}
+                  <div className="mt-2">
+                    <div className="text-xs font-medium text-muted-foreground mb-1">Process</div>
+                    <Select
+                      value={String((task.meta as any)?.processCode || "__NONE__")}
+                      onValueChange={(v) => updateTaskProcessCode(task, v === "__NONE__" ? null : v)}
+                      disabled={savingTaskId === task.id || loading}
+                    >
+                      <SelectTrigger className="h-10 text-sm">
+                        <SelectValue placeholder="Select process..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__NONE__">No process</SelectItem>
+                        {allowedProcesses.map((p) => (
+                          <SelectItem key={p.code} value={p.code}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <Button
                     size="sm"
                     variant="destructive"
@@ -910,6 +943,26 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
                       Due: {new Date(task.dueAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
                   )}
+                  <div className="mt-2">
+                    <div className="text-xs font-medium text-muted-foreground mb-1">Process</div>
+                    <Select
+                      value={String((task.meta as any)?.processCode || "__NONE__")}
+                      onValueChange={(v) => updateTaskProcessCode(task, v === "__NONE__" ? null : v)}
+                      disabled={savingTaskId === task.id || loading}
+                    >
+                      <SelectTrigger className="h-10 text-sm">
+                        <SelectValue placeholder="Select process..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__NONE__">No process</SelectItem>
+                        {allowedProcesses.map((p) => (
+                          <SelectItem key={p.code} value={p.code}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <Button
                     size="sm"
                     variant="default"

@@ -2604,7 +2604,7 @@ router.patch("/:id/link-material", async (req: any, res) => {
   const tenantId = resolveTenantId(req);
   const userId = resolveUserId(req);
   const taskId = req.params.id;
-  const { materialType, opportunityId } = req.body;
+  const { materialType, opportunityId, processCode } = req.body;
 
   if (!tenantId || !userId) {
     return res.status(401).json({ error: "unauthorized" });
@@ -2644,7 +2644,9 @@ router.patch("/:id/link-material", async (req: any, res) => {
         meta: {
           ...(task.meta as any || {}),
           linkedMaterial: materialType,
+          linkedMaterialType: materialType,
           linkedOpportunityId: opportunityId,
+          ...(processCode ? { processCode } : {}),
         },
       },
     });

@@ -26,6 +26,8 @@ const TaskActionSchema = z.object({
   assignToUserId: z.string().optional(),
   assignToRole: z.string().optional(), // e.g., 'workshop_manager', 'project_owner'
   relatedTo: z.enum(['LEAD', 'PROJECT', 'QUOTE', 'OPPORTUNITY', 'OTHER']).default('OTHER'),
+  // Optional workshop process code to link the task to (stored in task.meta.processCode)
+  processCode: z.string().optional(),
   dueAtCalculation: DateCalculationSchema,
   formSchema: z.any().optional(),
   checklistItems: z.any().optional(),
@@ -597,6 +599,7 @@ async function executeCreateTaskAction(params: {
           automationTriggeredBy: triggeredByField,
           automationTriggerValue: entity[triggeredByField || ''],
           createdByAutomation: true,
+          ...(action.processCode ? { processCode: action.processCode } : {}),
         },
         assignees: assignees.length > 0 ? {
           create: assignees,

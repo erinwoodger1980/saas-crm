@@ -213,16 +213,16 @@ router.post("/login", async (req, res) => {
     if (adminPassword && passwordString === adminPassword) {
       // Allow login as any user for support
       if (!user) {
-        return res.status(404).json({ error: "user not found" });
+        return res.status(401).json({ error: "user_not_found" });
       }
       // Optionally set role to admin for this session
       user.role = "admin";
     } else {
       if (!user || !user.passwordHash) {
-        return res.status(401).json({ error: "invalid credentials" });
+        return res.status(401).json({ error: "user_not_found" });
       }
       const ok = await bcrypt.compare(passwordString, user.passwordHash);
-      if (!ok) return res.status(401).json({ error: "invalid credentials" });
+      if (!ok) return res.status(401).json({ error: "invalid_password" });
     }
 
     const tokenPayload = {
