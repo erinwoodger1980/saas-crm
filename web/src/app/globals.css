@@ -30,6 +30,17 @@ body {
   background: rgb(var(--brand) / 0.18);
 }
 
+/* Remove number input spinners (Chrome/Safari/Edge + Firefox) */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 /* Nicer focus ring (fixed syntax) */
 *:focus-visible{
   outline: none;

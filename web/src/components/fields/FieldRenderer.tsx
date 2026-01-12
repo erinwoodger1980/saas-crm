@@ -21,6 +21,91 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { X, Check } from 'lucide-react';
 
+function DebouncedNumberField({
+  id,
+  value,
+  placeholder,
+  disabled,
+  className,
+  onChange,
+  onBlur,
+  debounceMs = 350,
+}: {
+  id: string;
+  value: any;
+  placeholder: string;
+  disabled: boolean;
+  className?: string;
+  onChange?: (value: number | null) => void;
+  onBlur?: (value: number | null) => void;
+  debounceMs?: number;
+}) {
+  const [draft, setDraft] = useState<string>(() => (value ?? '').toString());
+  const focusedRef = React.useRef(false);
+  const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const parse = React.useCallback((raw: string): number | null => {
+    if (raw.trim() === '') return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }, []);
+
+  const commit = React.useCallback(
+    (raw: string) => {
+      onChange?.(parse(raw));
+    },
+    [onChange, parse]
+  );
+
+  React.useEffect(() => {
+    if (focusedRef.current) return;
+    setDraft((value ?? '').toString());
+  }, [value]);
+
+  React.useEffect(() => {
+    if (!focusedRef.current) return;
+    if (!onChange) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      debounceRef.current = null;
+      commit(draft);
+    }, debounceMs);
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+    };
+  }, [draft, commit, debounceMs, onChange]);
+
+  return (
+    <Input
+      id={id}
+      type="text"
+      inputMode="decimal"
+      placeholder={placeholder}
+      value={draft}
+      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDraft(e.target.value)}
+      onFocus={() => {
+        focusedRef.current = true;
+      }}
+      onBlur={() => {
+        focusedRef.current = false;
+        if (debounceRef.current) {
+          clearTimeout(debounceRef.current);
+          debounceRef.current = null;
+        }
+        const parsed = parse(draft);
+        // Ensure final value is committed even if the debounce hasn't fired yet.
+        onChange?.(parsed);
+        onBlur?.(parsed);
+      }}
+      disabled={disabled}
+      className={className}
+    />
+  );
+}
+
 // Type definitions - matches Prisma QuestionnaireField schema
 interface QuestionnaireField {
   id: string;
@@ -109,15 +194,14 @@ export function FieldRenderer({
 
       case 'NUMBER':
         return (
-          <Input
+          <DebouncedNumberField
             id={fieldId}
-            type="number"
+            value={value}
             placeholder={field.placeholder || ''}
-            value={value || ''}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange?.(parseFloat(e.target.value) || null)}
-            onBlur={(e: React.FocusEvent<HTMLInputElement>) => onBlur?.(parseFloat(e.target.value) || null)}
             disabled={isReadOnly}
             className={error ? 'border-red-500' : ''}
+            onChange={onChange}
+            onBlur={onBlur}
           />
         );
 

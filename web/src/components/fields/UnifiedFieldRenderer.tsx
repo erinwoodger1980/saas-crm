@@ -12,6 +12,67 @@ export type UnifiedField = {
   readOnly?: boolean;
 };
 
+function UnifiedNumberInput({
+  value,
+  onChange,
+  placeholder,
+  className,
+  disabled,
+}: {
+  value: any;
+  onChange: (next: any) => void;
+  placeholder: string;
+  className: string;
+  disabled?: boolean;
+}) {
+  const [draft, setDraft] = React.useState<string>(() => (value ?? "").toString());
+  const focusedRef = React.useRef(false);
+
+  const commit = React.useCallback(
+    (raw: string) => {
+      if (raw === "") {
+        onChange(undefined);
+        return;
+      }
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed)) onChange(parsed);
+    },
+    [onChange]
+  );
+
+  React.useEffect(() => {
+    if (focusedRef.current) return;
+    setDraft((value ?? "").toString());
+  }, [value]);
+
+  React.useEffect(() => {
+    if (!focusedRef.current) return;
+    const t = window.setTimeout(() => commit(draft), 350);
+    return () => window.clearTimeout(t);
+  }, [draft, commit]);
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      className={className}
+      value={draft}
+      placeholder={placeholder}
+      onFocus={(e) => {
+        focusedRef.current = true;
+        // Ensure the click caret placement doesn't override selection.
+        requestAnimationFrame(() => e.currentTarget.select());
+      }}
+      onBlur={() => {
+        focusedRef.current = false;
+        commit(draft);
+      }}
+      onChange={(e) => setDraft(e.target.value)}
+      disabled={disabled}
+    />
+  );
+}
+
 export function UnifiedFieldRenderer({
   field,
   value,
@@ -47,12 +108,11 @@ export function UnifiedFieldRenderer({
             );
           case "number":
             return (
-              <input
-                type="number"
-                className={baseInput}
-                value={value ?? ""}
+              <UnifiedNumberInput
+                value={value}
                 placeholder={placeholder ?? ""}
-                onChange={(e) => { const next = e.target.value === "" ? undefined : Number(e.target.value); onChange(next); }}
+                className={baseInput}
+                onChange={onChange}
                 disabled={readOnly}
               />
             );

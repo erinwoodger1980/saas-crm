@@ -414,6 +414,23 @@ export default function LeadModal({
   const [taskError, setTaskError] = useState<string | null>(null);
   const [taskAssignToMe, setTaskAssignToMe] = useState(true);
 
+  // Debounce parent refreshes so rapid field edits don't trigger repeated heavy reloads.
+  const onUpdatedDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function scheduleOnUpdated() {
+    if (!onUpdated) return;
+    if (onUpdatedDebounceRef.current) clearTimeout(onUpdatedDebounceRef.current);
+    onUpdatedDebounceRef.current = setTimeout(() => {
+      onUpdatedDebounceRef.current = null;
+      Promise.resolve(onUpdated()).catch((err) => console.error("onUpdated handler failed", err));
+    }, 300);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (onUpdatedDebounceRef.current) clearTimeout(onUpdatedDebounceRef.current);
+    };
+  }, []);
+
   // Stage navigation
   const [currentStage, setCurrentStage] = useState<Stage>(initialStage);
 
@@ -444,6 +461,33 @@ export default function LeadModal({
   const [deliveryAddressInput, setDeliveryAddressInput] = useState("");
   const [descInput, setDescInput] = useState("");
   const [customDraft, setCustomDraft] = useState<Record<string, string>>({});
+  const customDraftDirtyKeysRef = useRef<Set<string>>(new Set());
+  const customDraftLeadIdRef = useRef<string | null>(null);
+  const saveCustomFieldDebounceTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  function setCustomDraftValue(key: string, value: string, options?: { markDirty?: boolean }) {
+    setCustomDraft((prev) => ({ ...prev, [key]: value }));
+    if (options?.markDirty === false) return;
+    customDraftDirtyKeysRef.current.add(key);
+  }
+
+  function scheduleSaveCustomField(field: NormalizedQuestionnaireField, rawValue: string, delayMs = 700) {
+    if (!field?.key) return;
+    const key = field.key;
+    const timers = saveCustomFieldDebounceTimersRef.current;
+    if (timers[key]) clearTimeout(timers[key]);
+    timers[key] = setTimeout(() => {
+      delete timers[key];
+      void saveCustomField(field, rawValue);
+    }, delayMs);
+  }
+
+  useEffect(() => {
+    return () => {
+      Object.values(saveCustomFieldDebounceTimersRef.current).forEach((t) => clearTimeout(t));
+      saveCustomFieldDebounceTimersRef.current = {};
+    };
+  }, []);
   const [clientType, setClientType] = useState<string>("public");
   const [currentClientData, setCurrentClientData] = useState<any>(null);
   const [tenantUsers, setTenantUsers] = useState<Array<{ id: string; name: string | null; email: string }>>([]);
@@ -590,6 +634,8 @@ export default function LeadModal({
   const [wkSavingId, setWkSavingId] = useState<string | null>(null);
   const [projectActualHours, setProjectActualHours] = useState<number | null>(null);
   const [processLoggedHours, setProcessLoggedHours] = useState<Record<string, number>>({});
+  const [wkEstimatedDraft, setWkEstimatedDraft] = useState<Record<string, string>>({});
+  const wkEstimatedDebounceTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   // Project split modal state
   const [splitProjectOpen, setSplitProjectOpen] = useState(false);
@@ -1071,28 +1117,51 @@ export default function LeadModal({
           financeHydratedLeadIdRef.current = actualLeadId;
         }
 
-        // Fetch tenant users for assignment dropdown
-        if (tenantId) {
+        // seed inputs
+        setNumberInput((row as any)?.number || "");
+        setNameInput(contactName || "");
+        setEmailInput(email || "");
+        setPhoneInput((row as any)?.phone || "");
+        setDeliveryAddressInput((row as any)?.deliveryAddress || "");
+        setDescInput(description || "");
+
+        // After fetching full lead + tasks list (critical UI data):
+        setTasks(tlist?.items ?? []);
+        if (s) {
+          setSettings({
+            ...s,
+            taskPlaybook: normalizeTaskPlaybook((s as any).taskPlaybook),
+          });
+        }
+
+        // Let the modal feel responsive ASAP; remaining hydration happens in background.
+        if (!stop) setLoading(false);
+
+        // Background: fetch tenant users for assignment dropdown
+        void (async () => {
+          if (!tenantId) return;
           try {
             const usersData = await apiFetch<any[]>(`/tenant/users`, { headers: authHeaders });
+            if (stop) return;
             if (usersData) {
               setTenantUsers(usersData.map((u: any) => ({ id: u.id, name: u.name || u.firstName || u.email, email: u.email })));
             }
           } catch (err) {
             console.error("Failed to fetch tenant users:", err);
           }
-        }
+        })();
 
-        // If lead has a client, fetch client data including type
-        if ((row as any)?.clientId) {
+        // Background: if lead has a client, fetch client data including type
+        void (async () => {
+          const clientId = (row as any)?.clientId;
+          if (!clientId) return;
           try {
-            const clientData = await apiFetch<any>(`/clients/${(row as any).clientId}`, { headers: authHeaders });
+            const clientData = await apiFetch<any>(`/clients/${clientId}`, { headers: authHeaders });
+            if (stop) return;
             if (clientData) {
               setCurrentClientData(clientData);
               setClientType(clientData.type || "public");
 
-              // If the lead doesn't have an address yet, show the client's address.
-              // Do not overwrite anything the user already typed.
               const derivedClientAddress = (() => {
                 const a = typeof clientData.address === 'string' ? clientData.address.trim() : "";
                 if (a) return a;
@@ -1114,81 +1183,123 @@ export default function LeadModal({
           } catch (err) {
             console.error("Failed to fetch client data:", err);
           }
-        }
+        })();
 
-        // seed inputs
-        setNumberInput((row as any)?.number || "");
-        setNameInput(contactName || "");
-        setEmailInput(email || "");
-        setPhoneInput((row as any)?.phone || "");
-        setDeliveryAddressInput((row as any)?.deliveryAddress || "");
-        setDescInput(description || "");
-
-        // After fetching full lead + tasks list:
-        setTasks(tlist?.items ?? []);
-        if (s) {
-          setSettings({
-            ...s,
-            taskPlaybook: normalizeTaskPlaybook((s as any).taskPlaybook),
-          });
-          // Load unified questionnaire fields by scope when tenant slug is available
+        // Background: load unified questionnaire fields by scope when tenant slug is available
+        void (async () => {
+          if (!s) return;
           try {
             const slug = (s as any)?.slug || null;
             const isFireDoor = Boolean((s as any)?.isFireDoorManufacturer);
-            if (slug) {
-              // Conditionally fetch fire door fields only if tenant is fire door manufacturer
-              const fetchPromises = [
-                fetchQuestionnaireFields({ tenantSlug: slug, scope: "project_details" }).catch(() => []),
-                // Back-compat: some tenants still store item fields under legacy scope "item"
-                fetchQuestionnaireFields({ tenantSlug: slug, scope: "item" }).catch(() => []),
-                fetchQuestionnaireFields({ tenantSlug: slug, scope: "manufacturing" }).catch(() => []),
-                fetchQuestionnaireFields({ tenantSlug: slug, scope: "public" }).catch(() => []),
-              ];
-              
-              if (isFireDoor) {
-                fetchPromises.push(
-                  fetchQuestionnaireFields({ tenantSlug: slug, scope: "fire_door_schedule" }).catch(() => []),
-                  fetchQuestionnaireFields({ tenantSlug: slug, scope: "fire_door_line_items" }).catch(() => [])
-                );
-              }
-              
-              const results = await Promise.all(fetchPromises);
-              const [projectDetails, itemFields, manuf, pub, fireDoorSched, fireDoorItems] = isFireDoor 
-                ? results 
-                : [...results, [], []];
-              const projectDetailsMerged = [...(projectDetails || []), ...(itemFields || [])]
-                .filter(Boolean)
-                .reduce((acc: any[], field: any) => {
-                  const exists = acc.find((f) => f.id === field.id || f.key === field.key);
-                  if (!exists) acc.push(field);
-                  return acc;
-                }, []);
+            if (!slug) return;
 
-              // Client fields are now managed separately via Client table
-              setClientFields([]);
-              // Project details contains all lead/quote-specific fields (was internal + quote_details)
-              setQuoteDetailsFields((projectDetailsMerged || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, internalOnly: true, sortOrder: f.sortOrder || 0, productTypes: Array.isArray(f.productTypes) ? f.productTypes : undefined })) as NormalizedQuestionnaireField[]);
-              console.log('[LeadModal] Loaded fields:', {
-                projectDetails: projectDetailsMerged?.length || 0,
-                hasProductTypes: (projectDetailsMerged || []).some((f: any) => f.productTypes?.length > 0)
-              });
-              setManufacturingFields((manuf || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, visibleAfterOrder: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
-              setFireDoorScheduleFields((fireDoorSched || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
-              setFireDoorLineItemsFields((fireDoorItems || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
-              setPublicFields((pub || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: true, showOnLead: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
-              // Internal fields set now references project_details (same data, different name)
-              setInternalFields((projectDetailsMerged || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, internalOnly: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
-              
-              // Product types for dropdown (from tenant settings)
-              setProductTypes(Array.isArray((s as any)?.productTypes) ? (s as any).productTypes : []);
+            const fetchPromises = [
+              fetchQuestionnaireFields({ tenantSlug: slug, scope: "project_details" }).catch(() => []),
+              fetchQuestionnaireFields({ tenantSlug: slug, scope: "item" }).catch(() => []),
+              fetchQuestionnaireFields({ tenantSlug: slug, scope: "manufacturing" }).catch(() => []),
+              fetchQuestionnaireFields({ tenantSlug: slug, scope: "public" }).catch(() => []),
+            ];
+
+            if (isFireDoor) {
+              fetchPromises.push(
+                fetchQuestionnaireFields({ tenantSlug: slug, scope: "fire_door_schedule" }).catch(() => []),
+                fetchQuestionnaireFields({ tenantSlug: slug, scope: "fire_door_line_items" }).catch(() => [])
+              );
             }
+
+            const results = await Promise.all(fetchPromises);
+            if (stop) return;
+
+            const [projectDetails, itemFields, manuf, pub, fireDoorSched, fireDoorItems] = isFireDoor
+              ? results
+              : [...results, [], []];
+            const projectDetailsMerged = [...(projectDetails || []), ...(itemFields || [])]
+              .filter(Boolean)
+              .reduce((acc: any[], field: any) => {
+                const exists = acc.find((f) => f.id === field.id || f.key === field.key);
+                if (!exists) acc.push(field);
+                return acc;
+              }, []);
+
+            setClientFields([]);
+            setQuoteDetailsFields(
+              (projectDetailsMerged || []).map((f) => ({
+                ...f,
+                type: String(f.type),
+                options: f.options || [],
+                askInQuestionnaire: false,
+                showOnLead: true,
+                internalOnly: true,
+                sortOrder: f.sortOrder || 0,
+                productTypes: Array.isArray(f.productTypes) ? f.productTypes : undefined,
+              })) as NormalizedQuestionnaireField[]
+            );
+            setManufacturingFields(
+              (manuf || []).map((f) => ({
+                ...f,
+                type: String(f.type),
+                options: f.options || [],
+                askInQuestionnaire: false,
+                showOnLead: true,
+                visibleAfterOrder: true,
+                sortOrder: f.sortOrder || 0,
+              })) as NormalizedQuestionnaireField[]
+            );
+            setFireDoorScheduleFields(
+              (fireDoorSched || []).map((f) => ({
+                ...f,
+                type: String(f.type),
+                options: f.options || [],
+                askInQuestionnaire: false,
+                showOnLead: true,
+                sortOrder: f.sortOrder || 0,
+              })) as NormalizedQuestionnaireField[]
+            );
+            setFireDoorLineItemsFields(
+              (fireDoorItems || []).map((f) => ({
+                ...f,
+                type: String(f.type),
+                options: f.options || [],
+                askInQuestionnaire: false,
+                showOnLead: true,
+                sortOrder: f.sortOrder || 0,
+              })) as NormalizedQuestionnaireField[]
+            );
+            setPublicFields(
+              (pub || []).map((f) => ({
+                ...f,
+                type: String(f.type),
+                options: f.options || [],
+                askInQuestionnaire: true,
+                showOnLead: true,
+                sortOrder: f.sortOrder || 0,
+              })) as NormalizedQuestionnaireField[]
+            );
+            setInternalFields(
+              (projectDetailsMerged || []).map((f) => ({
+                ...f,
+                type: String(f.type),
+                options: f.options || [],
+                askInQuestionnaire: false,
+                showOnLead: true,
+                internalOnly: true,
+                sortOrder: f.sortOrder || 0,
+              })) as NormalizedQuestionnaireField[]
+            );
+
+            setProductTypes(Array.isArray((s as any)?.productTypes) ? (s as any).productTypes : []);
           } catch (e) {
             console.debug("[LeadModal] failed loading scoped fields", e);
           }
-        }
+        })();
 
-        const seeded = await ensureStatusTasks(sUi, tlist?.items ?? []);
-        if (seeded) await reloadTasks();
+        // Background: ensure required tasks exist for status
+        void (async () => {
+          try {
+            const seeded = await ensureStatusTasks(sUi, tlist?.items ?? []);
+            if (seeded) await reloadTasks();
+          } catch {}
+        })();
       } finally {
         if (!stop) setLoading(false);
       }
@@ -1865,7 +1976,7 @@ export default function LeadModal({
           return next;
         });
       }
-      await triggerOnUpdated();
+      scheduleOnUpdated();
     } catch (e: any) {
       const message =
         e?.detail ||
@@ -1950,6 +2061,7 @@ export default function LeadModal({
     }
 
     await savePatch(payload);
+    customDraftDirtyKeysRef.current.delete(field.key);
   }
 
   // Load quote lines when lead or quoteId changes
@@ -3136,35 +3248,48 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
   useEffect(() => {
     if (!lead?.id) {
       setCustomDraft({});
+      customDraftDirtyKeysRef.current.clear();
+      customDraftLeadIdRef.current = null;
       return;
     }
-    const next: Record<string, string> = {};
-    workspaceFields.forEach((field) => {
-      const key = field.key;
-      if (!key) return;
-      const raw = customData?.[key];
-      if (raw === undefined || raw === null) {
-        next[key] = "";
-        return;
+    setCustomDraft((prev) => {
+      const isNewLead = customDraftLeadIdRef.current !== lead.id;
+      if (isNewLead) {
+        customDraftDirtyKeysRef.current.clear();
       }
-      if (field.type === "date") {
-        const iso =
+
+      const next: Record<string, string> = isNewLead ? {} : { ...prev };
+      workspaceFields.forEach((field) => {
+        const key = field.key;
+        if (!key) return;
+        if (!isNewLead && customDraftDirtyKeysRef.current.has(key)) return;
+
+        const raw = customData?.[key];
+        if (raw === undefined || raw === null) {
+          next[key] = "";
+          return;
+        }
+        if (field.type === "date") {
+          const iso =
+            typeof raw === "string"
+              ? raw
+              : raw instanceof Date
+              ? raw.toISOString()
+              : String(raw ?? "");
+          next[key] = iso.slice(0, 10);
+          return;
+        }
+        next[key] =
           typeof raw === "string"
             ? raw
-            : raw instanceof Date
-            ? raw.toISOString()
+            : Array.isArray(raw)
+            ? raw.map((item) => String(item ?? "")).join(", ")
             : String(raw ?? "");
-        next[key] = iso.slice(0, 10);
-        return;
-      }
-      next[key] =
-        typeof raw === "string"
-          ? raw
-          : Array.isArray(raw)
-          ? raw.map((item) => String(item ?? "")).join(", ")
-          : String(raw ?? "");
+      });
+
+      customDraftLeadIdRef.current = lead.id;
+      return next;
     });
-    setCustomDraft(next);
   }, [lead?.id, customData, workspaceFields]);
   const questionnaireResponses = useMemo(() => {
     const responses: Array<{ field: NormalizedQuestionnaireField; value: string | null }> = [];
@@ -3669,17 +3794,18 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
                           value={phoneInput}
                           onChange={(e) => setPhoneInput(e.target.value)}
-                          onBlur={async (e) => {
+                          onBlur={(e) => {
                             const nextPhone = e.currentTarget.value;
                             setPhoneInput(nextPhone);
                             setLead((l) => (l ? { ...l, phone: nextPhone || null } : l));
-                            await savePatch({ phone: nextPhone || null });
+                            void savePatch({ phone: nextPhone || null });
                             // Also update client if linked
                             if (lead?.clientId && nextPhone) {
                               try {
-                                await apiFetch(`/clients/${lead.clientId}`, {
+                                void apiFetch(`/clients/${lead.clientId}` , {
                                   method: "PATCH",
                                   json: { phone: nextPhone },
+                                  headers: authHeaders,
                                 });
                               } catch (error) {
                                 console.error("Failed to sync phone to client:", error);
@@ -3699,17 +3825,18 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
                           value={addressInput}
                           onChange={(e) => setAddressInput(e.target.value)}
-                          onBlur={async (e) => {
+                          onBlur={(e) => {
                             const nextAddress = e.currentTarget.value;
                             setAddressInput(nextAddress);
                             setLead((l) => (l ? { ...l, address: nextAddress || null } : l));
-                            await savePatch({ address: nextAddress || null });
+                            void savePatch({ address: nextAddress || null });
                             // Also update client if linked
                             if (lead?.clientId && nextAddress) {
                               try {
-                                await apiFetch(`/clients/${lead.clientId}`, {
+                                void apiFetch(`/clients/${lead.clientId}`, {
                                   method: "PATCH",
                                   json: { address: nextAddress },
+                                  headers: authHeaders,
                                 });
                               } catch (error) {
                                 console.error("Failed to sync address to client:", error);
@@ -3764,18 +3891,18 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                 setPhoneInput(updates.phone || "");
                                 setAddressInput(updates.address || "");
 
-                                // Merge address data into customDraft; only fill missing keys to avoid overwriting user edits
-                                let customUpdates = { ...customData };
-                                let touchedAddress = false;
+                                // Merge address data into customDraft + lead.custom (only for missing keys)
+                                const addressDraftUpdates: Record<string, string> = {};
+                                const addressCustomPatch: Record<string, any> = {};
                                 Object.entries(addressFields).forEach(([key, val]) => {
-                                  if (val && !customDraft[key]) {
-                                    customUpdates = { ...customUpdates, [key]: val };
-                                    touchedAddress = true;
-                                  }
+                                  if (!val) return;
+                                  if (customDraft[key]) return;
+                                  addressDraftUpdates[key] = String(val);
+                                  addressCustomPatch[key] = val;
                                 });
-                                if (touchedAddress) {
-                                  setCustomDraft((prev) => ({ ...prev, ...customUpdates }));
-                                  updates.custom = customUpdates;
+                                if (Object.keys(addressDraftUpdates).length > 0) {
+                                  setCustomDraft((prev) => ({ ...prev, ...addressDraftUpdates }));
+                                  updates.custom = { ...(lead?.custom && typeof lead.custom === "object" ? (lead.custom as any) : {}), ...addressCustomPatch };
                                 }
 
                                 setLead((l) => (l ? { ...l, ...updates } : l));
@@ -3825,10 +3952,10 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                 className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-inner"
                                 value={clientType || ""}
                                 onChange={(e) => setClientType(e.target.value)}
-                                onBlur={async () => {
+                                onBlur={() => {
                                   if (lead?.clientId && clientType) {
                                     try {
-                                      await apiFetch(`/clients/${lead.clientId}`, {
+                                      void apiFetch(`/clients/${lead.clientId}`, {
                                         method: "PATCH",
                                         json: { type: clientType },
                                         headers: authHeaders,
@@ -3854,11 +3981,11 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                               <select
                                 className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-inner"
                                 value={currentClientData?.userId || ""}
-                                onChange={async (e) => {
+                                onChange={(e) => {
                                   const newUserId = e.target.value || null;
                                   if (lead?.clientId) {
                                     try {
-                                      await apiFetch(`/clients/${lead.clientId}`, {
+                                      void apiFetch(`/clients/${lead.clientId}`, {
                                         method: "PATCH",
                                         json: { userId: newUserId },
                                         headers: authHeaders,
@@ -3905,7 +4032,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                             value={typeof customData?.source === "string" ? customData.source : null}
                             onSaved={(next) => {
                               const nextStr = next ?? "";
-                              setCustomDraft((prev) => ({ ...prev, source: nextStr }));
+                              setCustomDraftValue("source", nextStr);
                               setLead((current) => {
                                 if (!current) return current;
                                 const prevCustom =
@@ -4040,10 +4167,11 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                 <textarea
                                   className={`${baseClasses} min-h-28`}
                                   value={value}
-                                  onChange={(e) =>
-                                    setCustomDraft((prev) => ({ ...prev, [key]: e.target.value }))
-                                  }
-                                  onBlur={(e) => saveCustomField(field, e.target.value)}
+                                  onChange={(e) => setCustomDraftValue(key, e.target.value)}
+                                  onBlur={(e) => {
+                                    customDraftDirtyKeysRef.current.delete(key);
+                                    saveCustomField(field, e.target.value);
+                                  }}
                                 />
                               </label>
                             );
@@ -4061,7 +4189,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                   value={value}
                                   onChange={(e) => {
                                     const nextVal = e.target.value;
-                                    setCustomDraft((prev) => ({ ...prev, [key]: nextVal }));
+                                    setCustomDraftValue(key, nextVal);
                                     saveCustomField(field, nextVal);
                                   }}
                                 >
@@ -4093,7 +4221,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                   value={value}
                                   onChange={(e) => {
                                     const nextVal = e.target.value;
-                                    setCustomDraft((prev) => ({ ...prev, [key]: nextVal }));
+                                    setCustomDraftValue(key, nextVal);
                                     saveCustomField(field, nextVal);
                                   }}
                                 />
@@ -4101,7 +4229,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                             );
                           }
 
-                          const inputType = field.type === "number" ? "number" : "text";
+                          const isNumber = field.type === "number";
                           return (
                             <label key={key} className="text-sm">
                               <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
@@ -4109,13 +4237,16 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                 {field.required && <span className="text-rose-500"> *</span>}
                               </span>
                               <input
-                                type={inputType}
+                                type={isNumber ? "text" : "text"}
+                                inputMode={isNumber ? "decimal" : undefined}
+                                onFocus={isNumber ? (e) => e.currentTarget.select() : undefined}
                                 className={baseClasses}
                                 value={value}
-                                onChange={(e) =>
-                                  setCustomDraft((prev) => ({ ...prev, [key]: e.target.value }))
-                                }
-                                onBlur={(e) => saveCustomField(field, e.target.value)}
+                                onChange={(e) => setCustomDraftValue(key, e.target.value)}
+                                onBlur={(e) => {
+                                  customDraftDirtyKeysRef.current.delete(key);
+                                  saveCustomField(field, e.target.value);
+                                }}
                               />
                             </label>
                           );
@@ -4218,8 +4349,12 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                             value={value}
                             onChange={(val: any) => {
                               const strVal = typeof val === "string" ? val : String(val ?? "");
-                              setCustomDraft((prev) => ({ ...prev, [key]: strVal }));
-                              saveCustomField(field as any, strVal);
+                              setCustomDraftValue(key, strVal);
+                              if ((field as any)?.type === "number") {
+                                scheduleSaveCustomField(field as any, strVal);
+                              } else {
+                                saveCustomField(field as any, strVal);
+                              }
                             }}
                           />
                         );
@@ -4728,8 +4863,12 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                 value={value}
                                 onChange={(val: any) => {
                                   const strVal = typeof val === "string" ? val : String(val ?? "");
-                                  setCustomDraft((prev) => ({ ...prev, [key]: strVal }));
-                                  saveCustomField(field as any, strVal);
+                                  setCustomDraftValue(key, strVal);
+                                  if ((field as any)?.type === "number") {
+                                    scheduleSaveCustomField(field as any, strVal);
+                                  } else {
+                                    saveCustomField(field as any, strVal);
+                                  }
                                 }}
                               />
                             );
@@ -4758,8 +4897,12 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                               value={value}
                               onChange={(val: any) => {
                                 const strVal = typeof val === "string" ? val : String(val ?? "");
-                                setCustomDraft((prev) => ({ ...prev, [key]: strVal }));
-                                saveCustomField(field as any, strVal);
+                                setCustomDraftValue(key, strVal);
+                                if ((field as any)?.type === "number") {
+                                  scheduleSaveCustomField(field as any, strVal);
+                                } else {
+                                  saveCustomField(field as any, strVal);
+                                }
                               }}
                             />
                           );
@@ -5128,11 +5271,12 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         <label className="block">
                           <span className="text-xs text-slate-600 font-medium mb-1 block">Project value (GBP)</span>
                           <input
-                            type="number"
-                            step="0.01"
+                            type="text"
+                            inputMode="decimal"
                             className="w-full rounded-md border px-3 py-2 text-sm"
                             value={projectValueGBP}
                             onChange={(e) => setProjectValueGBP(e.target.value)}
+                            onFocus={(e) => e.currentTarget.select()}
                             onBlur={() => {
                               if (projectValueGBP) {
                                 saveOpportunityField("valueGBP", Number(projectValueGBP));
@@ -5166,11 +5310,12 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         <label className="block">
                           <span className="text-xs text-slate-600 font-medium mb-1 block">Deposit amount (GBP)</span>
                           <input
-                            type="number"
-                            step="0.01"
+                            type="text"
+                            inputMode="decimal"
                             className="w-full rounded-md border px-3 py-2 text-sm"
                             value={depositAmountGBP}
                             onChange={(e) => setDepositAmountGBP(e.target.value)}
+                            onFocus={(e) => e.currentTarget.select()}
                             onBlur={async () => {
                               const trimmed = String(depositAmountGBP || "").trim();
                               const num = trimmed ? Number(trimmed) : null;
@@ -5642,11 +5787,12 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                             Value (GBP)
                           </span>
                           <input
-                            type="number"
-                            step="0.01"
+                            type="text"
+                            inputMode="decimal"
                             className="w-full rounded-md border px-3 py-2 text-sm"
                             value={projectValueGBP}
                             onChange={(e) => setProjectValueGBP(e.target.value)}
+                            onFocus={(e) => e.currentTarget.select()}
                             onBlur={() => {
                               if (projectValueGBP) {
                                 saveOpportunityField("valueGBP", Number(projectValueGBP));
@@ -5862,18 +6008,54 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                     Hours
                                   </span>
                                   <input
-                                    type="number"
+                                    type="text"
+                                    inputMode="decimal"
                                     className="w-24 rounded-md border px-2 py-1 text-sm"
-                                    value={est ?? ""}
+                                    value={
+                                      Object.prototype.hasOwnProperty.call(wkEstimatedDraft, def.id)
+                                        ? wkEstimatedDraft[def.id]
+                                        : est ?? ""
+                                    }
+                                    onFocus={(e) => e.currentTarget.select()}
                                     onChange={(e) => {
-                                      const val =
-                                        e.target.value === ""
-                                          ? null
-                                          : Number(e.target.value);
-                                      saveProjectAssignment(def, {
+                                      const raw = e.target.value;
+                                      setWkEstimatedDraft((prev) => ({ ...prev, [def.id]: raw }));
+
+                                      const timers = wkEstimatedDebounceTimersRef.current;
+                                      if (timers[def.id]) clearTimeout(timers[def.id]);
+                                      timers[def.id] = setTimeout(() => {
+                                        const parsed = raw === "" ? null : Number(raw);
+                                        const val = parsed == null || Number.isNaN(parsed) ? null : parsed;
+                                        void saveProjectAssignment(def, {
+                                          required,
+                                          assignedUserId: userIdSel || null,
+                                          estimatedHours: val,
+                                        });
+                                        setWkEstimatedDraft((prev) => {
+                                          const next = { ...prev };
+                                          delete next[def.id];
+                                          return next;
+                                        });
+                                      }, 450);
+                                    }}
+                                    onBlur={(e) => {
+                                      const timers = wkEstimatedDebounceTimersRef.current;
+                                      if (timers[def.id]) {
+                                        clearTimeout(timers[def.id]);
+                                        delete timers[def.id];
+                                      }
+                                      const raw = e.currentTarget.value;
+                                      const parsed = raw === "" ? null : Number(raw);
+                                      const val = parsed == null || Number.isNaN(parsed) ? null : parsed;
+                                      void saveProjectAssignment(def, {
                                         required,
                                         assignedUserId: userIdSel || null,
                                         estimatedHours: val,
+                                      });
+                                      setWkEstimatedDraft((prev) => {
+                                        const next = { ...prev };
+                                        delete next[def.id];
+                                        return next;
                                       });
                                     }}
                                     disabled={wkSavingId === def.id}
@@ -6165,11 +6347,12 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                 <label className="block text-xs font-semibold text-slate-700">
                   Deadline (days)
                   <input
-                    type="number"
-                    min={1}
+                    type="text"
+                    inputMode="numeric"
                     className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-inner"
                     value={quoteDeadlineDays}
                     onChange={(e) => setQuoteDeadlineDays(e.target.value)}
+                    onFocus={(e) => e.currentTarget.select()}
                     disabled={busyTask}
                   />
                 </label>

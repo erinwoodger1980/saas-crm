@@ -15,6 +15,36 @@ import { setJwt, apiFetch } from "@/lib/api";
 import { useCurrentUser } from "@/lib/use-current-user";
 import Script from "next/script";
 
+function GlobalNumericSelectAll() {
+  useEffect(() => {
+    const handler = (e: FocusEvent) => {
+      const target = e.target;
+      if (!(target instanceof HTMLInputElement)) return;
+      if (target.disabled || target.readOnly) return;
+
+      const isNumeric =
+        target.type === "number" ||
+        target.inputMode === "decimal" ||
+        target.inputMode === "numeric";
+      if (!isNumeric) return;
+
+      // Defer so the browser's default caret placement doesn't override selection.
+      requestAnimationFrame(() => {
+        try {
+          target.select();
+        } catch {
+          // noop
+        }
+      });
+    };
+
+    window.addEventListener("focusin", handler, true);
+    return () => window.removeEventListener("focusin", handler, true);
+  }, []);
+
+  return null;
+}
+
 function DevAuth() {
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -136,6 +166,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       </head>
       <body className="min-h-screen bg-slate-50 text-slate-900 antialiased">
         {shouldRunDevAuth && <DevAuth />}
+        <GlobalNumericSelectAll />
 
         {shouldUseShell ? (
           <AppShell>{children}</AppShell>

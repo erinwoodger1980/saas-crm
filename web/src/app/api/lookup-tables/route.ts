@@ -1,14 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { API_BASE } from '@/lib/api-base';
-
-function forwardHeaders(req: NextRequest) {
-  const headers: Record<string, string> = {};
-  const auth = req.headers.get('authorization');
-  if (auth) headers['authorization'] = auth;
-  const cookie = req.headers.get('cookie');
-  if (cookie) headers['cookie'] = cookie;
-  return headers;
-}
+import { forwardAuthHeaders, getBackendApiBase } from '@/lib/api-route-helpers';
 
 /**
  * GET /api/lookup-tables
@@ -16,9 +7,9 @@ function forwardHeaders(req: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
-    const url = new URL(API_BASE + '/lookup-tables' + request.nextUrl.search);
+    const url = new URL(getBackendApiBase() + '/lookup-tables' + request.nextUrl.search);
     const res = await fetch(url.toString(), {
-      headers: forwardHeaders(request),
+      headers: forwardAuthHeaders(request),
     });
     const data = await res.json();
     

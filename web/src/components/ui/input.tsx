@@ -15,6 +15,13 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
         "aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
         className
       )}
+      onFocus={(e) => {
+        props.onFocus?.(e)
+        if (type === "number") {
+          // Select-all makes numeric overwrite quick and avoids odd cursor placement.
+          e.currentTarget.select()
+        }
+      }}
       {...props}
     />
   )

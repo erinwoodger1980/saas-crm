@@ -11,11 +11,17 @@ import { API_BASE } from './api-base';
  */
 export function getBackendApiBase() {
   const base = API_BASE;
+
+  // If API_BASE includes a trailing "/api" (common in env configs), strip it for
+  // direct backend calls because the Express server mounts routes at "/".
+  const normalized = base.replace(/\/+$/g, '').replace(/\/api$/i, '');
+
   // Server-side in production without proper NEXT_PUBLIC_API_BASE config
-  if (typeof window === 'undefined' && base === '/api') {
+  if (typeof window === 'undefined' && (base === '/api' || normalized === '')) {
     return 'https://api.joineryai.app';
   }
-  return base;
+
+  return normalized;
 }
 
 /**
