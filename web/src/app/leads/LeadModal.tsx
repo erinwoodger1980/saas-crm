@@ -899,8 +899,13 @@ export default function LeadModal({
         try {
           const leadRes = await apiFetch<{ lead?: any } | any>(`/leads/${encodeURIComponent(leadPreview.id)}`, { headers: authHeaders });
           fetchedLead = leadRes;
+
+          // If the /leads/:id call succeeded, treat leadPreview.id as canonical.
+          // Some API shapes have historically returned an Opportunity ID in `row.id`,
+          // which then breaks subsequent lead-specific endpoints.
           const row = (leadRes && typeof leadRes === "object" ? ("lead" in leadRes ? (leadRes as any).lead : leadRes) : null) as any;
-          actualLeadId = String(row?.id || leadPreview.id);
+          const maybeId = row?.id != null ? String(row.id) : null;
+          actualLeadId = maybeId && maybeId === String(leadPreview.id) ? maybeId : String(leadPreview.id);
         } catch (leadErr) {
           try {
             const oppRes = await apiFetch<any>(`/opportunities/${encodeURIComponent(leadPreview.id)}`, { headers: authHeaders });
@@ -5253,7 +5258,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                             const userIdSel = asn?.assignedUser?.id || "";
                             const logged = Number(
                               processLoggedHours[def.code] ||
-                                processLoggedHours[def.processCode || ""] ||
                                 0
                             );
                             return (

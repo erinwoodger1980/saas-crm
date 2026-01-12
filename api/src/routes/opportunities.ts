@@ -1072,7 +1072,9 @@ router.post("/:id/split", async (req: any, res: any) => {
           data: {
             tenantId,
             parentOpportunityId: id,
-            leadId: parent.leadId,
+            // IMPORTANT: Opportunity.leadId is unique, so child opportunities cannot reuse
+            // the parent's leadId. The parent remains the canonical opportunity for the lead;
+            // children are linked via parentOpportunityId.
             clientId: parent.clientId,
             clientAccountId: parent.clientAccountId,
             title: split.title || `${parent.title} - Split`,

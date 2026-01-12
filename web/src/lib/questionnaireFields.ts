@@ -3,7 +3,7 @@
  * Fetch and cache tenant's QuestionnaireField definitions by scope
  */
 
-import { API_BASE } from './api-base';
+import { apiFetch } from './api';
 
 export type QuestionnaireFieldType = 'TEXT' | 'NUMBER' | 'SELECT' | 'BOOLEAN' | 'TEXTAREA' | 'DATE';
 
@@ -19,6 +19,10 @@ export interface QuestionnaireField {
   scope: 'client' | 'item' | 'project_details' | 'quote_details' | 'manufacturing' | 'fire_door_schedule' | 'fire_door_line_items' | 'public' | 'internal';
   isStandard?: boolean;
   sortOrder?: number;
+  isActive?: boolean;
+  isHidden?: boolean;
+  showInPublicForm?: boolean;
+  showInQuote?: boolean;
 }
 
 // In-memory cache to avoid re-fetching fields multiple times per session
@@ -41,15 +45,9 @@ export async function fetchQuestionnaireFields(params: {
   }
 
   try {
-    const url = new URL(`${API_BASE}/public/tenant/${tenantSlug}/questionnaire-fields`);
-    if (includeStandard) url.searchParams.set('includeStandard', 'true');
-
-    const response = await fetch(url.toString());
-    if (!response.ok) {
-      throw new Error(`Failed to fetch questionnaire fields: ${response.statusText}`);
-    }
-
-    const data = await response.json();
+    const qs = new URLSearchParams();
+    if (includeStandard) qs.set('includeStandard', 'true');
+    const data = await apiFetch<any>(`/public/tenant/${encodeURIComponent(tenantSlug)}/questionnaire-fields${qs.toString() ? `?${qs.toString()}` : ''}`);
     const fields: QuestionnaireField[] = Array.isArray(data) ? data : [];
 
     // Ensure proper type casting
@@ -58,10 +56,17 @@ export async function fetchQuestionnaireFields(params: {
       type: (f.type?.toUpperCase() || 'TEXT') as QuestionnaireFieldType,
     }));
 
+    // Basic safety filtering (public endpoints should already enforce this)
+    const visible = normalized.filter((f) => {
+      if (f.isActive === false) return false;
+      if (f.isHidden === true) return false;
+      return true;
+    });
+
     // Filter by scope if specified
     const filtered = scope
-      ? normalized.filter(f => f.scope === scope)
-      : normalized;
+      ? visible.filter(f => f.scope === scope)
+      : visible;
 
     // Sort by sortOrder
     const sorted = filtered.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
