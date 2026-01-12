@@ -858,7 +858,7 @@ router.patch("/:id", async (req: any, res: any) => {
   // Date fields
   const dateFields = [
     'startDate', 'deliveryDate', 'installationStartDate', 'installationEndDate',
-    'wonAt', 'lostAt',
+    'createdAt', 'wonAt', 'lostAt',
     'timberOrderedAt', 'timberExpectedAt', 'timberReceivedAt',
     'glassOrderedAt', 'glassExpectedAt', 'glassReceivedAt',
     'ironmongeryOrderedAt', 'ironmongeryExpectedAt', 'ironmongeryReceivedAt',
@@ -1124,7 +1124,10 @@ router.post("/:id/split", async (req: any, res: any) => {
             number: (parent as any)?.lead?.number || null,
             description: childTitle,
             status: (parent as any)?.lead?.status || "WON",
-            custom: baseLeadCustom ? { ...(baseLeadCustom as any) } : undefined,
+            custom: {
+              ...(baseLeadCustom ? { ...(baseLeadCustom as any) } : {}),
+              splitParentOpportunityId: id,
+            },
           },
         });
 

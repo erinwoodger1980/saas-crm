@@ -636,6 +636,27 @@ export default function LeadModal({
   const [opportunityWonAt, setOpportunityWonAt] = useState<string | null>(null);
   const [opportunityLostAt, setOpportunityLostAt] = useState<string | null>(null);
 
+  // Key Dates (editable inputs)
+  const [leadCreatedAtInput, setLeadCreatedAtInput] = useState<string>("");
+  const [leadQuoteSentAtInput, setLeadQuoteSentAtInput] = useState<string>("");
+  const [opportunityCreatedAtInput, setOpportunityCreatedAtInput] = useState<string>("");
+  const [opportunityWonAtInput, setOpportunityWonAtInput] = useState<string>("");
+  const [opportunityLostAtInput, setOpportunityLostAtInput] = useState<string>("");
+
+  const pad2 = (n: number) => String(n).padStart(2, "0");
+  const isoToDateTimeLocalInput = (iso: string | null | undefined): string => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (!Number.isFinite(d.getTime())) return "";
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  };
+  const dateTimeLocalToIsoOrNull = (local: string): string | null => {
+    if (!local) return null;
+    const d = new Date(local);
+    if (!Number.isFinite(d.getTime())) return null;
+    return d.toISOString();
+  };
+
   // Split sub-projects (child opportunities)
   const [subProjects, setSubProjects] = useState<Array<{ id: string; title?: string | null; stage?: string | null; valueGBP?: number | null; createdAt?: string | null }>>([]);
   const [subProjectsLoading, setSubProjectsLoading] = useState(false);
@@ -1030,6 +1051,10 @@ export default function LeadModal({
         setLead(normalized);
         setUiStatus(sUi);
 
+        // Seed Key Dates inputs (editable) from lead fields
+        setLeadCreatedAtInput(isoToDateTimeLocalInput((normalized.capturedAt || normalized.createdAt) ?? null));
+        setLeadQuoteSentAtInput(isoToDateTimeLocalInput(normalized.dateQuoteSent ?? null));
+
         // Hydrate finance fields once per lead id
         if (financeHydratedLeadIdRef.current !== actualLeadId) {
           const finance =
@@ -1065,6 +1090,26 @@ export default function LeadModal({
             if (clientData) {
               setCurrentClientData(clientData);
               setClientType(clientData.type || "public");
+
+              // If the lead doesn't have an address yet, show the client's address.
+              // Do not overwrite anything the user already typed.
+              const derivedClientAddress = (() => {
+                const a = typeof clientData.address === 'string' ? clientData.address.trim() : "";
+                if (a) return a;
+                const city = typeof clientData.city === 'string' ? clientData.city.trim() : "";
+                const postcode = typeof clientData.postcode === 'string' ? clientData.postcode.trim() : "";
+                const fallback = [city, postcode].filter(Boolean).join(", ");
+                return fallback || "";
+              })();
+
+              if (derivedClientAddress) {
+                setAddressInput((prev) => (prev && prev.trim() ? prev : derivedClientAddress));
+                setLead((l) => {
+                  if (!l) return l;
+                  if (l.address && String(l.address).trim()) return l;
+                  return { ...l, address: derivedClientAddress };
+                });
+              }
             }
           } catch (err) {
             console.error("Failed to fetch client data:", err);
@@ -1304,6 +1349,11 @@ export default function LeadModal({
           setOpportunityCreatedAt(opp.createdAt ? String(opp.createdAt) : null);
           setOpportunityWonAt(opp.wonAt ? String(opp.wonAt) : null);
           setOpportunityLostAt(opp.lostAt ? String(opp.lostAt) : null);
+
+          // Seed Key Dates inputs (editable) from opportunity fields
+          setOpportunityCreatedAtInput(isoToDateTimeLocalInput(opp.createdAt ? String(opp.createdAt) : null));
+          setOpportunityWonAtInput(isoToDateTimeLocalInput(opp.wonAt ? String(opp.wonAt) : null));
+          setOpportunityLostAtInput(isoToDateTimeLocalInput(opp.lostAt ? String(opp.lostAt) : null));
           // Store opportunity stage for conditional labeling
           if (opp.stage) {
             setOpportunityStage(opp.stage);
@@ -4800,19 +4850,29 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       <div className="space-y-2 text-sm">
                         <div className="flex items-center justify-between gap-4">
                           <span className="text-slate-600">Created</span>
-                          <span className="font-medium text-slate-800">
-                            {(lead.createdAt || lead.capturedAt)
-                              ? new Date((lead.createdAt || lead.capturedAt) as string).toLocaleString("en-GB")
-                              : "—"}
-                          </span>
+                          <input
+                            type="datetime-local"
+                            className="w-[220px] max-w-[55%] rounded-md border px-2 py-1 text-sm"
+                            value={leadCreatedAtInput}
+                            onChange={(e) => setLeadCreatedAtInput(e.target.value)}
+                            onBlur={async () => {
+                              const iso = dateTimeLocalToIsoOrNull(leadCreatedAtInput);
+                              await savePatch({ capturedAt: iso });
+                            }}
+                          />
                         </div>
                         <div className="flex items-center justify-between gap-4">
                           <span className="text-slate-600">Quote sent</span>
-                          <span className="font-medium text-slate-800">
-                            {lead.dateQuoteSent
-                              ? new Date(lead.dateQuoteSent).toLocaleDateString("en-GB")
-                              : "—"}
-                          </span>
+                          <input
+                            type="datetime-local"
+                            className="w-[220px] max-w-[55%] rounded-md border px-2 py-1 text-sm"
+                            value={leadQuoteSentAtInput}
+                            onChange={(e) => setLeadQuoteSentAtInput(e.target.value)}
+                            onBlur={async () => {
+                              const iso = dateTimeLocalToIsoOrNull(leadQuoteSentAtInput);
+                              await savePatch({ dateQuoteSent: iso });
+                            }}
+                          />
                         </div>
                       </div>
                     </div>
@@ -4824,27 +4884,45 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       <div className="space-y-2 text-sm">
                         <div className="flex items-center justify-between gap-4">
                           <span className="text-slate-600">Opportunity created</span>
-                          <span className="font-medium text-slate-800">
-                            {opportunityCreatedAt
-                              ? new Date(opportunityCreatedAt).toLocaleString("en-GB")
-                              : "—"}
-                          </span>
+                          <input
+                            type="datetime-local"
+                            className="w-[220px] max-w-[55%] rounded-md border px-2 py-1 text-sm"
+                            value={opportunityCreatedAtInput}
+                            onChange={(e) => setOpportunityCreatedAtInput(e.target.value)}
+                            onBlur={() => {
+                              const iso = dateTimeLocalToIsoOrNull(opportunityCreatedAtInput);
+                              saveOpportunityField("createdAt", iso);
+                              setOpportunityCreatedAt(iso);
+                            }}
+                          />
                         </div>
                         <div className="flex items-center justify-between gap-4">
                           <span className="text-slate-600">Order placed (Won)</span>
-                          <span className="font-medium text-slate-800">
-                            {opportunityWonAt
-                              ? new Date(opportunityWonAt).toLocaleString("en-GB")
-                              : "—"}
-                          </span>
+                          <input
+                            type="datetime-local"
+                            className="w-[220px] max-w-[55%] rounded-md border px-2 py-1 text-sm"
+                            value={opportunityWonAtInput}
+                            onChange={(e) => setOpportunityWonAtInput(e.target.value)}
+                            onBlur={() => {
+                              const iso = dateTimeLocalToIsoOrNull(opportunityWonAtInput);
+                              saveOpportunityField("wonAt", iso);
+                              setOpportunityWonAt(iso);
+                            }}
+                          />
                         </div>
                         <div className="flex items-center justify-between gap-4">
                           <span className="text-slate-600">Lost</span>
-                          <span className="font-medium text-slate-800">
-                            {opportunityLostAt
-                              ? new Date(opportunityLostAt).toLocaleString("en-GB")
-                              : "—"}
-                          </span>
+                          <input
+                            type="datetime-local"
+                            className="w-[220px] max-w-[55%] rounded-md border px-2 py-1 text-sm"
+                            value={opportunityLostAtInput}
+                            onChange={(e) => setOpportunityLostAtInput(e.target.value)}
+                            onBlur={() => {
+                              const iso = dateTimeLocalToIsoOrNull(opportunityLostAtInput);
+                              saveOpportunityField("lostAt", iso);
+                              setOpportunityLostAt(iso);
+                            }}
+                          />
                         </div>
                       </div>
                     </div>

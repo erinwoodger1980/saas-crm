@@ -53,6 +53,7 @@ import DropdownOptionsEditor from "@/components/DropdownOptionsEditor";
 import { Table, LayoutGrid } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { CreateProjectModal } from "../opportunities/CreateProjectModal";
+import { buildLeadDisplayName } from "@/lib/leadDisplayName";
 
 type OrderStatus = "WON" | "COMPLETED";
 type Order = {
@@ -60,6 +61,7 @@ type Order = {
   contactName: string;
   number?: string | null;
   description?: string | null;
+  displayName?: string;
   email?: string | null;
   status: OrderStatus | string;
   nextAction?: string | null;
@@ -137,6 +139,7 @@ export default function OrdersPage() {
   // Dynamically build available fields including workshop processes
   const AVAILABLE_FIELDS = useMemo(() => {
     const baseFields = [
+      { field: 'displayName', label: 'Name', type: 'text' },
       { field: 'contactName', label: 'Contact Name', type: 'text' },
       { field: 'email', label: 'Email', type: 'email' },
       { field: 'status', label: 'Status', type: 'dropdown', dropdownOptions: ['WON', 'COMPLETED'] },
@@ -163,7 +166,17 @@ export default function OrdersPage() {
     const g = await apiFetch<Grouped>("/leads/grouped");
     const normalized: Grouped = {};
     Object.keys(g || {}).forEach((k) => {
-      normalized[k] = (g[k] || []).map((l) => ({ ...l, status: String(l.status).toUpperCase() }));
+      normalized[k] = (g[k] || []).map((l) => ({
+        ...l,
+        status: String(l.status).toUpperCase(),
+        displayName: buildLeadDisplayName({
+          contactName: l.contactName,
+          number: l.number,
+          description: l.description,
+          custom: l.custom,
+          fallbackLabel: "Order",
+        }),
+      }));
     });
     setGrouped(normalized);
     setRows(normalized[tab] || []);
@@ -205,17 +218,25 @@ export default function OrdersPage() {
       const saved = localStorage.getItem(`orders-column-config-${tab}`);
       if (saved) {
         try {
-          setColumnConfig(JSON.parse(saved));
+          const parsed = JSON.parse(saved);
+          const migrated = Array.isArray(parsed)
+            ? parsed.map((col: any) => {
+                if (col?.field === 'contactName' && col?.label === 'Name') {
+                  return { ...col, field: 'displayName', type: 'text', render: undefined };
+                }
+                return col;
+              })
+            : parsed;
+          setColumnConfig(migrated);
         } catch {
           setColumnConfig([
             { 
-              field: 'contactName', 
+              field: 'displayName', 
               label: 'Name', 
               visible: true, 
               frozen: true, 
               width: 250, 
-              type: 'custom',
-              render: (row: Order) => (row.contactName || row.description || "Order") + (row.number ? ` - ${row.number}` : '')
+              type: 'text'
             },
             { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
             { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown', dropdownOptions: ['WON', 'COMPLETED'] },
@@ -225,13 +246,12 @@ export default function OrdersPage() {
       } else {
         setColumnConfig([
           { 
-            field: 'contactName', 
+            field: 'displayName', 
             label: 'Name', 
             visible: true, 
             frozen: true, 
             width: 250, 
-            type: 'custom',
-            render: (row: Order) => (row.contactName || row.description || "Order") + (row.number ? ` - ${row.number}` : '')
+            type: 'text'
           },
           { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
           { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown', dropdownOptions: ['WON', 'COMPLETED'] },
@@ -511,7 +531,13 @@ function CardRow({
         </span>
         <div className="flex-1 min-w-0">
           <div className="truncate text-sm font-medium">
-            {(order.contactName || order.description || "Order") + (order.number ? ` - ${order.number}` : '')}
+            {buildLeadDisplayName({
+              contactName: order.contactName,
+              number: order.number,
+              description: order.description,
+              custom: order.custom,
+              fallbackLabel: "Order",
+            })}
           </div>
           <div className="text-[11px] text-slate-500">
             {order.custom?.source ? `Source: ${order.custom.source}` : "Source: —"}

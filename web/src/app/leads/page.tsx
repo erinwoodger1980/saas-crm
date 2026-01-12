@@ -66,6 +66,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { DeskSurface } from "@/components/DeskSurface";
 import { useTenantBrand } from "@/lib/use-tenant-brand";
 import { LatestTaskCell } from "@/components/leads/LatestTaskCell";
+import { buildLeadDisplayName } from "@/lib/leadDisplayName";
 
 /* -------------------------------- Types -------------------------------- */
 
@@ -103,6 +104,7 @@ const ACTIVE_TABS: LeadStatus[] = [
 
 // Available fields for column configuration
 const AVAILABLE_LEAD_FIELDS = [
+  { field: 'displayName', label: 'Name', type: 'text' },
   { field: 'contactName', label: 'Contact Name', type: 'text' },
   { field: 'email', label: 'Email', type: 'email' },
   { field: 'phone', label: 'Phone', type: 'phone' },
@@ -247,17 +249,25 @@ function LeadsPageContent() {
       const saved = localStorage.getItem(`leads-column-config-${tab}`);
       if (saved) {
         try {
-          setColumnConfig(JSON.parse(saved));
+          const parsed = JSON.parse(saved);
+          const migrated = Array.isArray(parsed)
+            ? parsed.map((col: any) => {
+                if (col?.field === 'contactName' && col?.label === 'Name') {
+                  return { ...col, field: 'displayName', type: 'text', render: undefined };
+                }
+                return col;
+              })
+            : parsed;
+          setColumnConfig(migrated);
         } catch {
           setColumnConfig([
             { 
-              field: 'contactName', 
+              field: 'displayName', 
               label: 'Name', 
               visible: true, 
               frozen: true, 
               width: 250, 
-              type: 'custom',
-              render: (row: Lead) => (row.contactName || row.description || "Lead") + (row.number ? ` - ${row.number}` : '')
+              type: 'text'
             },
             { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
             { field: 'phone', label: 'Phone', visible: true, frozen: false, width: 150 },
@@ -268,13 +278,12 @@ function LeadsPageContent() {
       } else {
         setColumnConfig([
           { 
-            field: 'contactName', 
+            field: 'displayName', 
             label: 'Name', 
             visible: true, 
             frozen: true, 
             width: 250, 
-            type: 'custom',
-            render: (row: Lead) => (row.contactName || row.description || "Lead") + (row.number ? ` - ${row.number}` : '')
+            type: 'text'
           },
           { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
           { field: 'phone', label: 'Phone', visible: true, frozen: false, width: 150 },
@@ -500,6 +509,14 @@ function LeadsPageContent() {
         custom: (l.custom ?? l.briefJson ?? null) as Lead["custom"],
         description: descriptionCandidate ?? null,
       };
+
+      (normalized as any).displayName = buildLeadDisplayName({
+        contactName: normalized.contactName,
+        number: (normalized as any).number ?? l.number ?? null,
+        description: normalized.description,
+        custom: normalized.custom,
+        fallbackLabel: "Lead",
+      });
 
       out[s].push(normalized);
     };
@@ -1540,7 +1557,13 @@ function LeadCard({
             </span>
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold text-slate-900">
-                {(lead.contactName || lead.description || "Lead") + (lead.number ? ` - ${lead.number}` : '')}
+                {buildLeadDisplayName({
+                  contactName: lead.contactName,
+                  number: (lead as any).number ?? null,
+                  description: lead.description,
+                  custom: lead.custom,
+                  fallbackLabel: "Lead",
+                })}
               </div>
               {lead.email && <div className="truncate text-xs text-slate-500">{lead.email}</div>}
             </div>

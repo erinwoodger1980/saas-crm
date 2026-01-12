@@ -1696,6 +1696,10 @@ router.patch("/:id", async (req, res) => {
     estimatedHeightMm?: number | string | null;
     measurementSource?: MeasurementSource | string | null;
     measurementConfidence?: number | string | null;
+
+    // Allow editing key dates (normally auto-populated)
+    capturedAt?: string | Date | null;
+    createdAt?: string | Date | null;
   };
 
   const prevCustom = ((existing.custom as any) || {}) as Record<string, any>;
@@ -1705,6 +1709,18 @@ router.patch("/:id", async (req, res) => {
 
   const data: any = {};
   const canonicalUpdates: Record<string, any> = {};
+
+  const parseDateTimeOrNull = (raw: any): Date | null => {
+    if (raw === undefined) return undefined as any;
+    if (raw === null || raw === "") return null;
+    if (raw instanceof Date) return raw;
+    if (typeof raw === "string") {
+      const d = new Date(raw);
+      if (!Number.isFinite(d.getTime())) return undefined as any;
+      return d;
+    }
+    return undefined as any;
+  };
 
   const applyCanonical = (key: string, raw: any) => {
     if (!CANONICAL_FIELD_CONFIG[key]) return;
@@ -1747,6 +1763,18 @@ router.patch("/:id", async (req, res) => {
   if ((body as any).phone !== undefined) data.phone = (body as any).phone || null;
   if ((body as any).address !== undefined) data.address = (body as any).address || null;
   if ((body as any).deliveryAddress !== undefined) data.deliveryAddress = (body as any).deliveryAddress || null;
+
+  if ((body as any).capturedAt !== undefined) {
+    const parsed = parseDateTimeOrNull((body as any).capturedAt);
+    if (parsed === undefined) return res.status(400).json({ error: "invalid capturedAt" });
+    data.capturedAt = parsed;
+  }
+
+  if ((body as any).createdAt !== undefined) {
+    const parsed = parseDateTimeOrNull((body as any).createdAt);
+    if (parsed === undefined) return res.status(400).json({ error: "invalid createdAt" });
+    data.createdAt = parsed;
+  }
   if (body.clientId !== undefined) data.clientId = body.clientId || null;
   if (body.description !== undefined) data.description = body.description || null;
 
