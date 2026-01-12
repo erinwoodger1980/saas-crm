@@ -9,7 +9,10 @@ const STAGING_DB = 'postgresql://joineryai_db_staging_user:kXLKGlH9fWCTfEE9hvu3g
 async function migrate() {
   try {
     console.log('🔄 Exporting production database...');
-    const { stdout } = await execAsync(`pg_dump "${PROD_DB}"`, { maxBuffer: 50 * 1024 * 1024 });
+    const { stdout } = await execAsync(
+      `pg_dump "${PROD_DB}" --clean --if-exists --no-owner --no-privileges`,
+      { maxBuffer: 50 * 1024 * 1024 }
+    );
     
     console.log('📝 Importing to staging database...');
     await execAsync(`psql "${STAGING_DB}"`, {

@@ -144,12 +144,12 @@ export PATH="/opt/homebrew/opt/postgresql@17/bin:$PATH"
 # 4) Migrate: pg_dump (stdout only) | psql
 if [ "$DRY_RUN" = true ]; then
   log "[dry-run] Would export PROD and import to STAGING"
-  info "[dry-run] pg_dump --no-owner --no-privileges \"$PROD_DB\" | psql \"$STAGING_DB\""
+  info "[dry-run] pg_dump --clean --if-exists --no-owner --no-privileges \"$PROD_DB\" | psql \"$STAGING_DB\""
 else
   log "Exporting production DB → Importing to staging (this may take minutes)"
   # Use options to avoid ownership/privileges errors on import
   set +e
-  pg_dump --no-owner --no-privileges "$PROD_DB" | psql "$STAGING_DB"
+  pg_dump --clean --if-exists --no-owner --no-privileges "$PROD_DB" | psql "$STAGING_DB"
   MIG_STATUS=$?
   set -e
 

@@ -13,7 +13,7 @@ echo ""
 
 # Step 1: Export production database
 echo "📤 Step 1: Exporting production database..."
-pg_dump "$PROD_DB" -v > /tmp/prod-full-backup.sql 2>&1
+pg_dump --clean --if-exists --no-owner --no-privileges "$PROD_DB" -v > /tmp/prod-full-backup.sql 2>&1
 DUMP_SIZE=$(du -h /tmp/prod-full-backup.sql | cut -f1)
 echo "✅ Export complete - Size: $DUMP_SIZE"
 echo ""
