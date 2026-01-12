@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { 
   Upload, Search, CheckCircle2, AlertCircle, FileText, 
-  Calendar, DollarSign, ArrowRight, Package
+  Calendar, PoundSterling, ArrowRight, Package
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
@@ -194,7 +194,7 @@ export default function FireDoorImportsPage() {
                           <span>{importRecord.rowCount || 0} door{importRecord.rowCount !== 1 ? "s" : ""}</span>
                         </div>
                         <div className="flex items-center gap-2 text-sm text-slate-600">
-                          <DollarSign className="w-4 h-4" />
+                          <PoundSterling className="w-4 h-4" />
                           <span>
                             {importRecord.currency || "GBP"}{" "}
                             {(importRecord.totalValue || 0).toLocaleString("en-GB", {

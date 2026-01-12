@@ -1,4 +1,4 @@
-import { Mail, FileText, Briefcase, Zap, DollarSign, CheckCircle } from "lucide-react";
+import { Mail, FileText, Briefcase, Zap, PoundSterling, CheckCircle } from "lucide-react";
 
 const WORKFLOW_STEPS = [
   {
@@ -27,7 +27,7 @@ const WORKFLOW_STEPS = [
     description: "Team logs hours via timers or QR codes. Job board updates in real time. Boss sees live status.",
   },
   {
-    icon: DollarSign,
+    icon: PoundSterling,
     title: "Know Your Profit",
     description: "Job completes. Dashboard shows actual cost vs. quote. Learn what worked. Improve next quote.",
   },

@@ -18,7 +18,7 @@ import {
   ComposedChart,
   Area
 } from "recharts";
-import { Target, Calendar, DollarSign, Users, Award, ArrowUp, ArrowDown } from "lucide-react";
+import { Target, Calendar, PoundSterling, Users, Award, ArrowUp, ArrowDown } from "lucide-react";
 import { LeadSourceCostsTab } from "@/components/dashboard/LeadSourceCostsTab";
 
 type MonthlyData = {
@@ -470,7 +470,7 @@ export default function DashboardPage() {
           previous={data.previousYear.quotesValue}
           change={data.yoyChanges.quotesValue}
           target={data.targets.ytdQuotesValueTarget}
-          icon={<DollarSign className="h-5 w-5" />}
+          icon={<PoundSterling className="h-5 w-5" />}
           color="green"
           isCurrency
         />

@@ -16,21 +16,20 @@ const RAW_API_BASE = (typeof process !== "undefined" && (
 )) as string;
 
 function inferApiBase(): string {
-  if (RAW_API_BASE) return String(RAW_API_BASE).replace(/\/+$/g, "");
-
+  // In the browser, always prefer same-origin /api.
+  // This keeps auth cookies first-party to the web origin and avoids relying on
+  // hosting-provider cookie domains (e.g. *.onrender.com), which some browsers reject.
   if (typeof window !== "undefined") {
-    const { hostname } = window.location;
-    // Production heuristic: joineryai.app / www.joineryai.app should talk to api.joineryai.app
-    if (/\.?(joineryai)\.app$/i.test(hostname)) {
-      return "https://api.joineryai.app";
-    }
-    // Default: same-origin /api proxy (works in dev with rewrites)
-    if (hostname === "localhost" || hostname.endsWith(".local")) {
-      return "/api";
-    }
+    return "/api";
   }
 
-  // Server-side or unknown host: fall back to "/api" so Next rewrites/dev proxies kick in
+  // Server-side: use explicit backend base when provided.
+  // Note: Node fetch requires absolute URLs; avoid returning relative paths here
+  // unless the calling code is guaranteed to run only in the browser.
+  if (RAW_API_BASE) return String(RAW_API_BASE).replace(/\/+$/g, "");
+
+  // Fall back to /api (for local dev via rewrites). If you hit this in production SSR,
+  // set NEXT_PUBLIC_API_BASE(_URL) or API_ORIGIN.
   return "/api";
 }
 

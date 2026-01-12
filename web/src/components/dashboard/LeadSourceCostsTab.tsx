@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Trash2, TrendingUp, DollarSign, Target } from "lucide-react";
+import { Plus, Trash2, TrendingUp, PoundSterling, Target } from "lucide-react";
 
 type SourceCostRow = {
   id: string;
@@ -259,7 +259,7 @@ export function LeadSourceCostsTab() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-slate-600 flex items-center gap-2">
-              <DollarSign className="h-4 w-4" />
+              <PoundSterling className="h-4 w-4" />
               Total Spend
             </CardTitle>
           </CardHeader>

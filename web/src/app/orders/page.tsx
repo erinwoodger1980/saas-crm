@@ -8,7 +8,7 @@ type LeadModalProps = {
   onOpenChange: (v: boolean) => void;
   leadPreview: any;
   onUpdated?: () => void | Promise<void>;
-  initialStage?: 'overview' | 'details' | 'questionnaire' | 'tasks' | 'follow-up';
+  initialStage?: 'client' | 'quote' | 'dates' | 'finance' | 'tasks' | 'order';
   showFollowUp?: boolean;
 };
 
@@ -53,6 +53,7 @@ import DropdownOptionsEditor from "@/components/DropdownOptionsEditor";
 import { Table, LayoutGrid } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { CreateProjectModal } from "../opportunities/CreateProjectModal";
+import { buildLeadDisplayName } from "@/lib/leadDisplayName";
 
 type OrderStatus = "WON" | "COMPLETED";
 type Order = {
@@ -60,6 +61,7 @@ type Order = {
   contactName: string;
   number?: string | null;
   description?: string | null;
+  displayName?: string;
   email?: string | null;
   status: OrderStatus | string;
   nextAction?: string | null;
@@ -67,6 +69,8 @@ type Order = {
   custom?: Record<string, any>;
   opportunityId?: string | null;
   processPercentages?: Record<string, number>;
+  manufacturingCompletionDate?: string | null;
+  orderValueGBP?: number | string | null;
 };
 
 type Grouped = Record<string, Order[]>;
@@ -75,6 +79,29 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   WON: "Won",
   COMPLETED: "Completed",
 };
+
+function formatCurrencyGBP(value: number) {
+  return new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: "GBP",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function monthLabelFromIso(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "Unknown month";
+  return d.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+}
+
+function compareIsoDateAsc(aIso: string, bIso: string) {
+  const a = new Date(aIso).getTime();
+  const b = new Date(bIso).getTime();
+  if (Number.isNaN(a) && Number.isNaN(b)) return 0;
+  if (Number.isNaN(a)) return 1;
+  if (Number.isNaN(b)) return -1;
+  return a - b;
+}
 
 export default function OrdersPage() {
   const [tab, setTab] = useState<OrderStatus>("WON");
@@ -137,6 +164,7 @@ export default function OrdersPage() {
   // Dynamically build available fields including workshop processes
   const AVAILABLE_FIELDS = useMemo(() => {
     const baseFields = [
+      { field: 'displayName', label: 'Name', type: 'text' },
       { field: 'contactName', label: 'Contact Name', type: 'text' },
       { field: 'email', label: 'Email', type: 'email' },
       { field: 'status', label: 'Status', type: 'dropdown', dropdownOptions: ['WON', 'COMPLETED'] },
@@ -163,7 +191,19 @@ export default function OrdersPage() {
     const g = await apiFetch<Grouped>("/leads/grouped");
     const normalized: Grouped = {};
     Object.keys(g || {}).forEach((k) => {
-      normalized[k] = (g[k] || []).map((l) => ({ ...l, status: String(l.status).toUpperCase() }));
+      normalized[k] = (g[k] || []).map((l) => ({
+        ...l,
+        status: String(l.status).toUpperCase(),
+        displayName: buildLeadDisplayName({
+          contactName: l.contactName,
+          number: l.number,
+          description: l.description,
+          custom: l.custom,
+          fallbackLabel: "Order",
+        }),
+        manufacturingCompletionDate: (l as any).manufacturingCompletionDate ?? null,
+        orderValueGBP: (l as any).orderValueGBP ?? null,
+      }));
     });
     setGrouped(normalized);
     setRows(normalized[tab] || []);
@@ -199,23 +239,63 @@ export default function OrdersPage() {
     [grouped]
   );
 
+  const sortedRows = useMemo(() => {
+    const list = [...(rows || [])];
+    // Blank manufacturing completion dates first, then ascending by date.
+    list.sort((a, b) => {
+      const ad = a.manufacturingCompletionDate;
+      const bd = b.manufacturingCompletionDate;
+      const aBlank = !ad;
+      const bBlank = !bd;
+      if (aBlank && bBlank) return 0;
+      if (aBlank) return -1;
+      if (bBlank) return 1;
+      return compareIsoDateAsc(ad!, bd!);
+    });
+    return list;
+  }, [rows]);
+
+  const groupedForCards = useMemo(() => {
+    const noDate: Order[] = [];
+    const byMonth = new Map<string, Order[]>();
+    for (const o of sortedRows) {
+      if (!o.manufacturingCompletionDate) {
+        noDate.push(o);
+        continue;
+      }
+      const label = monthLabelFromIso(o.manufacturingCompletionDate);
+      const bucket = byMonth.get(label) || [];
+      bucket.push(o);
+      byMonth.set(label, bucket);
+    }
+    return { noDate, byMonth };
+  }, [sortedRows]);
+
   // Load column config for current tab
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(`orders-column-config-${tab}`);
       if (saved) {
         try {
-          setColumnConfig(JSON.parse(saved));
+          const parsed = JSON.parse(saved);
+          const migrated = Array.isArray(parsed)
+            ? parsed.map((col: any) => {
+                if (col?.field === 'contactName' && col?.label === 'Name') {
+                  return { ...col, field: 'displayName', type: 'text', render: undefined };
+                }
+                return col;
+              })
+            : parsed;
+          setColumnConfig(migrated);
         } catch {
           setColumnConfig([
             { 
-              field: 'contactName', 
+              field: 'displayName', 
               label: 'Name', 
               visible: true, 
               frozen: true, 
               width: 250, 
-              type: 'custom',
-              render: (row: Order) => (row.contactName || row.description || "Order") + (row.number ? ` - ${row.number}` : '')
+              type: 'text'
             },
             { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
             { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown', dropdownOptions: ['WON', 'COMPLETED'] },
@@ -225,13 +305,12 @@ export default function OrdersPage() {
       } else {
         setColumnConfig([
           { 
-            field: 'contactName', 
+            field: 'displayName', 
             label: 'Name', 
             visible: true, 
             frozen: true, 
             width: 250, 
-            type: 'custom',
-            render: (row: Order) => (row.contactName || row.description || "Order") + (row.number ? ` - ${row.number}` : '')
+            type: 'text'
           },
           { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
           { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown', dropdownOptions: ['WON', 'COMPLETED'] },
@@ -395,13 +474,13 @@ export default function OrdersPage() {
         )}
 
         <section className="space-y-2">
-          {rows.length === 0 ? (
+          {sortedRows.length === 0 ? (
             <div className="rounded-xl border border-dashed border-emerald-200 bg-white/70 py-10 text-center text-sm text-slate-500">
               No orders in "{STATUS_LABELS[tab]}".
             </div>
           ) : viewMode === 'grid' ? (
             <CustomizableGrid
-              data={rows}
+              data={sortedRows}
               columns={columnConfig}
               onRowClick={openOrder}
               onCellChange={handleCellChange}
@@ -410,22 +489,69 @@ export default function OrdersPage() {
               onEditColumnOptions={(field) => setEditingField(field)}
             />
           ) : (
-            rows.map((order) => (
-              <CardRow
-                key={order.id}
-                order={order}
-                _statusLabel={STATUS_LABELS[tab]}
-                onOpen={() => {
-                  setSelected(order);
-                  setOpen(true);
-                }}
-                actionArea={
-                  <span className="rounded-full border bg-white px-2 py-0.5 text-[11px] text-slate-700">
-                    {STATUS_LABELS[tab]}
-                  </span>
-                }
-              />
-            ))
+            <div className="space-y-6">
+              {groupedForCards.noDate.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-semibold text-slate-800">No manufacturing completion date</div>
+                    <div className="text-xs text-slate-500">{groupedForCards.noDate.length} orders</div>
+                  </div>
+                  <div className="space-y-2">
+                    {groupedForCards.noDate.map((order) => (
+                      <CardRow
+                        key={order.id}
+                        order={order}
+                        _statusLabel={STATUS_LABELS[tab]}
+                        onOpen={() => {
+                          setSelected(order);
+                          setOpen(true);
+                        }}
+                        actionArea={
+                          <span className="rounded-full border bg-white px-2 py-0.5 text-[11px] text-slate-700">
+                            {STATUS_LABELS[tab]}
+                          </span>
+                        }
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {Array.from(groupedForCards.byMonth.entries()).map(([monthLabel, orders]) => {
+                const total = orders.reduce((sum, o) => {
+                  const raw = o.orderValueGBP;
+                  const num = typeof raw === "number" ? raw : raw == null ? 0 : Number(raw);
+                  return sum + (Number.isFinite(num) ? num : 0);
+                }, 0);
+
+                return (
+                  <div key={monthLabel} className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-semibold text-slate-800">{monthLabel}</div>
+                      <div className="text-xs text-slate-500">Total: {formatCurrencyGBP(total)}</div>
+                    </div>
+                    <div className="space-y-2">
+                      {orders.map((order) => (
+                        <CardRow
+                          key={order.id}
+                          order={order}
+                          _statusLabel={STATUS_LABELS[tab]}
+                          onOpen={() => {
+                            setSelected(order);
+                            setOpen(true);
+                          }}
+                          actionArea={
+                            <span className="rounded-full border bg-white px-2 py-0.5 text-[11px] text-slate-700">
+                              {STATUS_LABELS[tab]}
+                            </span>
+                          }
+                        />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </section>
       </DeskSurface>
@@ -449,14 +575,15 @@ export default function OrdersPage() {
                 if (!v) setSelected(null);
               }}
               leadPreview={{
-                id: selected.opportunityId || selected.id,
+                id: selected.id,
+                opportunityId: selected.opportunityId || null,
                 contactName: selected.contactName,
                 email: selected.email,
                 status: (selected.status as any) || "WON",
                 custom: selected.custom
               }}
               onUpdated={load}
-              initialStage="overview"
+              initialStage="order"
               showFollowUp={false}
             />
           </Suspense>
@@ -511,7 +638,13 @@ function CardRow({
         </span>
         <div className="flex-1 min-w-0">
           <div className="truncate text-sm font-medium">
-            {(order.contactName || order.description || "Order") + (order.number ? ` - ${order.number}` : '')}
+            {buildLeadDisplayName({
+              contactName: order.contactName,
+              number: order.number,
+              description: order.description,
+              custom: order.custom,
+              fallbackLabel: "Order",
+            })}
           </div>
           <div className="text-[11px] text-slate-500">
             {order.custom?.source ? `Source: ${order.custom.source}` : "Source: —"}

@@ -1,5 +1,5 @@
 import { Metadata } from 'next';
-import PublicEstimatorWizard from '@/components/publicEstimator/PublicEstimatorWizard';
+import { PublicEstimatorStepper } from '@/components/publicEstimator/PublicEstimatorStepper';
 
 export const metadata: Metadata = {
   title: 'Get Your Estimate | Joinery Services',
@@ -30,11 +30,7 @@ export default async function TenantEstimatePage({ params, searchParams }: PageP
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-      <PublicEstimatorWizard 
-        tenantSlug={slug}
-        leadId={leadId}
-        token={token}
-      />
+      <PublicEstimatorStepper tenantSlug={slug} />
     </div>
   );
 }

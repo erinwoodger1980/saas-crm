@@ -1,6 +1,6 @@
 "use client";
 import { API_BASE, apiFetch, ensureDemoAuth } from "@/lib/api";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { useCurrentUser, type CurrentUser } from "@/lib/use-current-user";
@@ -229,14 +229,39 @@ export default function SettingsPage() {
 
   const [loading, setLoading] = useState(true);
   
-  // Support ?tab=pdf-templates URL parameter
+  // Support ?tab=... URL parameter
   const initialTab = (() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const tab = params.get('tab');
-      if (tab === 'pdf-templates') return 'pdf-templates';
-    }
+    if (typeof window === 'undefined') return 'business';
+    const params = new URLSearchParams(window.location.search);
+    const tab = (params.get('tab') || '').trim();
+    const allowed = new Set([
+      'business',
+      'data-fields',
+      'email-templates',
+      'marketing',
+      'automation',
+      'workshop-processes',
+      'integrations',
+      'suppliers',
+      'software-profiles',
+      'pdf-templates',
+      'products',
+      'components',
+      'lookup-tables',
+    ]);
+
+    // Back-compat deep link: show public estimator/questionnaire fields
+    if (tab === 'public-questionnaire' || tab === 'public-estimator-fields') return 'data-fields';
+    if (allowed.has(tab)) return tab;
     return 'business';
+  })();
+
+  const initialQuestionnaireScopeTab = (() => {
+    if (typeof window === 'undefined') return 'client' as const;
+    const params = new URLSearchParams(window.location.search);
+    const tab = (params.get('tab') || '').trim();
+    if (tab === 'public-questionnaire' || tab === 'public-estimator-fields') return 'public' as const;
+    return 'client' as const;
   })();
   
   const [currentStage, setCurrentStage] = useState<
@@ -269,7 +294,8 @@ export default function SettingsPage() {
   const [qSearch, setQSearch] = useState("");
   const [qHideInternal, setQHideInternal] = useState(true);
   const [qOnlyPublic, setQOnlyPublic] = useState(false);
-  const [qScopeTab, setQScopeTab] = useState<"client" | "item" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal">("client");
+  const [qScopeTab, setQScopeTab] = useState<"client" | "item" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal">(initialQuestionnaireScopeTab);
+  const legacyQuestionnaireDetailsRef = useRef<HTMLDetailsElement | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
     // Seed placeholder testimonials if none exist on initial load
     useEffect(() => {
@@ -306,6 +332,14 @@ export default function SettingsPage() {
   const [procLoading, setProcLoading] = useState(false);
   const [procSavingId, setProcSavingId] = useState<string | "new" | null>(null);
   const [newProcess, setNewProcess] = useState<Omit<ProcessDef, "id">>({ code: "", name: "", sortOrder: 0, requiredByDefault: true, estimatedHours: 1, isColorKey: false, isGeneric: false, isLastManufacturing: false, isLastInstallation: false, assignmentGroup: null });
+
+  useEffect(() => {
+    if (initialQuestionnaireScopeTab === "public") {
+      if (legacyQuestionnaireDetailsRef.current) {
+        legacyQuestionnaireDetailsRef.current.open = true;
+      }
+    }
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -1960,7 +1994,7 @@ export default function SettingsPage() {
           </div>
 
           {/* Legacy System (Deprecated) */}
-          <details className="rounded-xl border bg-amber-50/50 p-4">
+          <details ref={legacyQuestionnaireDetailsRef} className="rounded-xl border bg-amber-50/50 p-4">
             <summary className="cursor-pointer text-sm font-semibold text-amber-900 flex items-center gap-2">
               ⚠️ Legacy Questionnaire Fields (Deprecated)
               <span className="text-xs font-normal text-amber-700 ml-auto">Click to expand</span>
@@ -1975,8 +2009,8 @@ export default function SettingsPage() {
                 <p className="text-xs font-semibold text-slate-700">Lead & Quote Management</p>
                 <div className="flex flex-wrap gap-2">
                   {([
-                    { key: "client", label: "Client Details", description: "Name, email, phone, address" },
-                    { key: "item", label: "Item Details", description: "Per-door/window: dimensions, materials, specs" },
+                    { key: "client", label: "Client Questions", description: "Customer details asked in the estimate (name, email, phone, etc.)" },
+                    { key: "item", label: "Line Item Questions", description: "Per door/window: dimensions, materials, specs" },
                     { key: "manufacturing", label: "Manufacturing", description: "Installation dates, production notes" },
                   ] as const).map(({ key, label, description }) => (
                     <button

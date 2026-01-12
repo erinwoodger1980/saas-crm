@@ -127,7 +127,7 @@ Tenant ID: clx123abc456
   - finishing: 60 mins @ £45/hr = £45.00
   Total Labour: £146.25
 
-💵 Summary:
+💷 Summary:
   Materials Cost:     £589.27
   Labour Cost:        £146.25
   Subtotal:           £735.52

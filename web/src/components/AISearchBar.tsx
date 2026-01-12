@@ -264,6 +264,16 @@ export default function AISearchBar() {
     setResults(null);
 
     try {
+      // Be strict for lead results: always deep-link to LeadModal.
+      if (result?.type === 'lead') {
+        const leadId = (action?.params as any)?.leadId || result.id;
+        const url = new URL('/leads', window.location.origin);
+        url.searchParams.set('leadId', String(leadId));
+        url.searchParams.set('modal', 'lead');
+        router.push(url.pathname + url.search);
+        return;
+      }
+
       switch (action.type) {
         case 'navigate':
           router.push(action.target);

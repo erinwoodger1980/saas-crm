@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { apiFetch } from "@/lib/api";
-import { TrendingUp, TrendingDown, DollarSign, Package, RefreshCw } from "lucide-react";
+import { TrendingUp, TrendingDown, PoundSterling, Package, RefreshCw } from "lucide-react";
 
 interface WIPData {
   opportunityId: string;
@@ -74,7 +74,7 @@ export function WIPCard({ opportunityId, percentComplete = 0, contractValue = 0 
     <Card>
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
-          <DollarSign className="h-5 w-5" />
+          <PoundSterling className="h-5 w-5" />
           Work in Progress (WIP)
           <Badge variant="outline" className="ml-auto text-xs">Sage</Badge>
         </CardTitle>

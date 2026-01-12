@@ -10,6 +10,24 @@ function requireAuth(req: any, res: any, next: any) {
   next();
 }
 
+function parseUtcDateRangeStart(value: unknown, fallback: Date): Date {
+  const s = typeof value === "string" ? value : undefined;
+  if (!s) return fallback;
+  // If user supplies YYYY-MM-DD, treat it as the start of that day in UTC.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(`${s}T00:00:00.000Z`);
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? fallback : d;
+}
+
+function parseUtcDateRangeEnd(value: unknown, fallback: Date): Date {
+  const s = typeof value === "string" ? value : undefined;
+  if (!s) return fallback;
+  // If user supplies YYYY-MM-DD, treat it as the end of that day in UTC.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(`${s}T23:59:59.999Z`);
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? fallback : d;
+}
+
 // Calculate distance between two lat/lng points in meters using Haversine formula
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371e3; // Earth's radius in meters
@@ -42,8 +60,10 @@ router.get("/users", async (req: any, res) => {
 // GET /workshop/team-activity?from=YYYY-MM-DD&to=YYYY-MM-DD – view all users and their daily logged work
 router.get("/team-activity", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
-  const from = req.query.from ? new Date(String(req.query.from)) : new Date(new Date().setDate(new Date().getDate() - 7));
-  const to = req.query.to ? new Date(String(req.query.to)) : new Date();
+  const fromFallback = new Date(new Date().setDate(new Date().getDate() - 7));
+  const toFallback = new Date();
+  const from = parseUtcDateRangeStart(req.query.from, fromFallback);
+  const to = parseUtcDateRangeEnd(req.query.to, toFallback);
   let users = [];
   let entries = [];
   let errorWarning = null;
@@ -97,6 +117,8 @@ router.get("/team-activity", async (req: any, res) => {
       process: e.process,
       hours: Number(e.hours || 0),
       notes: e.notes,
+      startedAt: (e as any).startedAt || null,
+      endedAt: (e as any).endedAt || null,
       project: e.project ? { id: e.project.id, title: e.project.title } : null,
     });
   }
@@ -874,8 +896,17 @@ router.get("/time", async (req: any, res) => {
 // markComplete: if true and projectId + process are specified, marks that process as complete
 router.post("/time", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
-  const { projectId, process, userId, date, hours, notes, markComplete } = req.body || {};
+  const { projectId, process, userId, date, hours, notes, markComplete, startedAt, endedAt } = req.body || {};
   if (!process || !userId || !date || hours == null) return res.status(400).json({ error: "invalid_payload" });
+
+  const startedAtDate = startedAt ? new Date(String(startedAt)) : null;
+  const endedAtDate = endedAt ? new Date(String(endedAt)) : null;
+  if (startedAtDate && Number.isNaN(startedAtDate.getTime())) {
+    return res.status(400).json({ error: "invalid_startedAt" });
+  }
+  if (endedAtDate && Number.isNaN(endedAtDate.getTime())) {
+    return res.status(400).json({ error: "invalid_endedAt" });
+  }
 
   const entry = await (prisma as any).timeEntry.create({
     data: {
@@ -884,6 +915,8 @@ router.post("/time", async (req: any, res) => {
       process: String(process) as any,
       userId: String(userId),
       date: new Date(date),
+      startedAt: startedAtDate,
+      endedAt: endedAtDate,
       hours: new Prisma.Decimal(Number(hours)),
       notes: notes || null,
     },
@@ -1031,6 +1064,25 @@ router.patch("/time/:id", async (req: any, res) => {
   if ("process" in body) {
     if (!body.process) return res.status(400).json({ error: "invalid_process" });
     updates.process = String(body.process);
+  }
+
+  if ("startedAt" in body) {
+    if (!body.startedAt) {
+      updates.startedAt = null;
+    } else {
+      const d = new Date(String(body.startedAt));
+      if (Number.isNaN(d.getTime())) return res.status(400).json({ error: "invalid_startedAt" });
+      updates.startedAt = d;
+    }
+  }
+  if ("endedAt" in body) {
+    if (!body.endedAt) {
+      updates.endedAt = null;
+    } else {
+      const d = new Date(String(body.endedAt));
+      if (Number.isNaN(d.getTime())) return res.status(400).json({ error: "invalid_endedAt" });
+      updates.endedAt = d;
+    }
   }
 
   if (Object.keys(updates).length === 0) {
@@ -1428,6 +1480,8 @@ router.post("/timer/start", async (req: any, res) => {
               hours: finalHours,
               notes: existing.notes || null,
               date: startedAt, // Use original start time, not now
+              startedAt,
+              endedAt: now,
               taskId: existing.taskId, // Link time entry to task if timer was started from task
             },
           });
@@ -1574,6 +1628,8 @@ router.post("/timer/stop", async (req: any, res) => {
       process: timer.process,
       userId,
       date: startedAt,
+      startedAt,
+      endedAt: now,
       hours: finalHours,
       notes: timer.notes,
       taskId: timer.taskId, // Link time entry to task if timer was started from task
@@ -1715,15 +1771,17 @@ router.patch("/process-status", async (req: any, res) => {
 router.get("/my-timesheet", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
   const userId = req.query.userId as string;
-  const from = req.query.from ? new Date(String(req.query.from)) : new Date(new Date().setDate(new Date().getDate() - 7));
-  const to = req.query.to ? new Date(String(req.query.to)) : new Date();
+  const fromFallback = new Date(new Date().setDate(new Date().getDate() - 7));
+  const toFallback = new Date();
+  const from = parseUtcDateRangeStart(req.query.from, fromFallback);
+  const to = parseUtcDateRangeEnd(req.query.to, toFallback);
 
   if (!userId) {
     return res.status(400).json({ error: "userId required" });
   }
 
   try {
-    const entries = await (prisma as any).workshopTime.findMany({
+    const entries = await (prisma as any).timeEntry.findMany({
       where: {
         tenantId,
         userId,
@@ -1736,15 +1794,32 @@ router.get("/my-timesheet", async (req: any, res) => {
         project: {
           select: {
             id: true,
-            name: true,
             number: true,
+            title: true,
           },
         },
       },
-      orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
+      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
     });
 
-    res.json({ entries });
+    res.json({
+      entries: (entries || []).map((e: any) => ({
+        id: e.id,
+        hours: Number(e.hours || 0),
+        date: new Date(e.date).toISOString().split("T")[0],
+        notes: e.notes || null,
+        process: e.process,
+        startedAt: e.startedAt || null,
+        endedAt: e.endedAt || null,
+        project: e.project
+          ? {
+              id: e.project.id,
+              name: e.project.title,
+              number: e.project.number || null,
+            }
+          : null,
+      })),
+    });
   } catch (e: any) {
     console.error("[my-timesheet] Error:", e);
     return res.status(500).json({ error: "Failed to load timesheet", message: e.message });

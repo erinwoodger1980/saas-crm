@@ -1392,6 +1392,8 @@ router.get("/grouped", async (req, res) => {
       opportunity: {
         select: { 
           id: true,
+          valueGBP: true,
+          deliveryDate: true,
           projectProcesses: {
             include: {
               processDefinition: {
@@ -1462,6 +1464,8 @@ router.get("/grouped", async (req, res) => {
       ...l,
       custom: mergedCustom,
       opportunityId: l.opportunity?.id || null,
+      manufacturingCompletionDate: (l.opportunity as any)?.deliveryDate || null,
+      orderValueGBP: (l.opportunity as any)?.valueGBP ?? null,
       taskCount: taskCountMap.get(l.id) || 0,
       processPercentages
     });
@@ -1487,22 +1491,27 @@ router.post("/", async (req, res) => {
       number,
       description,
       assignedUserId,
+      noEmail = false,
     }: {
       contactName: string;
-      email?: string;
+      email?: string | null;
       status?: UiStatus;
       custom?: any;
       number?: string;
       description?: string;
       assignedUserId?: string;
+      noEmail?: boolean;
     } = req.body || {};
 
     if (!contactName) return res.status(400).json({ error: "contactName required" });
+    const allowNoEmail = Boolean(noEmail);
     const normalizedEmail = normalizeEmail(email);
-    if (!normalizedEmail) return res.status(400).json({ error: "email required" });
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(normalizedEmail)) {
-      return res.status(400).json({ error: "invalid email" });
+    if (!allowNoEmail) {
+      if (!normalizedEmail) return res.status(400).json({ error: "email required" });
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(normalizedEmail)) {
+        return res.status(400).json({ error: "invalid email" });
+      }
     }
 
     const uiStatus: UiStatus = status || "NEW_ENQUIRY";
@@ -1537,18 +1546,20 @@ router.post("/", async (req, res) => {
       customData.dateOrderPlaced = now.toISOString().split('T')[0];
     }
 
-    // Always link/create Client when an email exists (required)
+    // Link/create Client only when we have an email
     let clientId: string | null = null;
-    try {
-      clientId = await upsertClientForImport({
-        tenantId,
-        userId,
-        leadData: { contactName, email: normalizedEmail },
-        clientData: {},
-        clientCustomData: {},
-      });
-    } catch (e) {
-      console.warn("[leads] client upsert failed:", (e as any)?.message || e);
+    if (normalizedEmail) {
+      try {
+        clientId = await upsertClientForImport({
+          tenantId,
+          userId,
+          leadData: { contactName, email: normalizedEmail },
+          clientData: {},
+          clientCustomData: {},
+        });
+      } catch (e) {
+        console.warn("[leads] client upsert failed:", (e as any)?.message || e);
+      }
     }
 
     let lead = await prisma.lead.create({
@@ -1557,7 +1568,7 @@ router.post("/", async (req, res) => {
         createdById: userId,
         ...(clientId ? { clientId } : {}),
         contactName: String(contactName),
-        email: normalizedEmail,
+        email: normalizedEmail || null,
         status: uiToDb(uiStatus),
         number: number ?? null,
         description: description ?? null,
@@ -1689,6 +1700,10 @@ router.patch("/:id", async (req, res) => {
     estimatedHeightMm?: number | string | null;
     measurementSource?: MeasurementSource | string | null;
     measurementConfidence?: number | string | null;
+
+    // Allow editing key dates (normally auto-populated)
+    capturedAt?: string | Date | null;
+    createdAt?: string | Date | null;
   };
 
   const prevCustom = ((existing.custom as any) || {}) as Record<string, any>;
@@ -1698,6 +1713,18 @@ router.patch("/:id", async (req, res) => {
 
   const data: any = {};
   const canonicalUpdates: Record<string, any> = {};
+
+  const parseDateTimeOrNull = (raw: any): Date | null => {
+    if (raw === undefined) return undefined as any;
+    if (raw === null || raw === "") return null;
+    if (raw instanceof Date) return raw;
+    if (typeof raw === "string") {
+      const d = new Date(raw);
+      if (!Number.isFinite(d.getTime())) return undefined as any;
+      return d;
+    }
+    return undefined as any;
+  };
 
   const applyCanonical = (key: string, raw: any) => {
     if (!CANONICAL_FIELD_CONFIG[key]) return;
@@ -1740,6 +1767,18 @@ router.patch("/:id", async (req, res) => {
   if ((body as any).phone !== undefined) data.phone = (body as any).phone || null;
   if ((body as any).address !== undefined) data.address = (body as any).address || null;
   if ((body as any).deliveryAddress !== undefined) data.deliveryAddress = (body as any).deliveryAddress || null;
+
+  if ((body as any).capturedAt !== undefined) {
+    const parsed = parseDateTimeOrNull((body as any).capturedAt);
+    if (parsed === undefined) return res.status(400).json({ error: "invalid capturedAt" });
+    data.capturedAt = parsed;
+  }
+
+  if ((body as any).createdAt !== undefined) {
+    const parsed = parseDateTimeOrNull((body as any).createdAt);
+    if (parsed === undefined) return res.status(400).json({ error: "invalid createdAt" });
+    data.createdAt = parsed;
+  }
   if (body.clientId !== undefined) data.clientId = body.clientId || null;
   if (body.description !== undefined) data.description = body.description || null;
 

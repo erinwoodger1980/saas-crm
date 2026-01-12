@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -39,6 +40,215 @@ interface UserBalance {
   allowance: number;
   used: number;
   remaining: number;
+}
+
+interface Holiday {
+  id: string;
+  userId: string;
+  startDate: string;
+  endDate: string;
+  notes: string | null;
+  user: {
+    id: string;
+    name: string | null;
+    email: string;
+  };
+}
+
+type WorkshopUser = {
+  id: string;
+  name: string | null;
+  email: string;
+};
+
+function toDateInputValue(date: Date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function formatShortDate(dateStr: string) {
+  return new Date(dateStr).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function HolidayAdminPanel() {
+  const [users, setUsers] = useState<WorkshopUser[]>([]);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const [userId, setUserId] = useState<string>("");
+  const [startDate, setStartDate] = useState<string>(() => toDateInputValue(new Date()));
+  const [endDate, setEndDate] = useState<string>(() => toDateInputValue(new Date()));
+  const [notes, setNotes] = useState<string>("");
+
+  const loadAll = async () => {
+    setLoading(true);
+    try {
+      const usersRes = await fetch("/api/workshop/users");
+      if (usersRes.ok) {
+        const data = await usersRes.json();
+        setUsers((data?.items || []) as WorkshopUser[]);
+      }
+
+      const from = toDateInputValue(new Date());
+      const to = toDateInputValue(new Date(new Date().setFullYear(new Date().getFullYear() + 1)));
+      const holidaysRes = await fetch(`/api/workshop/holidays?from=${from}&to=${to}`);
+      if (holidaysRes.ok) {
+        const data = await holidaysRes.json();
+        setHolidays((data?.items || []) as Holiday[]);
+      }
+    } catch (e) {
+      console.error("Failed to load holiday admin data:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAll();
+  }, []);
+
+  const createHoliday = async () => {
+    if (!userId) {
+      alert("Please select a user");
+      return;
+    }
+    if (!startDate || !endDate) {
+      alert("Please select a start and end date");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const res = await fetch("/api/workshop/holidays", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, startDate, endDate, notes: notes?.trim() || null }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        alert(body?.error || "Failed to create holiday");
+        return;
+      }
+      setNotes("");
+      await loadAll();
+    } catch (e) {
+      console.error("Failed to create holiday:", e);
+      alert("Failed to create holiday");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteHoliday = async (id: string) => {
+    if (!confirm("Delete this holiday?")) return;
+    if (deletingId) return;
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/workshop/holidays/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        alert(body?.error || "Failed to delete holiday");
+        return;
+      }
+      await loadAll();
+    } catch (e) {
+      console.error("Failed to delete holiday:", e);
+      alert("Failed to delete holiday");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-xl font-semibold">Add Holiday (Admin)</h2>
+        <p className="text-muted-foreground text-sm">Create a holiday directly for a user (no approval flow).</p>
+      </div>
+
+      <Card className="p-4 space-y-3">
+        <div className="grid gap-3 md:grid-cols-4">
+          <div className="md:col-span-2">
+            <div className="text-xs font-medium text-muted-foreground mb-1">User</div>
+            <Select value={userId} onValueChange={setUserId}>
+              <SelectTrigger>
+                <SelectValue placeholder={loading ? "Loading users…" : "Select a user"} />
+              </SelectTrigger>
+              <SelectContent>
+                {users.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {(u.name || u.email) + (u.name ? ` (${u.email})` : "")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <div className="text-xs font-medium text-muted-foreground mb-1">Start date</div>
+            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          </div>
+
+          <div>
+            <div className="text-xs font-medium text-muted-foreground mb-1">End date</div>
+            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+          </div>
+        </div>
+
+        <div>
+          <div className="text-xs font-medium text-muted-foreground mb-1">Notes (optional)</div>
+          <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Annual leave" />
+        </div>
+
+        <div className="flex justify-end">
+          <Button onClick={createHoliday} disabled={saving}>
+            {saving ? "Saving…" : "Add holiday"}
+          </Button>
+        </div>
+      </Card>
+
+      <div className="space-y-2">
+        <div className="text-sm font-semibold">Upcoming holidays</div>
+        {loading ? (
+          <div className="text-sm text-muted-foreground">Loading…</div>
+        ) : holidays.length === 0 ? (
+          <div className="text-sm text-muted-foreground">No holidays found.</div>
+        ) : (
+          <div className="grid gap-2">
+            {holidays.map((h) => (
+              <Card key={h.id} className="p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold truncate">{h.user.name || h.user.email}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {formatShortDate(h.startDate)} → {formatShortDate(h.endDate)}
+                      {h.notes ? ` · ${h.notes}` : ""}
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => deleteHoliday(h.id)}
+                    disabled={deletingId === h.id}
+                  >
+                    {deletingId === h.id ? "Deleting…" : "Delete"}
+                  </Button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function HolidayRequestsPanel() {
@@ -334,6 +544,7 @@ function TimeTrackingSettingsPageInner() {
         </TabsContent>
 
         <TabsContent value={TAB_HOLIDAYS} className="space-y-4">
+          <HolidayAdminPanel />
           <HolidayRequestsPanel />
         </TabsContent>
       </Tabs>

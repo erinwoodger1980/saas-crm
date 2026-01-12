@@ -12,6 +12,8 @@ type TimeEntry = {
   hours: number;
   notes: string | null;
   project: { id: string; title: string } | null;
+  startedAt?: string | null;
+  endedAt?: string | null;
 };
 
 type UserActivity = {
@@ -23,12 +25,22 @@ export default function TeamActivityPage() {
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<UserActivity[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [from, setFrom] = useState<Date>(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 6); // Last 7 days
-    return d;
-  });
-  const [to, setTo] = useState<Date>(new Date());
+
+  function getWeekRange(base: Date) {
+    const d = new Date(base);
+    const day = d.getDay();
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+    const monday = new Date(d);
+    monday.setDate(d.getDate() + diffToMonday);
+    monday.setHours(0, 0, 0, 0);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    sunday.setHours(23, 59, 59, 999);
+    return { from: monday, to: sunday };
+  }
+
+  const [from, setFrom] = useState<Date>(() => getWeekRange(new Date()).from);
+  const [to, setTo] = useState<Date>(() => getWeekRange(new Date()).to);
 
   useEffect(() => {
     loadActivity();
@@ -51,25 +63,17 @@ export default function TeamActivityPage() {
   }
 
   function shiftWeek(direction: number) {
-    const days = 7 * direction;
-    setFrom((prev) => {
-      const d = new Date(prev);
-      d.setDate(d.getDate() + days);
-      return d;
-    });
-    setTo((prev) => {
-      const d = new Date(prev);
-      d.setDate(d.getDate() + days);
-      return d;
-    });
+    const base = new Date(from);
+    base.setDate(base.getDate() + 7 * direction);
+    const next = getWeekRange(base);
+    setFrom(next.from);
+    setTo(next.to);
   }
 
   function goToToday() {
-    const today = new Date();
-    const weekStart = new Date(today);
-    weekStart.setDate(today.getDate() - 6);
-    setFrom(weekStart);
-    setTo(today);
+    const next = getWeekRange(new Date());
+    setFrom(next.from);
+    setTo(next.to);
   }
 
   // Generate list of dates in range
@@ -252,6 +256,17 @@ export default function TeamActivityPage() {
                                   {entry.process.replace(/_/g, " ")}
                                   {entry.notes && ` • ${entry.notes}`}
                                 </div>
+                                {(entry.startedAt || entry.endedAt) && (
+                                  <div className="text-xs text-muted-foreground">
+                                    {entry.startedAt
+                                      ? new Date(entry.startedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+                                      : "—"}
+                                    {" – "}
+                                    {entry.endedAt
+                                      ? new Date(entry.endedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+                                      : "—"}
+                                  </div>
+                                )}
                               </div>
                               <Badge variant="secondary" className="text-xs shrink-0">
                                 {entry.hours}h
@@ -340,6 +355,17 @@ export default function TeamActivityPage() {
                                       {entry.process.replace(/_/g, " ")}
                                       {entry.notes && ` • ${entry.notes}`}
                                     </div>
+                                    {(entry.startedAt || entry.endedAt) && (
+                                      <div className="text-xs text-muted-foreground">
+                                        {entry.startedAt
+                                          ? new Date(entry.startedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+                                          : "—"}
+                                        {" – "}
+                                        {entry.endedAt
+                                          ? new Date(entry.endedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+                                          : "—"}
+                                      </div>
+                                    )}
                                   </div>
                                   <Badge variant="secondary" className="text-xs shrink-0">
                                     {entry.hours}h

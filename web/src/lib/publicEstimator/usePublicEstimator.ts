@@ -287,10 +287,10 @@ export function usePublicEstimator({
       try {
         setIsLoadingFields(true);
 
-        // Fetch client and item fields (public estimator uses these scopes)
+        // Fetch client and public fields (public estimator uses these scopes)
         const [client, itemFields] = await Promise.all([
           fetchQuestionnaireFields({ tenantSlug: branding.slug, scope: 'client', includeStandard: true }),
-          fetchQuestionnaireFields({ tenantSlug: branding.slug, scope: 'item', includeStandard: true }),
+          fetchQuestionnaireFields({ tenantSlug: branding.slug, scope: 'public', includeStandard: true }),
         ]);
 
         const filteredPublic = itemFields;

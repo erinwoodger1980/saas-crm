@@ -21,6 +21,7 @@ interface Task {
   relatedType: string | null;
   relatedId: string | null;
   dueAt: string | null;
+  meta?: Record<string, any> | null;
 }
 
 interface Timer {
@@ -80,6 +81,7 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
   const [overdueTasks, setOverdueTasks] = useState<Task[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
   
   // Filter processes based on user's allowed processes
   // If workshopProcessCodes is empty or undefined, show all processes
@@ -175,67 +177,55 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
     }
   }
 
-  async function startFromTask(task: Task) {
-    // Auto-fill project and process from task
-    if (task.relatedType === "OPPORTUNITY" && task.relatedId) {
-      setProjectId(task.relatedId);
-      setProjectSearch("");
-    }
-    
-    // Set task ID for linking
-    setSelectedTaskId(task.id);
-    
-    // Pre-fill notes with task title
-    setNotes(task.title);
-    
-    // If we can infer a process from task type, set it
-    // For now, user will need to select the process manually
-  }
-
-  async function startTimer() {
-    if (!process) return;
-    const procDef = allowedProcesses.find(p => p.code === process);
+  async function startTimerWith(payloadBase: { process: string; projectId?: string; notes?: string; taskId?: string }) {
+    const procDef = allowedProcesses.find((p) => p.code === payloadBase.process);
     const isGeneric = procDef?.isGeneric || false;
-    // For non-generic timers, projectId is required
-    if (!isGeneric && !projectId) return;
-    
+    if (!payloadBase.process) {
+      alert("Select a process to start the timer.");
+      return;
+    }
+    if (!procDef) {
+      alert("You can’t start a timer for this process (not permitted). Choose a process manually.");
+      return;
+    }
+    if (!isGeneric && !payloadBase.projectId) {
+      alert("This timer needs a project. Link the task to a job or pick a project/process manually.");
+      return;
+    }
+
     setLoading(true);
     try {
-      const payload: any = { process, notes: notes || undefined };
-      // Only include projectId for non-generic processes
+      const payload: any = { process: payloadBase.process, notes: payloadBase.notes || undefined };
       if (!isGeneric) {
-        payload.projectId = projectId;
+        payload.projectId = payloadBase.projectId;
       }
-      
-      // Include taskId if a task was selected
-      if (selectedTaskId) {
-        payload.taskId = selectedTaskId;
+      if (payloadBase.taskId) {
+        payload.taskId = payloadBase.taskId;
       }
-      
+
       // Attempt to capture geolocation
       if ("geolocation" in navigator) {
         try {
           const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, { 
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
               timeout: 5000,
-              enableHighAccuracy: false 
+              enableHighAccuracy: false,
             });
           });
-          
+
           payload.latitude = position.coords.latitude;
           payload.longitude = position.coords.longitude;
           payload.accuracy = position.coords.accuracy;
         } catch (geoError: any) {
           console.warn("Could not capture location:", geoError.message);
-          // Continue without location - it's optional
         }
       }
-      
+
       const response = await apiFetch<{ ok: boolean; timer: Timer; warning?: string; outsideGeofence?: boolean }>("/workshop/timer/start", {
         method: "POST",
         json: payload,
       });
-      
+
       if (response.ok && response.timer) {
         setActiveTimer(response.timer);
         setShowStart(false);
@@ -244,8 +234,7 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
         setNotes("");
         setSelectedTaskId(null);
         if (onTimerChange) onTimerChange();
-        
-        // Show geofence warning if outside designated area
+
         if (response.warning) {
           alert(response.warning);
         }
@@ -258,19 +247,72 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
     }
   }
 
+  async function startTimer() {
+    if (!process) return;
+    const procDef = allowedProcesses.find((p) => p.code === process);
+    const isGeneric = procDef?.isGeneric || false;
+    if (!isGeneric && !projectId) return;
+
+    await startTimerWith({
+      process,
+      projectId: isGeneric ? undefined : projectId,
+      notes: notes || undefined,
+      taskId: selectedTaskId || undefined,
+    });
+  }
+
   async function startFromTask(task: Task) {
-    // Auto-fill form from task
+    const relatedType = String(task.relatedType || "").toLowerCase();
+    const taskProjectId = relatedType === "opportunity" && task.relatedId ? String(task.relatedId) : "";
+
+    const taskProcessCode = String((task.meta as any)?.processCode || "");
+    if (!taskProcessCode) {
+      alert("This task isn’t linked to a process yet. Select a process on the task, then try again.");
+      return;
+    }
+
+    // Optimistically update the form so the user sees what started
     setSelectedTaskId(task.id);
     setNotes(task.title);
-    
-    // If task is linked to a project, pre-select it
-    if (task.relatedType === "opportunity" && task.relatedId) {
-      setProjectId(task.relatedId);
+    if (taskProjectId) {
+      setProjectId(taskProjectId);
+      setProjectSearch("");
     }
-    
-    // Try to infer process from task type if possible
-    // For now, user will need to select process manually
-    // Could enhance this later with task-to-process mapping
+
+    setProcess(taskProcessCode);
+
+    await startTimerWith({
+      process: taskProcessCode,
+      projectId: taskProjectId || undefined,
+      notes: task.title,
+      taskId: task.id,
+    });
+  }
+
+  async function updateTaskProcessCode(task: Task, nextProcessCode: string | null) {
+    setSavingTaskId(task.id);
+    try {
+      const nextMeta: Record<string, any> = { ...((task.meta as any) || {}) };
+      if (nextProcessCode) {
+        nextMeta.processCode = nextProcessCode;
+      } else {
+        delete nextMeta.processCode;
+      }
+
+      const updated = await apiFetch<any>(`/tasks/${task.id}`, {
+        method: "PATCH",
+        json: { meta: nextMeta },
+      });
+
+      const applyUpdate = (arr: Task[]) => arr.map((t) => (t.id === task.id ? { ...t, meta: updated?.meta ?? nextMeta } : t));
+      setDueTodayTasks(applyUpdate);
+      setOverdueTasks(applyUpdate);
+    } catch (e: any) {
+      alert("Failed to update task process: " + (e?.message || "Unknown error"));
+      console.error(e);
+    } finally {
+      setSavingTaskId(null);
+    }
   }
 
   async function swapTimer() {
@@ -857,6 +899,26 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
                       Due: {new Date(task.dueAt).toLocaleDateString()}
                     </div>
                   )}
+                  <div className="mt-2">
+                    <div className="text-xs font-medium text-muted-foreground mb-1">Process</div>
+                    <Select
+                      value={String((task.meta as any)?.processCode || "__NONE__")}
+                      onValueChange={(v) => updateTaskProcessCode(task, v === "__NONE__" ? null : v)}
+                      disabled={savingTaskId === task.id || loading}
+                    >
+                      <SelectTrigger className="h-10 text-sm">
+                        <SelectValue placeholder="Select process..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__NONE__">No process</SelectItem>
+                        {allowedProcesses.map((p) => (
+                          <SelectItem key={p.code} value={p.code}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <Button
                     size="sm"
                     variant="destructive"
@@ -881,6 +943,26 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
                       Due: {new Date(task.dueAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
                   )}
+                  <div className="mt-2">
+                    <div className="text-xs font-medium text-muted-foreground mb-1">Process</div>
+                    <Select
+                      value={String((task.meta as any)?.processCode || "__NONE__")}
+                      onValueChange={(v) => updateTaskProcessCode(task, v === "__NONE__" ? null : v)}
+                      disabled={savingTaskId === task.id || loading}
+                    >
+                      <SelectTrigger className="h-10 text-sm">
+                        <SelectValue placeholder="Select process..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__NONE__">No process</SelectItem>
+                        {allowedProcesses.map((p) => (
+                          <SelectItem key={p.code} value={p.code}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <Button
                     size="sm"
                     variant="default"

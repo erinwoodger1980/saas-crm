@@ -71,6 +71,8 @@ export async function seedStandardFieldsForTenant(tenantId: string): Promise<{
           isStandard: true,
           isActive: true,
           isHidden: false, // All fields visible in forms
+          showInPublicForm: true,
+          showInQuote: true,
           requiredForCosting: !!field.costingInputKey,
         },
       });
@@ -78,6 +80,30 @@ export async function seedStandardFieldsForTenant(tenantId: string): Promise<{
     } catch (error: any) {
       console.error(`Failed to create standard field ${field.key} for tenant ${tenantId}:`, error.message);
     }
+  }
+
+  // Backfill visibility flags for existing standard fields (older tenants)
+  try {
+    await prisma.questionnaireField.updateMany({
+      where: {
+        tenantId,
+        questionnaireId: questionnaire.id,
+        isStandard: true,
+        showInPublicForm: false,
+      },
+      data: { showInPublicForm: true },
+    });
+    await prisma.questionnaireField.updateMany({
+      where: {
+        tenantId,
+        questionnaireId: questionnaire.id,
+        isStandard: true,
+        showInQuote: false,
+      },
+      data: { showInQuote: true },
+    });
+  } catch (e: any) {
+    console.error(`[seedStandardFieldsForTenant] backfill failed for tenant ${tenantId}:`, e?.message || e);
   }
 
   return {

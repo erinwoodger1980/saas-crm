@@ -3,9 +3,10 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { apiFetch, setJwt } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
+import { Eye, EyeOff } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +15,25 @@ export default function LoginPage() {
   const { toast } = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  function getSafeNextPath(): string {
+    if (typeof window === "undefined") return "/dashboard";
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const raw = (sp.get("next") || "").trim();
+      if (!raw) return "/dashboard";
+
+      // Allow only same-site absolute paths (no protocol/host)
+      if (!raw.startsWith("/")) return "/dashboard";
+      if (raw.startsWith("//")) return "/dashboard";
+      return raw;
+    } catch {
+      return "/dashboard";
+    }
+  }
 
   async function doLogin(loginEmail: string, loginPassword: string) {
     setError("");
@@ -31,17 +49,14 @@ export default function LoginPage() {
         payload.username = identifier;
       }
       
-      const res = await apiFetch<{ jwt: string }>("/auth/login", {
+      await apiFetch("/auth/login", {
         method: "POST",
         json: payload,
       });
-      const authToken = res?.jwt;
-      if (authToken) {
-        setJwt(authToken);
-        router.push("/dashboard");
-      } else {
-        throw new Error("Invalid login response");
-      }
+      // Use window.location instead of router.push to force a full page refresh
+      // so middleware sees the freshly-set HttpOnly auth cookie.
+      const nextPath = getSafeNextPath();
+      window.location.assign(new URL(nextPath, window.location.origin).toString());
     } catch (err: any) {
       console.error(err);
       const status = err?.status;
@@ -49,6 +64,25 @@ export default function LoginPage() {
 
       // Make wrong-credentials cases explicit and friendly
       if (status === 401) {
+        const code = String(apiError || "").toLowerCase();
+        if (code === "user_not_found") {
+          toast({
+            title: "Email/username not found",
+            description: "Check it and try again.",
+            variant: "destructive",
+          });
+          setError("Email/username not found");
+          return;
+        }
+        if (code === "invalid_password") {
+          toast({
+            title: "Incorrect password",
+            description: "Check it and try again.",
+            variant: "destructive",
+          });
+          setError("Incorrect password");
+          return;
+        }
         toast({
           title: "Incorrect email or password",
           description: "Please check your details and try again.",
@@ -131,15 +165,26 @@ export default function LoginPage() {
             <label htmlFor="password" className="block text-sm font-medium text-gray-700">
               Password
             </label>
-            <input
-              id="password"
-              type="password"
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-            />
+            <div className="relative mt-1">
+              <input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-black"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+              />
+              <button
+                type="button"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-900"
+                onClick={() => setShowPassword((s) => !s)}
+                tabIndex={0}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
 
           <Button type="submit" disabled={loading} className="w-full">

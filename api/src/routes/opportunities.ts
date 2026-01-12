@@ -682,6 +682,7 @@ router.get("/by-lead/:leadId", async (req: any, res: any) => {
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
+      parentOpportunityId: true,
       title: true,
       stage: true,
       valueGBP: true,
@@ -728,6 +729,7 @@ router.get("/:id", async (req: any, res: any) => {
     select: {
       id: true,
       leadId: true,
+      parentOpportunityId: true,
       title: true,
       stage: true,
       valueGBP: true,
@@ -761,6 +763,31 @@ router.get("/:id", async (req: any, res: any) => {
   }
 
   res.json({ ok: true, opportunity });
+});
+
+/**
+ * GET /opportunities/:id/children
+ * Returns split sub-projects for a parent opportunity.
+ */
+router.get("/:id/children", async (req: any, res: any) => {
+  const { tenantId } = getAuth(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  const id = String(req.params.id);
+
+  const children = await prisma.opportunity.findMany({
+    where: { tenantId, parentOpportunityId: id },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      title: true,
+      stage: true,
+      valueGBP: true,
+      createdAt: true,
+    },
+  });
+
+  res.json({ ok: true, children });
 });
 
 /**
@@ -833,7 +860,7 @@ router.patch("/:id", async (req: any, res: any) => {
   // Date fields
   const dateFields = [
     'startDate', 'deliveryDate', 'installationStartDate', 'installationEndDate',
-    'wonAt', 'lostAt',
+    'createdAt', 'wonAt', 'lostAt',
     'timberOrderedAt', 'timberExpectedAt', 'timberReceivedAt',
     'glassOrderedAt', 'glassExpectedAt', 'glassReceivedAt',
     'ironmongeryOrderedAt', 'ironmongeryExpectedAt', 'ironmongeryReceivedAt',
@@ -1044,8 +1071,8 @@ router.post("/", async (req: any, res: any) => {
  * Body: { splits: [{ title, description?, valueGBP? }] }
  */
 router.post("/:id/split", async (req: any, res: any) => {
-  const { tenantId } = getAuth(req);
-  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+  const { tenantId, userId } = getAuth(req);
+  if (!tenantId || !userId) return res.status(401).json({ error: "unauthorized" });
 
   const id = String(req.params.id);
   const { splits } = req.body || {};
@@ -1058,35 +1085,73 @@ router.post("/:id/split", async (req: any, res: any) => {
     // Verify parent opportunity exists
     const parent = await prisma.opportunity.findFirst({
       where: { id, tenantId },
-      include: { client: true, lead: true },
+      include: { client: true, lead: true, clientAccount: true },
     });
 
     if (!parent) {
       return res.status(404).json({ error: "opportunity_not_found" });
     }
 
-    // Create child opportunities
+    const baseLeadCustom = (() => {
+      const c = (parent as any)?.lead?.custom;
+      if (c && typeof c === "object" && !Array.isArray(c)) return c as any;
+      return null;
+    })();
+
+    // Create child opportunities (each child gets its own Lead so it shows up in lead-driven lists)
     const children = await Promise.all(
-      splits.map((split: any) =>
-        prisma.opportunity.create({
+      splits.map(async (split: any) => {
+        const childTitle = split.title || `${parent.title} - Split`;
+        const childDescription = split.description || parent.description || childTitle;
+        const inferredContactName =
+          (parent as any)?.lead?.contactName ||
+          (parent as any)?.clientAccount?.primaryContact ||
+          (parent as any)?.clientAccount?.companyName ||
+          parent.title ||
+          "Project";
+        const inferredEmail =
+          (parent as any)?.lead?.email || (parent as any)?.clientAccount?.email || null;
+
+        const childLead = await prisma.lead.create({
+          data: {
+            tenantId,
+            createdById: userId,
+            clientId: (parent as any)?.lead?.clientId || parent.clientId || null,
+            clientAccountId: (parent as any)?.lead?.clientAccountId || parent.clientAccountId || null,
+            contactName: inferredContactName,
+            email: inferredEmail,
+            phone: (parent as any)?.lead?.phone || null,
+            address: (parent as any)?.lead?.address || null,
+            deliveryAddress: (parent as any)?.lead?.deliveryAddress || null,
+            number: (parent as any)?.lead?.number || null,
+            description: childTitle,
+            status: (parent as any)?.lead?.status || "WON",
+            custom: {
+              ...(baseLeadCustom ? { ...(baseLeadCustom as any) } : {}),
+              splitParentOpportunityId: id,
+            },
+          },
+        });
+
+        return prisma.opportunity.create({
           data: {
             tenantId,
             parentOpportunityId: id,
+            leadId: childLead.id,
             // IMPORTANT: Opportunity.leadId is unique, so child opportunities cannot reuse
-            // the parent's leadId. The parent remains the canonical opportunity for the lead;
-            // children are linked via parentOpportunityId.
+            // the parent's leadId. Each child gets its own lead (above).
             clientId: parent.clientId,
             clientAccountId: parent.clientAccountId,
-            title: split.title || `${parent.title} - Split`,
-            description: split.description || parent.description,
+            title: childTitle,
+            description: childDescription,
             valueGBP: split.valueGBP ? parseFloat(split.valueGBP) : undefined,
             stage: parent.stage,
             wonAt: parent.wonAt,
             startDate: parent.startDate,
             deliveryDate: parent.deliveryDate,
           },
-        })
-      )
+        });
+      })
     );
 
     res.json({ ok: true, parent, children });

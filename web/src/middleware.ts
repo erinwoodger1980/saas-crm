@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const AUTH_COOKIE_NAME = "jauth"; // Changed from "jid" to "jauth" to match API server expectations
+// Auth is via HttpOnly `jauth` cookie.
+const AUTH_COOKIE_NAMES = ["jauth"] as const;
 const APP_HOME_PATH = "/dashboard";
 
 const PUBLIC_EXACT = new Set([
@@ -42,7 +43,15 @@ function requiresAuth(pathname: string) {
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const authToken = req.cookies.get(AUTH_COOKIE_NAME)?.value;
+  const authToken = AUTH_COOKIE_NAMES.map((n) => req.cookies.get(n)?.value).find(Boolean);
+
+  // Guard against accidental relative navigations creating nested paths like /login/dashboard.
+  // If a user is already authenticated, send them home; otherwise normalize to /login.
+  if (pathname.startsWith("/login/") || pathname.startsWith("/signin/")) {
+    const url = req.nextUrl.clone();
+    url.pathname = authToken ? APP_HOME_PATH : "/login";
+    return NextResponse.redirect(url);
+  }
   // Extract role from a lightweight JWT (no verification here) to gate workshop-only users
   let role: string | null = null;
   if (authToken) {

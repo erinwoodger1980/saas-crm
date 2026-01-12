@@ -350,6 +350,9 @@ router.get("/tenant/:tenantSlug/questionnaire-fields", async (req, res) => {
     const fields = await prisma.questionnaireField.findMany({
       where: {
         tenantId: settings.tenantId,
+        isActive: true,
+        isHidden: false,
+        showInPublicForm: true,
         ...(includeStandard ? {} : { isStandard: false }),
         ...(scope ? { scope } : {}),
       },

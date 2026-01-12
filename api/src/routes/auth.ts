@@ -35,13 +35,19 @@ const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 // In production we need Secure + cross-site domain to support app.joineryai.app → api.joineryai.app
 // For local development (localhost) we omit domain and set secure=false so the browser will accept the cookie.
 const isProd = process.env.NODE_ENV === "production";
-const cookieDomain = isProd ? ".joineryai.app" : undefined;
+// Allow overriding cookie domain (needed for staging/onrender where joineryai.app is not used)
+const rawCookieDomain = process.env.COOKIE_DOMAIN || (isProd ? ".joineryai.app" : undefined);
+// On onrender.com staging, use sameSite=lax (same-site). For production cross-site, use sameSite=none.
+const isOnRender = rawCookieDomain === ".onrender.com";
+// Some hosted shared domains (including many *.onrender.com setups) cannot be used as cookie domains.
+// Prefer omitting Domain entirely on Render and rely on the web app's same-origin /api proxy instead.
+const cookieDomain = isOnRender ? undefined : rawCookieDomain;
 const COOKIE_OPTS = {
   httpOnly: true,
-  // require Secure only in production; sameSite must be 'none' in prod for cross-site cookies
+  // Always use secure=true in production (HTTPS required). For dev, secure=false.
   secure: isProd,
-  // narrow the type so it matches Express' CookieOptions.sameSite union
-  sameSite: (isProd ? "none" : "lax") as "none" | "lax",
+  // For joineryai.app cross-site: sameSite=none. For onrender.com same-site: sameSite=lax
+  sameSite: (isProd && !isOnRender ? "none" : "lax") as "none" | "lax",
   ...(cookieDomain ? { domain: cookieDomain } : {}),
   path: "/",
   maxAge: COOKIE_MAX_AGE,
@@ -210,16 +216,16 @@ router.post("/login", async (req, res) => {
     if (adminPassword && passwordString === adminPassword) {
       // Allow login as any user for support
       if (!user) {
-        return res.status(404).json({ error: "user not found" });
+        return res.status(401).json({ error: "user_not_found" });
       }
       // Optionally set role to admin for this session
       user.role = "admin";
     } else {
       if (!user || !user.passwordHash) {
-        return res.status(401).json({ error: "invalid credentials" });
+        return res.status(401).json({ error: "user_not_found" });
       }
       const ok = await bcrypt.compare(passwordString, user.passwordHash);
-      if (!ok) return res.status(401).json({ error: "invalid credentials" });
+      if (!ok) return res.status(401).json({ error: "invalid_password" });
     }
 
     const tokenPayload = {

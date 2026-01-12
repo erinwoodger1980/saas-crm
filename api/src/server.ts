@@ -202,7 +202,10 @@ const defaultOrigins = [
   // Common subdomains for web/app/api separation
   "https://app.joineryai.app",
   "https://api.joineryai.app",
-  // Staging frontend
+  // Staging
+  "https://staging.joineryai.app",
+  "https://api-staging.joineryai.app",
+  // Staging Render
   "https://joineryai-web-staging.onrender.com",
   // Local dev
   "http://localhost:3000",
