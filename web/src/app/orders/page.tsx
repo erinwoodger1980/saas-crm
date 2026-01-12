@@ -575,7 +575,8 @@ export default function OrdersPage() {
                 if (!v) setSelected(null);
               }}
               leadPreview={{
-                id: selected.opportunityId || selected.id,
+                id: selected.id,
+                opportunityId: selected.opportunityId || null,
                 contactName: selected.contactName,
                 email: selected.email,
                 status: (selected.status as any) || "WON",
