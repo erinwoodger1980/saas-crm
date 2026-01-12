@@ -1651,7 +1651,9 @@ export default function WorkshopPage() {
                     }}
                   >
                     {date && (
-                      <div className={`text-sm font-medium ${isToday ? 'text-blue-600' : 'text-slate-700'}`}>
+                      <div
+                        className={`relative z-20 inline-flex min-w-6 justify-center rounded bg-white/80 px-1 text-sm font-medium ${isToday ? 'text-blue-600' : 'text-slate-700'}`}
+                      >
                         {date.getDate()}
                       </div>
                     )}
@@ -1660,9 +1662,10 @@ export default function WorkshopPage() {
               })}
               
               {/* Project bars overlay - absolute positioned to span across days */}
-              <div className="absolute inset-0 pointer-events-none" style={{ paddingTop: '2.5rem', zIndex: 10 }}>
+              <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 5 }}>
                 {/* Row guides and badges for month overlay */}
                 {(() => {
+                  const headerOffset = 32;
                   if (!projects || projects.length === 0) return null;
                   const daysArray = getDaysInMonth(currentMonth);
                   const validDays = daysArray.filter(d => d !== null) as Date[];
@@ -1672,7 +1675,7 @@ export default function WorkshopPage() {
                   const projectRows = calculateProjectRows(projects, monthStart, monthEnd);
 
                   return projectRows.map((row, rowIdx) => (
-                    <div key={`month-guide-${rowIdx}`} style={{ position: 'absolute', top: `${rowIdx * 128 + 8}px`, left: 0, right: 0 }}>
+                    <div key={`month-guide-${rowIdx}`} style={{ position: 'absolute', top: `${rowIdx * 128 + headerOffset + 8}px`, left: 0, right: 0 }}>
                       <div className="border-t border-dashed border-slate-200" />
                       <div className="absolute left-1 -translate-y-1 text-[10px] px-2 py-0.5 rounded-full bg-white border border-slate-200 shadow-sm text-slate-700">
                         {row.length} project{row.length !== 1 ? 's' : ''}
@@ -1681,6 +1684,7 @@ export default function WorkshopPage() {
                   ));
                 })()}
                 {(() => {
+                  const headerOffset = 32;
                   const daysArray = getDaysInMonth(currentMonth);
                   const validDays = daysArray.filter(d => d !== null) as Date[];
                   if (validDays.length === 0) return null;
@@ -1696,7 +1700,7 @@ export default function WorkshopPage() {
                     <>
                       {/* Manufacturing overlays */}
                       {(timelineViewFilter === 'both' || timelineViewFilter === 'manufacturing') && projectRows.map((row, rowIdx) => (
-                        <div key={`mfg-${rowIdx}`} style={{ position: 'absolute', top: `${rowIdx * 128}px`, left: 0, right: 0, height: '24px' }}>
+                        <div key={`mfg-${rowIdx}`} style={{ position: 'absolute', top: `${rowIdx * 128 + headerOffset}px`, left: 0, right: 0, height: '24px' }}>
                           {row.map(proj => {
                             const projStart = new Date(proj.startDate!);
                             const projEnd = new Date(proj.deliveryDate!);
@@ -1800,7 +1804,7 @@ export default function WorkshopPage() {
 
                       {/* Installation overlays */}
                       {(timelineViewFilter === 'both' || timelineViewFilter === 'installation') && projectRows.map((row, rowIdx) => (
-                        <div key={`install-${rowIdx}`} style={{ position: 'absolute', top: `${rowIdx * 128 + 24}px`, left: 0, right: 0, height: '20px' }}>
+                        <div key={`install-${rowIdx}`} style={{ position: 'absolute', top: `${rowIdx * 128 + headerOffset + 24}px`, left: 0, right: 0, height: '20px' }}>
                           {row.map(proj => {
                             if (!proj.installationStartDate || !proj.installationEndDate) return null;
                             const instStart = new Date(proj.installationStartDate);

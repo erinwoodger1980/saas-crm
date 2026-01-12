@@ -69,6 +69,8 @@ type Order = {
   custom?: Record<string, any>;
   opportunityId?: string | null;
   processPercentages?: Record<string, number>;
+  manufacturingCompletionDate?: string | null;
+  orderValueGBP?: number | string | null;
 };
 
 type Grouped = Record<string, Order[]>;
@@ -77,6 +79,29 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   WON: "Won",
   COMPLETED: "Completed",
 };
+
+function formatCurrencyGBP(value: number) {
+  return new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: "GBP",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function monthLabelFromIso(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "Unknown month";
+  return d.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+}
+
+function compareIsoDateAsc(aIso: string, bIso: string) {
+  const a = new Date(aIso).getTime();
+  const b = new Date(bIso).getTime();
+  if (Number.isNaN(a) && Number.isNaN(b)) return 0;
+  if (Number.isNaN(a)) return 1;
+  if (Number.isNaN(b)) return -1;
+  return a - b;
+}
 
 export default function OrdersPage() {
   const [tab, setTab] = useState<OrderStatus>("WON");
@@ -176,6 +201,8 @@ export default function OrdersPage() {
           custom: l.custom,
           fallbackLabel: "Order",
         }),
+        manufacturingCompletionDate: (l as any).manufacturingCompletionDate ?? null,
+        orderValueGBP: (l as any).orderValueGBP ?? null,
       }));
     });
     setGrouped(normalized);
@@ -211,6 +238,38 @@ export default function OrdersPage() {
     }),
     [grouped]
   );
+
+  const sortedRows = useMemo(() => {
+    const list = [...(rows || [])];
+    // Blank manufacturing completion dates first, then ascending by date.
+    list.sort((a, b) => {
+      const ad = a.manufacturingCompletionDate;
+      const bd = b.manufacturingCompletionDate;
+      const aBlank = !ad;
+      const bBlank = !bd;
+      if (aBlank && bBlank) return 0;
+      if (aBlank) return -1;
+      if (bBlank) return 1;
+      return compareIsoDateAsc(ad!, bd!);
+    });
+    return list;
+  }, [rows]);
+
+  const groupedForCards = useMemo(() => {
+    const noDate: Order[] = [];
+    const byMonth = new Map<string, Order[]>();
+    for (const o of sortedRows) {
+      if (!o.manufacturingCompletionDate) {
+        noDate.push(o);
+        continue;
+      }
+      const label = monthLabelFromIso(o.manufacturingCompletionDate);
+      const bucket = byMonth.get(label) || [];
+      bucket.push(o);
+      byMonth.set(label, bucket);
+    }
+    return { noDate, byMonth };
+  }, [sortedRows]);
 
   // Load column config for current tab
   React.useEffect(() => {
@@ -415,13 +474,13 @@ export default function OrdersPage() {
         )}
 
         <section className="space-y-2">
-          {rows.length === 0 ? (
+          {sortedRows.length === 0 ? (
             <div className="rounded-xl border border-dashed border-emerald-200 bg-white/70 py-10 text-center text-sm text-slate-500">
               No orders in "{STATUS_LABELS[tab]}".
             </div>
           ) : viewMode === 'grid' ? (
             <CustomizableGrid
-              data={rows}
+              data={sortedRows}
               columns={columnConfig}
               onRowClick={openOrder}
               onCellChange={handleCellChange}
@@ -430,22 +489,69 @@ export default function OrdersPage() {
               onEditColumnOptions={(field) => setEditingField(field)}
             />
           ) : (
-            rows.map((order) => (
-              <CardRow
-                key={order.id}
-                order={order}
-                _statusLabel={STATUS_LABELS[tab]}
-                onOpen={() => {
-                  setSelected(order);
-                  setOpen(true);
-                }}
-                actionArea={
-                  <span className="rounded-full border bg-white px-2 py-0.5 text-[11px] text-slate-700">
-                    {STATUS_LABELS[tab]}
-                  </span>
-                }
-              />
-            ))
+            <div className="space-y-6">
+              {groupedForCards.noDate.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-semibold text-slate-800">No manufacturing completion date</div>
+                    <div className="text-xs text-slate-500">{groupedForCards.noDate.length} orders</div>
+                  </div>
+                  <div className="space-y-2">
+                    {groupedForCards.noDate.map((order) => (
+                      <CardRow
+                        key={order.id}
+                        order={order}
+                        _statusLabel={STATUS_LABELS[tab]}
+                        onOpen={() => {
+                          setSelected(order);
+                          setOpen(true);
+                        }}
+                        actionArea={
+                          <span className="rounded-full border bg-white px-2 py-0.5 text-[11px] text-slate-700">
+                            {STATUS_LABELS[tab]}
+                          </span>
+                        }
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {Array.from(groupedForCards.byMonth.entries()).map(([monthLabel, orders]) => {
+                const total = orders.reduce((sum, o) => {
+                  const raw = o.orderValueGBP;
+                  const num = typeof raw === "number" ? raw : raw == null ? 0 : Number(raw);
+                  return sum + (Number.isFinite(num) ? num : 0);
+                }, 0);
+
+                return (
+                  <div key={monthLabel} className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-semibold text-slate-800">{monthLabel}</div>
+                      <div className="text-xs text-slate-500">Total: {formatCurrencyGBP(total)}</div>
+                    </div>
+                    <div className="space-y-2">
+                      {orders.map((order) => (
+                        <CardRow
+                          key={order.id}
+                          order={order}
+                          _statusLabel={STATUS_LABELS[tab]}
+                          onOpen={() => {
+                            setSelected(order);
+                            setOpen(true);
+                          }}
+                          actionArea={
+                            <span className="rounded-full border bg-white px-2 py-0.5 text-[11px] text-slate-700">
+                              {STATUS_LABELS[tab]}
+                            </span>
+                          }
+                        />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </section>
       </DeskSurface>

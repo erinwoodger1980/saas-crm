@@ -1392,6 +1392,8 @@ router.get("/grouped", async (req, res) => {
       opportunity: {
         select: { 
           id: true,
+          valueGBP: true,
+          deliveryDate: true,
           projectProcesses: {
             include: {
               processDefinition: {
@@ -1462,6 +1464,8 @@ router.get("/grouped", async (req, res) => {
       ...l,
       custom: mergedCustom,
       opportunityId: l.opportunity?.id || null,
+      manufacturingCompletionDate: (l.opportunity as any)?.deliveryDate || null,
+      orderValueGBP: (l.opportunity as any)?.valueGBP ?? null,
       taskCount: taskCountMap.get(l.id) || 0,
       processPercentages
     });
