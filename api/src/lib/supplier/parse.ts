@@ -1,5 +1,7 @@
 import OpenAI from "openai";
 import { z } from "zod";
+import path from "path";
+import { pathToFileURL } from "url";
 
 import type { SupplierParseResult } from "../../types/parse";
 import {
@@ -11,6 +13,7 @@ import {
   type ParseMetadata,
 } from "../pdf/parser";
 import { runOcrFallback } from "../pdf/ocrFallback";
+import { explainShouldUseOcr } from "./ocrDecisionGate";
 import {
   cleanText,
   combineWarnings,
@@ -428,14 +431,66 @@ async function runStageB(
   options?: { ocrEnabled?: boolean; ocrAutoWhenNoText?: boolean },
 ): Promise<StageBResult> {
   const stageStartedAt = Date.now();
+
+  const extractRawTextByPageForGate = async (): Promise<string[]> => {
+    try {
+      // pdfjs-dist v4 ships ESM entrypoints. Use dynamic import so this file can remain CJS.
+      const pdfjsLib: any = await import("pdfjs-dist/legacy/build/pdf.mjs");
+
+      const data = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+      const standardFontDataUrl = (() => {
+        try {
+          const pkgPath = require.resolve("pdfjs-dist/package.json");
+          return pathToFileURL(path.join(path.dirname(pkgPath), "standard_fonts/")).href;
+        } catch {
+          return undefined;
+        }
+      })();
+
+      const loadingTask = pdfjsLib.getDocument({
+        data,
+        ...(standardFontDataUrl ? { standardFontDataUrl } : {}),
+      });
+      const doc = await loadingTask.promise;
+      const pages: string[] = [];
+      const pageCount = Math.max(0, Math.min(2, Number(doc?.numPages || 0)));
+      for (let pageNum = 1; pageNum <= pageCount; pageNum += 1) {
+        const page = await doc.getPage(pageNum);
+        const tc = await page.getTextContent();
+        const text = (tc?.items || [])
+          .map((it: any) => String(it?.str || "").trim())
+          .filter(Boolean)
+          .join(" ")
+          .trim();
+        pages.push(text);
+      }
+      try {
+        await doc.destroy();
+      } catch {}
+      return pages;
+    } catch {
+      return [];
+    }
+  };
+
+  // OCR decision gate: only OCR when extracted text is not usable.
+  // We use a lightweight page-text sample for scoring where possible; otherwise we fall back to
+  // the extraction summary text.
+  const rawTextByPage: string[] = await extractRawTextByPageForGate();
+  const gate = explainShouldUseOcr(stageA.extraction, rawTextByPage);
+
   const configuredOcrEnabled = (() => {
     if (typeof options?.ocrEnabled === "boolean") return options.ocrEnabled;
     return String(process.env.PARSER_OCR_ENABLED ?? "true").toLowerCase() !== "false";
   })();
-  const autoEnableOcr = !!options?.ocrAutoWhenNoText && stageA.extraction.rows.length === 0;
-  const ocrEnabled = configuredOcrEnabled || autoEnableOcr;
+
+  // Backwards-compatible option name: ocrAutoWhenNoText now means "auto-enable OCR when text is unusable".
+  const autoEnableOcr = !!options?.ocrAutoWhenNoText && gate.useOcr;
+  const wantsOcr = configuredOcrEnabled || autoEnableOcr;
+  const ocrEnabled = wantsOcr && gate.useOcr;
+
   const autoWarning = autoEnableOcr && !configuredOcrEnabled
-    ? "OCR auto-enabled (no text layer detected)"
+    ? "OCR auto-enabled (text extraction not usable)"
     : null;
   const gibberishLineRate = (() => {
     const lines = stageA.parse.lines || [];
@@ -460,9 +515,19 @@ async function runStageB(
     return { parse: stageA.parse, used: false, warnings: [] };
   }
 
-  // Deterministic / fast-fail mode: do not attempt OCR or ML fallback.
+  console.log("[runStageB] OCR gate", {
+    shouldAttempt,
+    configuredOcrEnabled,
+    autoEnableOcr,
+    ocrEnabled,
+    gate,
+  });
+
+  // Fast-fail mode: do not attempt OCR when it isn't needed (text usable) or explicitly disabled.
   if (!ocrEnabled) {
-    const warning = "OCR disabled; parser could not recover text from PDF";
+    const warning = gate.useOcr
+      ? "OCR disabled; parser could not recover text from PDF"
+      : "OCR skipped; extracted text looks usable";
     return {
       parse: attachWarnings(stageA.parse, autoWarning ? [warning, autoWarning] : [warning]),
       used: false,
