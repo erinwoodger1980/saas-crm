@@ -881,6 +881,13 @@ router.post("/:id/lines/fill-standard-from-parsed", requireAuth, async (req: any
     }
 
     try {
+      const supplierFileCount = await prisma.uploadedFile.count({
+        where: {
+          tenantId,
+          quoteId,
+          kind: "SUPPLIER_QUOTE" as any,
+        },
+      });
       const inputHash = crypto
         .createHash("sha256")
         .update(`${tenantId}:${quoteId}:${nowIso}`)
@@ -894,7 +901,7 @@ router.post("/:id/lines/fill-standard-from-parsed", requireAuth, async (req: any
         outputJson: {
           updated,
           considered: quote.lines.length,
-          supplierFileCount: quote.supplierFiles?.length || 0,
+          supplierFileCount,
         },
         confidence: 1.0,
         meta: { quoteId },
