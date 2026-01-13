@@ -116,6 +116,100 @@ interface StageBResult {
   warnings: string[];
 }
 
+function parseLineItemsFromTextLines(
+  lines: string[],
+  supplierHint?: string,
+  currency?: string,
+): SupplierParseResult | null {
+  const cleanedLines = (lines || [])
+    .map((l) => cleanText(String(l || "")).replace(/\s{2,}/g, " ").trim())
+    .filter(Boolean);
+
+  if (!cleanedLines.length) return null;
+
+  const parsedLines: SupplierParseResult["lines"] = [];
+  const detectedTotals: SupplierParseResult["detected_totals"] = {};
+  let supplier = supplierHint?.trim();
+
+  // Only treat explicit currency amounts as "money" to avoid matching weights/dimensions.
+  const moneyRe = /[£€$]\s*\d[\d,]*\.\d{2}/g;
+
+  for (const line of cleanedLines) {
+    const lower = line.toLowerCase();
+    if (!supplier && /\bfit47\b/i.test(line)) supplier = "Fit47";
+
+    // Skip obvious headers.
+    if (/\bquotation\b|\bquote\b|\binvoice\b|\bpage\b\s*\d+/i.test(line)) continue;
+    if (/\bbrought forward\b/i.test(line)) continue;
+
+    // Totals.
+    if (/\btotal\s+weight\b/i.test(lower)) continue;
+    if (/\bvat\b/i.test(lower)) continue;
+    if (/\bsubtotal\b|\bsub total\b|\btotal\b|\bgrand total\b/i.test(lower)) {
+      const monies = line.match(moneyRe) || [];
+      const last = monies.length ? monies[monies.length - 1] : null;
+      const value = last ? Number(last.replace(/[£€$,\s]/g, "")) : null;
+      if (value != null && Number.isFinite(value)) {
+        if (/\bsubtotal\b|\bsub total\b/i.test(lower)) detectedTotals.subtotal = value;
+        else detectedTotals.estimated_total = value;
+      }
+      continue;
+    }
+
+    const monies = line.match(moneyRe) || [];
+    if (!monies.length) continue;
+
+    // Require some alpha characters to avoid capturing pure numeric rows.
+    if (!/[A-Za-z]/.test(line)) continue;
+
+    const lineTotalRaw = monies[monies.length - 1];
+    const costUnitRaw = monies.length >= 2 ? monies[monies.length - 2] : undefined;
+    const lineTotal = Number(lineTotalRaw.replace(/[£€$,\s]/g, ""));
+    const costUnit = costUnitRaw ? Number(costUnitRaw.replace(/[£€$,\s]/g, "")) : undefined;
+
+    // Qty: take the last number immediately before the first money token.
+    const firstMoney = (line.match(moneyRe) || [])[0];
+    const beforeMoney = firstMoney ? line.slice(0, Math.max(0, line.indexOf(firstMoney))) : line;
+    const qtyMatches = beforeMoney.match(/\b\d+(?:\.\d+)?\b/g) || [];
+    const qtyCandidate = qtyMatches.length ? Number(qtyMatches[qtyMatches.length - 1]) : undefined;
+    const qty = qtyCandidate != null && Number.isFinite(qtyCandidate) && qtyCandidate > 0 && qtyCandidate <= 999
+      ? qtyCandidate
+      : undefined;
+
+    // Description: strip trailing money tokens, collapse whitespace.
+    let desc = cleanText(
+      line
+        .replace(moneyRe, " ")
+        .replace(/\s{2,}/g, " ")
+        .trim(),
+    );
+
+    // Drop trailing repeated qty token (common when qty is a column).
+    if (qty != null) {
+      desc = desc.replace(new RegExp(`\\b${qty}\\b\\s*$`), "").trim();
+    }
+
+    if (!desc) continue;
+
+    parsedLines.push({
+      description: desc,
+      ...(qty != null ? { qty } : {}),
+      ...(Number.isFinite(costUnit) ? { costUnit } : {}),
+      ...(Number.isFinite(lineTotal) ? { lineTotal } : {}),
+    });
+  }
+
+  if (!parsedLines.length) return null;
+
+  return {
+    supplier,
+    currency: currency || "GBP",
+    lines: parsedLines,
+    detected_totals: Object.keys(detectedTotals).length ? detectedTotals : undefined,
+    warnings: ["Recovered line items from pdfjs text"],
+  };
+}
+
 interface StageCResult {
   parse: SupplierParseResult;
   used: boolean;
@@ -457,12 +551,32 @@ async function runStageB(
       for (let pageNum = 1; pageNum <= pageCount; pageNum += 1) {
         const page = await doc.getPage(pageNum);
         const tc = await page.getTextContent();
-        const text = (tc?.items || [])
-          .map((it: any) => String(it?.str || "").trim())
-          .filter(Boolean)
-          .join(" ")
-          .trim();
-        pages.push(text);
+
+        // Build line breaks by grouping items with similar Y coordinates.
+        const groups = new Map<number, { x: number; str: string }[]>();
+        for (const it of tc?.items || []) {
+          const s = String((it as any)?.str || "").trim();
+          if (!s) continue;
+          const t = (it as any)?.transform;
+          const x = Array.isArray(t) && typeof t[4] === "number" ? t[4] : 0;
+          const yRaw = Array.isArray(t) && typeof t[5] === "number" ? t[5] : 0;
+          const y = Math.round(yRaw);
+          const bucket = groups.get(y) || [];
+          bucket.push({ x, str: s });
+          groups.set(y, bucket);
+        }
+
+        const ys = Array.from(groups.keys()).sort((a, b) => b - a);
+        const lines: string[] = [];
+        for (const y of ys) {
+          const parts = groups.get(y) || [];
+          parts.sort((a, b) => a.x - b.x);
+          const line = parts.map((p) => p.str).join(" ").replace(/\s{2,}/g, " ").trim();
+          if (!line) continue;
+          lines.push(line);
+        }
+
+        pages.push(lines.join("\n"));
       }
       try {
         await doc.destroy();
@@ -522,6 +636,31 @@ async function runStageB(
     ocrEnabled,
     gate,
   });
+
+  // If Stage A found no line items but pdfjs indicates usable text, try a lightweight
+  // deterministic recovery from the extracted pdfjs text (no OCR).
+  if (!ocrEnabled && stageA.parse.lines.length === 0 && !gate.useOcr && rawTextByPage.length) {
+    const recovered = parseLineItemsFromTextLines(
+      rawTextByPage.join("\n").split(/\r?\n+/g),
+      stageA.parse.supplier,
+      stageA.parse.currency,
+    );
+    if (recovered?.lines?.length) {
+      const warnings = unique([...(stageA.warnings ?? []), ...(recovered.warnings ?? [])]);
+      return {
+        parse: attachWarnings(
+          {
+            ...recovered,
+            supplier: recovered.supplier || stageA.parse.supplier,
+            currency: recovered.currency || stageA.parse.currency,
+          },
+          warnings,
+        ),
+        used: false,
+        warnings,
+      };
+    }
+  }
 
   // Fast-fail mode: do not attempt OCR when it isn't needed (text usable) or explicitly disabled.
   if (!ocrEnabled) {

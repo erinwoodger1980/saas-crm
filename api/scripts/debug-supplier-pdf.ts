@@ -90,6 +90,52 @@ function truncate(text: string, max = 180): string {
   return `${s.slice(0, max - 1)}…`;
 }
 
+async function extractPdfJsTextByPage(buffer: Buffer, maxPages = 2): Promise<string[]> {
+  try {
+    const pdfjsLib: any = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const data = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+
+    const standardFontDataUrl = (() => {
+      try {
+        const pkgPath = require.resolve("pdfjs-dist/package.json");
+        const fontsDir = path.join(path.dirname(pkgPath), "standard_fonts/");
+        const { pathToFileURL } = require("url");
+        return pathToFileURL(fontsDir).href;
+      } catch {
+        return undefined;
+      }
+    })();
+
+    const doc = await pdfjsLib
+      .getDocument({
+        data,
+        ...(standardFontDataUrl ? { standardFontDataUrl } : {}),
+      })
+      .promise;
+
+    const pages: string[] = [];
+    const pageCount = Math.max(0, Math.min(maxPages, Number(doc?.numPages || 0)));
+    for (let pageNum = 1; pageNum <= pageCount; pageNum += 1) {
+      const page = await doc.getPage(pageNum);
+      const tc = await page.getTextContent();
+      const text = (tc?.items || [])
+        .map((it: any) => String(it?.str || "").trim())
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+      pages.push(text);
+    }
+
+    try {
+      await doc.destroy();
+    } catch {}
+
+    return pages;
+  } catch {
+    return [];
+  }
+}
+
 function getPool(args: Args): Pool {
   const connectionString = args.databaseUrl || process.env.DATABASE_URL;
   if (!connectionString) {
@@ -302,6 +348,13 @@ async function main() {
     ocrEnabled,
     ocrAutoWhenNoText,
     llmEnabled,
+  });
+
+  console.log("\n=== pdfjs text sample (first 2 pages) ===");
+  const pages = await extractPdfJsTextByPage(buffer, 2);
+  pages.forEach((pageText, idx) => {
+    console.log(`\n--- page ${idx + 1} ---`);
+    console.log(truncate(pageText, 900));
   });
   console.log({
     usedStages: (full as any).usedStages ?? null,
