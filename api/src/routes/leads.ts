@@ -12,6 +12,7 @@ import multer from "multer";
 import fs from "fs";
 import path from "path";
 import { simpleParser } from "mailparser";
+import OpenAI from "openai";
 import {
   CANONICAL_FIELD_CONFIG,
   lookupCsvField,
@@ -2748,7 +2749,20 @@ router.post("/parse-email", async (req, res) => {
         const outerFromText = parsed.from?.text ? String(parsed.from.text) : null;
         const outerFromParsed = parseFromHeader(outerFromText);
         const outerFromEmail = outerFromParsed?.email ? String(outerFromParsed.email).toLowerCase() : null;
-        const text = typeof parsed.text === "string" ? parsed.text : "";
+        const text = (() => {
+          const plain = typeof parsed.text === "string" ? parsed.text : "";
+          if (plain && plain.trim()) return plain;
+          const html = typeof (parsed as any)?.html === "string" ? String((parsed as any).html) : "";
+          if (!html) return "";
+          // Best-effort HTML -> text for forwarded headers that sometimes live only in HTML.
+          return html
+            .replace(/<\s*br\s*\/?>/gi, "\n")
+            .replace(/<\s*\/p\s*>/gi, "\n")
+            .replace(/<[^>]+>/g, " ")
+            .replace(/&nbsp;/gi, " ")
+            .replace(/&amp;/gi, "&")
+            .replace(/\r\n/g, "\n");
+        })();
 
         const forwarded = extractForwardedEmailContext(text, outerFromEmail);
         const chosenFrom = forwarded?.from || outerFromParsed;
@@ -2756,7 +2770,8 @@ router.post("/parse-email", async (req, res) => {
           ? forwarded.subject
           : (subjectOuter || forwarded?.subject || null);
 
-        const bodyText = cleanEmailBodyText(text);
+        const bodyTextRaw = cleanEmailBodyText(text);
+        const bodyText = await cleanEmailEnquiryText(bodyTextRaw);
         const summary = bodyText
           ? bodyText.slice(0, 250) + (bodyText.length > 250 ? "..." : "")
           : null;
@@ -2891,7 +2906,14 @@ function extractForwardedEmailContext(
   const hay = raw.slice(0, 12000);
 
   // Only attempt if it looks like a forwarded/quoted block.
-  const looksForwarded = /\b(fw|fwd):\b/i.test(hay) || /\bForwarded message\b/i.test(hay) || /\bOriginal Message\b/i.test(hay) || /\bSent:\b/i.test(hay);
+  // Note: "Sent:" is typically followed by a space (no word boundary), so use \s not \b.
+  const looksForwarded =
+    /(^|\n)\s*(fw|fwd)\s*:/i.test(hay) ||
+    /\bForwarded message\b/i.test(hay) ||
+    /\bOriginal Message\b/i.test(hay) ||
+    /(^|\n)\s*Sent:\s/i.test(hay) ||
+    /(^|\n)\s*From:\s/i.test(hay) ||
+    /(^|\n)\s*_{8,}\s*$/m.test(hay);
   if (!looksForwarded) return null;
 
   const outer = outerFromEmail ? String(outerFromEmail).toLowerCase() : null;
@@ -2899,6 +2921,7 @@ function extractForwardedEmailContext(
     const markers: RegExp[] = [
       /-{2,}\s*Forwarded message\s*-{2,}/i,
       /-{2,}\s*Original Message\s*-{2,}/i,
+      /^_{8,}\s*$/m, // Outlook separator line
       /^Begin forwarded message:/im,
       /\bForwarded message\b/i,
       /\bOriginal Message\b/i,
@@ -2932,18 +2955,91 @@ function extractForwardedEmailContext(
   }
 
   const pickFrom = (() => {
-    for (const c of fromCandidates) {
+    // Prefer the deepest (last) From: that isn't the outer sender.
+    for (let i = fromCandidates.length - 1; i >= 0; i -= 1) {
+      const c = fromCandidates[i];
       const email = c?.email ? String(c.email).toLowerCase() : null;
       if (email && outer && email === outer) continue;
       if (email || c?.name) return c;
     }
     // Fallback: if we didn't find a better one, allow a match (better than nothing)
-    return fromCandidates.length ? fromCandidates[0] : null;
+    return fromCandidates.length ? fromCandidates[fromCandidates.length - 1] : null;
   })();
   const pickSubject = subjectCandidates.length ? subjectCandidates[0] : null;
 
   if (!pickFrom && !pickSubject) return null;
   return { from: pickFrom, subject: pickSubject };
+}
+
+async function cleanEmailEnquiryText(input: string): Promise<string> {
+  const raw = cleanEmailBodyText(input);
+  if (!raw) return "";
+
+  // Heuristic cleanup first (cheap + deterministic)
+  const heuristic = (() => {
+    let s = raw;
+    // Strip common mobile/app footers
+    s = s.replace(/\n\s*Sent\s+from\s+my\s+\S[\s\S]*$/i, "\n");
+    s = s.replace(/\n\s*Sent\s+from\s+Outlook[\s\S]*$/i, "\n");
+    s = s.replace(/\n\s*Get\s+Outlook\s+for\s+iOS[\s\S]*$/i, "\n");
+
+    // Trim everything after a typical signature delimiter
+    const sigIdx = s.search(/\n\s*(--\s*$|Kind\s+Regards\b|Regards\b|Thanks\b|Many\s+thanks\b)/im);
+    if (sigIdx > 0) s = s.slice(0, sigIdx).trim();
+
+    // Drop huge quoted chains after an Outlook-style forwarded header block.
+    const chainIdx = s.search(/\n\s*_{8,}\s*\n[\s\S]*\n\s*From:\s+/m);
+    if (chainIdx > 0) s = s.slice(0, chainIdx).trim();
+    return cleanEmailBodyText(s);
+  })();
+
+  // AI cleanup if configured.
+  if (!env.OPENAI_API_KEY) return heuristic;
+
+  try {
+    const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+    const resp = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.2,
+      messages: [
+        {
+          role: "system",
+          content:
+            "Extract the core customer enquiry message from an email. Remove signatures, legal footers, tracking links, and quoted/forwarded email chains. Return plain text only. Do not add or invent details.",
+        },
+        {
+          role: "user",
+          content: raw.slice(0, 12000),
+        },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "email_enquiry_clean",
+          schema: {
+            type: "object",
+            properties: {
+              cleaned: { type: "string" },
+              confidence: { type: "number", minimum: 0, maximum: 1 },
+            },
+            required: ["cleaned", "confidence"],
+            additionalProperties: false,
+          },
+        },
+      },
+    });
+
+    const content = resp.choices[0]?.message?.content || "{}";
+    const parsed = JSON.parse(content) as { cleaned?: string; confidence?: number };
+    const cleaned = typeof parsed.cleaned === "string" ? parsed.cleaned.trim() : "";
+    if (!cleaned) return heuristic;
+    // If the model isn't confident, prefer heuristic to avoid over-trimming.
+    if (typeof parsed.confidence === "number" && parsed.confidence < 0.5) return heuristic;
+    return cleanEmailBodyText(cleaned);
+  } catch (err: any) {
+    console.warn("[leads] AI email cleaning failed; using heuristic:", err?.message || err);
+    return heuristic;
+  }
 }
 
 async function persistEmailAttachments(opts: {

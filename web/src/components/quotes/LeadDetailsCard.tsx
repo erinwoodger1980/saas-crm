@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { FileText, Calendar, Mail, Phone, MapPin, Info } from "lucide-react";
+import { apiFetch, API_BASE } from "@/lib/api";
 
 type LeadDetailsCardProps = {
   lead?: any | null;
@@ -26,6 +27,19 @@ export function LeadDetailsCard({ lead, questionnaireAnswers }: LeadDetailsCardP
     : [];
 
   const hasFiles = files.length > 0;
+  const emailAttachments = Array.isArray(lead?.custom?.attachments)
+    ? (lead.custom.attachments as any[])
+        .map((a) => {
+          const fileId = typeof a?.fileId === "string" ? a.fileId : null;
+          const filename = typeof a?.filename === "string" ? a.filename : (typeof a?.name === "string" ? a.name : null);
+          const mimeType = typeof a?.mimeType === "string" ? a.mimeType : null;
+          const size = typeof a?.size === "number" ? a.size : null;
+          if (!fileId) return null;
+          return { fileId, filename: filename || "Attachment", mimeType, size };
+        })
+        .filter(Boolean)
+    : [];
+  const hasEmailAttachments = emailAttachments.length > 0;
   const contactEmail = lead.email || lead.contactEmail || null;
   const contactPhone = lead.phone || lead.contactPhone || null;
   const location = lead.location || lead.address || null;
@@ -121,7 +135,41 @@ export function LeadDetailsCard({ lead, questionnaireAnswers }: LeadDetailsCardP
           </div>
         )}
 
-        {!contactEmail && !contactPhone && !location && !description && !hasFiles && (
+        {/* Email attachments */}
+        {hasEmailAttachments && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <FileText className="h-4 w-4 text-muted-foreground" />
+              Email attachments ({emailAttachments.length})
+            </div>
+            <div className="space-y-1.5 pl-6">
+              {emailAttachments.map((att: any) => (
+                <button
+                  key={att.fileId}
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const signed = await apiFetch<{ url: string }>("/files/sign", {
+                        method: "POST",
+                        json: { fileId: att.fileId },
+                      });
+                      const url = signed?.url ? `${API_BASE}${signed.url}` : null;
+                      if (url) window.open(url, "_blank");
+                    } catch (e) {
+                      console.error("Failed to open attachment", e);
+                    }
+                  }}
+                  className="flex items-center gap-2 text-sm text-blue-600 hover:underline"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  {att.filename}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!contactEmail && !contactPhone && !location && !description && !hasFiles && !hasEmailAttachments && (
           <p className="text-sm text-muted-foreground italic">
             No additional details available
           </p>
