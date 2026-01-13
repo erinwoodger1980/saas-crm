@@ -375,7 +375,7 @@ async function runStageB(
   stageA: StageAResult,
 ): Promise<StageBResult> {
   const shouldAttempt =
-    stageA.parse.lines.length === 0 || stageA.metadata.lowConfidence || stageA.metadata.descriptionQuality < 0.5;
+    stageA.parse.lines.length === 0 || stageA.metadata.lowConfidence || stageA.metadata.descriptionQuality < 0.55;
 
   if (!shouldAttempt) {
     return { parse: stageA.parse, used: false, warnings: [] };
@@ -416,7 +416,13 @@ async function runStageB(
 
   const fallback = await runOcrFallback(buffer, stageA.extraction);
   if (!fallback) {
-    return { parse: stageA.parse, used: false, warnings: [] };
+    // If we got here, Stage A looked unreliable. Surface a warning so it's visible in UI/debug.
+    const warning = "OCR fallback unavailable (parser could not recover text)";
+    return {
+      parse: attachWarnings(stageA.parse, [warning]),
+      used: false,
+      warnings: [warning],
+    };
   }
 
   const warnings = fallback.warnings ?? [];

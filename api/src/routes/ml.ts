@@ -42,6 +42,22 @@ const API_BASE = (
 const materialCostsCache: { data: any; ts: number } = { data: null, ts: 0 };
 const MATERIAL_COSTS_TTL_MS = 60_000;
 
+function getMlUpstreamAuthHeaders(): Record<string, string> {
+  const raw =
+    process.env.ML_AUTH_TOKEN ||
+    process.env.ML_BEARER_TOKEN ||
+    process.env.ML_API_KEY ||
+    process.env.ML_KEY ||
+    "";
+  const token = String(raw || "").trim();
+  if (!token) return {};
+  const bearer = token.toLowerCase().startsWith("bearer ") ? token : `Bearer ${token}`;
+  return {
+    Authorization: bearer,
+    "x-api-key": token,
+  };
+}
+
 /**
  * GET /ml/material-costs/recent
  * Proxy to ML service for recent material cost changes (with 60s cache)
@@ -58,7 +74,7 @@ router.get("/material-costs/recent", async (req, res) => {
 
     const url = `${ML_URL}/material-costs/recent?tenantId=${encodeURIComponent(tenantId)}&limit=100`;
     const { signal, cleanup } = withTimeout(undefined, ML_TIMEOUT_MS);
-    const r = await fetch(url, { method: "GET", signal });
+    const r = await fetch(url, { method: "GET", signal, headers: getMlUpstreamAuthHeaders() });
     cleanup();
     const text = await r.text();
     let payload: any = {};
@@ -68,6 +84,9 @@ router.get("/material-costs/recent", async (req, res) => {
       // Graceful fallbacks: always return empty dataset so UI stays functional
       if (r.status === 404 || r.status === 501) {
         return res.json({ ok: true, cached: false, items: [], message: "ml_upstream_missing" });
+      }
+      if (r.status === 401 || r.status === 403) {
+        return res.json({ ok: true, cached: false, items: [], message: "ml_upstream_forbidden" });
       }
       if (r.status >= 500 || r.status === 429) {
         return res.json({ ok: true, cached: false, items: [], message: "ml_upstream_unavailable" });
@@ -97,7 +116,7 @@ router.get("/material-costs/trends", async (req, res) => {
     }
     const url = `${ML_URL}/material-costs/trends?tenantId=${encodeURIComponent(tenantId)}&window=12`;
     const { signal, cleanup } = withTimeout(undefined, ML_TIMEOUT_MS);
-    const r = await fetch(url, { method: "GET", signal });
+    const r = await fetch(url, { method: "GET", signal, headers: getMlUpstreamAuthHeaders() });
     cleanup();
     const txt = await r.text();
     let payload: any = {};
@@ -106,6 +125,9 @@ router.get("/material-costs/trends", async (req, res) => {
       console.error(`[material-costs/trends] upstream ${r.status} response:`, txt.slice(0, 500));
       if (r.status === 404 || r.status === 501) {
         return res.json({ ok: true, cached: false, points: [], message: "ml_upstream_missing" });
+      }
+      if (r.status === 401 || r.status === 403) {
+        return res.json({ ok: true, cached: false, points: [], message: "ml_upstream_forbidden" });
       }
       return res.status(r.status).json({ error: "upstream_error", status: r.status, detail: payload || txt });
     }
