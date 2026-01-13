@@ -17,6 +17,7 @@ import {
   inferCurrency,
   summariseConfidence,
 } from "../pdf/normalize";
+import { assessDescriptionQuality } from "../pdf/quality";
 import {
   loadSupplierPattern,
   saveSupplierPattern,
@@ -374,8 +375,24 @@ async function runStageB(
   buffer: Buffer,
   stageA: StageAResult,
 ): Promise<StageBResult> {
+  const gibberishLineRate = (() => {
+    const lines = stageA.parse.lines || [];
+    if (!lines.length) return 0;
+    let gibberish = 0;
+    for (const line of lines) {
+      const desc = String((line as any)?.description || "");
+      if (!desc) continue;
+      const q = assessDescriptionQuality(desc);
+      if (q.gibberish || q.score < 0.55) gibberish += 1;
+    }
+    return gibberish / lines.length;
+  })();
+
   const shouldAttempt =
-    stageA.parse.lines.length === 0 || stageA.metadata.lowConfidence || stageA.metadata.descriptionQuality < 0.55;
+    stageA.parse.lines.length === 0 ||
+    stageA.metadata.lowConfidence ||
+    stageA.metadata.descriptionQuality < 0.55 ||
+    gibberishLineRate >= 0.3;
 
   if (!shouldAttempt) {
     return { parse: stageA.parse, used: false, warnings: [] };

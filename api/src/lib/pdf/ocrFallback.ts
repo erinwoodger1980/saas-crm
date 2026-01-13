@@ -62,8 +62,9 @@ async function downscalePngForOcr(png: Buffer): Promise<Buffer> {
 
     const pixels = w * h;
     const needsDownscale = pixels > maxPixels || w > maxWidth;
+    const base = sharp(png).grayscale().normalize().sharpen();
     if (!needsDownscale) {
-      return sharp(png).grayscale().toBuffer();
+      return base.toBuffer();
     }
 
     // Scale to satisfy both pixel and width caps.
@@ -72,14 +73,19 @@ async function downscalePngForOcr(png: Buffer): Promise<Buffer> {
     const scale = Math.min(1, scaleByPixels, scaleByWidth);
     const newW = Math.max(1, Math.floor(w * scale));
 
-    return sharp(png)
+    return base
       .resize({ width: newW, fit: "inside", withoutEnlargement: true })
-      .grayscale()
       .toBuffer();
   } catch {
     // Best-effort only.
     return png;
   }
+}
+
+async function renderPdfPageToPngViaSharp(pdfBuffer: Buffer, pageIndex: number, density: number): Promise<Buffer> {
+  // sharp supports selecting a single page of a PDF via the `page` option.
+  // If pageIndex is out of range it will throw.
+  return sharp(pdfBuffer, { density, page: pageIndex }).png({ quality: 85 }).toBuffer();
 }
 
 async function renderPdfFirstPageToPngViaPuppeteer(pdfBuffer: Buffer): Promise<Buffer> {
@@ -219,7 +225,7 @@ function buildParseFromOcrLines(lines: string[], currencyHint?: string): Supplie
 }
 
 export async function runOcrFallback(
-  _buffer: Buffer,
+  buffer: Buffer,
   extraction: ExtractionSummary,
 ): Promise<OcrFallbackResult | null> {
   let tesseract: any;
@@ -285,63 +291,103 @@ export async function runOcrFallback(
   try {
     // v7 workers come pre-loaded; load/loadLanguage/initialize are not needed.
 
-    // Render the first page to an image and OCR that.
-    // This avoids the "OCR the already-garbled text" problem and works for scanned PDFs.
-    let png: Buffer | null = null;
-    const renderErrors: string[] = [];
-    let rendererUsed: "sharp" | "puppeteer" | null = null;
-    try {
-      // Keep density modest to avoid memory spikes on small instances.
-      const density = (() => {
-        const raw = Number(process.env.OCR_RENDER_DENSITY);
-        if (Number.isFinite(raw) && raw > 0) return raw;
-        return 130;
-      })();
+    const density = (() => {
+      const raw = Number(process.env.OCR_RENDER_DENSITY);
+      if (Number.isFinite(raw) && raw > 0) return raw;
+      return 130;
+    })();
 
-      png = await sharp(_buffer, { density }).png({ quality: 85 }).toBuffer();
-      rendererUsed = "sharp";
-    } catch (e: any) {
-      renderErrors.push(`sharp: ${formatErr(e)}`);
-      try {
-        png = await renderPdfFirstPageToPngViaPuppeteer(_buffer);
-        rendererUsed = "puppeteer";
-      } catch (e2: any) {
-        renderErrors.push(`puppeteer: ${formatErr(e2)}`);
-      }
-    }
+    const maxPages = (() => {
+      const raw = Number(process.env.OCR_MAX_PAGES);
+      if (Number.isFinite(raw) && raw > 0) return Math.max(1, Math.min(6, Math.floor(raw)));
+      const fallback = Number(process.env.PARSER_MAX_PAGES);
+      if (Number.isFinite(fallback) && fallback > 0) return Math.max(1, Math.min(6, Math.floor(fallback)));
+      return 2;
+    })();
 
-    if (png) {
-      png = await downscalePngForOcr(png);
-    }
-
-    if (png && rendererUsed) {
-      console.log("[runOcrFallback] Rendered PDF page for OCR", {
-        renderer: rendererUsed,
-        pngBytes: png.length,
-      });
-    }
-
-    if (!png) {
-      const msg = `OCR fallback unavailable: PDF rendering failed (${renderErrors.join(" | ") || "unknown"}).`;
-      console.warn("[runOcrFallback]", msg);
-      return {
-        replacements: [],
-        warnings: [msg],
-        stage: "tesseract",
-      };
-    }
+    const maxTotalMs = (() => {
+      const raw = Number(process.env.OCR_MAX_TOTAL_MS);
+      if (Number.isFinite(raw) && raw > 0) return raw;
+      return 55_000;
+    })();
 
     const recognizeTimeoutMs = (() => {
       const raw = Number(process.env.OCR_RECOGNIZE_TIMEOUT_MS);
       if (Number.isFinite(raw) && raw > 0) return raw;
-      return 45_000;
+      return 35_000;
     })();
-    const rec: any = await withTimeout<any>(worker.recognize(png), recognizeTimeoutMs, "ocr_timeout");
-    const ocrText = String(rec?.data?.text || "");
 
-    const lines = splitOcrTextIntoLines(ocrText);
+    // Tesseract configuration tuned for tabular invoices/quotes.
+    try {
+      await worker.setParameters({
+        // PSM 6 = assume a single uniform block of text.
+        tessedit_pageseg_mode: "6",
+        preserve_interword_spaces: "1",
+        // Helps when rendering density isn't high.
+        user_defined_dpi: String(Math.max(200, Math.min(400, Math.floor(density * 2))))
+      });
+    } catch {}
+
+    const startedAt = Date.now();
+    const aggregatedLines: string[] = [];
+    const renderErrors: string[] = [];
+    let pagesAttempted = 0;
+    let rendererUsed: "sharp" | "puppeteer" | null = null;
+
+    for (let pageIndex = 0; pageIndex < maxPages; pageIndex += 1) {
+      if (Date.now() - startedAt > maxTotalMs) break;
+
+      let png: Buffer | null = null;
+      try {
+        png = await renderPdfPageToPngViaSharp(buffer, pageIndex, density);
+        rendererUsed = "sharp";
+      } catch (e: any) {
+        // If sharp can't render beyond page 0, stop trying further pages.
+        renderErrors.push(`sharp[p${pageIndex}]: ${formatErr(e)}`);
+        if (pageIndex === 0) {
+          try {
+            png = await renderPdfFirstPageToPngViaPuppeteer(buffer);
+            rendererUsed = "puppeteer";
+          } catch (e2: any) {
+            renderErrors.push(`puppeteer[p0]: ${formatErr(e2)}`);
+          }
+        }
+      }
+
+      if (!png) {
+        // If we fail to render a later page, don't keep looping.
+        if (pageIndex > 0) break;
+        continue;
+      }
+
+      pagesAttempted += 1;
+      png = await downscalePngForOcr(png);
+
+      const rec: any = await withTimeout<any>(worker.recognize(png), recognizeTimeoutMs, "ocr_timeout");
+      const ocrText = String(rec?.data?.text || "");
+      const lines = splitOcrTextIntoLines(ocrText);
+      aggregatedLines.push(...lines);
+
+      // Early stop once we have enough potentially-parseable lines.
+      if (aggregatedLines.length >= 250) break;
+    }
+
+    if (!aggregatedLines.length) {
+      const msg = `OCR fallback unavailable: no OCR text extracted (${renderErrors.join(" | ") || "unknown"}).`;
+      console.warn("[runOcrFallback]", msg);
+      return { replacements: [], warnings: [msg], stage: "tesseract" };
+    }
+
+    if (rendererUsed) {
+      console.log("[runOcrFallback] OCR complete", {
+        renderer: rendererUsed,
+        pagesAttempted,
+        lines: aggregatedLines.length,
+      });
+    }
+
     const currency = inferCurrency(extraction.rawText || "");
-    const parse = buildParseFromOcrLines(lines, currency);
+    const parse = buildParseFromOcrLines(aggregatedLines, currency);
     if (!parse) {
       return {
         replacements: [],
@@ -353,7 +399,10 @@ export async function runOcrFallback(
     return {
       replacements: [],
       parse,
-      warnings: parse.warnings,
+      warnings: [
+        ...(parse.warnings ?? []),
+        `OCR pages scanned: ${pagesAttempted}`,
+      ],
       stage: "tesseract",
     };
   } catch (err: any) {
