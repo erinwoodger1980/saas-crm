@@ -5145,7 +5145,7 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
     const maxFiles = (() => {
       const raw = Number(process.env.PROCESS_SUPPLIER_MAX_FILES);
       if (Number.isFinite(raw) && raw > 0) return Math.max(1, Math.min(6, Math.floor(raw)));
-      return 2;
+      return 1;
     })();
 
     const parseFileTimeoutMs = (() => {
