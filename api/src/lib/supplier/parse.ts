@@ -377,6 +377,10 @@ async function runStageB(
   options?: { ocrEnabled?: boolean },
 ): Promise<StageBResult> {
   const stageStartedAt = Date.now();
+  const ocrEnabled = (() => {
+    if (typeof options?.ocrEnabled === "boolean") return options.ocrEnabled;
+    return String(process.env.PARSER_OCR_ENABLED ?? "true").toLowerCase() !== "false";
+  })();
   const gibberishLineRate = (() => {
     const lines = stageA.parse.lines || [];
     if (!lines.length) return 0;
@@ -400,6 +404,16 @@ async function runStageB(
     return { parse: stageA.parse, used: false, warnings: [] };
   }
 
+  // Deterministic / fast-fail mode: do not attempt OCR or ML fallback.
+  if (!ocrEnabled) {
+    const warning = "OCR disabled; parser could not recover text from PDF";
+    return {
+      parse: attachWarnings(stageA.parse, [warning]),
+      used: false,
+      warnings: [warning],
+    };
+  }
+
   console.log("[runStageB] starting OCR recovery", {
     lines: stageA.parse.lines.length,
     lowConfidence: !!stageA.metadata.lowConfidence,
@@ -409,11 +423,6 @@ async function runStageB(
 
   // Prefer a real OCR-backed parse via the ML parser when available.
   // This is the most reliable way to recover text from PDFs with broken/garbled text layers.
-  const ocrEnabled = (() => {
-    if (typeof options?.ocrEnabled === "boolean") return options.ocrEnabled;
-    return String(process.env.PARSER_OCR_ENABLED ?? "true").toLowerCase() !== "false";
-  })();
-
   if (ocrEnabled) {
     try {
       const filename = `${cleanText(stageA.parse.supplier || "quote") || "quote"}.pdf`;

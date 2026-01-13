@@ -401,19 +401,23 @@ export function extractStructuredText(buffer: Buffer): ExtractionSummary {
     if (/\b(CIDFont|FontDescriptor|glyf|hmtx|head|hhea|maxp|loca|cmap|cvt|fpgm|prep)\b/i.test(content)) {
       continue;
     }
-    
-    // Skip if has high ratio of non-ASCII characters (likely binary data)
+
+    // Check for text operators first (cheap pre-filter).
+    const hasTextOperators = /(Tj|TJ|'|\")/.test(content);
+    if (!hasTextOperators) continue;
+
+    // Must contain PDF string delimiters for any useful text extraction.
+    const hasStringDelimiters = /\([\s\S]*?\)|<[\da-fA-F\s]+>/.test(content);
+    if (!hasStringDelimiters) continue;
+
+    // Skip if has extremely high ratio of non-ASCII characters (likely binary data).
+    // NOTE: Some valid content streams can still have a moderately high non-ASCII ratio after
+    // (raw) inflate; we only skip when it's overwhelmingly binary.
     const nonAsciiCount = (content.match(/[^\x20-\x7E\r\n\t]/g) || []).length;
-    const nonAsciiRatio = nonAsciiCount / content.length;
-    if (nonAsciiRatio > 0.4) {
-      continue; // More than 40% non-ASCII = likely binary
+    const nonAsciiRatio = content.length ? nonAsciiCount / content.length : 1;
+    if (nonAsciiRatio > 0.85 && !/\bBT\b/.test(content)) {
+      continue;
     }
-    
-    // Now check for text operators
-    if (!/(Tj|TJ|'|\")/.test(content)) continue;
-    
-    // Additional check: must contain parentheses or angle brackets (string delimiters)
-    if (!(/\([\s\S]*?\)|<[\da-fA-F\s]+>/.test(content))) continue;
     
     const segments = extractSegments(content, unicodeMap);
     if (segments.length) {

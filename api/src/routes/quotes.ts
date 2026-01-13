@@ -5346,6 +5346,7 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
             currencyHint: quote.currency || "GBP",
             supplierProfileId: quote.supplierProfileId ?? undefined,
             llmEnabled: deterministicOnly ? false : true,
+            ocrEnabled: deterministicOnly ? false : undefined,
           }),
           parseFileTimeoutMs,
           "parseSupplierPdf",
@@ -5507,10 +5508,21 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
         } as any);
       } catch {}
 
-      return res.status(400).json({
+      const isDeterministicOnly =
+        convertCurrency === false &&
+        distributeDelivery === false &&
+        hideDeliveryLine === false &&
+        applyMarkup === false;
+
+      return res.status(isDeterministicOnly ? 422 : 400).json({
         error: "no_lines_parsed",
+        message: isDeterministicOnly
+          ? "Could not extract any line items from this PDF without OCR/AI. This usually means the PDF has no text layer (scanned image) or uses an unusual encoding."
+          : undefined,
         gibberishSkipped: gibberishCount,
         gibberishSamples: skippedGibberishSamples.slice(0, 5),
+        warnings: [...parseWarnings],
+        summaries: fileSummaries,
       });
     }
     
