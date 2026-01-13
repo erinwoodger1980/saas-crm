@@ -407,6 +407,14 @@ async function runStageB(
           ];
           return { parse: attachWarnings(parsed, warnings), used: true, warnings };
         }
+      } else {
+        // Important: if ML_URL is missing/misconfigured, callMlWithUpload returns ok:false
+        // and we'd otherwise silently fall through to local OCR (which may be slower/less reliable).
+        console.warn("[runStageB] ML fallback returned non-OK:", {
+          status: ml.status,
+          error: ml.error,
+          tookMs: ml.tookMs,
+        });
       }
     } catch (err: any) {
       // Non-fatal: fall back to local replacement strategy.
