@@ -5,6 +5,13 @@ import { prisma } from "../db";
 import { env } from "../env";
 import { recordTrainingOutcome } from "../services/training";
 import { buildMLPayload, normalizeMLPayload, compareMLPayloads } from "../services/ml-payload-builder";
+import {
+  isUsableLinePriceFeatures,
+  linePriceFeatureHash,
+  linePriceSpecHash,
+  normaliseLinePriceFeatures,
+  scaleUnitNetGBPByArea,
+} from "../lib/ml/linePriceOverrides";
 
 // Small helper to enforce an upper-bound on ML requests
 function withTimeout(signal: AbortSignal | undefined, ms: number) {
@@ -358,9 +365,200 @@ router.post("/compare-payloads", async (req: any, res) => {
  */
 router.post("/predict-lines", async (req, res) => {
   try {
+    const payload = req.body ?? {};
+    const tenantId: string | undefined = (req as any).auth?.tenantId;
+    const linesIn: any[] = Array.isArray(payload?.lines) ? payload.lines : [];
+
+    // Tenant-scoped exact-match overrides (deterministic):
+    // If we have previously confirmed a price for the same answers, return that price.
+    if (tenantId && linesIn.length > 0) {
+      const featuresList = linesIn.map((ln) => {
+        const features = normaliseLinePriceFeatures({
+          productType: ln?.productType,
+          widthMm: ln?.widthMm,
+          heightMm: ln?.heightMm,
+          timber: ln?.timber ?? ln?.material,
+          finish: ln?.finish,
+          glazing: ln?.glazing,
+          ironmongery: ln?.ironmongery ?? ln?.hardwareType,
+        });
+        const usable = isUsableLinePriceFeatures(features);
+        const key = usable ? linePriceFeatureHash(tenantId, features) : null;
+        return { features, usable, key };
+      });
+
+      const keys = featuresList.map((x) => x.key).filter(Boolean) as string[];
+      if (keys.length) {
+        const overrides = await prisma.modelOverride.findMany({
+          where: { tenantId, module: "line_price", key: { in: keys } },
+        });
+        const byKey = new Map<string, any>();
+        for (const o of overrides) byKey.set(o.key, o.value);
+
+        const vatPercent = typeof payload?.vatPercent === "number" ? payload.vatPercent : 20;
+        const currency = typeof payload?.currency === "string" ? payload.currency : "GBP";
+
+        const outLines: any[] = new Array(linesIn.length).fill(null);
+        let totalNet = 0;
+        let totalVat = 0;
+        let totalGross = 0;
+        let matchedCount = 0;
+
+        const unmatchedIndexes: number[] = [];
+        for (let i = 0; i < linesIn.length; i += 1) {
+          const ln = linesIn[i];
+          const meta = featuresList[i];
+          const o = meta.key ? byKey.get(meta.key) : null;
+          if (!o || typeof o !== "object") {
+            unmatchedIndexes.push(i);
+            continue;
+          }
+
+          const qty = (() => {
+            const q = Number(ln?.quantity ?? ln?.qty ?? 1);
+            return Number.isFinite(q) && q > 0 ? q : 1;
+          })();
+
+          const unitNetGBP = Number((o as any)?.unitNetGBP);
+          if (!Number.isFinite(unitNetGBP) || unitNetGBP <= 0) continue;
+
+          const netGBP = unitNetGBP * qty;
+          const vatGBP = netGBP * (Number.isFinite(vatPercent) ? vatPercent : 20) / 100;
+          const totalGBP = netGBP + vatGBP;
+
+          outLines[i] = {
+            itemNumber: ln?.itemNumber ?? i + 1,
+            description: ln?.description ?? "Item",
+            quantity: qty,
+            netGBP,
+            vatGBP,
+            totalGBP,
+            confidence: 1.0,
+            source: "exact_match",
+            currency: (o as any)?.currency ?? currency,
+          };
+
+          totalNet += netGBP;
+          totalVat += vatGBP;
+          totalGross += totalGBP;
+          matchedCount += 1;
+        }
+
+        // Parametric fallback: if the only mismatch is dimensions, scale based on area ratio.
+        // Uses module "line_price_spec" overrides keyed without width/height.
+        if (unmatchedIndexes.length) {
+          const specKeys: Array<{ idx: number; key: string }> = [];
+          for (const idx of unmatchedIndexes) {
+            const features = featuresList[idx]?.features;
+            if (!features) continue;
+            // Require incoming dimensions to scale.
+            if (!(features.widthMm && features.heightMm)) continue;
+            if (!isUsableLinePriceFeatures(features)) continue;
+            specKeys.push({ idx, key: linePriceSpecHash(tenantId, features) });
+          }
+
+          const uniqueSpecKeys = Array.from(new Set(specKeys.map((x) => x.key)));
+          if (uniqueSpecKeys.length) {
+            const specOverrides = await prisma.modelOverride.findMany({
+              where: { tenantId, module: "line_price_spec", key: { in: uniqueSpecKeys } },
+            });
+            const bySpecKey = new Map<string, any>();
+            for (const o of specOverrides) bySpecKey.set(o.key, o.value);
+
+            for (const entry of specKeys) {
+              const ln = linesIn[entry.idx];
+              const features = featuresList[entry.idx]?.features;
+              const o = bySpecKey.get(entry.key);
+              if (!features || !o || typeof o !== "object") continue;
+
+              const baseUnit = Number((o as any)?.unitNetGBP);
+              const baseW = Number((o as any)?.base?.widthMm ?? (o as any)?.base?.width_mm);
+              const baseH = Number((o as any)?.base?.heightMm ?? (o as any)?.base?.height_mm);
+              if (!(Number.isFinite(baseUnit) && baseUnit > 0)) continue;
+              if (!(Number.isFinite(baseW) && baseW > 0 && Number.isFinite(baseH) && baseH > 0)) continue;
+
+              const inW = Number(features.widthMm);
+              const inH = Number(features.heightMm);
+              if (!(Number.isFinite(inW) && inW > 0 && Number.isFinite(inH) && inH > 0)) continue;
+
+              const scaled = scaleUnitNetGBPByArea({
+                baseUnitNetGBP: baseUnit,
+                baseWidthMm: baseW,
+                baseHeightMm: baseH,
+                widthMm: inW,
+                heightMm: inH,
+              });
+              if (!scaled) continue;
+              const { unitNetGBP, scale } = scaled;
+
+              const qty = (() => {
+                const q = Number(ln?.quantity ?? ln?.qty ?? 1);
+                return Number.isFinite(q) && q > 0 ? q : 1;
+              })();
+
+              const netGBP = unitNetGBP * qty;
+              const vatGBP = netGBP * (Number.isFinite(vatPercent) ? vatPercent : 20) / 100;
+              const totalGBP = netGBP + vatGBP;
+
+              outLines[entry.idx] = {
+                itemNumber: ln?.itemNumber ?? entry.idx + 1,
+                description: ln?.description ?? "Item",
+                quantity: qty,
+                netGBP,
+                vatGBP,
+                totalGBP,
+                confidence: 0.9,
+                source: "parametric_area",
+                currency: (o as any)?.currency ?? currency,
+                meta: {
+                  baseWidthMm: baseW,
+                  baseHeightMm: baseH,
+                  scale,
+                },
+              };
+
+              totalNet += netGBP;
+              totalVat += vatGBP;
+              totalGross += totalGBP;
+              matchedCount += 1;
+            }
+          }
+        }
+
+        const allMatched = matchedCount > 0 && matchedCount === linesIn.length;
+        const anyMatched = matchedCount > 0;
+
+        if (allMatched) {
+          return res.json({
+            ok: true,
+            source: "exact_match",
+            currency,
+            vatPercent,
+            lines: outLines,
+            totalNet,
+            totalVat,
+            totalGross,
+          });
+        }
+
+        if (!ML_URL && anyMatched) {
+          return res.status(206).json({
+            ok: true,
+            source: "exact_match_partial",
+            currency,
+            vatPercent,
+            lines: outLines,
+            totalNet,
+            totalVat,
+            totalGross,
+            missing: linesIn.length - matchedCount,
+          });
+        }
+      }
+    }
+
     if (!ML_URL) return res.status(503).json({ error: "ml_unavailable" });
 
-    const payload = req.body ?? {};
     const { signal, cleanup } = withTimeout(undefined, ML_TIMEOUT_MS);
     const r = await fetch(`${ML_URL}/predict-lines`, {
       method: "POST",

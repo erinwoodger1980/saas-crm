@@ -687,6 +687,37 @@ export async function parseQuotePdf(
 
   const warnings: string[] = [];
 
+  // Fast-fail on obviously invalid input. This avoids expensive OCR/image extraction
+  // and prevents long-running work for malformed uploads.
+  try {
+    const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer as any);
+    if (!buf || buf.length === 0) {
+      return {
+        source,
+        lines: [],
+        warnings: ["empty_pdf"],
+        confidence: 0,
+      };
+    }
+    // Most valid PDFs contain "%PDF-" near the start.
+    const headerWindow = buf.subarray(0, Math.min(buf.length, 1024)).toString("latin1");
+    if (!headerWindow.includes("%PDF-")) {
+      return {
+        source,
+        lines: [],
+        warnings: ["invalid_pdf_header"],
+        confidence: 0,
+      };
+    }
+  } catch {
+    return {
+      source,
+      lines: [],
+      warnings: ["invalid_pdf_buffer"],
+      confidence: 0,
+    };
+  }
+
   try {
     const { parseSupplierPdf } = await import('./supplier/parse');
 

@@ -374,6 +374,7 @@ function runStageA(
 async function runStageB(
   buffer: Buffer,
   stageA: StageAResult,
+  options?: { ocrEnabled?: boolean },
 ): Promise<StageBResult> {
   const stageStartedAt = Date.now();
   const gibberishLineRate = (() => {
@@ -408,7 +409,11 @@ async function runStageB(
 
   // Prefer a real OCR-backed parse via the ML parser when available.
   // This is the most reliable way to recover text from PDFs with broken/garbled text layers.
-  const ocrEnabled = String(process.env.PARSER_OCR_ENABLED ?? "true").toLowerCase() !== "false";
+  const ocrEnabled = (() => {
+    if (typeof options?.ocrEnabled === "boolean") return options.ocrEnabled;
+    return String(process.env.PARSER_OCR_ENABLED ?? "true").toLowerCase() !== "false";
+  })();
+
   if (ocrEnabled) {
     try {
       const filename = `${cleanText(stageA.parse.supplier || "quote") || "quote"}.pdf`;
@@ -740,11 +745,19 @@ function computeConfidence(
 
 export async function parseSupplierPdf(
   buffer: Buffer,
-  options?: { supplierHint?: string; currencyHint?: string; supplierProfileId?: string | null },
+  options?: {
+    supplierHint?: string;
+    currencyHint?: string;
+    supplierProfileId?: string | null;
+    // Allow callers (e.g. own-quote flow) to run deterministic-only parsing.
+    ocrEnabled?: boolean;
+    llmEnabled?: boolean;
+  },
 ): Promise<SupplierParseResult> {
   const supplierHint = options?.supplierHint;
   const currencyHint = options?.currencyHint || "GBP";
   const supplierProfileId = options?.supplierProfileId ?? null;
+  const llmEnabled = options?.llmEnabled ?? true;
 
   let templateMeta: TemplateParseMeta | null = null;
 
@@ -779,20 +792,23 @@ export async function parseSupplierPdf(
   let workingParse = { ...stageA.parse, currency: stageA.parse.currency || currencyHint };
   const collectedWarnings = new Set(stageA.warnings);
 
-  const stageB = await runStageB(buffer, stageA);
+  const stageB = await runStageB(buffer, stageA, { ocrEnabled: options?.ocrEnabled });
   if (stageB.used) usedStages.add("ocr");
   stageB.warnings.forEach((warning) => collectedWarnings.add(warning));
   workingParse = stageB.parse;
 
   const patternSummary = summarisePattern(pattern || stageA.cues);
-  const stageC = await runStageC(workingParse, {
-    supplierHint: supplierHint || workingParse.supplier || pattern?.supplier,
-    currencyHint,
-    patternSummary,
-  });
-  if (stageC.used) usedStages.add("llm");
-  stageC.warnings.forEach((warning) => collectedWarnings.add(warning));
-  workingParse = stageC.parse;
+  const stageC = llmEnabled
+    ? await runStageC(workingParse, {
+        supplierHint: supplierHint || workingParse.supplier || pattern?.supplier,
+        currencyHint,
+        patternSummary,
+      })
+    : undefined;
+
+  if (stageC?.used) usedStages.add("llm");
+  stageC?.warnings?.forEach((warning) => collectedWarnings.add(warning));
+  if (stageC?.parse) workingParse = stageC.parse;
 
   workingParse.currency = workingParse.currency || currencyHint;
   workingParse.usedStages = Array.from(usedStages);
