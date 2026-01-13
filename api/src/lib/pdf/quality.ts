@@ -17,6 +17,8 @@ export interface DescriptionQualityAssessment {
   digitRatio: number;
   weirdRatio: number;
   repeatedCharRatio: number;
+  dominantCharRatio: number;
+  uniqueAlphaNumericRatio: number;
   wordCount: number;
   letterRun: number;
   score: number;
@@ -41,6 +43,8 @@ export function assessDescriptionQuality(raw: string | null | undefined): Descri
       digitRatio: 0,
       weirdRatio: 1,
       repeatedCharRatio: 1,
+      dominantCharRatio: 1,
+      uniqueAlphaNumericRatio: 0,
       wordCount: 0,
       letterRun: 0,
       score: 0,
@@ -58,6 +62,8 @@ export function assessDescriptionQuality(raw: string | null | undefined): Descri
   let repeatRun = 1;
   let letterRun = 0;
   let currentLetterRun = 0;
+  let alphaNumericTotal = 0;
+  const alphaNumericFreq = new Map<string, number>();
 
   for (let i = 0; i < cleaned.length; i += 1) {
     const ch = cleaned[i];
@@ -65,6 +71,12 @@ export function assessDescriptionQuality(raw: string | null | undefined): Descri
     if (ALPHANUM_RE.test(ch)) alphaNumericCount += 1;
     if (DIGIT_RE.test(ch)) digitCount += 1;
     if (!ALPHANUM_RE.test(ch) && !SAFE_SYMBOL_RE.test(ch)) weirdCount += 1;
+
+    if (ALPHANUM_RE.test(ch)) {
+      alphaNumericTotal += 1;
+      const key = ch.toLowerCase();
+      alphaNumericFreq.set(key, (alphaNumericFreq.get(key) ?? 0) + 1);
+    }
 
     if (i > 0 && cleaned[i - 1] === ch) {
       repeatRun += 1;
@@ -86,6 +98,17 @@ export function assessDescriptionQuality(raw: string | null | undefined): Descri
   const digitRatio = digitCount / len;
   const weirdRatio = weirdCount / len;
   const repeatedCharRatio = repeatMax / len;
+  const dominantCharRatio = (() => {
+    if (!alphaNumericTotal) return 0;
+    let max = 0;
+    for (const value of alphaNumericFreq.values()) {
+      if (value > max) max = value;
+    }
+    return max / alphaNumericTotal;
+  })();
+  const uniqueAlphaNumericRatio = alphaNumericTotal
+    ? alphaNumericFreq.size / alphaNumericTotal
+    : 0;
   const wordCount = cleaned.split(/\s+/).filter(Boolean).length;
 
   let score = 0;
@@ -118,6 +141,15 @@ export function assessDescriptionQuality(raw: string | null | undefined): Descri
   else if (repeatedCharRatio <= 0.3) score += 0.03;
   else reasons.push("repeats");
 
+  // Garbled PDF text often collapses into a single dominant character (e.g. UUUUUU...) even though
+  // it's technically ASCII/alphanumeric. Detect that low-entropy pattern explicitly.
+  if (dominantCharRatio <= 0.35) score += 0.05;
+  else if (dominantCharRatio <= 0.5) score += 0.02;
+  else reasons.push("dominant_char");
+
+  if (uniqueAlphaNumericRatio >= 0.25) score += 0.03;
+  else reasons.push("low_variety");
+
   if (letterRun >= 4) score += 0.05;
   else reasons.push("no_letter_run");
 
@@ -139,6 +171,8 @@ export function assessDescriptionQuality(raw: string | null | undefined): Descri
     alphaNumericRatio < 0.3 ||
     weirdRatio > 0.45 ||
     repeatedCharRatio > 0.4 ||
+    (alphaNumericTotal >= 8 && dominantCharRatio > 0.6) ||
+    (alphaNumericTotal >= 10 && uniqueAlphaNumericRatio < 0.14) ||
     !LETTER_RE.test(cleaned);
 
   if (gibberish && !reasons.includes("gibberish")) {
@@ -153,6 +187,8 @@ export function assessDescriptionQuality(raw: string | null | undefined): Descri
     digitRatio,
     weirdRatio,
     repeatedCharRatio,
+    dominantCharRatio,
+    uniqueAlphaNumericRatio,
     wordCount,
     letterRun,
     score,
@@ -173,6 +209,8 @@ export function isGibberishDescription(raw: string | null | undefined, minScore 
   if (assessment.alphaNumericRatio < 0.3) return true;
   if (assessment.weirdRatio > 0.45) return true;
   if (assessment.repeatedCharRatio > 0.4) return true;
+  if (assessment.dominantCharRatio > 0.6) return true;
+  if (assessment.uniqueAlphaNumericRatio < 0.14 && assessment.length >= 10) return true;
   if (!LETTER_RE.test(assessment.cleaned)) return true;
   return false;
 }

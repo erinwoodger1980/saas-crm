@@ -8,8 +8,7 @@
 
 import { Router, Response } from "express";
 import multer from "multer";
-import { extractStructuredText } from "../lib/pdf/extract";
-import { buildSupplierParse } from "../lib/pdf/parser";
+import { parseSupplierPdf } from "../lib/supplier/parse";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -44,11 +43,15 @@ router.post("/upload-quote", upload.single("pdf"), async (req: any, res: Respons
       tenantId,
     });
 
-    // Extract structured text from PDF
-    const extraction = await extractStructuredText(req.file.buffer);
-    
-    // Parse into line items and totals
-    const { result, metadata } = buildSupplierParse(extraction);
+    const result = await parseSupplierPdf(req.file.buffer, {
+      supplierHint: supplierName || req.file.originalname,
+      currencyHint: "GBP",
+      templateEnabled: false,
+      llmEnabled: false,
+      // Keep batch processing fast for text PDFs; only OCR if there is no text layer.
+      ocrEnabled: false,
+      ocrAutoWhenNoText: true,
+    });
 
     // Extract training data (no images)
     const trainingItems = result.lines.map((line, idx) => {
@@ -81,7 +84,7 @@ router.post("/upload-quote", upload.single("pdf"), async (req: any, res: Respons
     const trainingData = {
       source: "manual_upload",
       filename: req.file.originalname,
-      supplier: supplierName || extraction.rawText.split('\n')[0]?.trim().substring(0, 100) || "Unknown",
+      supplier: supplierName || result.supplier || "Unknown",
       quoteDate: quoteDate || null,
       currency: result.currency || "GBP",
       items: trainingItems,
@@ -92,10 +95,12 @@ router.post("/upload-quote", upload.single("pdf"), async (req: any, res: Respons
       },
       metadata: {
         parsingQuality: {
-          glyphQuality: metadata.glyphQuality,
-          descriptionQuality: metadata.descriptionQuality,
-          lowConfidence: metadata.lowConfidence,
+          glyphQuality: null,
+          descriptionQuality: null,
+          lowConfidence: typeof result.confidence === "number" ? result.confidence < 0.55 : null,
         },
+        usedStages: Array.isArray((result as any)?.usedStages) ? (result as any).usedStages : null,
+        warnings: Array.isArray((result as any)?.warnings) ? (result as any).warnings : null,
         extractedLines: result.lines.length,
         notes: notes || null,
       },
@@ -104,7 +109,7 @@ router.post("/upload-quote", upload.single("pdf"), async (req: any, res: Respons
     console.log("[ML Training Upload] Extracted training data:", {
       items: trainingItems.length,
       total: trainingData.totals.total,
-      quality: metadata.lowConfidence ? "Low" : "Good",
+      quality: typeof result.confidence === "number" && result.confidence < 0.55 ? "Low" : "Good",
     });
 
     // Return the extracted data
@@ -150,14 +155,20 @@ router.post("/batch-upload", upload.array("pdfs", 20), async (req: any, res: Res
 
     const results = await Promise.allSettled(
       files.map(async (file) => {
-        const extraction = await extractStructuredText(file.buffer);
-        const { result, metadata } = buildSupplierParse(extraction);
+        const result = await parseSupplierPdf(file.buffer, {
+          supplierHint: file.originalname,
+          currencyHint: "GBP",
+          templateEnabled: false,
+          llmEnabled: false,
+          ocrEnabled: false,
+          ocrAutoWhenNoText: true,
+        });
         
         return {
           filename: file.originalname,
           itemCount: result.lines.length,
           total: result.detected_totals?.estimated_total,
-          quality: metadata.lowConfidence ? "low" : "good",
+          quality: typeof result.confidence === "number" && result.confidence < 0.55 ? "low" : "good",
         };
       })
     );

@@ -5,6 +5,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { env } from "../env";
+import { parseSupplierPdf } from "../lib/supplier/parse";
 import { getAccessTokenForTenant, fetchMessage } from "../services/gmail";
 import {
   getAccessTokenForTenant as getMsAccessToken,
@@ -1065,36 +1066,30 @@ router.post("/manual-upload-train", async (req: any, res) => {
     let estimatedTotal: number | null = null;
     let textChars: number | null = null;
     let currency: string | null = null;
-    // Local fallback parse before ML call (extract text length & naive total)
+    // Local fallback parse before ML call (use the same supplier PDF parser pipeline)
     try {
       const absFilePath = path.isAbsolute(relPath) ? relPath : path.join(process.cwd(), relPath);
       const pdfBuffer = await fs.promises.readFile(absFilePath);
-      // Lazy import pdf-parse (already in dependencies)
-      const pdfParse = require('pdf-parse');
-      const parsed = await pdfParse(pdfBuffer).catch(() => null);
-      if (parsed && typeof parsed.text === 'string') {
-        const rawText = parsed.text;
-        const digitsText = rawText.replace(/\r/g,'');
-        textChars = textChars ?? digitsText.length;
-        // Heuristic: find lines containing TOTAL and capture largest number
-        const lines = rawText.split(/\n+/).map((l: string) => l.trim()).filter(Boolean);
-        let candidate: number | null = null;
-        for (const line of lines) {
-          if (/total/i.test(line)) {
-            const nums = line.match(/\b\d{1,3}(?:[,\s]\d{3})*(?:\.\d{2})?\b/g);
-            if (nums) {
-              for (const n of nums) {
-                const normalized = parseFloat(n.replace(/[,\s]/g,''));
-                if (!isNaN(normalized)) {
-                  if (candidate == null || normalized > candidate) candidate = normalized;
-                }
-              }
-            }
-          }
-        }
-        if (estimatedTotal == null && candidate != null) {
-          estimatedTotal = candidate;
-        }
+      const parsed = await parseSupplierPdf(pdfBuffer, {
+        supplierHint: filename,
+        currencyHint: "GBP",
+        templateEnabled: false,
+        llmEnabled: false,
+        ocrEnabled: false,
+        ocrAutoWhenNoText: true,
+      });
+
+      const joined = parsed.lines.map((ln) => String(ln.description || "")).join("\n");
+      textChars = textChars ?? (joined ? joined.length : null);
+
+      if (estimatedTotal == null) {
+        const total =
+          typeof parsed.detected_totals?.estimated_total === "number"
+            ? parsed.detected_totals.estimated_total
+            : parsed.lines
+                .map((ln) => (typeof ln.lineTotal === "number" ? ln.lineTotal : 0))
+                .reduce((acc, v) => acc + v, 0);
+        estimatedTotal = total || null;
       }
     } catch (e) {
       // Non-fatal; proceed without fallback enrichment

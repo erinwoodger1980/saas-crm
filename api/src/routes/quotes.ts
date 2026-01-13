@@ -19,6 +19,12 @@ import type { SupplierParseResult } from "../types/parse";
 import { logInsight, logInferenceEvent } from "../services/training";
 import { completeTasksOnRecordChangeByLinks } from "../services/field-link";
 import { redactSupplierLine } from "../lib/ml/redact";
+import {
+  isUsableLinePriceFeatures,
+  linePriceFeatureHash,
+  linePriceSpecHash,
+  normaliseLinePriceFeatures,
+} from "../lib/ml/linePriceOverrides";
 import { sendParserErrorAlert, sendParserFallbackAlert } from "../lib/ops/alerts";
 import {
   parsePdfWithTemplate,
@@ -37,6 +43,19 @@ import {
 } from "../lib/pdf/smartAssistant";
 
 const router = Router();
+
+// IMPORTANT: UploadedFile now includes a potentially large `content` blob.
+// Never select it by default; only fetch it explicitly when needed.
+const UPLOADED_FILE_SAFE_SELECT = {
+  id: true,
+  name: true,
+  kind: true,
+  quoteId: true,
+  mimeType: true,
+  sizeBytes: true,
+  uploadedAt: true,
+  path: true,
+} as const;
 
 type ParserStageName = NonNullable<SupplierParseResult["usedStages"]>[number];
 
@@ -377,11 +396,10 @@ const ESTIMATE_CACHE_DAYS = (() => {
   return 14;
 })();
 
-// Minimum estimate floor when ML returns a non-positive value
-const MIN_ESTIMATE_GBP = (() => {
-  const raw = Number(process.env.MIN_ESTIMATE_GBP);
-  if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
-  return 1500; // sensible default to avoid £0 proposals
+const MIN_ML_CONFIDENCE = (() => {
+  const raw = Number(process.env.MIN_ML_CONFIDENCE);
+  if (Number.isFinite(raw) && raw >= 0 && raw <= 1) return raw;
+  return 0.65;
 })();
 
 function sanitiseParseResult(result: SupplierParseResult, supplier?: string | null, currency?: string) {
@@ -624,8 +642,35 @@ async function loadQuoteFallback(
   if (options.includeSupplierFiles) {
     relationFetchers.push(
       prisma.uploadedFile
-        .findMany({ where: { quoteId, tenantId } })
+        .findMany({
+          where: { quoteId, tenantId },
+          orderBy: { uploadedAt: "desc" },
+          // IMPORTANT: do not select Bytes blobs (e.g., UploadedFile.content)
+          // so this fallback keeps working even if the DB schema is behind.
+          select: {
+            id: true,
+            tenantId: true,
+            quoteId: true,
+            kind: true,
+            name: true,
+            path: true,
+            mimeType: true,
+            sizeBytes: true,
+            uploadedAt: true,
+          },
+        })
         .then((files) => {
+          quote.supplierFiles = files;
+        })
+        .catch(async (err) => {
+          // If Prisma is ahead of the DB, fall back to a raw query that selects only stable columns.
+          const msg = err?.message || String(err);
+          console.warn("[loadQuoteFallback] uploadedFile.findMany failed; falling back to raw query:", msg);
+          const files: any[] = await prisma.$queryRawUnsafe(
+            `SELECT "id", "tenantId", "quoteId", "kind"::text AS "kind", "name", "path", "mimeType", "sizeBytes", "uploadedAt" FROM "UploadedFile" WHERE "quoteId" = $1 AND "tenantId" = $2 ORDER BY "uploadedAt" DESC`,
+            quoteId,
+            tenantId,
+          );
           quote.supplierFiles = files;
         }),
     );
@@ -692,6 +737,247 @@ const storage = multer.diskStorage({
     const base = file.originalname.replace(/[^\w.\-]+/g, "_");
     cb(null, `${ts}__${base}`);
   },
+});
+
+function extractFirstDimensionsMm(text: string): { widthMm: number; heightMm: number } | null {
+  const raw = String(text || "").toLowerCase();
+  // Accept common separators and optional units
+  // Examples: 2400 x 1200, 2400x1200mm, 240 x 120 cm
+  const re = /(\d{2,5})\s*[x×]\s*(\d{2,5})\s*(mm|cm|m)?/i;
+  const m = raw.match(re);
+  if (!m) return null;
+  const w = Number(m[1]);
+  const h = Number(m[2]);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+  const unit = (m[3] || "mm").toLowerCase();
+  const factor = unit === "m" ? 1000 : unit === "cm" ? 10 : 1;
+  const widthMm = Math.round(w * factor);
+  const heightMm = Math.round(h * factor);
+  if (widthMm < 10 || heightMm < 10 || widthMm > 20000 || heightMm > 20000) return null;
+  return { widthMm, heightMm };
+}
+
+function inferLineStandardFromParsedMeta(opts: {
+  description: string;
+  meta: any;
+}): Record<string, any> {
+  const description = String(opts.description || "");
+  const meta = (opts.meta && typeof opts.meta === "object") ? opts.meta : {};
+  const raw = (meta.raw && typeof meta.raw === "object") ? meta.raw : {};
+
+  const pickString = (v: any): string | null => {
+    if (typeof v === "string") {
+      const s = v.trim();
+      return s ? s : null;
+    }
+    return null;
+  };
+
+  const extraTextParts: string[] = [];
+  const metaRawText = pickString(meta.rawText) || pickString(meta.parsedQuoteText);
+  if (metaRawText) extraTextParts.push(metaRawText);
+
+  const rawSourceLine = pickString((raw as any)?.sourceLine);
+  if (rawSourceLine) extraTextParts.push(rawSourceLine);
+
+  const rawDetailLines = Array.isArray((raw as any)?.detailLines) ? (raw as any).detailLines : [];
+  for (const l of rawDetailLines) {
+    const s = pickString(l);
+    if (s) extraTextParts.push(s);
+  }
+
+  const combinedText = [description, ...extraTextParts].filter(Boolean).join("\n");
+
+  const out: Record<string, any> = {};
+
+  const widthCandidates = [raw.widthMm, raw.width_mm, raw.width, raw.w, raw.W];
+  const heightCandidates = [raw.heightMm, raw.height_mm, raw.height, raw.h, raw.H];
+  const pickMm = (cands: any[]): number | null => {
+    for (const c of cands) {
+      if (c == null) continue;
+      const n = Number(c);
+      if (Number.isFinite(n) && n > 0 && n < 20000) return n;
+    }
+    return null;
+  };
+  const w = pickMm(widthCandidates);
+  const h = pickMm(heightCandidates);
+
+  if (w && h) {
+    out.widthMm = Math.round(w);
+    out.heightMm = Math.round(h);
+  } else {
+    const dims = extractFirstDimensionsMm(combinedText || description);
+    if (dims) {
+      out.widthMm = dims.widthMm;
+      out.heightMm = dims.heightMm;
+    }
+  }
+
+  const descLower = description.toLowerCase();
+  const combinedLower = (combinedText || description).toLowerCase();
+
+  const pickLabelValue = (labelRe: RegExp): string | null => {
+    const m = (combinedText || "").match(labelRe);
+    if (!m) return null;
+    const rawValue = (m[1] || "").trim();
+    if (!rawValue) return null;
+    // Trim trailing punctuation + obvious endings
+    return rawValue.replace(/\s{2,}/g, " ").replace(/[\s.;,:-]+$/, "").trim() || null;
+  };
+
+  const timber =
+    pickString(raw.timber || raw.wood || raw.material) ||
+    pickLabelValue(/timber\s*type\s*:\s*([^\n]+)/i) ||
+    pickLabelValue(/material\s*:\s*([^\n]+)/i);
+  if (timber) out.timber = timber;
+  else if (/(accoya|oak|sapele|pine|idighbo|mahogany|softwood|hardwood)/i.test(combinedLower)) {
+    const m = combinedLower.match(/(accoya|oak|sapele|pine|idighbo|mahogany|softwood|hardwood)/i);
+    if (m?.[1]) out.timber = m[1];
+  }
+
+  const finish =
+    pickString(raw.finish || raw.coating || raw.paint) ||
+    pickLabelValue(/finish\s*:\s*([^\n]+)/i) ||
+    pickLabelValue(/factory\s+finished\s+in\s+(?:a\s+)?([^\n]+)/i);
+  if (finish) out.finish = finish;
+  else if (/(primed|painted|sprayed|stained|ral\s*\d{3,4}|satin\s+finish)/i.test(combinedLower)) {
+    const m = combinedLower.match(/(primed|painted|sprayed|stained|ral\s*\d{3,4}|satin\s+finish)/i);
+    if (m?.[1]) out.finish = m[1];
+  }
+
+  const glazing =
+    pickString(raw.glazing || raw.glass) ||
+    pickLabelValue(/glazing\s*:\s*([^\n]+)/i) ||
+    pickLabelValue(/glass\s*:\s*([^\n]+)/i);
+  if (glazing) out.glazing = glazing;
+  else if (/(double\s*glazed|triple\s*glazed|toughened|laminated|planitherm|argon|warmedge|thermobar|\b\d+(?:\.\d+)?\/\d{2}\/\d+(?:\.\d+)?\b)/i.test(combinedLower)) {
+    const m = combinedLower.match(/(double\s*glazed|triple\s*glazed|toughened|laminated|planitherm|argon|warmedge|thermobar|\b\d+(?:\.\d+)?\/\d{2}\/\d+(?:\.\d+)?\b)/i);
+    if (m?.[1]) out.glazing = m[1];
+  }
+
+  const ironmongery =
+    pickString(raw.ironmongery || raw.hardware) ||
+    pickLabelValue(/fittings\s*type\s*:\s*([^\n]+)/i);
+  if (ironmongery) out.ironmongery = ironmongery;
+  else if (/(hinge|lock|handle|espag|espagnolette|shoot\s*bolt|multipoint\s+locking)/i.test(combinedLower)) {
+    const m = combinedLower.match(/(hinge|lock|handle|espag|espagnolette|shoot\s*bolt|multipoint\s+locking)/i);
+    if (m?.[1]) out.ironmongery = m[1];
+  }
+
+  const productType = pickString(raw.productType || raw.product_type || raw.type);
+  if (productType) out.productType = productType;
+  else if (/(door|window|bifold|bi-fold|sliding|sash)/i.test(combinedLower)) {
+    const m = combinedLower.match(/(bifold|bi-fold|sliding|sash|door|window)/i);
+    if (m?.[1]) out.productType = m[1].replace(/bi-fold/i, "bifold");
+  }
+
+  return out;
+}
+
+/**
+ * POST /quotes/:id/lines/fill-standard-from-parsed
+ * Bulk-fill standardised product fields (lineStandard) from parsed quote data.
+ * Intended for "Upload your own quote" flow to help training + downstream pricing.
+ */
+router.post("/:id/lines/fill-standard-from-parsed", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = await getTenantId(req);
+    const quoteId = String(req.params.id);
+    const quote = await prisma.quote.findFirst({
+      where: { id: quoteId, tenantId },
+      include: { lines: true },
+    });
+    if (!quote) return res.status(404).json({ error: "not_found" });
+
+    const nowIso = new Date().toISOString();
+    let updated = 0;
+    let inferredAny = 0;
+
+    for (const line of quote.lines as any[]) {
+      const existingStandard: any = (line as any)?.lineStandard || {};
+      const inferred = inferLineStandardFromParsedMeta({
+        description: String(line.description || ""),
+        meta: (line.meta as any) || {},
+      });
+
+      const merged: any = { ...existingStandard };
+      for (const [k, v] of Object.entries(inferred)) {
+        if (v == null) continue;
+        if (merged[k] === undefined || merged[k] === null || merged[k] === "") {
+          merged[k] = v;
+        }
+      }
+
+      const changed = JSON.stringify(existingStandard || {}) !== JSON.stringify(merged || {});
+      if (!changed) continue;
+
+      inferredAny += 1;
+      const existingMeta: any = (line.meta as any) || {};
+      const mergedMeta: any = {
+        ...existingMeta,
+        standardisedFromParsedQuoteAt: nowIso,
+        standardisedFromParsedQuoteMethod: "heuristic_v1",
+      };
+
+      await prisma.quoteLine.update({
+        where: { id: line.id },
+        data: {
+          lineStandard: Object.keys(merged).length ? (merged as any) : undefined,
+          meta: mergedMeta as any,
+        },
+      });
+      updated += 1;
+    }
+
+    try {
+      const supplierFileCount = await prisma.uploadedFile.count({
+        where: {
+          tenantId,
+          quoteId,
+          kind: "SUPPLIER_QUOTE" as any,
+        },
+      });
+      const inputHash = crypto
+        .createHash("sha256")
+        .update(`${tenantId}:${quoteId}:${nowIso}`)
+        .digest("hex")
+        .slice(0, 16);
+      await logInferenceEvent({
+        tenantId,
+        model: "quote_line_standardiser",
+        modelVersionId: "heuristic_v1",
+        inputHash,
+        outputJson: {
+          updated,
+          considered: quote.lines.length,
+          supplierFileCount,
+        },
+        confidence: 1.0,
+        meta: { quoteId },
+      });
+      await logInsight({
+        tenantId,
+        module: "quote_line_standardiser",
+        inputSummary: `quote:${quoteId}:fill-standard-from-parsed`,
+        decision: `updated_${updated}`,
+        confidence: 1.0,
+        userFeedback: {
+          kind: "fill_line_standard",
+          quoteId,
+          updated,
+          inferredAny,
+        },
+      });
+    } catch (err: any) {
+      console.warn("[fill-standard-from-parsed] training log failed:", err?.message || err);
+    }
+
+    return res.json({ ok: true, updated, inferredAny });
+  } catch (e: any) {
+    console.error("[/quotes/:id/lines/fill-standard-from-parsed] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
 });
 
 /**
@@ -910,6 +1196,113 @@ router.patch("/:id/lines/:lineId", requireAuth, async (req: any, res) => {
         lineStandard: Object.keys(mergedStandard).length ? (mergedStandard as any) : undefined,
       },
     });
+
+    // Record an exact-match line pricing example for deterministic reuse.
+    // Best-effort: never fail the line update if this errors.
+    try {
+      const features = normaliseLinePriceFeatures((saved as any)?.lineStandard ?? mergedStandard);
+      const unitNetGBP = (() => {
+        const m: any = (saved.meta as any) || {};
+        const fromSell = Number(m?.sellUnitGBP);
+        if (Number.isFinite(fromSell) && fromSell > 0) return fromSell;
+        const fromUnit = Number(saved.unitPrice);
+        if (Number.isFinite(fromUnit) && fromUnit > 0) return fromUnit;
+        return null;
+      })();
+
+      if (unitNetGBP != null && isUsableLinePriceFeatures(features)) {
+        const keyExact = linePriceFeatureHash(tenantId, features);
+        const keySpec = linePriceSpecHash(tenantId, features);
+
+        const valueExact: any = {
+          unitNetGBP,
+          currency: saved.currency || "GBP",
+          features,
+          lastSeenAt: new Date().toISOString(),
+          source: {
+            quoteId,
+            lineId: saved.id,
+          },
+        };
+
+        const valueSpec: any = {
+          unitNetGBP,
+          currency: saved.currency || "GBP",
+          features: {
+            productType: features.productType ?? undefined,
+            timber: features.timber ?? undefined,
+            finish: features.finish ?? undefined,
+            glazing: features.glazing ?? undefined,
+            ironmongery: features.ironmongery ?? undefined,
+          },
+          base: {
+            widthMm: features.widthMm ?? null,
+            heightMm: features.heightMm ?? null,
+          },
+          lastSeenAt: new Date().toISOString(),
+          source: {
+            quoteId,
+            lineId: saved.id,
+          },
+        };
+
+        const createdById = (req.auth?.userId as string | undefined) ?? null;
+
+        // Exact override
+        const existingExact = await prisma.modelOverride.findFirst({
+          where: { tenantId, module: "line_price", key: keyExact },
+        });
+        if (existingExact) {
+          await prisma.modelOverride.update({
+            where: { id: existingExact.id },
+            data: {
+              value: valueExact as any,
+              reason: "confirmed_from_quote_line",
+              createdById: createdById ?? existingExact.createdById,
+            },
+          });
+        } else {
+          await prisma.modelOverride.create({
+            data: {
+              tenantId,
+              module: "line_price",
+              key: keyExact,
+              value: valueExact as any,
+              reason: "confirmed_from_quote_line",
+              createdById,
+            },
+          });
+        }
+
+        // Spec-only override (for parametric scaling)
+        const existingSpec = await prisma.modelOverride.findFirst({
+          where: { tenantId, module: "line_price_spec", key: keySpec },
+        });
+        if (existingSpec) {
+          await prisma.modelOverride.update({
+            where: { id: existingSpec.id },
+            data: {
+              value: valueSpec as any,
+              reason: "confirmed_from_quote_line",
+              createdById: createdById ?? existingSpec.createdById,
+            },
+          });
+        } else {
+          await prisma.modelOverride.create({
+            data: {
+              tenantId,
+              module: "line_price_spec",
+              key: keySpec,
+              value: valueSpec as any,
+              reason: "confirmed_from_quote_line",
+              createdById,
+            },
+          });
+        }
+      }
+    } catch (err: any) {
+      console.warn("[/quotes/:id/lines/:lineId] price override save failed:", err?.message || err);
+    }
 
     const out = {
       id: saved.id,
@@ -1160,6 +1553,41 @@ router.post("/", requireAuth, async (req: any, res) => {
       quoteSourceType: null,
     },
   });
+
+  // If this quote was created from a lead that came from an email upload, attach any persisted
+  // PDF attachments to the quote so they appear in the Quote Builder file list.
+  try {
+    if (leadId) {
+      const lead = await prisma.lead.findFirst({ where: { id: String(leadId), tenantId }, select: { custom: true } });
+      const custom = (lead?.custom as any) || {};
+      const attachments = Array.isArray(custom?.attachments) ? custom.attachments : [];
+      const fileIds = attachments
+        .map((a: any) => (a && typeof a === "object" ? String(a.fileId || "").trim() : ""))
+        .filter(Boolean);
+
+      if (fileIds.length) {
+        const files = await prisma.uploadedFile.findMany({
+          where: { tenantId, id: { in: fileIds } },
+          select: { id: true, name: true, mimeType: true, quoteId: true, kind: true },
+        });
+        for (const f of files) {
+          if (f.quoteId && f.quoteId !== q.id) continue;
+          const isPdf = /pdf$/i.test(String(f.mimeType || "")) || /\.pdf$/i.test(String(f.name || ""));
+          const nextKind = isPdf ? ("SUPPLIER_QUOTE" as any) : f.kind;
+          await prisma.uploadedFile.update({
+            where: { id: f.id },
+            data: {
+              quoteId: q.id,
+              kind: nextKind,
+            },
+          });
+        }
+      }
+    }
+  } catch (e: any) {
+    console.warn("[quotes] failed to attach lead email attachments", e?.message || e);
+  }
+
   logOrderFlow("quote_created", { tenantId, quoteId: q.id, leadId: leadId || null, title });
   res.json(mapQuoteSourceForResponse(q));
 });
@@ -1377,7 +1805,7 @@ router.get("/:id", requireAuth, async (req: any, res) => {
     try {
       q = await prisma.quote.findFirst({
         where: { id, tenantId },
-        include: { lines: true, supplierFiles: true },
+        include: { lines: true, supplierFiles: { select: UPLOADED_FILE_SAFE_SELECT } },
       });
     } catch (inner: any) {
       const msg = inner?.message || String(inner);
@@ -1399,8 +1827,49 @@ router.get("/:id", requireAuth, async (req: any, res) => {
       return res.json(mapQuoteSourceForResponse(q));
     }
 
+    // Backfill: if this quote is tied to a lead created via manual email upload,
+    // link any persisted PDF attachments (stored in lead.custom.attachments) to this quote
+    // so they show up in the file lists.
+    try {
+      const leadId = q.leadId ? String(q.leadId) : null;
+      if (leadId) {
+        const lead = await prisma.lead.findFirst({ where: { id: leadId, tenantId }, select: { custom: true } });
+        const custom = (lead?.custom as any) || {};
+        const attachments = Array.isArray(custom?.attachments) ? custom.attachments : [];
+        const fileIds = attachments
+          .map((a: any) => (a && typeof a === "object" ? String(a.fileId || "").trim() : ""))
+          .filter(Boolean);
+
+        if (fileIds.length) {
+          const files = await prisma.uploadedFile.findMany({
+            where: { tenantId, id: { in: fileIds } },
+            select: { id: true, name: true, mimeType: true, quoteId: true, kind: true },
+          });
+          for (const f of files) {
+            if (f.quoteId && f.quoteId !== id) continue;
+            const isPdf = /pdf$/i.test(String(f.mimeType || "")) || /\.pdf$/i.test(String(f.name || ""));
+            const nextKind = isPdf ? ("SUPPLIER_QUOTE" as any) : f.kind;
+            await prisma.uploadedFile.update({
+              where: { id: f.id },
+              data: {
+                quoteId: id,
+                kind: nextKind,
+              },
+            });
+          }
+        }
+      }
+    } catch (e: any) {
+      console.warn("[quotes/:id] failed to backfill lead email attachments", e?.message || e);
+    }
+
     const normalizedQuote = mapQuoteSourceForResponse(q);
-    const allFiles = Array.isArray(normalizedQuote?.supplierFiles) ? normalizedQuote.supplierFiles : [];
+    // Reload file list so the response includes any newly linked attachments.
+    const allFiles = await prisma.uploadedFile.findMany({
+      where: { tenantId, quoteId: id },
+      select: { id: true, name: true, mimeType: true, sizeBytes: true, uploadedAt: true, kind: true },
+      orderBy: { uploadedAt: "desc" },
+    });
     const supplierFiles = allFiles.filter((f: any) => String(f.kind) === "SUPPLIER_QUOTE");
     const clientQuoteFiles = allFiles.filter((f: any) => String(f.kind) === "CLIENT_QUOTE");
 
@@ -1494,15 +1963,46 @@ router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: an
 
   const saved: any[] = [];
   const errors: Array<{ name: string; message: string }> = [];
+
+  const storeUploadsInDb = String(process.env.UPLOADS_STORE_IN_DB ?? "true").toLowerCase() !== "false";
+  const uploadsDbMaxBytes = (() => {
+    const raw = Number(process.env.UPLOADS_DB_MAX_BYTES);
+    if (Number.isFinite(raw) && raw > 0) return raw;
+    return 15 * 1024 * 1024;
+  })();
+
+  if (!storeUploadsInDb) {
+    console.log("[quotes/:id/files] UPLOADS_STORE_IN_DB is disabled; uploads will rely on local disk paths.");
+  }
+
   for (const f of incomingFiles) {
     try {
+      const isPdf =
+        f.mimetype === "application/pdf" ||
+        /pdf$/i.test(String(f.mimetype || "")) ||
+        /\.pdf$/i.test(String(f.originalname || ""));
+
+      // Read file bytes once (used for auto-detect and optional DB persistence)
+      let fileBuffer: Buffer | null = null;
+      try {
+        if (isPdf || storeUploadsInDb) {
+          fileBuffer = await fs.promises.readFile(f.path);
+        }
+      } catch (readErr: any) {
+        // Non-fatal: we still persist the path, but DB content and auto-detect won't work.
+        console.warn(
+          "[quotes/:id/files] Failed to read uploaded file bytes:",
+          f.originalname,
+          readErr?.message || readErr,
+        );
+      }
+
       // Auto-detect quote source from first PDF (only attempt once, first PDF)
-      if (!detectedSourceType && f.mimetype === "application/pdf") {
+      if (!detectedSourceType && isPdf && fileBuffer) {
         try {
           const { extractFirstPageText } = await import("../lib/pdfMetadata");
           const { autoDetectQuoteSourceProfile } = await import("../lib/quoteSourceProfiles");
-          const buffer = await fs.promises.readFile(f.path);
-          const firstPageText = await extractFirstPageText(buffer);
+          const firstPageText = await extractFirstPageText(fileBuffer);
           const profile = autoDetectQuoteSourceProfile(f.originalname, firstPageText);
           if (profile) {
             detectedSourceType = profile.type;
@@ -1514,6 +2014,20 @@ router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: an
         }
       }
 
+      // Persist content bytes into DB for reliability on ephemeral disks.
+      let contentToStore: Buffer | undefined = undefined;
+      if (storeUploadsInDb && isPdf && fileBuffer) {
+        if (fileBuffer.length <= uploadsDbMaxBytes) {
+          contentToStore = fileBuffer;
+        } else {
+          console.warn("[quotes/:id/files] Skipping DB content storage (too large):", {
+            name: f.originalname,
+            sizeBytes: fileBuffer.length,
+            maxBytes: uploadsDbMaxBytes,
+          });
+        }
+      }
+
       const row = await prisma.uploadedFile.create({
         data: {
           tenantId,
@@ -1521,6 +2035,7 @@ router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: an
           kind: "SUPPLIER_QUOTE",
           name: (typeof f.originalname === 'string' && f.originalname.trim()) ? f.originalname.trim() : 'attachment',
           path: path.relative(process.cwd(), f.path),
+          content: contentToStore ? Uint8Array.from(contentToStore) : undefined,
           mimeType: (typeof f.mimetype === 'string' && f.mimetype.trim()) ? f.mimetype : 'application/octet-stream',
           sizeBytes: f.size,
         },
@@ -1568,7 +2083,47 @@ router.post("/:id/client-quote-files", requireAuth, upload.array("files", 10), a
   if (!q) return res.status(404).json({ error: "not_found" });
 
   const saved = [];
+  const storeUploadsInDb = String(process.env.UPLOADS_STORE_IN_DB ?? "true").toLowerCase() !== "false";
+  const uploadsDbMaxBytes = (() => {
+    const raw = Number(process.env.UPLOADS_DB_MAX_BYTES);
+    if (Number.isFinite(raw) && raw > 0) return raw;
+    return 15 * 1024 * 1024;
+  })();
+
+  if (!storeUploadsInDb) {
+    console.log(
+      "[quotes/:id/client-quote-files] UPLOADS_STORE_IN_DB is disabled; uploads will rely on local disk paths.",
+    );
+  }
+
   for (const f of (req.files as Express.Multer.File[])) {
+    const isPdf =
+      f.mimetype === "application/pdf" ||
+      /pdf$/i.test(String(f.mimetype || "")) ||
+      /\.pdf$/i.test(String(f.originalname || ""));
+
+    let contentToStore: Buffer | undefined = undefined;
+    if (storeUploadsInDb && isPdf) {
+      try {
+        const buf = await fs.promises.readFile(f.path);
+        if (buf.length <= uploadsDbMaxBytes) {
+          contentToStore = buf;
+        } else {
+          console.warn("[quotes/:id/client-quote-files] Skipping DB content storage (too large):", {
+            name: f.originalname,
+            sizeBytes: buf.length,
+            maxBytes: uploadsDbMaxBytes,
+          });
+        }
+      } catch (e: any) {
+        console.warn(
+          "[quotes/:id/client-quote-files] Failed to read uploaded file bytes:",
+          f.originalname,
+          e?.message || e,
+        );
+      }
+    }
+
     const row = await prisma.uploadedFile.create({
       data: {
         tenantId,
@@ -1577,6 +2132,7 @@ router.post("/:id/client-quote-files", requireAuth, upload.array("files", 10), a
   kind: "CLIENT_QUOTE" as any,
         name: (typeof f.originalname === 'string' && f.originalname.trim()) ? f.originalname.trim() : 'attachment',
         path: path.relative(process.cwd(), f.path),
+        content: contentToStore ? Uint8Array.from(contentToStore) : undefined,
         mimeType: (typeof f.mimetype === 'string' && f.mimetype.trim()) ? f.mimetype : 'application/octet-stream',
         sizeBytes: f.size,
       },
@@ -1748,7 +2304,7 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
     try {
       quote = await prisma.quote.findFirst({
         where: { id: quoteId, tenantId },
-        include: { supplierFiles: true },
+        include: { supplierFiles: { select: UPLOADED_FILE_SAFE_SELECT } },
       });
     } catch (err: any) {
       if (shouldFallbackQuoteQuery(err)) {
@@ -1939,6 +2495,13 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
               supplierHint: supplierHint ?? f.name ?? undefined,
               currencyHint: quote.currency || "GBP",
               supplierProfileId: quote.supplierProfileId ?? undefined,
+              // Deterministic parsing (no LLM/templates), but allow OCR recovery when Stage A is low-confidence.
+              // This is critical for scanned PDFs and PDFs with broken/garbled text layers.
+              ocrEnabled: true,
+              ocrAutoWhenNoText: true,
+              // Avoid LLM/template behaviour in this generic quote-upload parser.
+              llmEnabled: false,
+              templateEnabled: false,
             });
             parseResult = hybrid;
             info.hybrid = { used: true, confidence: hybrid.confidence, stages: hybrid.usedStages };
@@ -3086,6 +3649,7 @@ async function fetchLineImageUrls(lines: any[], tenantId: string): Promise<Recor
       id: { in: imageFileIds },
       kind: "LINE_IMAGE" as FileKind,
     },
+    select: { id: true },
   });
   
   // Generate signed URLs for each image
@@ -3945,7 +4509,10 @@ router.get("/:id/files/:fileId/signed", requireAuth, async (req: any, res) => {
     const fileId = String(req.params.fileId);
     let quote: any;
     try {
-      quote = await prisma.quote.findFirst({ where: { id, tenantId }, include: { supplierFiles: true } });
+      quote = await prisma.quote.findFirst({
+        where: { id, tenantId },
+        include: { supplierFiles: { select: UPLOADED_FILE_SAFE_SELECT } },
+      });
     } catch (inner: any) {
       // Mirror fallback logic used in other quote endpoints to handle production schema drift
       if (shouldFallbackQuoteQuery(inner)) {
@@ -4184,104 +4751,28 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
         
         console.log(`[quotes/:id/price] Using cached estimate for quote ${quote.id}: predictedTotal=${predictedTotal}, confidence=${confidence}`);
 
-        // If cached value is non-positive, treat as cache miss to allow retraining/updated logic
-        if (predictedTotal <= 0) {
-          console.warn(`[quotes/:id/price] Cached estimate has predictedTotal=${predictedTotal} for quote ${quote.id} – ignoring cache`);
+        const usableCached =
+          predictedTotal > 0 && confidence != null && Number.isFinite(confidence) && confidence >= MIN_ML_CONFIDENCE;
+
+        // If cached value is non-positive or low-confidence, treat as cache miss to allow updated logic.
+        if (!usableCached) {
+          console.warn(
+            `[quotes/:id/price] Cached estimate unusable for quote ${quote.id} (predictedTotal=${predictedTotal}, confidence=${confidence}); ignoring cache`,
+          );
           // proceed to live ML call by skipping cache branch
         } else {
-          // If there are no lines yet, create a single placeholder line so totals aren't £0
+          // If there are no line items yet, return the estimate but do not mutate quote/lines.
           if (!quote.lines || quote.lines.length === 0) {
-            const desc = (quote.title && `Estimated: ${quote.title}`) || "Estimated item";
-            const pricingBreakdown = {
-              method: "ML",
-              inputs: {
-                qty: 1,
-                predictedTotal,
-                distribution: "placeholder",
-              },
-              outputs: {
-                sellUnitGBP: predictedTotal,
-                sellTotalGBP: predictedTotal,
-              },
-              assumptions: {
-                modelVersionId: productionModelId,
-                confidence,
-              },
-              timestamp: new Date().toISOString(),
-            };
-            await prisma.quoteLine.create({
-              data: {
-                quoteId: quote.id,
-                supplier: null as any,
-                sku: undefined,
-                description: desc,
-                qty: 1,
-                unitPrice: new Prisma.Decimal(0),
-                currency,
-                deliveryShareGBP: new Prisma.Decimal(0),
-                lineTotalGBP: new Prisma.Decimal(predictedTotal),
-                meta: {
-                  pricingMethod: "ml_distribute",
-                  sellUnitGBP: predictedTotal,
-                  sellTotalGBP: predictedTotal,
-                  predictedTotal,
-                  estimateModelVersionId: productionModelId,
-                  pricingBreakdown,
-                } as any,
-              },
-            });
-            {
-              const saved = await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(predictedTotal) } });
-              try {
-                await completeTasksOnRecordChangeByLinks({
-                  tenantId,
-                  model: "Quote",
-                  recordId: quote.id,
-                  changed: { totalGBP: saved.totalGBP },
-                  newRecord: saved,
-                });
-              } catch (e) {
-                console.warn("[/quotes/:id/price cached placeholder] field-link sync failed:", (e as any)?.message || e);
-              }
-            }
-
-            await logInferenceEvent({
-              tenantId,
-              model: inferenceModel,
-              modelVersionId: productionModelId,
-              inputHash,
-              outputJson: { predictedTotal, currency, confidence, modelVersionId: productionModelId },
-              confidence: confidence ?? undefined,
-              latencyMs: 0,
-              meta: { cacheHit: true, createdPlaceholderLine: true },
-            });
-
-            await logInsight({
-              tenantId,
-              module: inferenceModel,
-              inputSummary: `quote:${quote.id}:${inputType}`,
-              decision: productionModelId,
-              confidence,
-              userFeedback: {
-                kind: inferenceModel,
-                quoteId: quote.id,
-                modelVersionId: productionModelId,
-                estimatedTotal: predictedTotal,
-                cacheHit: true,
-                createdPlaceholderLine: true,
-              },
-            });
-
             console.log("[/quotes/:id/price] done", {
               tenantId,
               quoteId: quote.id,
               method,
-              totalGBP: predictedTotal,
+              totalGBP: null,
               cacheHit: true,
-              createdPlaceholderLine: true,
+              applied: false,
               ms: Date.now() - pricingStartedAt,
             });
-            return res.json({ ok: true, method, predictedTotal, totalGBP: predictedTotal, cacheHit: true, createdPlaceholderLine: true });
+            return res.json({ ok: true, method, predictedTotal, totalGBP: null, confidence, currency, modelVersionId: productionModelId, cacheHit: true, applied: false });
           }
           // Always distribute predicted total by quantity when using questionnaire-only mode
           let totalGBP = 0;
@@ -4381,8 +4872,23 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
             cacheHit: true,
             ms: Date.now() - pricingStartedAt,
           });
-          return res.json({ ok: true, method, predictedTotal, totalGBP, cacheHit: true });
+          return res.json({ ok: true, method, predictedTotal, totalGBP, confidence, currency, modelVersionId: productionModelId, cacheHit: true, applied: true });
         }
+      }
+
+      const nonEmptyFeatureCount = Object.entries(features || {}).filter(([, v]) => {
+        if (v === null || v === undefined) return false;
+        if (typeof v === "string" && v.trim() === "") return false;
+        if (Array.isArray(v) && v.length === 0) return false;
+        return true;
+      }).length;
+
+      if (nonEmptyFeatureCount === 0) {
+        return res.status(422).json({
+          error: "insufficient_data",
+          message:
+            "ML estimate needs more input. Fill in the questionnaire (or parse an uploaded quote and add product lines) then try again.",
+        });
       }
 
       const startedAt = Date.now();
@@ -4400,119 +4906,79 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
         ml = mlText ? { raw: mlText } : {};
       }
 
-  const predictedTotal = safeNumber(ml?.predicted_total ?? ml?.predictedTotal ?? ml?.total) ?? 0;
+      if (!mlResp.ok) {
+        console.warn(
+          `[quotes/:id/price] ML service error for quote ${quote.id}: status=${mlResp.status}, body=${mlText?.slice(0, 500)}`,
+        );
+        return res.status(502).json({
+          error: "ml_service_error",
+          message: "ML service returned an error. Please try again in a moment.",
+        });
+      }
+
+      const predictedTotal = safeNumber(ml?.predicted_total ?? ml?.predictedTotal ?? ml?.total) ?? 0;
       const confidenceRaw = safeNumber(ml?.confidence ?? ml?.probability ?? ml?.score);
       const confidence = confidenceRaw ?? 0;
       console.log(`[quotes/:id/price] ML response for quote ${quote.id}: predictedTotal=${predictedTotal}, confidence=${confidence}, raw:`, JSON.stringify(ml));
-      
-      if (predictedTotal <= 0) {
-        console.warn(`[quotes/:id/price] ML predicted total is ${predictedTotal} for quote ${quote.id}, features:`, JSON.stringify(features));
-      }
-      
+
       let modelVersionId = extractModelVersionId(ml) || productionModelId || `external-${new Date().toISOString().slice(0, 10)}`;
       const currency = normalizeCurrency(ml?.currency || quote.currency || "GBP");
 
-      // Fallback floor if ML prediction is non-positive
-      let predictedTotalFinal = predictedTotal;
-      let usedFallbackFloor = false;
-      if (!(predictedTotalFinal > 0)) {
-        predictedTotalFinal = MIN_ESTIMATE_GBP;
-        usedFallbackFloor = true;
-        modelVersionId = modelVersionId || "fallback-floor";
-        console.warn(`[quotes/:id/price] ML predicted total non-positive; applying floor £${predictedTotalFinal} for quote ${quote.id}`);
+      if (!(predictedTotal > 0)) {
+        console.warn(
+          `[quotes/:id/price] ML returned non-positive total for quote ${quote.id} (predictedTotal=${predictedTotal})`,
+        );
+        return res.status(422).json({
+          error: "insufficient_data",
+          message:
+            "ML couldn't produce a reliable estimate from the current inputs. Add more details (dimensions/specs) and try again.",
+          confidence,
+        });
       }
 
-      // Only persist positive predictions to avoid poisoning the cache with zeros
-      if (predictedTotalFinal > 0 && !usedFallbackFloor) {
-        try {
-          await prisma.estimate.create({
-            data: {
-              tenantId,
-              quoteId: quote.id,
-              inputType,
-              inputHash,
-              currency,
-              estimatedTotal: predictedTotalFinal,
-              confidence,
-              modelVersionId,
-            },
-          });
-        } catch (e: any) {
-          console.warn(`[quotes] failed to persist Estimate for quote ${quote.id}:`, e?.message || e);
-        }
+      if (!Number.isFinite(confidence) || confidence < MIN_ML_CONFIDENCE) {
+        return res.status(422).json({
+          error: "low_confidence",
+          message:
+            "Estimate confidence is too low to apply automatically. Add missing details (e.g. dimensions/specs) and re-run.",
+          confidence,
+        });
       }
 
-      // If there are no lines yet, create a single placeholder line so totals aren't £0
-      let totalGBPForReturn = 0;
-      if (!quote.lines || quote.lines.length === 0) {
-        const currency = normalizeCurrency(ml?.currency || quote.currency || "GBP");
-        const desc = (quote.title && `Estimated: ${quote.title}`) || "Estimated item";
-        const pricingBreakdown = {
-          method: "ML",
-          inputs: {
-            qty: 1,
-            predictedTotal: predictedTotalFinal,
-            distribution: "placeholder",
-          },
-          outputs: {
-            sellUnitGBP: predictedTotalFinal,
-            sellTotalGBP: predictedTotalFinal,
-          },
-          assumptions: {
-            modelVersionId,
-            confidence,
-          },
-          timestamp: new Date().toISOString(),
-        };
-        await prisma.quoteLine.create({
+      // Persist usable predictions for caching/training.
+      try {
+        await prisma.estimate.create({
           data: {
+            tenantId,
             quoteId: quote.id,
-            supplier: null as any,
-            sku: undefined,
-            description: desc,
-            qty: 1,
-            unitPrice: new Prisma.Decimal(0),
+            inputType,
+            inputHash,
             currency,
-            deliveryShareGBP: new Prisma.Decimal(0),
-            lineTotalGBP: new Prisma.Decimal(predictedTotalFinal),
-            meta: {
-              pricingMethod: "ml_distribute",
-              sellUnitGBP: predictedTotalFinal,
-              sellTotalGBP: predictedTotalFinal,
-              predictedTotal: predictedTotalFinal,
-              estimateModelVersionId: modelVersionId,
-              pricingBreakdown,
-            } as any,
+            estimatedTotal: predictedTotal,
+            confidence,
+            modelVersionId,
           },
         });
-        {
-          const saved = await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(predictedTotalFinal) } });
-          try {
-            await completeTasksOnRecordChangeByLinks({
-              tenantId,
-              model: "Quote",
-              recordId: quote.id,
-              changed: { totalGBP: saved.totalGBP },
-              newRecord: saved,
-            });
-          } catch (e) {
-            console.warn("[/quotes/:id/price placeholder] field-link sync failed:", (e as any)?.message || e);
-          }
-        }
-        totalGBPForReturn = predictedTotalFinal;
-      } else {
-        // Always distribute by quantity in questionnaire-only mode
+      } catch (e: any) {
+        console.warn(`[quotes] failed to persist Estimate for quote ${quote.id}:`, e?.message || e);
+      }
+
+      const hasLines = Array.isArray(quote.lines) && quote.lines.length > 0;
+      let applied = false;
+      let totalGBPForReturn: number | null = null;
+      if (hasLines) {
+        // Distribute by quantity across existing line items.
         let totalGBP = 0;
         const qtySum2 = quote.lines.reduce((s, ln) => s + Math.max(1, Number(ln.qty || 1)), 0);
         for (const ln of quote.lines) {
           const qty = Math.max(1, Number(ln.qty || 1));
-          const sellTotal = predictedTotalFinal > 0 ? (predictedTotalFinal * qty) / Math.max(1, qtySum2) : 0;
+          const sellTotal = (predictedTotal * qty) / Math.max(1, qtySum2);
           const sellUnit = qty > 0 ? sellTotal / qty : 0;
           const pricingBreakdown = {
             method: "ML",
             inputs: {
               qty,
-              predictedTotal: predictedTotalFinal,
+              predictedTotal,
               distribution: "quantity",
             },
             outputs: {
@@ -4531,11 +4997,11 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
             data: {
               meta: {
                 set: {
-                  ...(ln.meta as any || {}),
+                  ...((ln.meta as any) || {}),
                   sellUnitGBP: sellUnit,
                   sellTotalGBP: sellTotal,
                   pricingMethod: "ml_distribute",
-                  predictedTotal: predictedTotalFinal,
+                  predictedTotal,
                   estimateModelVersionId: modelVersionId,
                   pricingBreakdown,
                 },
@@ -4557,11 +5023,12 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
             console.warn("[/quotes/:id/price distribute] field-link sync failed:", (e as any)?.message || e);
           }
         }
+        applied = true;
         totalGBPForReturn = totalGBP;
       }
 
       const sanitizedEstimate = {
-        predictedTotal: predictedTotalFinal,
+        predictedTotal,
         currency,
         confidence,
         modelVersionId,
@@ -4598,10 +5065,9 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
         quoteId: quote.id,
         method,
         totalGBP: totalGBPForReturn,
-        fallbackFloor: usedFallbackFloor,
         ms: Date.now() - pricingStartedAt,
       });
-      return res.json({ ok: true, method, predictedTotal: predictedTotalFinal, totalGBP: totalGBPForReturn, fallbackFloor: usedFallbackFloor });
+      return res.json({ ok: true, method, predictedTotal, totalGBP: totalGBPForReturn, confidence, currency, modelVersionId, applied });
     }
 
     return res.status(400).json({ error: "invalid_method" });
@@ -4726,7 +5192,7 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
     try {
       quote = await prisma.quote.findFirst({
         where: { id: quoteId, tenantId },
-        include: { supplierFiles: true, lines: true },
+        include: { supplierFiles: { select: UPLOADED_FILE_SAFE_SELECT }, lines: true },
       });
     } catch (err: any) {
       if (shouldFallbackQuoteQuery(err)) {
@@ -4755,6 +5221,22 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
     if (!quote.supplierFiles || quote.supplierFiles.length === 0) {
       return res.status(400).json({ error: "no_supplier_files" });
     }
+
+    const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
+      if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return promise;
+      return new Promise<T>((resolve, reject) => {
+        const id = setTimeout(() => reject(new Error(`${label}_timeout`)), timeoutMs);
+        promise
+          .then((v) => {
+            clearTimeout(id);
+            resolve(v);
+          })
+          .catch((e) => {
+            clearTimeout(id);
+            reject(e);
+          });
+      });
+    };
     
     const {
       convertCurrency = true,
@@ -4762,6 +5244,14 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
       hideDeliveryLine = true,
       applyMarkup = true,
     } = req.body || {};
+
+    // Heuristic: the "Upload your own quote" tab calls this endpoint with *all* transformations disabled.
+    // In that mode we prefer deterministic-first parsing (no LLM) and only rely on OCR if Stage A is poor.
+    const deterministicOnly =
+      convertCurrency === false &&
+      distributeDelivery === false &&
+      hideDeliveryLine === false &&
+      applyMarkup === false;
     
     // Get tenant settings for markup percentage
     const tenantSettings = await prisma.tenantSettings.findUnique({
@@ -4782,6 +5272,9 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
   const parsedLines: any[] = [];
   let gibberishCount = 0;
   const skippedGibberishSamples: string[] = [];
+  const parseWarnings = new Set<string>();
+  const fileSummaries: any[] = [];
+  const parsedLinesForDb: Prisma.ParsedSupplierLineCreateManyInput[] = [];
     
     // Helper functions for robust field extraction (same as in parse endpoint)
     const pickQty = (ln: any): number | null => {
@@ -4823,11 +5316,47 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
       return null;
     };
     
-    // Parse each supplier file
-    for (const f of quote.supplierFiles) {
+    // Parse each supplier file (cap work per request to avoid platform/proxy timeouts)
+    const maxFiles = (() => {
+      const raw = Number(process.env.PROCESS_SUPPLIER_MAX_FILES);
+      if (Number.isFinite(raw) && raw > 0) return Math.max(1, Math.min(6, Math.floor(raw)));
+      return 1;
+    })();
+
+    const parseFileTimeoutMs = (() => {
+      const raw = Number(process.env.PROCESS_SUPPLIER_FILE_TIMEOUT_MS);
+      if (Number.isFinite(raw) && raw > 0) return raw;
+      return 80_000;
+    })();
+
+    const pdfFiles = (quote.supplierFiles || [])
+      .filter((f: any) => /pdf$/i.test(f.mimeType || "") || /\.pdf$/i.test(f.name || ""))
+      .sort((a: any, b: any) => {
+        const at = a?.uploadedAt ? new Date(a.uploadedAt).getTime() : 0;
+        const bt = b?.uploadedAt ? new Date(b.uploadedAt).getTime() : 0;
+        return bt - at;
+      });
+
+    const filesToParse = pdfFiles.slice(0, maxFiles);
+    if (pdfFiles.length > filesToParse.length) {
+      console.warn("[process-supplier] Too many supplier PDFs; limiting this run", {
+        total: pdfFiles.length,
+        processing: filesToParse.length,
+        maxFiles,
+      });
+    }
+
+    for (const f of filesToParse) {
       if (!/pdf$/i.test(f.mimeType || "") && !/\.pdf$/i.test(f.name || "")) {
         continue;
       }
+
+      const fileStartedAt = Date.now();
+      console.log("[process-supplier] Parsing file", {
+        fileId: f.id,
+        name: f.name,
+        sizeBytes: f.sizeBytes,
+      });
       
       const abs = path.isAbsolute(f.path) ? f.path : path.join(process.cwd(), f.path);
       let buffer: Buffer;
@@ -4836,33 +5365,107 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
         buffer = await fs.promises.readFile(abs);
       } catch (err: any) {
         console.error(`[process-supplier] Failed to read file ${f.id}:`, err?.message);
-        continue;
+        // Render local disk is ephemeral; attempt DB-backed recovery.
+        try {
+          const row = await prisma.uploadedFile.findUnique({
+            where: { id: f.id },
+            select: { content: true },
+          });
+          if (row?.content && (row.content as any).length) {
+            buffer = Buffer.from(row.content as any);
+            console.warn(`[process-supplier] Recovered file ${f.id} from DB content (local path missing).`);
+          } else {
+            continue;
+          }
+        } catch (dbErr: any) {
+          console.error(`[process-supplier] DB recovery failed for file ${f.id}:`, dbErr?.message || dbErr);
+          continue;
+        }
       }
       
       try {
-        let parseResult = await parseSupplierPdf(buffer, {
-          supplierHint: f.name ?? undefined,
-          currencyHint: quote.currency || "GBP",
-          supplierProfileId: quote.supplierProfileId ?? undefined,
-        });
+        let parseResult = await withTimeout(
+          parseSupplierPdf(buffer, {
+            supplierHint: f.name ?? undefined,
+            currencyHint: quote.currency || "GBP",
+            // In deterministic-only mode (own-quote), avoid layout templates entirely.
+            // Auto-detection can set supplierProfileId on upload, which may mis-parse some PDFs.
+            supplierProfileId: deterministicOnly ? undefined : (quote.supplierProfileId ?? undefined),
+            templateEnabled: deterministicOnly ? false : true,
+            llmEnabled: deterministicOnly ? false : true,
+            // Always allow OCR recovery when Stage A is low-confidence (even if PARSER_OCR_ENABLED=false in env).
+            // This keeps supplier parsing reliable for scanned PDFs and PDFs with broken/garbled text layers.
+            ocrEnabled: true,
+            // And explicitly auto-enable OCR when no text layer is detected.
+            ocrAutoWhenNoText: true,
+          }),
+          parseFileTimeoutMs,
+          "parseSupplierPdf",
+        );
 
-        // Fallback: if structured parser returns no lines, try simple fallback parser
+        // If we still got no lines, retry deterministically with OCR forced and templates/LLM disabled.
         if (!parseResult?.lines || !Array.isArray(parseResult.lines) || parseResult.lines.length === 0) {
           try {
-            const fb = await fallbackParseSupplierPdf(buffer);
-            if (fb?.lines?.length) {
-              parseResult = fb as any;
+            const retry = await withTimeout(
+              parseSupplierPdf(buffer, {
+                supplierHint: f.name ?? undefined,
+                currencyHint: quote.currency || "GBP",
+                supplierProfileId: undefined,
+                templateEnabled: false,
+                llmEnabled: false,
+                ocrEnabled: true,
+                ocrAutoWhenNoText: true,
+              }),
+              Math.min(parseFileTimeoutMs, 80_000),
+              "parseSupplierPdf_retry_ocr",
+            );
+            if (retry?.lines?.length) {
+              parseResult = retry as any;
+              if (Array.isArray((retry as any)?.warnings)) {
+                (retry as any).warnings.push("Retried parsing with OCR forced (templates/LLM disabled)");
+              }
             }
-          } catch (fallbackErr: any) {
+          } catch (retryErr: any) {
             console.warn(
-              `[process-supplier] Fallback parser failed for file ${f.id}:`,
-              fallbackErr?.message || fallbackErr,
+              `[process-supplier] OCR retry failed for file ${f.id}:`,
+              retryErr?.message || retryErr,
             );
           }
         }
 
+        console.log("[process-supplier] Parsed", {
+          fileId: f.id,
+          tookMs: Date.now() - fileStartedAt,
+          lines: Array.isArray(parseResult?.lines) ? parseResult.lines.length : 0,
+          usedStages: (parseResult as any)?.usedStages,
+          confidence: (parseResult as any)?.confidence,
+        });
+
+        if (Array.isArray((parseResult as any)?.warnings)) {
+          for (const w of (parseResult as any).warnings) {
+            if (typeof w === "string" && w.trim()) parseWarnings.add(w.trim());
+          }
+        }
+
+        fileSummaries.push({
+          fileId: f.id,
+          name: f.name,
+          tookMs: Date.now() - fileStartedAt,
+          lineCount: Array.isArray(parseResult?.lines) ? parseResult.lines.length : 0,
+          usedStages: Array.isArray((parseResult as any)?.usedStages) ? (parseResult as any).usedStages : null,
+          confidence: (parseResult as any)?.confidence ?? null,
+        });
+
         if (parseResult?.lines && Array.isArray(parseResult.lines)) {
           const sourceCurrency = parseResult.currency || quote.currency || "GBP";
+          const supplier = (parseResult as any)?.supplier ?? null;
+          const usedStages = Array.isArray((parseResult as any)?.usedStages)
+            ? (parseResult as any).usedStages.join(",")
+            : null;
+          const inferredConfidence =
+            typeof (parseResult as any)?.confidence === "number" && Number.isFinite((parseResult as any).confidence)
+              ? (parseResult as any).confidence
+              : null;
           
           for (const ln of parseResult.lines) {
             const description = String(ln.description || (ln as any).desc || "Item");
@@ -4892,6 +5495,34 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
               continue;
             }
 
+            // Persist a normalised ParsedSupplierLine row so the raw-parse view and ML features
+            // can use the same stored representation as /parse.
+            parsedLinesForDb.push({
+              tenantId,
+              quoteId: quote.id,
+              page: typeof (ln as any)?.page === "number" ? (ln as any).page : null,
+              rawText: String((ln as any)?.rawText ?? desc ?? ""),
+              description: desc ?? null,
+              qty: ((): number | null => {
+                const q = pickQty(ln);
+                return Number.isFinite(Number(q)) ? Number(q) : null;
+              })(),
+              costUnit: ((): number | null => {
+                const u = pickUnitCost(ln);
+                return Number.isFinite(Number(u)) ? Number(u) : null;
+              })(),
+              lineTotal: ((): number | null => {
+                const t = pickLineTotal(ln);
+                return Number.isFinite(Number(t)) ? Number(t) : null;
+              })(),
+              currency: sourceCurrency,
+              supplier,
+              confidence: inferredConfidence,
+              usedStages,
+              imageIndex: typeof (ln as any)?.imageIndex === "number" ? (ln as any).imageIndex : null,
+              imageRef: typeof (ln as any)?.imageRef === "string" ? (ln as any).imageRef : null,
+            });
+
             parsedLines.push({
               description: desc,
               qty,
@@ -4909,12 +5540,52 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
         }
       } catch (err: any) {
         console.error(`[process-supplier] Failed to parse file ${f.id}:`, err?.message);
+        fileSummaries.push({
+          fileId: f.id,
+          name: f.name,
+          tookMs: Date.now() - fileStartedAt,
+          error: err?.message || "parse_failed",
+        });
         continue;
       }
     }
     
     if (parsedLines.length === 0) {
-      return res.status(400).json({ error: "no_lines_parsed", gibberishSkipped: gibberishCount, gibberishSamples: skippedGibberishSamples.slice(0,5) });
+      try {
+        const meta0: any = (quote.meta as any) || {};
+        await prisma.quote.update({
+          where: { id: quote.id },
+          data: {
+            meta: {
+              ...(meta0 || {}),
+              lastParse: {
+                state: "error",
+                finishedAt: new Date().toISOString(),
+                error: "no_lines_parsed",
+                summaries: fileSummaries,
+                warnings: [...parseWarnings],
+              },
+            } as any,
+          },
+        } as any);
+      } catch {}
+
+      const isDeterministicOnly =
+        convertCurrency === false &&
+        distributeDelivery === false &&
+        hideDeliveryLine === false &&
+        applyMarkup === false;
+
+      return res.status(isDeterministicOnly ? 422 : 400).json({
+        error: "no_lines_parsed",
+        message: isDeterministicOnly
+          ? "Could not extract any line items from this PDF without OCR/AI. This usually means the PDF has no text layer (scanned image) or uses an unusual encoding."
+          : undefined,
+        gibberishSkipped: gibberishCount,
+        gibberishSamples: skippedGibberishSamples.slice(0, 5),
+        warnings: [...parseWarnings],
+        summaries: fileSummaries,
+      });
     }
     
     // Step 1: Currency conversion
@@ -5134,6 +5805,66 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
     await prisma.quoteLine.createMany({
       data: linesToSave,
     });
+
+    // Auto-fill lineStandard fields (width/height/timber/finish/ironmongery/glazing/productType)
+    // for the "Upload your own quote" workflow, and opportunistically for all supplier parses.
+    // This mirrors POST /quotes/:id/lines/fill-standard-from-parsed.
+    let standardisedUpdated = 0;
+    try {
+      const nowIso = new Date().toISOString();
+      const currentLines = await prisma.quoteLine.findMany({ where: { quoteId: quote.id } });
+      for (const line of currentLines as any[]) {
+        const existingStandard: any = (line as any)?.lineStandard || {};
+        const inferred = inferLineStandardFromParsedMeta({
+          description: String(line.description || ""),
+          meta: (line.meta as any) || {},
+        });
+
+        const merged: any = { ...existingStandard };
+        for (const [k, v] of Object.entries(inferred)) {
+          if (v == null) continue;
+          if (merged[k] === undefined || merged[k] === null || merged[k] === "") {
+            merged[k] = v;
+          }
+        }
+
+        const changed = JSON.stringify(existingStandard || {}) !== JSON.stringify(merged || {});
+        if (!changed) continue;
+
+        const existingMeta: any = (line.meta as any) || {};
+        const mergedMeta: any = {
+          ...existingMeta,
+          standardisedFromParsedQuoteAt: nowIso,
+          standardisedFromParsedQuoteMethod: "heuristic_v1",
+        };
+
+        await prisma.quoteLine.update({
+          where: { id: line.id },
+          data: {
+            lineStandard: Object.keys(merged).length ? (merged as any) : undefined,
+            meta: mergedMeta as any,
+          },
+        });
+        standardisedUpdated += 1;
+      }
+    } catch (err: any) {
+      console.warn("[process-supplier] standardisation failed:", err?.message || err);
+    }
+
+    // Persist parsed rows for debugging + downstream ML features.
+    if (parsedLinesForDb.length > 0) {
+      try {
+        await prisma.$transaction([
+          prisma.parsedSupplierLine.deleteMany({ where: { tenantId, quoteId: quote.id } }),
+          prisma.parsedSupplierLine.createMany({ data: parsedLinesForDb }),
+        ]);
+      } catch (err: any) {
+        console.warn(
+          `[process-supplier] quote ${quote.id} failed to persist ParsedSupplierLine:`,
+          err?.message || err,
+        );
+      }
+    }
     
     // Update quote metadata
     await prisma.quote.update({
@@ -5144,6 +5875,19 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
           lastProcessedAt: new Date().toISOString(),
           processedWithMarkup: applyMarkup,
           processedWithDeliveryDistribution: distributeDelivery,
+          lastParse: {
+            state: "ok",
+            finishedAt: new Date().toISOString(),
+            ok: true,
+            created: cleanedLines.length,
+            standardisedUpdated,
+            warnings: [...parseWarnings],
+            summaries: fileSummaries,
+            message:
+              gibberishCount > 0
+                ? `Skipped ${gibberishCount} low-quality lines during parsing.`
+                : undefined,
+          },
         },
       },
     });
@@ -5159,6 +5903,116 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
     const updatedLines = await prisma.quoteLine.findMany({
       where: { quoteId: quote.id },
     });
+
+    // Record deterministic pricing overrides from the parsed quote so "same answers => same price"
+    // works immediately (even if the user doesn't manually edit each line).
+    let overridesSaved = 0;
+    try {
+      const createdById = (req.auth?.userId as string | undefined) ?? null;
+      for (const line of updatedLines as any[]) {
+        const features = normaliseLinePriceFeatures((line as any)?.lineStandard ?? null);
+        const unitNetGBP = (() => {
+          const m: any = (line.meta as any) || {};
+          const fromSell = Number(m?.sellUnitGBP);
+          if (Number.isFinite(fromSell) && fromSell > 0) return fromSell;
+          const fromUnit = Number(line.unitPrice);
+          if (Number.isFinite(fromUnit) && fromUnit > 0) return fromUnit;
+          return null;
+        })();
+
+        if (unitNetGBP == null) continue;
+        if (!isUsableLinePriceFeatures(features)) continue;
+
+        const keyExact = linePriceFeatureHash(tenantId, features);
+        const keySpec = linePriceSpecHash(tenantId, features);
+
+        const valueExact: any = {
+          unitNetGBP,
+          currency: line.currency || "GBP",
+          features,
+          lastSeenAt: new Date().toISOString(),
+          source: {
+            quoteId,
+            lineId: line.id,
+          },
+        };
+
+        const valueSpec: any = {
+          unitNetGBP,
+          currency: line.currency || "GBP",
+          features: {
+            productType: features.productType ?? undefined,
+            timber: features.timber ?? undefined,
+            finish: features.finish ?? undefined,
+            glazing: features.glazing ?? undefined,
+            ironmongery: features.ironmongery ?? undefined,
+          },
+          base: {
+            widthMm: features.widthMm ?? null,
+            heightMm: features.heightMm ?? null,
+          },
+          lastSeenAt: new Date().toISOString(),
+          source: {
+            quoteId,
+            lineId: line.id,
+          },
+        };
+
+        const existingExact = await prisma.modelOverride.findFirst({
+          where: { tenantId, module: "line_price", key: keyExact },
+        });
+        if (existingExact) {
+          await prisma.modelOverride.update({
+            where: { id: existingExact.id },
+            data: {
+              value: valueExact as any,
+              reason: "confirmed_from_parsed_quote",
+              createdById: createdById ?? existingExact.createdById,
+            },
+          });
+        } else {
+          await prisma.modelOverride.create({
+            data: {
+              tenantId,
+              module: "line_price",
+              key: keyExact,
+              value: valueExact as any,
+              reason: "confirmed_from_parsed_quote",
+              createdById,
+            },
+          });
+        }
+
+        const existingSpec = await prisma.modelOverride.findFirst({
+          where: { tenantId, module: "line_price_spec", key: keySpec },
+        });
+        if (existingSpec) {
+          await prisma.modelOverride.update({
+            where: { id: existingSpec.id },
+            data: {
+              value: valueSpec as any,
+              reason: "confirmed_from_parsed_quote",
+              createdById: createdById ?? existingSpec.createdById,
+            },
+          });
+        } else {
+          await prisma.modelOverride.create({
+            data: {
+              tenantId,
+              module: "line_price_spec",
+              key: keySpec,
+              value: valueSpec as any,
+              reason: "confirmed_from_parsed_quote",
+              createdById,
+            },
+          });
+        }
+
+        overridesSaved += 1;
+      }
+    } catch (err: any) {
+      console.warn("[process-supplier] override training failed:", err?.message || err);
+    }
     
     // Log training data for ML improvement
     try {
@@ -5213,6 +6067,8 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
       count: updatedLines.length,
       gibberishSkipped: gibberishCount,
       gibberishSample: skippedGibberishSamples.slice(0,5),
+      standardisedUpdated,
+      overridesSaved,
     });
   } catch (e: any) {
     console.error("[/quotes/:id/process-supplier] failed:", e?.message || e);

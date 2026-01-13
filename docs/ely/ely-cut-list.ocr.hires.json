@@ -1,0 +1,42 @@
+{
+  "file": "/Users/Erin/saas-crm/docs/ely/Ely Cut list.pdf",
+  "source": "ocr",
+  "rows": 0,
+  "lines": [
+    "= JMs21/1 — 100% + F<) LB",
+    "Precision Carpentry & Joinery:",
+    "Pe Cutting List Summary (Finish Sizes)",
+    ": Client Fita7 Ltd",
+    "me ob",
+    "Ere Ref Ey",
+    ": =r [wiwe 21850] 03 [es [reoo [ease2tfirzs [| [ 7)",
+    "1 [wiwe [ 2[1es0] os [es ieoo [easeztfirze [| |",
+    "[wiz wae 41120] 93 [es [1070 [63521] os3se747] |",
+    "[cwiwe [2] 702] 03 [ee [ese7[easeet[sse[47 a7] 7°)",
+    "[wis was ef eoo] 67 [ 57 [ 5507] 44xts [ 458.7]464] |",
+    "[wwe [2 eoo] 64 [57 [5507] 44xta [4567]464] |",
+    "[C[wixa waa T a[1023] 64 [57 [0731] 4axts [erat] | |",
+    "[wie ware | a] ses] oa | o7 roi] ducts [rai ||",
+    "[wie wae Taf 51] 64 [57 [arta 4axts [area] [|",
+    "[olwive wore | o] aon] o4 | &7 [507] davis ss07]a548] |",
+    "[fwiwe — Tofwesofzofaefieo[ [ T T |",
+    "Dlwiwe — Tolwma [fan] [| [|",
+    "[[wisa wea Te[ers[1s [re eeal [TT |",
+    "[olwie wae 16 aso] 16 [18 [ase [| | |",
+    "[lwinz. ware [al ols [10 [oa] |||",
+    "Llwiawze [af arol1s [te [areal [| | |"
+  ],
+  "meta": {
+    "pagesAttempted": 1,
+    "rendererUsed": "puppeteer",
+    "renderErrors": [
+      "sharp[p0]: Input buffer contains unsupported image format"
+    ],
+    "warnings": [
+      "OCR renderer: puppeteer",
+      "OCR pages scanned: 1"
+    ],
+    "tookMs": 6414,
+    "stage": "tesseract"
+  }
+}

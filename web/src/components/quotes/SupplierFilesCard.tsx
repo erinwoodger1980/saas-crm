@@ -1,5 +1,5 @@
 import { useCallback, useState, useEffect } from "react";
-import { FileText, Loader2, Upload, ExternalLink, Edit3 } from "lucide-react";
+import { FileText, Loader2, Upload, ExternalLink, Edit3, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -19,6 +19,7 @@ export type SupplierFilesCardProps = {
   quoteSourceType?: string | null;
   supplierProfileId?: string | null;
   onOpen: (_file: SupplierFileDto) => void;
+  onDelete?: (_file: SupplierFileDto) => void;
   onUpload: (_files: FileList | null) => void;
   onUploadClick?: () => void;
   isUploading?: boolean;
@@ -31,6 +32,7 @@ export function SupplierFilesCard({
   quoteSourceType, 
   supplierProfileId, 
   onOpen, 
+  onDelete,
   onUpload, 
   onUploadClick, 
   isUploading,
@@ -212,9 +214,24 @@ export function SupplierFilesCard({
                   </p>
                 </div>
               </div>
-              <Button type="button" variant="ghost" size="sm" className="gap-2" onClick={() => onOpen(file)}>
-                <ExternalLink className="h-4 w-4" /> View
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button type="button" variant="ghost" size="sm" className="gap-2" onClick={() => onOpen(file)}>
+                  <ExternalLink className="h-4 w-4" /> View
+                </Button>
+                {onDelete && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onDelete(file)}
+                    className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                    aria-label="Delete file"
+                    title="Delete"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
             </div>
           ))}
           {(files ?? []).length === 0 && (

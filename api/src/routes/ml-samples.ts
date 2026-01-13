@@ -3,6 +3,7 @@ import { Router } from "express";
 import fs from "fs";
 import path from "path";
 import { prisma } from "../db";
+import { parseSupplierPdf } from "../lib/supplier/parse";
 
 // Fields that actually exist on MLTrainingSample (avoid selecting non-existent columns)
 const SAMPLE_SELECT = {
@@ -126,32 +127,30 @@ router.get('/samples/:id/preview', async (req: any, res) => {
     const ML_ENDPOINT = (process.env.ML_URL || process.env.ML_API_URL || '').replace(/\/$/, '');
     let mlResp: any = null;
     let mlError: string | null = null;
-    // Local parse stats
+    // Local parse stats (use the same supplier parser pipeline)
     let localChars: number | null = null;
     let localTotal: number | null = null;
+    let localLineCount: number | null = null;
+    let localUsedStages: any = null;
     try {
-      const pdfParse = require('pdf-parse');
-      const parsed = await pdfParse(buffer).catch(() => null);
-      if (parsed && typeof parsed.text === 'string') {
-        const text = parsed.text;
-        localChars = text.length;
-        const lines = text.split(/\n+/).map((l: string) => l.trim()).filter(Boolean);
-        let candidate: number | null = null;
-        for (const line of lines) {
-          if (/total/i.test(line)) {
-            const nums = line.match(/\b\d{1,3}(?:[,\s]\d{3})*(?:\.\d{2})?\b/g);
-            if (nums) {
-              for (const n of nums) {
-                const value = parseFloat(n.replace(/[,\s]/g,''));
-                if (!isNaN(value)) {
-                  if (candidate == null || value > candidate) candidate = value;
-                }
-              }
-            }
-          }
-        }
-        localTotal = candidate;
-      }
+      const parsed = await parseSupplierPdf(buffer, {
+        supplierHint: file.name || undefined,
+        currencyHint: "GBP",
+        templateEnabled: false,
+        llmEnabled: false,
+        ocrEnabled: false,
+        ocrAutoWhenNoText: true,
+      });
+      localLineCount = Array.isArray(parsed.lines) ? parsed.lines.length : null;
+      localUsedStages = Array.isArray((parsed as any)?.usedStages) ? (parsed as any).usedStages : null;
+      const joined = parsed.lines.map((ln) => String(ln.description || "")).join("\n");
+      localChars = joined ? joined.length : null;
+      localTotal =
+        typeof parsed.detected_totals?.estimated_total === "number"
+          ? parsed.detected_totals.estimated_total
+          : parsed.lines
+              .map((ln) => (typeof ln.lineTotal === "number" ? ln.lineTotal : 0))
+              .reduce((acc, v) => acc + v, 0) || null;
     } catch {}
     if (ML_ENDPOINT) {
       try {
@@ -167,7 +166,14 @@ router.get('/samples/:id/preview', async (req: any, res) => {
         mlError = e?.message || 'ml_forward_failed';
       }
     }
-    return res.json({ ok: true, sampleId: sample.id, messageId: sample.messageId, mlError, ml: mlResp, local: { chars: localChars, total: localTotal } });
+    return res.json({
+      ok: true,
+      sampleId: sample.id,
+      messageId: sample.messageId,
+      mlError,
+      ml: mlResp,
+      local: { chars: localChars, total: localTotal, lineCount: localLineCount, usedStages: localUsedStages },
+    });
   } catch (e: any) {
     console.error('[ml-samples] preview failed:', e?.message || e);
     return res.status(500).json({ error: 'internal_error' });

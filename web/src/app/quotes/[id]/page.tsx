@@ -13,7 +13,7 @@ import { UnifiedQuoteLineItems } from "@/components/quotes/UnifiedQuoteLineItems
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
-import { Loader2, Sparkles, Printer, ChevronDown, ChevronRight, Download, FileText, Building2, Cpu, Edit3, Eye, FileUp, Mail, Save, Box, Wand2 } from "lucide-react";
+import { Loader2, Sparkles, Printer, ChevronDown, ChevronRight, Download, FileText, Building2, Cpu, Edit3, Eye, FileUp, Mail, Save, Box, Wand2, X } from "lucide-react";
 import { TypeSelectorModal } from "@/components/TypeSelectorModal";
 import { AIComponentConfigurator } from "@/components/configurator/AIComponentConfigurator";
 import {
@@ -23,6 +23,7 @@ import {
   generateMlEstimate,
   uploadSupplierPdf,
   uploadClientQuotePdf,
+  fillLineStandardFromParsed,
   saveQuoteMappings,
   updateQuoteLine,
   createQuoteLine,
@@ -179,6 +180,11 @@ export default function QuoteBuilderPage() {
   const [rawParseOpen, setRawParseOpen] = useState(false);
   const [processDialogOpen, setProcessDialogOpen] = useState(false);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
+  const ownQuoteFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [ownQuotePreviewFileId, setOwnQuotePreviewFileId] = useState<string | null>(null);
+  const [ownQuotePreviewUrl, setOwnQuotePreviewUrl] = useState<string | null>(null);
+  const [ownQuotePreviewLoading, setOwnQuotePreviewLoading] = useState(false);
+  const [isFillingStandardFromParsed, setIsFillingStandardFromParsed] = useState(false);
   const [pricingBreakdown, setPricingBreakdown] = useState<Record<string, any> | null>(null);
   // Renamed to avoid potential duplicate identifier in CI build
   const [showMaterialAlerts, setShowMaterialAlerts] = useState(true);
@@ -578,7 +584,15 @@ export default function QuoteBuilderPage() {
         });
         
         await Promise.all([mutateQuote(), mutateLines()]);
-        setActiveTab("quote-lines");
+
+        // Keep user on this tab so they can preview + review parsed lines.
+        // Default preview to the most recently uploaded file.
+        const latest = (quote?.supplierFiles ?? [])
+          .slice()
+          .sort((a, b) => new Date(b.uploadedAt || 0).getTime() - new Date(a.uploadedAt || 0).getTime())[0];
+        if (latest?.id) {
+          setOwnQuotePreviewFileId(latest.id);
+        }
       } catch (err: any) {
         setError(err?.message || "Upload failed");
         toast({ 
@@ -592,6 +606,50 @@ export default function QuoteBuilderPage() {
     },
     [quoteId, mutateQuote, mutateLines, toast],
   );
+
+  const handlePreviewOwnQuoteFile = useCallback(
+    async (fileId: string) => {
+      if (!quoteId || !fileId) return;
+      setOwnQuotePreviewFileId(fileId);
+      setOwnQuotePreviewLoading(true);
+      setOwnQuotePreviewUrl(null);
+      try {
+        const signed = await apiFetch<{ url: string }>(
+          `/quotes/${encodeURIComponent(quoteId)}/files/${encodeURIComponent(fileId)}/signed`,
+        );
+        setOwnQuotePreviewUrl(signed?.url || null);
+      } catch (err: any) {
+        toast({ title: "Unable to preview file", description: err?.message || "Missing file", variant: "destructive" });
+        setOwnQuotePreviewUrl(null);
+      } finally {
+        setOwnQuotePreviewLoading(false);
+      }
+    },
+    [quoteId, toast],
+  );
+
+  const handleFillStandardFromParsed = useCallback(async () => {
+    if (!quoteId) return;
+    setIsFillingStandardFromParsed(true);
+    setError(null);
+    try {
+      const res = await fillLineStandardFromParsed(quoteId);
+      toast({
+        title: "Filled product details",
+        description: `Updated ${res.updated} line item(s) with details found in the quote.`,
+      });
+      await mutateLines();
+    } catch (err: any) {
+      setError(err?.message || "Failed to fill product details");
+      toast({
+        title: "Fill failed",
+        description: err?.message || "Unable to fill product line item details",
+        variant: "destructive",
+      });
+    } finally {
+      setIsFillingStandardFromParsed(false);
+    }
+  }, [quoteId, mutateLines, toast]);
 
   
 
@@ -646,11 +704,28 @@ export default function QuoteBuilderPage() {
       setEstimate(response);
       setLastEstimateAt(new Date().toISOString());
       setEstimatedLineRevision(lineRevision);
-      toast({ title: "Estimate ready", description: `Predicted total ${formatCurrency(response.estimatedTotal, currency)}.` });
+      if (response?.estimatedTotal == null) {
+        toast({
+          title: "Estimate ready",
+          description: "Prediction received, but it wasn't applied to line items.",
+        });
+      } else {
+        toast({ title: "Estimate ready", description: `Predicted total ${formatCurrency(response.estimatedTotal, currency)}.` });
+      }
       await Promise.all([mutateQuote(), mutateLines()]);
     } catch (err: any) {
-      setError(err?.message || "Failed to estimate");
-      toast({ title: "Estimate failed", description: err?.message || "Unable to generate ML estimate", variant: "destructive" });
+      const status = Number(err?.status || err?.response?.status || 0) || null;
+      const details = err?.details;
+      const apiMessage =
+        (details && typeof details === "object" && (details.message || details.error)) ||
+        (typeof details === "string" ? details : null);
+      const message = apiMessage || err?.message || "Unable to generate ML estimate";
+      setError(message);
+      toast({
+        title: status === 422 ? "More information needed" : "Estimate failed",
+        description: message,
+        variant: "destructive",
+      });
     } finally {
       setIsEstimating(false);
     }
@@ -674,11 +749,28 @@ export default function QuoteBuilderPage() {
       setLastEstimateAt(new Date().toISOString());
       setEstimatedLineRevision(lineRevision);
       setPricingBreakdown(null);
-      toast({ title: "Estimate ready", description: `Predicted total ${formatCurrency(response.estimatedTotal, currency)}.` });
+      if (response?.estimatedTotal == null) {
+        toast({
+          title: "Estimate ready",
+          description: "Prediction received, but it wasn't applied to line items.",
+        });
+      } else {
+        toast({ title: "Estimate ready", description: `Predicted total ${formatCurrency(response.estimatedTotal, currency)}.` });
+      }
 
       await Promise.all([mutateQuote(), mutateLines()]);
     } catch (err: any) {
-      toast({ title: "Estimate failed", description: err?.message || "Unable to generate ML estimate", variant: "destructive" });
+      const status = Number(err?.status || err?.response?.status || 0) || null;
+      const details = err?.details;
+      const apiMessage =
+        (details && typeof details === "object" && (details.message || details.error)) ||
+        (typeof details === "string" ? details : null);
+      const message = apiMessage || err?.message || "Unable to generate ML estimate";
+      toast({
+        title: status === 422 ? "More information needed" : "Estimate failed",
+        description: message,
+        variant: "destructive",
+      });
     } finally {
       setIsEstimating(false);
       setIsPricing(false);
@@ -903,6 +995,29 @@ export default function QuoteBuilderPage() {
       }
     },
     [quoteId, toast],
+  );
+
+  const handleDeleteUploadedFile = useCallback(
+    async (fileId: string) => {
+      if (!fileId) return;
+      setError(null);
+      try {
+        await apiFetch(`/files/${encodeURIComponent(fileId)}`, { method: "DELETE" });
+        toast({ title: "File deleted", description: "The uploaded file was removed." });
+
+        if (ownQuotePreviewFileId === fileId) {
+          setOwnQuotePreviewFileId(null);
+          setOwnQuotePreviewUrl(null);
+          setOwnQuotePreviewLoading(false);
+        }
+
+        await mutateQuote();
+      } catch (err: any) {
+        setError(err?.message || "Delete failed");
+        toast({ title: "Delete failed", description: err?.message || "Unable to delete file", variant: "destructive" });
+      }
+    },
+    [mutateQuote, ownQuotePreviewFileId, toast],
   );
 
   // Handle product type selection from type selector modal
@@ -1571,6 +1686,7 @@ export default function QuoteBuilderPage() {
                   quoteSourceType={quote?.quoteSourceType}
                   supplierProfileId={quote?.supplierProfileId}
                   onOpen={handleOpenFile}
+                  onDelete={(file) => void handleDeleteUploadedFile(file.id)}
                   onUpload={handleUploadFiles}
                   onUploadClick={openUploadDialog}
                   isUploading={isUploading}
@@ -1692,7 +1808,7 @@ export default function QuoteBuilderPage() {
                 {/* Upload area */}
                 <div className="space-y-4">
                   <input
-                    ref={fileInputRef}
+                    ref={ownQuoteFileInputRef}
                     type="file"
                     accept=".pdf"
                     multiple
@@ -1702,7 +1818,7 @@ export default function QuoteBuilderPage() {
                   
                   <div 
                     className="text-center py-8 border-2 border-dashed border-muted rounded-xl hover:border-primary/50 transition-colors cursor-pointer"
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => ownQuoteFileInputRef.current?.click()}
                   >
                     <FileUp className="h-12 w-12 mx-auto mb-4 opacity-40" />
                     <h3 className="text-lg font-medium mb-2">Upload your quote</h3>
@@ -1713,7 +1829,7 @@ export default function QuoteBuilderPage() {
                       variant="outline" 
                       onClick={(e) => {
                         e.stopPropagation();
-                        fileInputRef.current?.click();
+                        ownQuoteFileInputRef.current?.click();
                       }}
                       disabled={isUploadingOwnQuote}
                     >
@@ -1735,14 +1851,116 @@ export default function QuoteBuilderPage() {
                     <div className="space-y-2">
                       <h4 className="text-sm font-medium">Uploaded files:</h4>
                       {quote.supplierFiles.map((file) => (
-                        <div key={file.id} className="flex items-center gap-2 text-sm p-2 rounded border">
-                          <FileText className="h-4 w-4" />
-                          <span>{file.name}</span>
-                          <span className="text-muted-foreground">
-                            ({(file.sizeBytes ? file.sizeBytes / 1024 : 0).toFixed(1)} KB)
-                          </span>
+                        <div
+                          key={file.id}
+                          className={`flex items-center gap-2 text-sm p-2 rounded border hover:bg-muted/30 ${
+                            ownQuotePreviewFileId === file.id ? "border-primary" : ""
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            className="flex flex-1 min-w-0 items-center gap-2 text-left"
+                            onClick={() => void handlePreviewOwnQuoteFile(file.id)}
+                          >
+                            <FileText className="h-4 w-4 flex-shrink-0" />
+                            <span className="truncate">{file.name}</span>
+                            <span className="text-muted-foreground flex-shrink-0">
+                              ({(file.sizeBytes ? file.sizeBytes / 1024 : 0).toFixed(1)} KB)
+                            </span>
+                            <span className="ml-auto text-xs text-muted-foreground">Preview</span>
+                          </button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleDeleteUploadedFile(file.id);
+                            }}
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                            aria-label="Delete file"
+                            title="Delete"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
                         </div>
                       ))}
+                    </div>
+                  )}
+
+                  {(ownQuotePreviewLoading || ownQuotePreviewUrl) && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-medium">Preview</h4>
+                      {ownQuotePreviewLoading ? (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Loading preview...
+                        </div>
+                      ) : ownQuotePreviewUrl ? (
+                        <iframe
+                          title="Uploaded quote preview"
+                          src={ownQuotePreviewUrl}
+                          className="w-full rounded-xl border"
+                          style={{ height: "70vh" }}
+                        />
+                      ) : null}
+                    </div>
+                  )}
+
+                  {lines && lines.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h4 className="text-sm font-medium">Parsed line items</h4>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-2"
+                            disabled={isFillingStandardFromParsed}
+                            onClick={() => void handleFillStandardFromParsed()}
+                          >
+                            {isFillingStandardFromParsed ? (
+                              <>
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Filling...
+                              </>
+                            ) : (
+                              <>
+                                <Wand2 className="h-4 w-4" />
+                                Fill product details from parsed quote
+                              </>
+                            )}
+                          </Button>
+                          <Button variant="outline" size="sm" className="gap-2" onClick={() => setActiveTab("quote-lines")}>
+                            <FileText className="h-4 w-4" />
+                            View all
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="max-h-[360px] overflow-auto rounded-xl border">
+                        <div className="divide-y">
+                          {lines.map((ln) => (
+                            <div key={ln.id} className="p-3 text-sm">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="font-medium text-foreground">{ln.description || "Item"}</div>
+                                <div className="text-right text-muted-foreground whitespace-nowrap">
+                                  {typeof ln.qty === "number" ? `x${ln.qty}` : ""}
+                                </div>
+                              </div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                Unit: {typeof ln.unitPrice === "number" ? formatCurrency(ln.unitPrice, currency) : "—"}
+                                {ln.lineStandard?.widthMm && ln.lineStandard?.heightMm
+                                  ? ` · ${ln.lineStandard.widthMm}×${ln.lineStandard.heightMm}mm`
+                                  : ""}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Use “Fill product details…” to populate dimensions/spec fields on your line items so the system can learn from your uploaded quote.
+                      </p>
                     </div>
                   )}
                 </div>

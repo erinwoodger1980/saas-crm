@@ -1,5 +1,7 @@
 import OpenAI from "openai";
 import { z } from "zod";
+import path from "path";
+import { pathToFileURL } from "url";
 
 import type { SupplierParseResult } from "../../types/parse";
 import {
@@ -11,23 +13,25 @@ import {
   type ParseMetadata,
 } from "../pdf/parser";
 import { runOcrFallback } from "../pdf/ocrFallback";
+import { explainShouldUseOcr } from "./ocrDecisionGate";
 import {
   cleanText,
   combineWarnings,
   inferCurrency,
   summariseConfidence,
 } from "../pdf/normalize";
+import { assessDescriptionQuality } from "../pdf/quality";
 import {
   loadSupplierPattern,
   saveSupplierPattern,
   type PatternCues,
 } from "./patterns";
-import { extractImagesForParse } from "../pdf/extractImages";
 import {
   loadPdfLayoutTemplate,
   parsePdfWithTemplate,
   type TemplateParseMeta,
 } from "../pdf/layoutTemplates";
+import { callMlWithUpload, normaliseMlPayload } from "../ml";
 
 const STRUCTURE_TOOL = {
   type: "function" as const,
@@ -112,6 +116,161 @@ interface StageBResult {
   warnings: string[];
 }
 
+function parseLineItemsFromTextLines(
+  lines: string[],
+  supplierHint?: string,
+  currency?: string,
+): SupplierParseResult | null {
+  const cleanedLines = (lines || [])
+    .map((l) => cleanText(String(l || "")).replace(/\s{2,}/g, " ").trim())
+    .filter(Boolean);
+
+  if (!cleanedLines.length) return null;
+
+  const parsedLines: SupplierParseResult["lines"] = [];
+  const detectedTotals: SupplierParseResult["detected_totals"] = {};
+  let supplier = supplierHint?.trim();
+
+  // Only treat explicit currency amounts as "money" to avoid matching weights/dimensions.
+  const moneyRe = /[£€$]\s*\d[\d,]*\.\d{2}/g;
+
+  const isHeaderOrMeta = (text: string): boolean => {
+    if (!text) return true;
+    const lower = text.toLowerCase();
+    if (/\bquotation\b|\bquote\b|\binvoice\b/i.test(text)) return true;
+    if (/\bpage\b\s*\d+\s*(of\s*\d+)?/i.test(text)) return true;
+    if (/\bcarried\s+forward\b|\bbrought\s+forward\b/i.test(text)) return true;
+    if (/\bitem\b\s*description\b\s*qty\b|\bunit\b\s*total\b/i.test(lower)) return true;
+    if (/^\s*dear\b/i.test(lower)) return true;
+    if (/\bthank you\b/i.test(lower)) return true;
+    if (/\bvalidity\b/i.test(lower)) return true;
+    if (/\bdate\s+of\s+quotation\b/i.test(lower)) return true;
+    return false;
+  };
+
+  const isLikelyDetailLine = (text: string): boolean => {
+    const t = String(text || "").trim();
+    if (!t) return false;
+    if (isHeaderOrMeta(t)) return false;
+    if (/^\s*[£€$]\s*\d/.test(t)) return false;
+    if (/\btotal\s+weight\b/i.test(t)) return false;
+    if (/\bvat\b/i.test(t)) return false;
+    if (/\bkg\b/i.test(t) && !/[A-Za-z]{3,}/.test(t)) return false;
+    // Keep spec-like lines.
+    if (/:/.test(t)) return true;
+    if (/\b(mm|cm|m)\b/i.test(t)) return true;
+    if (/(timber|softwood|hardwood|glazed|glass|planitherm|argon|u-?value|fittings|hinge|handle|lock|finish|ral)/i.test(t)) return true;
+    // Otherwise: require meaningful words.
+    return /[A-Za-z]{4,}/.test(t);
+  };
+
+  for (let i = 0; i < cleanedLines.length; i += 1) {
+    const line = cleanedLines[i];
+    const lower = line.toLowerCase();
+    if (!supplier && /\bfit47\b/i.test(line)) supplier = "Fit47";
+
+    // Skip obvious headers.
+    if (isHeaderOrMeta(line)) continue;
+
+    // Totals.
+    if (/\btotal\s+weight\b/i.test(lower)) continue;
+    if (/\bvat\b/i.test(lower)) continue;
+    if (/\bsubtotal\b|\bsub total\b|\btotal\b|\bgrand total\b/i.test(lower)) {
+      const monies = line.match(moneyRe) || [];
+      const last = monies.length ? monies[monies.length - 1] : null;
+      const value = last ? Number(last.replace(/[£€$,\s]/g, "")) : null;
+      if (value != null && Number.isFinite(value)) {
+        if (/\bsubtotal\b|\bsub total\b/i.test(lower)) detectedTotals.subtotal = value;
+        else detectedTotals.estimated_total = value;
+      }
+      continue;
+    }
+
+    const monies = line.match(moneyRe) || [];
+    if (!monies.length) continue;
+
+    // Require some alpha characters to avoid capturing pure numeric rows.
+    if (!/[A-Za-z]/.test(line)) continue;
+
+    const lineTotalRaw = monies[monies.length - 1];
+    const costUnitRaw = monies.length >= 2 ? monies[monies.length - 2] : undefined;
+    const lineTotal = Number(lineTotalRaw.replace(/[£€$,\s]/g, ""));
+    const costUnit = costUnitRaw ? Number(costUnitRaw.replace(/[£€$,\s]/g, "")) : undefined;
+
+    // Qty: take the last number immediately before the first money token.
+    const firstMoney = (line.match(moneyRe) || [])[0];
+    const beforeMoney = firstMoney ? line.slice(0, Math.max(0, line.indexOf(firstMoney))) : line;
+    const qtyMatches = beforeMoney.match(/\b\d+(?:\.\d+)?\b/g) || [];
+    const qtyCandidate = qtyMatches.length ? Number(qtyMatches[qtyMatches.length - 1]) : undefined;
+    const qty = qtyCandidate != null && Number.isFinite(qtyCandidate) && qtyCandidate > 0 && qtyCandidate <= 999
+      ? qtyCandidate
+      : undefined;
+
+    // Collect detail/spec lines that follow this line item (often multi-line specs without prices).
+    const detailLines: string[] = [];
+    let j = i + 1;
+    const maxDetailLines = 14;
+    while (j < cleanedLines.length && detailLines.length < maxDetailLines) {
+      const next = cleanedLines[j];
+      if (!next) {
+        j += 1;
+        continue;
+      }
+      // Stop if we hit another priced row (likely next item) or totals.
+      if (moneyRe.test(next)) break;
+      if (/\bsubtotal\b|\bsub total\b|\btotal\b|\bgrand total\b/i.test(next.toLowerCase())) break;
+      if (/\bcarried\s+forward\b|\bbrought\s+forward\b/i.test(next)) break;
+
+      if (isLikelyDetailLine(next)) detailLines.push(next);
+      j += 1;
+    }
+
+    // Description: strip trailing money tokens, collapse whitespace.
+    let desc = cleanText(line.replace(moneyRe, " ").replace(/\s{2,}/g, " ").trim());
+
+    // Drop trailing repeated qty token (common when qty is a column).
+    if (qty != null) {
+      desc = desc.replace(new RegExp(`\\b${qty}\\b\\s*$`), "").trim();
+    }
+
+    if (!desc) continue;
+
+    const details = detailLines
+      .map((l) => cleanText(l).replace(/\s{2,}/g, " ").trim())
+      .filter(Boolean);
+
+    if (details.length) {
+      desc = `${desc} — ${details.join(" ")}`.replace(/\s{2,}/g, " ").trim();
+    }
+
+    const rawText = [line, ...details].join("\n");
+
+    parsedLines.push({
+      description: desc,
+      ...(qty != null ? { qty } : {}),
+      ...(Number.isFinite(costUnit) ? { costUnit } : {}),
+      ...(Number.isFinite(lineTotal) ? { lineTotal } : {}),
+      ...(rawText ? { rawText } : {}),
+      ...(details.length
+        ? { meta: { sourceLine: line, detailLines: details } as any }
+        : { meta: { sourceLine: line } as any }),
+    });
+
+    // Skip any consumed detail lines.
+    if (j > i + 1) i = j - 1;
+  }
+
+  if (!parsedLines.length) return null;
+
+  return {
+    supplier,
+    currency: currency || "GBP",
+    lines: parsedLines,
+    detected_totals: Object.keys(detectedTotals).length ? detectedTotals : undefined,
+    warnings: ["Recovered line items from pdfjs text"],
+  };
+}
+
 interface StageCResult {
   parse: SupplierParseResult;
   used: boolean;
@@ -159,6 +318,29 @@ function deriveCommonUnits(parse: SupplierParseResult): string[] {
     .map((line) => cleanText(line.unit || ""))
     .filter((unit) => unit && unit.length <= 12);
   return unique(units);
+}
+
+function assessLineQuality(lines: SupplierParseResult["lines"]): {
+  avgScore: number;
+  gibberishRate: number;
+  scoredCount: number;
+} {
+  let scored = 0;
+  let scoreSum = 0;
+  let gibberish = 0;
+  for (const line of lines || []) {
+    const desc = String((line as any)?.description || "").trim();
+    if (!desc) continue;
+    const q = assessDescriptionQuality(desc);
+    scored += 1;
+    scoreSum += q.score;
+    if (q.gibberish || q.score < 0.55) gibberish += 1;
+  }
+  return {
+    scoredCount: scored,
+    avgScore: scored ? scoreSum / scored : 0,
+    gibberishRate: scored ? gibberish / scored : 0,
+  };
 }
 
 function attachWarnings(
@@ -332,21 +514,49 @@ function runStageA(
     lines: result.lines.map((line) => ({ ...line })),
   };
 
-  if (!baseParse.lines.length) {
-    const fallback = plainTextFallback(buffer, supplier, currency);
-    if (fallback) {
-      baseParse.lines = fallback.lines;
-      baseParse.detected_totals = fallback.detected_totals;
-      baseParse.supplier = fallback.supplier ?? baseParse.supplier;
-      baseParse.currency = fallback.currency ?? baseParse.currency;
-      baseParse.warnings = unique([...(baseParse.warnings ?? []), ...(fallback.warnings ?? [])]);
-    }
+  // If Stage A produces nothing, try a simple Tj-based plain-text fallback.
+  // This is also useful for some PDFs where the structured extraction is unusable.
+  const stageAFallback = plainTextFallback(buffer, supplier, currency);
+  if (!baseParse.lines.length && stageAFallback?.lines?.length) {
+    baseParse.lines = stageAFallback.lines;
+    baseParse.detected_totals = stageAFallback.detected_totals;
+    baseParse.supplier = stageAFallback.supplier ?? baseParse.supplier;
+    baseParse.currency = stageAFallback.currency ?? baseParse.currency;
+    baseParse.warnings = unique([...(baseParse.warnings ?? []), ...(stageAFallback.warnings ?? [])]);
   }
 
   // Check if this is a Joinerysoft PDF and apply special handling
   const isJoinerysoft = detectJoinerysoftPdf(extraction);
   if (isJoinerysoft) {
     baseParse = handleJoinerysoftPdf(extraction, baseParse);
+  }
+
+  // If Stage A returned lines but they look like gibberish, prefer the plain-text
+  // fallback when it yields higher-quality descriptions. This is critical when
+  // OCR is disabled (deterministic mode) so we don't persist/display garbage.
+  if (baseParse.lines.length && stageAFallback?.lines?.length) {
+    const baseQ = assessLineQuality(baseParse.lines);
+    const fbQ = assessLineQuality(stageAFallback.lines);
+
+    const baseLooksBad = baseQ.gibberishRate >= 0.3 || (baseQ.scoredCount >= 3 && baseQ.avgScore < 0.55);
+    const fallbackLooksBetter =
+      fbQ.scoredCount >= 2 &&
+      (fbQ.gibberishRate + 0.15 < baseQ.gibberishRate || fbQ.avgScore > baseQ.avgScore + 0.1);
+
+    if (baseLooksBad && fallbackLooksBetter) {
+      baseParse = {
+        ...baseParse,
+        lines: stageAFallback.lines,
+        detected_totals: stageAFallback.detected_totals ?? baseParse.detected_totals,
+        supplier: stageAFallback.supplier ?? baseParse.supplier,
+        currency: stageAFallback.currency ?? baseParse.currency,
+        warnings: unique([
+          ...(baseParse.warnings ?? []),
+          ...(stageAFallback.warnings ?? []),
+          "Fallback plain-text parser used (gibberish detected)",
+        ]),
+      };
+    }
   }
 
   const cues: PatternCues = {
@@ -373,20 +583,255 @@ function runStageA(
 async function runStageB(
   buffer: Buffer,
   stageA: StageAResult,
+  options?: { ocrEnabled?: boolean; ocrAutoWhenNoText?: boolean },
 ): Promise<StageBResult> {
+  const stageStartedAt = Date.now();
+
+  const extractRawTextByPageForGate = async (): Promise<string[]> => {
+    try {
+      // pdfjs-dist v4 ships ESM entrypoints. Use dynamic import so this file can remain CJS.
+      const pdfjsLib: any = await import("pdfjs-dist/legacy/build/pdf.mjs");
+
+      const data = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+      const standardFontDataUrl = (() => {
+        try {
+          const pkgPath = require.resolve("pdfjs-dist/package.json");
+          return pathToFileURL(path.join(path.dirname(pkgPath), "standard_fonts/")).href;
+        } catch {
+          return undefined;
+        }
+      })();
+
+      const loadingTask = pdfjsLib.getDocument({
+        data,
+        ...(standardFontDataUrl ? { standardFontDataUrl } : {}),
+      });
+      const doc = await loadingTask.promise;
+      const pages: string[] = [];
+      const pageCount = Math.max(0, Math.min(2, Number(doc?.numPages || 0)));
+      for (let pageNum = 1; pageNum <= pageCount; pageNum += 1) {
+        const page = await doc.getPage(pageNum);
+        const tc = await page.getTextContent();
+
+        // Build line breaks by grouping items with similar Y coordinates.
+        const groups = new Map<number, { x: number; str: string }[]>();
+        for (const it of tc?.items || []) {
+          const s = String((it as any)?.str || "").trim();
+          if (!s) continue;
+          const t = (it as any)?.transform;
+          const x = Array.isArray(t) && typeof t[4] === "number" ? t[4] : 0;
+          const yRaw = Array.isArray(t) && typeof t[5] === "number" ? t[5] : 0;
+          const y = Math.round(yRaw);
+          const bucket = groups.get(y) || [];
+          bucket.push({ x, str: s });
+          groups.set(y, bucket);
+        }
+
+        const ys = Array.from(groups.keys()).sort((a, b) => b - a);
+        const lines: string[] = [];
+        for (const y of ys) {
+          const parts = groups.get(y) || [];
+          parts.sort((a, b) => a.x - b.x);
+          const line = parts.map((p) => p.str).join(" ").replace(/\s{2,}/g, " ").trim();
+          if (!line) continue;
+          lines.push(line);
+        }
+
+        pages.push(lines.join("\n"));
+      }
+      try {
+        await doc.destroy();
+      } catch {}
+      return pages;
+    } catch {
+      return [];
+    }
+  };
+
+  // OCR decision gate: only OCR when extracted text is not usable.
+  // We use a lightweight page-text sample for scoring where possible; otherwise we fall back to
+  // the extraction summary text.
+  const rawTextByPage: string[] = await extractRawTextByPageForGate();
+  const gate = explainShouldUseOcr(stageA.extraction, rawTextByPage);
+
+  const configuredOcrEnabled = (() => {
+    if (typeof options?.ocrEnabled === "boolean") return options.ocrEnabled;
+    return String(process.env.PARSER_OCR_ENABLED ?? "true").toLowerCase() !== "false";
+  })();
+
+  // Backwards-compatible option name: ocrAutoWhenNoText now means "auto-enable OCR when text is unusable".
+  const autoEnableOcr = !!options?.ocrAutoWhenNoText && gate.useOcr;
+  const wantsOcr = configuredOcrEnabled || autoEnableOcr;
+  const ocrEnabled = wantsOcr && gate.useOcr;
+
+  const autoWarning = autoEnableOcr && !configuredOcrEnabled
+    ? "OCR auto-enabled (text extraction not usable)"
+    : null;
+  const gibberishLineRate = (() => {
+    const lines = stageA.parse.lines || [];
+    if (!lines.length) return 0;
+    let gibberish = 0;
+    for (const line of lines) {
+      const desc = String((line as any)?.description || "");
+      if (!desc) continue;
+      const q = assessDescriptionQuality(desc);
+      if (q.gibberish || q.score < 0.55) gibberish += 1;
+    }
+    return gibberish / lines.length;
+  })();
+
   const shouldAttempt =
-    stageA.parse.lines.length === 0 || stageA.metadata.lowConfidence || stageA.metadata.descriptionQuality < 0.5;
+    stageA.parse.lines.length === 0 ||
+    stageA.metadata.lowConfidence ||
+    stageA.metadata.descriptionQuality < 0.55 ||
+    gibberishLineRate >= 0.3;
 
   if (!shouldAttempt) {
     return { parse: stageA.parse, used: false, warnings: [] };
   }
 
-  const fallback = await runOcrFallback(buffer, stageA.extraction);
-  if (!fallback) {
-    return { parse: stageA.parse, used: false, warnings: [] };
+  console.log("[runStageB] OCR gate", {
+    shouldAttempt,
+    configuredOcrEnabled,
+    autoEnableOcr,
+    ocrEnabled,
+    gate,
+  });
+
+  // If Stage A found no line items but pdfjs indicates usable text, try a lightweight
+  // deterministic recovery from the extracted pdfjs text (no OCR).
+  if (!ocrEnabled && stageA.parse.lines.length === 0 && !gate.useOcr && rawTextByPage.length) {
+    const recovered = parseLineItemsFromTextLines(
+      rawTextByPage.join("\n").split(/\r?\n+/g),
+      stageA.parse.supplier,
+      stageA.parse.currency,
+    );
+    if (recovered?.lines?.length) {
+      const warnings = unique([...(stageA.warnings ?? []), ...(recovered.warnings ?? [])]);
+      return {
+        parse: attachWarnings(
+          {
+            ...recovered,
+            supplier: recovered.supplier || stageA.parse.supplier,
+            currency: recovered.currency || stageA.parse.currency,
+          },
+          warnings,
+        ),
+        used: false,
+        warnings,
+      };
+    }
   }
 
-  const warnings = fallback.warnings ?? [];
+  // Fast-fail mode: do not attempt OCR when it isn't needed (text usable) or explicitly disabled.
+  if (!ocrEnabled) {
+    const warning = gate.useOcr
+      ? "OCR disabled; parser could not recover text from PDF"
+      : "OCR skipped; extracted text looks usable";
+    return {
+      parse: attachWarnings(stageA.parse, autoWarning ? [warning, autoWarning] : [warning]),
+      used: false,
+      warnings: autoWarning ? [warning, autoWarning] : [warning],
+    };
+  }
+
+  console.log("[runStageB] starting OCR recovery", {
+    lines: stageA.parse.lines.length,
+    lowConfidence: !!stageA.metadata.lowConfidence,
+    descriptionQuality: stageA.metadata.descriptionQuality,
+    gibberishLineRate,
+    autoEnabled: autoEnableOcr,
+  });
+
+  // Prefer a real OCR-backed parse via the ML parser when available.
+  // This is the most reliable way to recover text from PDFs with broken/garbled text layers.
+  if (ocrEnabled) {
+    try {
+      const filename = `${cleanText(stageA.parse.supplier || "quote") || "quote"}.pdf`;
+      const ml = await callMlWithUpload({
+        buffer,
+        filename,
+        timeoutMs: 25000,
+        headers: {
+          "X-OCR-Enabled": "true",
+          // We do our own LLM structuring in Stage C; keep ML deterministic here.
+          "X-LLM-Enabled": "false",
+        },
+      });
+
+      if (ml.ok) {
+        const parsed = normaliseMlPayload(ml.data);
+        if (parsed?.lines?.length) {
+          const warnings = [
+            ...(autoWarning ? [autoWarning] : []),
+            `OCR fallback used: ML parser (${ml.tookMs}ms)`,
+            ...(parsed.warnings ?? []),
+          ];
+          console.log("[runStageB] done (ML OCR)", {
+            tookMs: Date.now() - stageStartedAt,
+            lines: parsed.lines.length,
+          });
+          return { parse: attachWarnings(parsed, warnings), used: true, warnings };
+        }
+      } else {
+        // Important: if ML_URL is missing/misconfigured, callMlWithUpload returns ok:false
+        // and we'd otherwise silently fall through to local OCR (which may be slower/less reliable).
+        console.warn("[runStageB] ML fallback returned non-OK:", {
+          status: ml.status,
+          error: ml.error,
+          tookMs: ml.tookMs,
+        });
+      }
+    } catch (err: any) {
+      // Non-fatal: fall back to local replacement strategy.
+      console.warn("[runStageB] ML OCR fallback failed:", err?.message || err);
+    }
+  }
+
+  // Local OCR is memory-heavy (Chromium render + image processing). On small production instances
+  // this can crash the whole API. Only allow it when explicitly enabled.
+  const localOcrEnabled = String(
+    process.env.PARSER_LOCAL_OCR_ENABLED ?? (process.env.NODE_ENV === "production" ? "false" : "true"),
+  ).toLowerCase() === "true";
+
+  if (!localOcrEnabled) {
+    const warning =
+      "OCR recovery requires ML_URL (ML OCR) or enabling PARSER_LOCAL_OCR_ENABLED; local OCR is disabled";
+    return {
+      parse: attachWarnings(stageA.parse, autoWarning ? [warning, autoWarning] : [warning]),
+      used: false,
+      warnings: autoWarning ? [warning, autoWarning] : [warning],
+    };
+  }
+
+  const fallback = await runOcrFallback(buffer, stageA.extraction);
+  if (!fallback) {
+    // If we got here, Stage A looked unreliable. Surface a warning so it's visible in UI/debug.
+    const warning = "OCR fallback unavailable (parser could not recover text)";
+    return {
+      parse: attachWarnings(stageA.parse, autoWarning ? [warning, autoWarning] : [warning]),
+      used: false,
+      warnings: autoWarning ? [warning, autoWarning] : [warning],
+    };
+  }
+
+  // If OCR produced a full parse (from page-image OCR), prefer that.
+  if (fallback.parse?.lines?.length) {
+    const warnings = [
+      ...(autoWarning ? [autoWarning] : []),
+      ...((fallback.warnings ?? fallback.parse.warnings ?? []) as string[]),
+    ];
+    console.log("[runStageB] done (local OCR)", {
+      tookMs: Date.now() - stageStartedAt,
+      lines: fallback.parse.lines.length,
+    });
+    return { parse: attachWarnings(fallback.parse, warnings), used: true, warnings };
+  }
+
+  const warnings = [
+    ...(autoWarning ? [autoWarning] : []),
+    ...((fallback.warnings ?? []) as string[]),
+  ];
   if (!fallback.replacements.length) {
     return { parse: attachWarnings(stageA.parse, warnings), used: false, warnings };
   }
@@ -409,7 +854,28 @@ async function runStageB(
     warnings,
   );
 
+  console.log("[runStageB] done (replacements)", {
+    tookMs: Date.now() - stageStartedAt,
+    replacements: fallback.replacements.length,
+  });
+
   return { parse: mergedParse, used: true, warnings };
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return promise;
+  return new Promise<T>((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+    promise
+      .then((v) => {
+        clearTimeout(id);
+        resolve(v);
+      })
+      .catch((e) => {
+        clearTimeout(id);
+        reject(e);
+      });
+  });
 }
 
 function formatLinesForLlm(parse: SupplierParseResult): string {
@@ -480,6 +946,7 @@ async function runStageC(
     patternSummary?: string;
   },
 ): Promise<StageCResult> {
+  const stageStartedAt = Date.now();
   if (!base.lines.length) {
     return { parse: base, used: false, warnings: ["LLM structuring skipped: no lines available"] };
   }
@@ -521,7 +988,14 @@ async function runStageC(
     .join("\n\n");
 
   try {
-    const response = await openaiClient.responses.create({
+    const timeoutMs = (() => {
+      const raw = Number(process.env.PARSER_LLM_TIMEOUT_MS);
+      if (Number.isFinite(raw) && raw > 0) return raw;
+      return 25_000;
+    })();
+
+    const response = await withTimeout(
+      openaiClient.responses.create({
       model: "gpt-4o-mini",
       input: [
         {
@@ -537,7 +1011,10 @@ async function runStageC(
       ],
       tools: [STRUCTURE_TOOL],
       tool_choice: { type: "function", name: STRUCTURE_TOOL.name },
-    });
+      }),
+      timeoutMs,
+      "llm_timeout",
+    );
 
     const toolCall = response.output?.find((item) => item.type === "function_call");
 
@@ -575,6 +1052,7 @@ async function runStageC(
     };
   } catch (error: any) {
     const message = error?.message || String(error);
+    console.warn("[runStageC] failed", { tookMs: Date.now() - stageStartedAt, message });
     return {
       parse: attachWarnings(base, [
         `OpenAI structuring failed: ${message}. Falling back to structured parser output.`,
@@ -621,15 +1099,28 @@ function computeConfidence(
 
 export async function parseSupplierPdf(
   buffer: Buffer,
-  options?: { supplierHint?: string; currencyHint?: string; supplierProfileId?: string | null },
+  options?: {
+    supplierHint?: string;
+    currencyHint?: string;
+    supplierProfileId?: string | null;
+    // Allow callers (e.g. own-quote flow) to run deterministic-only parsing.
+    ocrEnabled?: boolean;
+    // When ocrEnabled is false, allow OCR only when the PDF has no text layer.
+    ocrAutoWhenNoText?: boolean;
+    llmEnabled?: boolean;
+    // Allow callers to explicitly skip layout-template parsing.
+    templateEnabled?: boolean;
+  },
 ): Promise<SupplierParseResult> {
   const supplierHint = options?.supplierHint;
   const currencyHint = options?.currencyHint || "GBP";
   const supplierProfileId = options?.supplierProfileId ?? null;
+  const llmEnabled = options?.llmEnabled ?? true;
+  const templateEnabled = options?.templateEnabled ?? true;
 
   let templateMeta: TemplateParseMeta | null = null;
 
-  if (supplierProfileId) {
+  if (supplierProfileId && templateEnabled) {
     try {
       const layoutTemplate = await loadPdfLayoutTemplate(supplierProfileId);
       if (layoutTemplate) {
@@ -660,20 +1151,26 @@ export async function parseSupplierPdf(
   let workingParse = { ...stageA.parse, currency: stageA.parse.currency || currencyHint };
   const collectedWarnings = new Set(stageA.warnings);
 
-  const stageB = await runStageB(buffer, stageA);
+  const stageB = await runStageB(buffer, stageA, {
+    ocrEnabled: options?.ocrEnabled,
+    ocrAutoWhenNoText: options?.ocrAutoWhenNoText,
+  });
   if (stageB.used) usedStages.add("ocr");
   stageB.warnings.forEach((warning) => collectedWarnings.add(warning));
   workingParse = stageB.parse;
 
   const patternSummary = summarisePattern(pattern || stageA.cues);
-  const stageC = await runStageC(workingParse, {
-    supplierHint: supplierHint || workingParse.supplier || pattern?.supplier,
-    currencyHint,
-    patternSummary,
-  });
-  if (stageC.used) usedStages.add("llm");
-  stageC.warnings.forEach((warning) => collectedWarnings.add(warning));
-  workingParse = stageC.parse;
+  const stageC = llmEnabled
+    ? await runStageC(workingParse, {
+        supplierHint: supplierHint || workingParse.supplier || pattern?.supplier,
+        currencyHint,
+        patternSummary,
+      })
+    : undefined;
+
+  if (stageC?.used) usedStages.add("llm");
+  stageC?.warnings?.forEach((warning) => collectedWarnings.add(warning));
+  if (stageC?.parse) workingParse = stageC.parse;
 
   workingParse.currency = workingParse.currency || currencyHint;
   workingParse.usedStages = Array.from(usedStages);
@@ -694,92 +1191,31 @@ export async function parseSupplierPdf(
 
   await saveSupplierPattern(cues);
 
-  // Extract images from PDF and map to lines with enhanced product data extraction
+  // Text-only enrichment (no image extraction/rendering).
+  // We intentionally avoid extracting images from PDFs because it is unreliable and slow.
   try {
-    const extractedImages = await extractImagesForParse(buffer);
-    
-    if (extractedImages.length > 0) {
-      console.log(`[parseSupplierPdf] Extracted ${extractedImages.length} images`);
-      
-      // Store images in the result
-      workingParse.images = extractedImages;
-      
-      // Enhanced: Extract structured product data from text near images
-      // Get the full text from the PDF for product ID matching
-      const extraction = extractStructuredText(buffer);
-      const fullText = extraction?.rawText || "";
-      
-      // Map images to lines based on page, proximity, and text analysis
-      workingParse.lines = workingParse.lines.map((line, lineIndex) => {
-        // Estimate line page based on position (rough heuristic)
-        const estimatedPage = Math.floor(lineIndex / 10) + 1;
-        const linePage = line.page || estimatedPage;
-        
-        // Find images on the same page
-        const pageImages = extractedImages.filter(img => img.page === linePage);
-        
-        if (pageImages.length === 0) {
-          return line;
-        }
-        
-        // Enhanced matching: Use description keywords to find matching image
-        const description = String(line.description || "").toLowerCase();
-        const lineText = String((line as any).rawText || line.description || "").toLowerCase();
-        
-        // Look for product identifiers (FD1, FD2, etc.) or reference numbers
+    const fullText = String(stageA.extraction?.rawText || "");
+    if (fullText) {
+      workingParse.lines = workingParse.lines.map((line) => {
+        const description = String(line.description || "");
+        const lineText = String((line as any).rawText || description).toLowerCase();
         const productIdMatch = description.match(/\b(fd\d+|ref[:\s]*[\w-]+|item[:\s]*[\w-]+)\b/i);
-        let matchedImage = null;
-        
-        if (productIdMatch && fullText) {
-          // Find the product ID in the full text and locate nearby image
-          const productId = productIdMatch[0];
-          const productIdPos = fullText.toLowerCase().indexOf(productId.toLowerCase());
-          
-          if (productIdPos >= 0) {
-            // Find closest image to this text position (by page and index)
-            matchedImage = pageImages.reduce((closest, img) => {
-              if (!closest) return img;
-              // Prefer images earlier on the page for earlier text mentions
-              return img.index < closest.index ? img : closest;
-            }, pageImages[0]);
-          }
-        }
-        
-        // Fallback: assign images in sequence
-        if (!matchedImage) {
-          const imageIndex = lineIndex % pageImages.length;
-          matchedImage = pageImages[imageIndex];
-        }
-        
-        // Extract structured product data from description/rawText
         const productData = extractProductDataFromText(lineText, fullText, productIdMatch?.[0]);
-        
-        if (matchedImage) {
-          return {
-            ...line,
-            page: linePage,
-            imageIndex: matchedImage.index,
-            imageDataUrl: matchedImage.dataUrl,
-            bbox: matchedImage.bbox,
-            // Enhanced: Add structured product data
-            productType: productData.type,
-            wood: productData.wood,
-            finish: productData.finish,
-            glass: productData.glass,
-            dimensions: productData.dimensions,
-            area: productData.area,
-          };
-        }
-        
-        return { ...line, page: linePage, ...productData };
+
+        return {
+          ...line,
+          productType: productData.type,
+          wood: productData.wood,
+          finish: productData.finish,
+          glass: productData.glass,
+          dimensions: productData.dimensions,
+          area: productData.area,
+        };
       });
-      
-      const mappedCount = workingParse.lines.filter(l => l.imageDataUrl).length;
-      console.log(`[parseSupplierPdf] Mapped images to ${mappedCount} lines with enhanced product data`);
     }
   } catch (err: any) {
-    console.warn('[parseSupplierPdf] Image extraction failed:', err);
-    collectedWarnings.add(`Image extraction failed: ${err.message}`);
+    console.warn("[parseSupplierPdf] Text enrichment failed:", err);
+    collectedWarnings.add(`Text enrichment failed: ${err?.message || String(err)}`);
     workingParse = attachWarnings(workingParse, collectedWarnings);
   }
 

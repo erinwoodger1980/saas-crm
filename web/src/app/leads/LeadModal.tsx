@@ -3701,13 +3701,39 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                             {emailAttachments.map((att: any, idx: number) => {
                               const messageId = get(lead?.custom, "messageId");
                               const jwt = typeof window !== "undefined" ? localStorage.getItem("jwt") : null;
-                              const attachmentUrl = messageId && att.attachmentId && jwt
+                              const isUploaded = typeof att?.fileId === "string" && att.fileId.trim();
+                              const attachmentUrl = !isUploaded && messageId && att.attachmentId && jwt
                                 ? `${API_BASE}/gmail/message/${messageId}/attachments/${att.attachmentId}?jwt=${jwt}`
                                 : null;
                               
                               return (
                                 <li key={idx} className="flex items-center gap-2 text-sm">
-                                  {attachmentUrl ? (
+                                  {isUploaded ? (
+                                    <button
+                                      type="button"
+                                      className="inline-flex items-center gap-1.5 text-sky-600 hover:text-sky-700 hover:underline"
+                                      onClick={async () => {
+                                        try {
+                                          const r = await apiFetch<{ ok: boolean; url: string }>("/files/sign", {
+                                            method: "POST",
+                                            json: { fileId: String(att.fileId) },
+                                          });
+                                          if (r?.url) window.open(`${API_BASE}${r.url}`, "_blank", "noopener,noreferrer");
+                                        } catch (e) {
+                                          console.error("Failed to open attachment:", e);
+                                          toast("Failed to open attachment");
+                                        }
+                                      }}
+                                    >
+                                      <span aria-hidden="true">📎</span>
+                                      {att.filename}
+                                      {typeof att.size === "number" && (
+                                        <span className="text-xs text-slate-500">
+                                          ({Math.round(att.size / 1024)} KB)
+                                        </span>
+                                      )}
+                                    </button>
+                                  ) : attachmentUrl ? (
                                     <a
                                       href={attachmentUrl}
                                       target="_blank"

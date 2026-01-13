@@ -20,10 +20,10 @@ import {
   inferSupplier,
   looksLikeDelivery,
   parseMoney,
-  scoreAlphaNumericQuality,
   stripTrailingPunctuation,
   summariseConfidence,
 } from "./normalize";
+import { assessDescriptionQuality } from "./quality";
 
 export interface LineRegion {
   rowIndex: number;
@@ -186,7 +186,7 @@ export function buildSupplierParse(extraction: ExtractionSummary): {
       }
     }
 
-    const descriptionQuality = scoreAlphaNumericQuality(description);
+    const descriptionQuality = assessDescriptionQuality(description).score;
     descriptionQualityTotal += descriptionQuality;
     descriptionCount += 1;
 
@@ -224,7 +224,8 @@ export function buildSupplierParse(extraction: ExtractionSummary): {
   }
 
   const descriptionQuality = descriptionCount ? descriptionQualityTotal / descriptionCount : 0;
-  const lowConfidence = descriptionQuality < 0.45 || extraction.glyphQuality < 0.5;
+  // Robust quality score: treat <0.55 as likely garbled/unreliable.
+  const lowConfidence = descriptionQuality < 0.55 || extraction.glyphQuality < 0.5;
 
   const supplier = inferSupplier(rows.map((row) => row.normalized));
   const currency = inferCurrency(extraction.rawText);

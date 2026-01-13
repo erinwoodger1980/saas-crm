@@ -9,6 +9,10 @@ import jwt from "jsonwebtoken";
 import { env } from "../env";
 import { randomUUID } from "crypto";
 import multer from "multer";
+import fs from "fs";
+import path from "path";
+import { simpleParser } from "mailparser";
+import OpenAI from "openai";
 import {
   CANONICAL_FIELD_CONFIG,
   lookupCsvField,
@@ -2714,11 +2718,102 @@ router.post("/parse-email", async (req, res) => {
       return res.status(400).json({ error: "Missing filename or file content" });
     }
 
-    // Decode base64 content
-    const fileContent = Buffer.from(base64, 'base64').toString('utf-8');
-    
-    // Parse email content to extract lead information
-    const emailData = parseEmailContent(fileContent);
+    const rawBuffer = Buffer.from(base64, "base64");
+    const looksLikeEml = (() => {
+      const lowerName = String(filename || "").toLowerCase();
+      const lowerType = String(mimeType || "").toLowerCase();
+      if (lowerName.endsWith(".eml")) return true;
+      if (lowerType === "message/rfc822") return true;
+      // Lightweight heuristic: RFC822-ish headers present in first chunk
+      const head = rawBuffer.subarray(0, Math.min(rawBuffer.length, 8192)).toString("utf8");
+      return /\bMIME-Version:\s*1\.0\b/i.test(head) || /\bContent-Type:\s*multipart\//i.test(head);
+    })();
+
+    let emailData:
+      | {
+          contactName: string | null;
+          email: string | null;
+          subject: string | null;
+          bodyText: string | null;
+          summary: string | null;
+          confidence: number;
+          fromEmail: string | null;
+          attachments?: Array<{ source: "upload"; fileId: string; filename: string; mimeType?: string | null; size?: number | null }>;
+        }
+      | null = null;
+
+    if (looksLikeEml) {
+      try {
+        const parsed = await simpleParser(rawBuffer);
+        const subjectOuter = typeof parsed.subject === "string" ? parsed.subject.trim() : "";
+        const outerFromText = parsed.from?.text ? String(parsed.from.text) : null;
+        const outerFromParsed = parseFromHeader(outerFromText);
+        const outerFromEmail = outerFromParsed?.email ? String(outerFromParsed.email).toLowerCase() : null;
+        const text = (() => {
+          const plain = typeof parsed.text === "string" ? parsed.text : "";
+          if (plain && plain.trim()) return plain;
+          const html = typeof (parsed as any)?.html === "string" ? String((parsed as any).html) : "";
+          if (!html) return "";
+          // Best-effort HTML -> text for forwarded headers that sometimes live only in HTML.
+          return html
+            .replace(/<\s*br\s*\/?>/gi, "\n")
+            .replace(/<\s*\/p\s*>/gi, "\n")
+            .replace(/<[^>]+>/g, " ")
+            .replace(/&nbsp;/gi, " ")
+            .replace(/&amp;/gi, "&")
+            .replace(/\r\n/g, "\n");
+        })();
+
+        const forwarded = extractForwardedEmailContext(text, outerFromEmail);
+        const chosenFrom = forwarded?.from || outerFromParsed;
+        const chosenSubject = (subjectOuter && /^fwd?:\s*/i.test(subjectOuter) && forwarded?.subject)
+          ? forwarded.subject
+          : (subjectOuter || forwarded?.subject || null);
+
+        const bodyTextRaw = cleanEmailBodyText(text);
+        const bodyText = await cleanEmailEnquiryText(bodyTextRaw);
+        const summary = bodyText
+          ? bodyText.slice(0, 250) + (bodyText.length > 250 ? "..." : "")
+          : null;
+
+        const attachments = Array.isArray(parsed.attachments) ? parsed.attachments : [];
+        const persisted = await persistEmailAttachments({ tenantId, attachments, originalFilename: filename });
+
+        const email = chosenFrom?.email ? String(chosenFrom.email).toLowerCase() : null;
+        const contactName = chosenFrom?.name || (email ? deriveNameFromEmail(email) : null);
+        const fromEmailForUi = (() => {
+          if (chosenFrom?.name && chosenFrom?.email) return `${chosenFrom.name} <${chosenFrom.email}>`;
+          if (chosenFrom?.email) return chosenFrom.email;
+          return outerFromText;
+        })();
+
+        let confidence = 0.6;
+        if (email && contactName && chosenSubject) confidence = 0.9;
+        else if (email && chosenSubject) confidence = 0.8;
+        else if (email || contactName) confidence = 0.6;
+        else confidence = 0.3;
+
+        emailData = {
+          contactName,
+          email,
+          subject: chosenSubject,
+          bodyText: bodyText || null,
+          summary,
+          confidence,
+          fromEmail: fromEmailForUi || null,
+          attachments: persisted,
+        };
+      } catch (e: any) {
+        console.warn("[leads] parse-email mailparser failed; falling back:", e?.message || e);
+      }
+    }
+
+    if (!emailData) {
+      // Decode base64 content (best-effort) and fall back to legacy parsing
+      const fileContent = rawBuffer.toString("utf-8");
+      const legacy = parseEmailContent(fileContent);
+      emailData = { ...legacy, fromEmail: null };
+    }
     
     if (!emailData.contactName && !emailData.email) {
       return res.status(400).json({ error: "Could not extract contact information from email" });
@@ -2738,6 +2833,8 @@ router.post("/parse-email", async (req, res) => {
           provider: provider || "manual",
           bodyText: emailData.bodyText,
           summary: emailData.summary,
+          fromEmail: emailData.fromEmail,
+          attachments: (emailData as any)?.attachments,
           uiStatus: "NEW_ENQUIRY" as UiStatus,
           confidence: emailData.confidence,
           source: "manual_upload",
@@ -2773,6 +2870,227 @@ router.post("/parse-email", async (req, res) => {
     res.status(500).json({ error: e?.message || "email parsing failed" });
   }
 });
+
+function parseFromHeader(fromHeader: string | null): { name: string | null; email: string | null } | null {
+  if (!fromHeader) return null;
+  const raw = String(fromHeader).trim();
+  if (!raw) return null;
+  const emailMatch = raw.match(/<([^>]+)>/);
+  if (emailMatch?.[1]) {
+    const email = emailMatch[1].trim();
+    const name = raw.replace(/<[^>]+>/, "").trim().replace(/^\"|\"$/g, "");
+    return { name: name || null, email: email || null };
+  }
+  const simpleEmail = raw.match(/\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b/);
+  if (simpleEmail?.[1]) return { name: null, email: simpleEmail[1] };
+  return null;
+}
+
+function cleanEmailBodyText(input: string): string {
+  const s = String(input || "");
+  // mailparser already decodes MIME; this is just whitespace cleanup + safety trimming.
+  const cleaned = s
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{4,}/g, "\n\n\n")
+    .trim();
+  // Avoid accidental gigantic bodies (e.g. weird encodings). Keep enough for context.
+  return cleaned.slice(0, 20000);
+}
+
+function extractForwardedEmailContext(
+  text: string,
+  outerFromEmail?: string | null,
+): { from: { name: string | null; email: string | null } | null; subject: string | null } | null {
+  const raw = String(text || "");
+  if (!raw) return null;
+  const hay = raw.slice(0, 12000);
+
+  // Only attempt if it looks like a forwarded/quoted block.
+  // Note: "Sent:" is typically followed by a space (no word boundary), so use \s not \b.
+  const looksForwarded =
+    /(^|\n)\s*(fw|fwd)\s*:/i.test(hay) ||
+    /\bForwarded message\b/i.test(hay) ||
+    /\bOriginal Message\b/i.test(hay) ||
+    /(^|\n)\s*Sent:\s/i.test(hay) ||
+    /(^|\n)\s*From:\s/i.test(hay) ||
+    /(^|\n)\s*_{8,}\s*$/m.test(hay);
+  if (!looksForwarded) return null;
+
+  const outer = outerFromEmail ? String(outerFromEmail).toLowerCase() : null;
+  const startIdx = (() => {
+    const markers: RegExp[] = [
+      /-{2,}\s*Forwarded message\s*-{2,}/i,
+      /-{2,}\s*Original Message\s*-{2,}/i,
+      /^_{8,}\s*$/m, // Outlook separator line
+      /^Begin forwarded message:/im,
+      /\bForwarded message\b/i,
+      /\bOriginal Message\b/i,
+    ];
+    for (const re of markers) {
+      const idx = hay.search(re);
+      if (idx >= 0) return idx;
+    }
+    return 0;
+  })();
+
+  const segment = hay.slice(startIdx);
+  const lines = segment.split(/\r?\n/).slice(0, 250);
+
+  const fromCandidates: Array<{ name: string | null; email: string | null }> = [];
+  const subjectCandidates: string[] = [];
+
+  for (const lineRaw of lines) {
+    const line = String(lineRaw || "").trim();
+    const fromMatch = line.match(/^(?:>\s*)?From:\s*(.+)$/i);
+    if (fromMatch?.[1]) {
+      const parsed = parseFromHeader(fromMatch[1].trim());
+      if (parsed) fromCandidates.push(parsed);
+      continue;
+    }
+    const subjMatch = line.match(/^(?:>\s*)?Subject:\s*(.+)$/i);
+    if (subjMatch?.[1]) {
+      subjectCandidates.push(subjMatch[1].trim());
+      continue;
+    }
+  }
+
+  const pickFrom = (() => {
+    // Prefer the deepest (last) From: that isn't the outer sender.
+    for (let i = fromCandidates.length - 1; i >= 0; i -= 1) {
+      const c = fromCandidates[i];
+      const email = c?.email ? String(c.email).toLowerCase() : null;
+      if (email && outer && email === outer) continue;
+      if (email || c?.name) return c;
+    }
+    // Fallback: if we didn't find a better one, allow a match (better than nothing)
+    return fromCandidates.length ? fromCandidates[fromCandidates.length - 1] : null;
+  })();
+  const pickSubject = subjectCandidates.length ? subjectCandidates[0] : null;
+
+  if (!pickFrom && !pickSubject) return null;
+  return { from: pickFrom, subject: pickSubject };
+}
+
+async function cleanEmailEnquiryText(input: string): Promise<string> {
+  const raw = cleanEmailBodyText(input);
+  if (!raw) return "";
+
+  // Heuristic cleanup first (cheap + deterministic)
+  const heuristic = (() => {
+    let s = raw;
+    // Strip common mobile/app footers
+    s = s.replace(/\n\s*Sent\s+from\s+my\s+\S[\s\S]*$/i, "\n");
+    s = s.replace(/\n\s*Sent\s+from\s+Outlook[\s\S]*$/i, "\n");
+    s = s.replace(/\n\s*Get\s+Outlook\s+for\s+iOS[\s\S]*$/i, "\n");
+
+    // Trim everything after a typical signature delimiter
+    const sigIdx = s.search(/\n\s*(--\s*$|Kind\s+Regards\b|Regards\b|Thanks\b|Many\s+thanks\b)/im);
+    if (sigIdx > 0) s = s.slice(0, sigIdx).trim();
+
+    // Drop huge quoted chains after an Outlook-style forwarded header block.
+    const chainIdx = s.search(/\n\s*_{8,}\s*\n[\s\S]*\n\s*From:\s+/m);
+    if (chainIdx > 0) s = s.slice(0, chainIdx).trim();
+    return cleanEmailBodyText(s);
+  })();
+
+  // AI cleanup if configured.
+  if (!env.OPENAI_API_KEY) return heuristic;
+
+  try {
+    const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+    const resp = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.2,
+      messages: [
+        {
+          role: "system",
+          content:
+            "Extract the core customer enquiry message from an email. Remove signatures, legal footers, tracking links, and quoted/forwarded email chains. Return plain text only. Do not add or invent details.",
+        },
+        {
+          role: "user",
+          content: raw.slice(0, 12000),
+        },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "email_enquiry_clean",
+          schema: {
+            type: "object",
+            properties: {
+              cleaned: { type: "string" },
+              confidence: { type: "number", minimum: 0, maximum: 1 },
+            },
+            required: ["cleaned", "confidence"],
+            additionalProperties: false,
+          },
+        },
+      },
+    });
+
+    const content = resp.choices[0]?.message?.content || "{}";
+    const parsed = JSON.parse(content) as { cleaned?: string; confidence?: number };
+    const cleaned = typeof parsed.cleaned === "string" ? parsed.cleaned.trim() : "";
+    if (!cleaned) return heuristic;
+    // If the model isn't confident, prefer heuristic to avoid over-trimming.
+    if (typeof parsed.confidence === "number" && parsed.confidence < 0.5) return heuristic;
+    return cleanEmailBodyText(cleaned);
+  } catch (err: any) {
+    console.warn("[leads] AI email cleaning failed; using heuristic:", err?.message || err);
+    return heuristic;
+  }
+}
+
+async function persistEmailAttachments(opts: {
+  tenantId: string;
+  attachments: Array<{ filename?: string | null; contentType?: string | null; content?: Buffer | Uint8Array; size?: number | null }>;
+  originalFilename?: string;
+}): Promise<Array<{ source: "upload"; fileId: string; filename: string; mimeType?: string | null; size?: number | null }>> {
+  const { tenantId } = opts;
+  const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+  const out: Array<{ source: "upload"; fileId: string; filename: string; mimeType?: string | null; size?: number | null }> = [];
+  const attachments = Array.isArray(opts.attachments) ? opts.attachments : [];
+  for (const [idx, a] of attachments.entries()) {
+    const buf = a?.content ? Buffer.from(a.content as any) : null;
+    if (!buf || !buf.length) continue;
+
+    const mimeType = typeof a?.contentType === "string" && a.contentType.trim() ? a.contentType.trim() : null;
+    const safeBase = (() => {
+      const rawName = typeof a?.filename === "string" && a.filename.trim() ? a.filename.trim() : `attachment_${idx + 1}`;
+      return rawName.replace(/[^\w.\-]+/g, "_");
+    })();
+
+    const ts = Date.now();
+    const diskName = `${ts}__${safeBase}`;
+    const absPath = path.join(UPLOAD_DIR, diskName);
+    await fs.promises.writeFile(absPath, buf);
+
+    const row = await prisma.uploadedFile.create({
+      data: {
+        tenantId,
+        quoteId: null,
+        kind: "OTHER",
+        name: safeBase,
+        path: path.relative(process.cwd(), absPath),
+        mimeType: mimeType || "application/octet-stream",
+        sizeBytes: typeof a?.size === "number" ? a.size : buf.length,
+      },
+      select: { id: true, name: true, mimeType: true, sizeBytes: true },
+    });
+
+    out.push({
+      source: "upload",
+      fileId: row.id,
+      filename: row.name,
+      mimeType: row.mimeType,
+      size: row.sizeBytes,
+    });
+  }
+  return out;
+}
 
 /**
  * Parse email content and extract lead information

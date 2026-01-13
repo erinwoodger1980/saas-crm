@@ -76,7 +76,32 @@ router.post("/sign", async (req: any, res) => {
   }
 });
 
-async function resolveFileRequest(req: any, res: any) {
+type ResolvedDiskFile = {
+  source: "disk";
+  file: { id: string; path: string; name: string; mimeType: string | null; quoteId: string | null; sizeBytes: number | null };
+  abs: string;
+  stat: fs.Stats;
+};
+
+type ResolvedDbFile = {
+  source: "db";
+  file: { id: string; path: string; name: string; mimeType: string | null; quoteId: string | null; sizeBytes: number | null };
+  length: number;
+  content?: Buffer;
+};
+
+function uploadsStoreInDb(): boolean {
+  return String(process.env.UPLOADS_STORE_IN_DB ?? "true").toLowerCase() !== "false";
+}
+
+function uploadsDbMaxBytes(): number {
+  const raw = Number(process.env.UPLOADS_DB_MAX_BYTES);
+  // Keep this aligned with the upload path defaults.
+  if (Number.isFinite(raw) && raw > 0) return raw;
+  return 8 * 1024 * 1024;
+}
+
+async function resolveFileRequest(req: any, res: any, mode: "GET" | "HEAD"): Promise<ResolvedDiskFile | ResolvedDbFile | null> {
   const id = String(req.params.id);
   const token = String((req.query?.jwt as string) || "");
   if (!token) {
@@ -113,25 +138,69 @@ async function resolveFileRequest(req: any, res: any) {
     return null;
   }
 
-  const abs = path.isAbsolute(file.path) ? file.path : path.join(process.cwd(), file.path);
-  if (!fs.existsSync(abs)) {
+  const p = String(file.path || "");
+  const abs = p && (path.isAbsolute(p) ? p : path.join(process.cwd(), p));
+  if (abs && fs.existsSync(abs)) {
+    const stat = fs.statSync(abs);
+    return { source: "disk", file: file as any, abs, stat };
+  }
+
+  // Render can lose local disk between restarts; fall back to DB blob storage when enabled.
+  if (!uploadsStoreInDb()) {
     res.status(404).json({ error: "missing_file" });
     return null;
   }
 
-  const stat = fs.statSync(abs);
-  return { file, abs, stat } as const;
+  try {
+    // Avoid selecting the blob unless we actually need to stream it.
+    const lenRows = await prisma.$queryRaw<Array<{ len: number | null }>>`
+      SELECT octet_length("content")::int AS len
+      FROM "UploadedFile"
+      WHERE id = ${id} AND "tenantId" = ${tenantId}
+      LIMIT 1
+    `;
+    const len = Number(lenRows?.[0]?.len ?? 0);
+    if (!len || len <= 0) {
+      res.status(404).json({ error: "missing_file" });
+      return null;
+    }
+    if (len > uploadsDbMaxBytes()) {
+      console.warn("[/files/:id] DB content exceeds max; refusing to stream", { id, tenantId, len });
+      res.status(413).json({ error: "file_too_large" });
+      return null;
+    }
+
+    if (mode === "HEAD") {
+      return { source: "db", file: file as any, length: len };
+    }
+
+    const row = await prisma.uploadedFile.findFirst({
+      where: { id, tenantId },
+      select: { content: true },
+    });
+    const content = (row as any)?.content as Buffer | null | undefined;
+    if (!content || !Buffer.isBuffer(content) || content.length === 0) {
+      res.status(404).json({ error: "missing_file" });
+      return null;
+    }
+    return { source: "db", file: file as any, length: content.length, content };
+  } catch (err: any) {
+    console.error("[/files/:id] DB fallback failed", err?.message || err);
+    res.status(500).json({ error: "internal_error" });
+    return null;
+  }
 }
 
 async function sendFile(req: any, res: any, mode: "GET" | "HEAD") {
   try {
-    const resolved = await resolveFileRequest(req, res);
+    const resolved = await resolveFileRequest(req, res, mode);
     if (!resolved) return;
 
-    const { file, abs, stat } = resolved;
+    const file = resolved.file;
+    const size = resolved.source === "disk" ? resolved.stat.size : resolved.length;
     res.setHeader("Content-Type", file.mimeType || "application/octet-stream");
     res.setHeader("Content-Disposition", `inline; filename="${file.name}"`);
-    res.setHeader("Content-Length", String(stat.size));
+    res.setHeader("Content-Length", String(size));
     res.setHeader("Cache-Control", "private, max-age=0, no-store, must-revalidate");
     res.setHeader("Pragma", "no-cache");
 
@@ -140,7 +209,13 @@ async function sendFile(req: any, res: any, mode: "GET" | "HEAD") {
       return;
     }
 
-    const stream = fs.createReadStream(abs);
+    if (resolved.source === "db") {
+      // When falling back to DB we already have the content as a Buffer.
+      res.status(200).end(resolved.content);
+      return;
+    }
+
+    const stream = fs.createReadStream(resolved.abs);
     stream.on("error", (err) => {
       console.error("[/files/:id] stream error", err?.message || err);
       if (!res.headersSent) res.status(500).json({ error: "stream_error" });
@@ -168,6 +243,47 @@ router.head("/:id", async (req, res) => {
  */
 router.get("/:id", async (req, res) => {
   await sendFile(req, res, "GET");
+});
+
+/**
+ * DELETE /files/:id
+ * Deletes an uploaded file for the authenticated tenant.
+ * This removes the DB record and best-effort removes the underlying file on disk.
+ */
+router.delete("/:id", async (req: any, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const id = String(req.params.id || "").trim();
+    if (!id) return res.status(400).json({ error: "missing_id" });
+
+    const file = await prisma.uploadedFile.findFirst({
+      where: { id, tenantId },
+      select: { id: true, path: true },
+    });
+
+    if (!file) return res.status(404).json({ error: "not_found" });
+
+    const abs = path.isAbsolute(file.path) ? file.path : path.join(process.cwd(), file.path);
+    let fileDeleted = false;
+    try {
+      await fs.promises.unlink(abs);
+      fileDeleted = true;
+    } catch (err: any) {
+      // Best-effort: allow DB cleanup even if file missing or locked.
+      if (err?.code !== "ENOENT") {
+        console.warn("[/files/:id] unlink failed:", err?.message || err);
+      }
+    }
+
+    await prisma.uploadedFile.delete({ where: { id } });
+
+    return res.json({ ok: true, fileDeleted });
+  } catch (e: any) {
+    console.error("[/files/:id] delete failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
 });
 
 export default router;

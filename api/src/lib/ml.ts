@@ -4,6 +4,24 @@ const ML_BASE = (process.env.ML_PARSER_URL || process.env.ML_URL || process.env.
   .trim()
   .replace(/\/$/, "");
 
+function getMlUpstreamAuthHeaders(): Record<string, string> {
+  const raw =
+    process.env.ML_AUTH_TOKEN ||
+    process.env.ML_BEARER_TOKEN ||
+    process.env.ML_API_KEY ||
+    process.env.ML_KEY ||
+    "";
+  const token = String(raw || "").trim();
+  if (!token) return {};
+
+  const bearer = token.toLowerCase().startsWith("bearer ") ? token : `Bearer ${token}`;
+  return {
+    Authorization: bearer,
+    // Some upstreams expect an API key header instead of (or in addition to) Bearer.
+    "x-api-key": token,
+  };
+}
+
 const DEFAULT_TIMEOUT = (() => {
   const raw = Number(process.env.ML_TIMEOUT_MS);
   if (Number.isFinite(raw) && raw > 0) return Math.min(Math.max(raw, 5000), 25000);
@@ -49,8 +67,18 @@ async function callMlEndpoint(endpoint: string, init: RequestInit, timeoutMs?: n
   const { controller, cleanup } = withTimeout(ms);
   const started = Date.now();
   try {
+    const mergedHeaders = new Headers(init.headers);
+    const authHeaders = getMlUpstreamAuthHeaders();
+    if (authHeaders.Authorization && !mergedHeaders.has("Authorization")) {
+      mergedHeaders.set("Authorization", authHeaders.Authorization);
+    }
+    if (authHeaders["x-api-key"] && !mergedHeaders.has("x-api-key") && !mergedHeaders.has("X-API-Key")) {
+      mergedHeaders.set("x-api-key", authHeaders["x-api-key"]);
+    }
+
     const resp = await fetch(`${ML_BASE}${endpoint}`, {
       ...init,
+      headers: mergedHeaders,
       signal: controller.signal,
     });
     const { data } = await parseJsonResponse(resp);

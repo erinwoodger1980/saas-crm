@@ -222,6 +222,15 @@ export async function parseSupplierPdfs(quoteId: string): Promise<ParseResponse>
   return res;
 }
 
+export async function fillLineStandardFromParsed(quoteId: string): Promise<{ ok: boolean; updated: number; inferredAny: number }> {
+  if (!quoteId) throw new Error("quoteId required");
+  const res = await apiFetch<{ ok: boolean; updated: number; inferredAny: number }>(
+    `/quotes/${encodeURIComponent(quoteId)}/lines/fill-standard-from-parsed`,
+    { method: "POST" },
+  );
+  return res;
+}
+
 export async function generateMlEstimate(
   quoteId: string,
   options: { source?: "questionnaire" | "supplier_pdf" } = {},

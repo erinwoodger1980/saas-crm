@@ -1,0 +1,44 @@
+{
+  "file": "/Users/Erin/saas-crm/docs/ely/Ely Cut list.pdf",
+  "source": "ocr",
+  "rows": 0,
+  "lines": [
+    "= JMs21/1 = 100% + | [iH © LL @ i",
+    "Ee Precision Carpentry & Joinery.",
+    "=== Cutting List Summary (Finish Sizes)",
+    "[— Client Fitd7 Ltd",
+    "= Job",
+    "= Ref Ely",
+    "To Febriel—l=lsk",
+    "Cwiewee J alr] ss [57 foro [soma sealer ar] |",
+    "[fwiwz [ 2[reso[ 93 [ es [reoo [e3swa1firze [ [7]",
+    "Cwiwe J ows] ss [oo fiw [somanfirzs | [|",
+    "[wise wax [ 4[1120[ 93 ] es [oro [e35x21] s8as[a747] |",
+    "Cwiwe J 270% [on [eerwsa] srl al 7]",
+    "CWwiawea | o] ew] o7 [57 [ser] avers [amer]ae a] |",
+    "[wwe 12 ooo] oa | 57 [500] avo [amar] ao] |",
+    "CWwia wes] oTwom] ot 67 [era] aoc [ora] |_|",
+    "wr, were | a smal oa sr [ara] avin [arms] ||",
+    "[wiewee | a] son] or [7 [ara aoce [area] ||",
+    "[“[wixa waxa [sf 6oof 64 [ 67 [50.7] 44x18 [as87[46 a6] |",
+    "Cwiwe J owsolro Joa fan | [|",
+    "[clwiwz J 2fweso[41 [or fio [ | [ [|",
+    "[widows | of aol 6 [78 [oea | | [|",
+    "EE IE ET",
+    "ECC A",
+    "AE CE AC EN"
+  ],
+  "meta": {
+    "pagesAttempted": 1,
+    "rendererUsed": "puppeteer",
+    "renderErrors": [
+      "sharp[p0]: Input buffer contains unsupported image format"
+    ],
+    "warnings": [
+      "OCR renderer: puppeteer",
+      "OCR pages scanned: 1"
+    ],
+    "tookMs": 6294,
+    "stage": "tesseract"
+  }
+}
