@@ -704,11 +704,28 @@ export default function QuoteBuilderPage() {
       setEstimate(response);
       setLastEstimateAt(new Date().toISOString());
       setEstimatedLineRevision(lineRevision);
-      toast({ title: "Estimate ready", description: `Predicted total ${formatCurrency(response.estimatedTotal, currency)}.` });
+      if (response?.estimatedTotal == null) {
+        toast({
+          title: "Estimate ready",
+          description: "Prediction received, but it wasn't applied to line items.",
+        });
+      } else {
+        toast({ title: "Estimate ready", description: `Predicted total ${formatCurrency(response.estimatedTotal, currency)}.` });
+      }
       await Promise.all([mutateQuote(), mutateLines()]);
     } catch (err: any) {
-      setError(err?.message || "Failed to estimate");
-      toast({ title: "Estimate failed", description: err?.message || "Unable to generate ML estimate", variant: "destructive" });
+      const status = Number(err?.status || err?.response?.status || 0) || null;
+      const details = err?.details;
+      const apiMessage =
+        (details && typeof details === "object" && (details.message || details.error)) ||
+        (typeof details === "string" ? details : null);
+      const message = apiMessage || err?.message || "Unable to generate ML estimate";
+      setError(message);
+      toast({
+        title: status === 422 ? "More information needed" : "Estimate failed",
+        description: message,
+        variant: "destructive",
+      });
     } finally {
       setIsEstimating(false);
     }
@@ -732,11 +749,28 @@ export default function QuoteBuilderPage() {
       setLastEstimateAt(new Date().toISOString());
       setEstimatedLineRevision(lineRevision);
       setPricingBreakdown(null);
-      toast({ title: "Estimate ready", description: `Predicted total ${formatCurrency(response.estimatedTotal, currency)}.` });
+      if (response?.estimatedTotal == null) {
+        toast({
+          title: "Estimate ready",
+          description: "Prediction received, but it wasn't applied to line items.",
+        });
+      } else {
+        toast({ title: "Estimate ready", description: `Predicted total ${formatCurrency(response.estimatedTotal, currency)}.` });
+      }
 
       await Promise.all([mutateQuote(), mutateLines()]);
     } catch (err: any) {
-      toast({ title: "Estimate failed", description: err?.message || "Unable to generate ML estimate", variant: "destructive" });
+      const status = Number(err?.status || err?.response?.status || 0) || null;
+      const details = err?.details;
+      const apiMessage =
+        (details && typeof details === "object" && (details.message || details.error)) ||
+        (typeof details === "string" ? details : null);
+      const message = apiMessage || err?.message || "Unable to generate ML estimate";
+      toast({
+        title: status === 422 ? "More information needed" : "Estimate failed",
+        description: message,
+        variant: "destructive",
+      });
     } finally {
       setIsEstimating(false);
       setIsPricing(false);

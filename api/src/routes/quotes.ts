@@ -377,11 +377,10 @@ const ESTIMATE_CACHE_DAYS = (() => {
   return 14;
 })();
 
-// Minimum estimate floor when ML returns a non-positive value
-const MIN_ESTIMATE_GBP = (() => {
-  const raw = Number(process.env.MIN_ESTIMATE_GBP);
-  if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
-  return 1500; // sensible default to avoid £0 proposals
+const MIN_ML_CONFIDENCE = (() => {
+  const raw = Number(process.env.MIN_ML_CONFIDENCE);
+  if (Number.isFinite(raw) && raw >= 0 && raw <= 1) return raw;
+  return 0.65;
 })();
 
 function sanitiseParseResult(result: SupplierParseResult, supplier?: string | null, currency?: string) {
@@ -4374,104 +4373,28 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
         
         console.log(`[quotes/:id/price] Using cached estimate for quote ${quote.id}: predictedTotal=${predictedTotal}, confidence=${confidence}`);
 
-        // If cached value is non-positive, treat as cache miss to allow retraining/updated logic
-        if (predictedTotal <= 0) {
-          console.warn(`[quotes/:id/price] Cached estimate has predictedTotal=${predictedTotal} for quote ${quote.id} – ignoring cache`);
+        const usableCached =
+          predictedTotal > 0 && confidence != null && Number.isFinite(confidence) && confidence >= MIN_ML_CONFIDENCE;
+
+        // If cached value is non-positive or low-confidence, treat as cache miss to allow updated logic.
+        if (!usableCached) {
+          console.warn(
+            `[quotes/:id/price] Cached estimate unusable for quote ${quote.id} (predictedTotal=${predictedTotal}, confidence=${confidence}); ignoring cache`,
+          );
           // proceed to live ML call by skipping cache branch
         } else {
-          // If there are no lines yet, create a single placeholder line so totals aren't £0
+          // If there are no line items yet, return the estimate but do not mutate quote/lines.
           if (!quote.lines || quote.lines.length === 0) {
-            const desc = (quote.title && `Estimated: ${quote.title}`) || "Estimated item";
-            const pricingBreakdown = {
-              method: "ML",
-              inputs: {
-                qty: 1,
-                predictedTotal,
-                distribution: "placeholder",
-              },
-              outputs: {
-                sellUnitGBP: predictedTotal,
-                sellTotalGBP: predictedTotal,
-              },
-              assumptions: {
-                modelVersionId: productionModelId,
-                confidence,
-              },
-              timestamp: new Date().toISOString(),
-            };
-            await prisma.quoteLine.create({
-              data: {
-                quoteId: quote.id,
-                supplier: null as any,
-                sku: undefined,
-                description: desc,
-                qty: 1,
-                unitPrice: new Prisma.Decimal(0),
-                currency,
-                deliveryShareGBP: new Prisma.Decimal(0),
-                lineTotalGBP: new Prisma.Decimal(predictedTotal),
-                meta: {
-                  pricingMethod: "ml_distribute",
-                  sellUnitGBP: predictedTotal,
-                  sellTotalGBP: predictedTotal,
-                  predictedTotal,
-                  estimateModelVersionId: productionModelId,
-                  pricingBreakdown,
-                } as any,
-              },
-            });
-            {
-              const saved = await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(predictedTotal) } });
-              try {
-                await completeTasksOnRecordChangeByLinks({
-                  tenantId,
-                  model: "Quote",
-                  recordId: quote.id,
-                  changed: { totalGBP: saved.totalGBP },
-                  newRecord: saved,
-                });
-              } catch (e) {
-                console.warn("[/quotes/:id/price cached placeholder] field-link sync failed:", (e as any)?.message || e);
-              }
-            }
-
-            await logInferenceEvent({
-              tenantId,
-              model: inferenceModel,
-              modelVersionId: productionModelId,
-              inputHash,
-              outputJson: { predictedTotal, currency, confidence, modelVersionId: productionModelId },
-              confidence: confidence ?? undefined,
-              latencyMs: 0,
-              meta: { cacheHit: true, createdPlaceholderLine: true },
-            });
-
-            await logInsight({
-              tenantId,
-              module: inferenceModel,
-              inputSummary: `quote:${quote.id}:${inputType}`,
-              decision: productionModelId,
-              confidence,
-              userFeedback: {
-                kind: inferenceModel,
-                quoteId: quote.id,
-                modelVersionId: productionModelId,
-                estimatedTotal: predictedTotal,
-                cacheHit: true,
-                createdPlaceholderLine: true,
-              },
-            });
-
             console.log("[/quotes/:id/price] done", {
               tenantId,
               quoteId: quote.id,
               method,
-              totalGBP: predictedTotal,
+              totalGBP: null,
               cacheHit: true,
-              createdPlaceholderLine: true,
+              applied: false,
               ms: Date.now() - pricingStartedAt,
             });
-            return res.json({ ok: true, method, predictedTotal, totalGBP: predictedTotal, cacheHit: true, createdPlaceholderLine: true });
+            return res.json({ ok: true, method, predictedTotal, totalGBP: null, confidence, currency, modelVersionId: productionModelId, cacheHit: true, applied: false });
           }
           // Always distribute predicted total by quantity when using questionnaire-only mode
           let totalGBP = 0;
@@ -4571,8 +4494,23 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
             cacheHit: true,
             ms: Date.now() - pricingStartedAt,
           });
-          return res.json({ ok: true, method, predictedTotal, totalGBP, cacheHit: true });
+          return res.json({ ok: true, method, predictedTotal, totalGBP, confidence, currency, modelVersionId: productionModelId, cacheHit: true, applied: true });
         }
+      }
+
+      const nonEmptyFeatureCount = Object.entries(features || {}).filter(([, v]) => {
+        if (v === null || v === undefined) return false;
+        if (typeof v === "string" && v.trim() === "") return false;
+        if (Array.isArray(v) && v.length === 0) return false;
+        return true;
+      }).length;
+
+      if (nonEmptyFeatureCount === 0) {
+        return res.status(422).json({
+          error: "insufficient_data",
+          message:
+            "ML estimate needs more input. Fill in the questionnaire (or parse an uploaded quote and add product lines) then try again.",
+        });
       }
 
       const startedAt = Date.now();
@@ -4590,119 +4528,79 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
         ml = mlText ? { raw: mlText } : {};
       }
 
-  const predictedTotal = safeNumber(ml?.predicted_total ?? ml?.predictedTotal ?? ml?.total) ?? 0;
+      if (!mlResp.ok) {
+        console.warn(
+          `[quotes/:id/price] ML service error for quote ${quote.id}: status=${mlResp.status}, body=${mlText?.slice(0, 500)}`,
+        );
+        return res.status(502).json({
+          error: "ml_service_error",
+          message: "ML service returned an error. Please try again in a moment.",
+        });
+      }
+
+      const predictedTotal = safeNumber(ml?.predicted_total ?? ml?.predictedTotal ?? ml?.total) ?? 0;
       const confidenceRaw = safeNumber(ml?.confidence ?? ml?.probability ?? ml?.score);
       const confidence = confidenceRaw ?? 0;
       console.log(`[quotes/:id/price] ML response for quote ${quote.id}: predictedTotal=${predictedTotal}, confidence=${confidence}, raw:`, JSON.stringify(ml));
-      
-      if (predictedTotal <= 0) {
-        console.warn(`[quotes/:id/price] ML predicted total is ${predictedTotal} for quote ${quote.id}, features:`, JSON.stringify(features));
-      }
-      
+
       let modelVersionId = extractModelVersionId(ml) || productionModelId || `external-${new Date().toISOString().slice(0, 10)}`;
       const currency = normalizeCurrency(ml?.currency || quote.currency || "GBP");
 
-      // Fallback floor if ML prediction is non-positive
-      let predictedTotalFinal = predictedTotal;
-      let usedFallbackFloor = false;
-      if (!(predictedTotalFinal > 0)) {
-        predictedTotalFinal = MIN_ESTIMATE_GBP;
-        usedFallbackFloor = true;
-        modelVersionId = modelVersionId || "fallback-floor";
-        console.warn(`[quotes/:id/price] ML predicted total non-positive; applying floor £${predictedTotalFinal} for quote ${quote.id}`);
+      if (!(predictedTotal > 0)) {
+        console.warn(
+          `[quotes/:id/price] ML returned non-positive total for quote ${quote.id} (predictedTotal=${predictedTotal})`,
+        );
+        return res.status(422).json({
+          error: "insufficient_data",
+          message:
+            "ML couldn't produce a reliable estimate from the current inputs. Add more details (dimensions/specs) and try again.",
+          confidence,
+        });
       }
 
-      // Only persist positive predictions to avoid poisoning the cache with zeros
-      if (predictedTotalFinal > 0 && !usedFallbackFloor) {
-        try {
-          await prisma.estimate.create({
-            data: {
-              tenantId,
-              quoteId: quote.id,
-              inputType,
-              inputHash,
-              currency,
-              estimatedTotal: predictedTotalFinal,
-              confidence,
-              modelVersionId,
-            },
-          });
-        } catch (e: any) {
-          console.warn(`[quotes] failed to persist Estimate for quote ${quote.id}:`, e?.message || e);
-        }
+      if (!Number.isFinite(confidence) || confidence < MIN_ML_CONFIDENCE) {
+        return res.status(422).json({
+          error: "low_confidence",
+          message:
+            "Estimate confidence is too low to apply automatically. Add missing details (e.g. dimensions/specs) and re-run.",
+          confidence,
+        });
       }
 
-      // If there are no lines yet, create a single placeholder line so totals aren't £0
-      let totalGBPForReturn = 0;
-      if (!quote.lines || quote.lines.length === 0) {
-        const currency = normalizeCurrency(ml?.currency || quote.currency || "GBP");
-        const desc = (quote.title && `Estimated: ${quote.title}`) || "Estimated item";
-        const pricingBreakdown = {
-          method: "ML",
-          inputs: {
-            qty: 1,
-            predictedTotal: predictedTotalFinal,
-            distribution: "placeholder",
-          },
-          outputs: {
-            sellUnitGBP: predictedTotalFinal,
-            sellTotalGBP: predictedTotalFinal,
-          },
-          assumptions: {
-            modelVersionId,
-            confidence,
-          },
-          timestamp: new Date().toISOString(),
-        };
-        await prisma.quoteLine.create({
+      // Persist usable predictions for caching/training.
+      try {
+        await prisma.estimate.create({
           data: {
+            tenantId,
             quoteId: quote.id,
-            supplier: null as any,
-            sku: undefined,
-            description: desc,
-            qty: 1,
-            unitPrice: new Prisma.Decimal(0),
+            inputType,
+            inputHash,
             currency,
-            deliveryShareGBP: new Prisma.Decimal(0),
-            lineTotalGBP: new Prisma.Decimal(predictedTotalFinal),
-            meta: {
-              pricingMethod: "ml_distribute",
-              sellUnitGBP: predictedTotalFinal,
-              sellTotalGBP: predictedTotalFinal,
-              predictedTotal: predictedTotalFinal,
-              estimateModelVersionId: modelVersionId,
-              pricingBreakdown,
-            } as any,
+            estimatedTotal: predictedTotal,
+            confidence,
+            modelVersionId,
           },
         });
-        {
-          const saved = await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(predictedTotalFinal) } });
-          try {
-            await completeTasksOnRecordChangeByLinks({
-              tenantId,
-              model: "Quote",
-              recordId: quote.id,
-              changed: { totalGBP: saved.totalGBP },
-              newRecord: saved,
-            });
-          } catch (e) {
-            console.warn("[/quotes/:id/price placeholder] field-link sync failed:", (e as any)?.message || e);
-          }
-        }
-        totalGBPForReturn = predictedTotalFinal;
-      } else {
-        // Always distribute by quantity in questionnaire-only mode
+      } catch (e: any) {
+        console.warn(`[quotes] failed to persist Estimate for quote ${quote.id}:`, e?.message || e);
+      }
+
+      const hasLines = Array.isArray(quote.lines) && quote.lines.length > 0;
+      let applied = false;
+      let totalGBPForReturn: number | null = null;
+      if (hasLines) {
+        // Distribute by quantity across existing line items.
         let totalGBP = 0;
         const qtySum2 = quote.lines.reduce((s, ln) => s + Math.max(1, Number(ln.qty || 1)), 0);
         for (const ln of quote.lines) {
           const qty = Math.max(1, Number(ln.qty || 1));
-          const sellTotal = predictedTotalFinal > 0 ? (predictedTotalFinal * qty) / Math.max(1, qtySum2) : 0;
+          const sellTotal = (predictedTotal * qty) / Math.max(1, qtySum2);
           const sellUnit = qty > 0 ? sellTotal / qty : 0;
           const pricingBreakdown = {
             method: "ML",
             inputs: {
               qty,
-              predictedTotal: predictedTotalFinal,
+              predictedTotal,
               distribution: "quantity",
             },
             outputs: {
@@ -4721,11 +4619,11 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
             data: {
               meta: {
                 set: {
-                  ...(ln.meta as any || {}),
+                  ...((ln.meta as any) || {}),
                   sellUnitGBP: sellUnit,
                   sellTotalGBP: sellTotal,
                   pricingMethod: "ml_distribute",
-                  predictedTotal: predictedTotalFinal,
+                  predictedTotal,
                   estimateModelVersionId: modelVersionId,
                   pricingBreakdown,
                 },
@@ -4747,11 +4645,12 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
             console.warn("[/quotes/:id/price distribute] field-link sync failed:", (e as any)?.message || e);
           }
         }
+        applied = true;
         totalGBPForReturn = totalGBP;
       }
 
       const sanitizedEstimate = {
-        predictedTotal: predictedTotalFinal,
+        predictedTotal,
         currency,
         confidence,
         modelVersionId,
@@ -4788,10 +4687,9 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
         quoteId: quote.id,
         method,
         totalGBP: totalGBPForReturn,
-        fallbackFloor: usedFallbackFloor,
         ms: Date.now() - pricingStartedAt,
       });
-      return res.json({ ok: true, method, predictedTotal: predictedTotalFinal, totalGBP: totalGBPForReturn, fallbackFloor: usedFallbackFloor });
+      return res.json({ ok: true, method, predictedTotal, totalGBP: totalGBPForReturn, confidence, currency, modelVersionId, applied });
     }
 
     return res.status(400).json({ error: "invalid_method" });

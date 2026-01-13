@@ -22,7 +22,6 @@ import {
   saveSupplierPattern,
   type PatternCues,
 } from "./patterns";
-import { extractImagesForParse } from "../pdf/extractImages";
 import {
   loadPdfLayoutTemplate,
   parsePdfWithTemplate,
@@ -694,92 +693,31 @@ export async function parseSupplierPdf(
 
   await saveSupplierPattern(cues);
 
-  // Extract images from PDF and map to lines with enhanced product data extraction
+  // Text-only enrichment (no image extraction/rendering).
+  // We intentionally avoid extracting images from PDFs because it is unreliable and slow.
   try {
-    const extractedImages = await extractImagesForParse(buffer);
-    
-    if (extractedImages.length > 0) {
-      console.log(`[parseSupplierPdf] Extracted ${extractedImages.length} images`);
-      
-      // Store images in the result
-      workingParse.images = extractedImages;
-      
-      // Enhanced: Extract structured product data from text near images
-      // Get the full text from the PDF for product ID matching
-      const extraction = extractStructuredText(buffer);
-      const fullText = extraction?.rawText || "";
-      
-      // Map images to lines based on page, proximity, and text analysis
-      workingParse.lines = workingParse.lines.map((line, lineIndex) => {
-        // Estimate line page based on position (rough heuristic)
-        const estimatedPage = Math.floor(lineIndex / 10) + 1;
-        const linePage = line.page || estimatedPage;
-        
-        // Find images on the same page
-        const pageImages = extractedImages.filter(img => img.page === linePage);
-        
-        if (pageImages.length === 0) {
-          return line;
-        }
-        
-        // Enhanced matching: Use description keywords to find matching image
-        const description = String(line.description || "").toLowerCase();
-        const lineText = String((line as any).rawText || line.description || "").toLowerCase();
-        
-        // Look for product identifiers (FD1, FD2, etc.) or reference numbers
+    const fullText = String(stageA.extraction?.rawText || "");
+    if (fullText) {
+      workingParse.lines = workingParse.lines.map((line) => {
+        const description = String(line.description || "");
+        const lineText = String((line as any).rawText || description).toLowerCase();
         const productIdMatch = description.match(/\b(fd\d+|ref[:\s]*[\w-]+|item[:\s]*[\w-]+)\b/i);
-        let matchedImage = null;
-        
-        if (productIdMatch && fullText) {
-          // Find the product ID in the full text and locate nearby image
-          const productId = productIdMatch[0];
-          const productIdPos = fullText.toLowerCase().indexOf(productId.toLowerCase());
-          
-          if (productIdPos >= 0) {
-            // Find closest image to this text position (by page and index)
-            matchedImage = pageImages.reduce((closest, img) => {
-              if (!closest) return img;
-              // Prefer images earlier on the page for earlier text mentions
-              return img.index < closest.index ? img : closest;
-            }, pageImages[0]);
-          }
-        }
-        
-        // Fallback: assign images in sequence
-        if (!matchedImage) {
-          const imageIndex = lineIndex % pageImages.length;
-          matchedImage = pageImages[imageIndex];
-        }
-        
-        // Extract structured product data from description/rawText
         const productData = extractProductDataFromText(lineText, fullText, productIdMatch?.[0]);
-        
-        if (matchedImage) {
-          return {
-            ...line,
-            page: linePage,
-            imageIndex: matchedImage.index,
-            imageDataUrl: matchedImage.dataUrl,
-            bbox: matchedImage.bbox,
-            // Enhanced: Add structured product data
-            productType: productData.type,
-            wood: productData.wood,
-            finish: productData.finish,
-            glass: productData.glass,
-            dimensions: productData.dimensions,
-            area: productData.area,
-          };
-        }
-        
-        return { ...line, page: linePage, ...productData };
+
+        return {
+          ...line,
+          productType: productData.type,
+          wood: productData.wood,
+          finish: productData.finish,
+          glass: productData.glass,
+          dimensions: productData.dimensions,
+          area: productData.area,
+        };
       });
-      
-      const mappedCount = workingParse.lines.filter(l => l.imageDataUrl).length;
-      console.log(`[parseSupplierPdf] Mapped images to ${mappedCount} lines with enhanced product data`);
     }
   } catch (err: any) {
-    console.warn('[parseSupplierPdf] Image extraction failed:', err);
-    collectedWarnings.add(`Image extraction failed: ${err.message}`);
+    console.warn("[parseSupplierPdf] Text enrichment failed:", err);
+    collectedWarnings.add(`Text enrichment failed: ${err?.message || String(err)}`);
     workingParse = attachWarnings(workingParse, collectedWarnings);
   }
 
