@@ -2458,6 +2458,13 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
               supplierHint: supplierHint ?? f.name ?? undefined,
               currencyHint: quote.currency || "GBP",
               supplierProfileId: quote.supplierProfileId ?? undefined,
+              // Match the deterministic behaviour we validated locally:
+              // keep OCR disabled by default, but auto-enable it when the PDF has no text layer.
+              ocrEnabled: false,
+              ocrAutoWhenNoText: true,
+              // Avoid LLM/template behaviour in this generic quote-upload parser.
+              llmEnabled: false,
+              templateEnabled: false,
             });
             parseResult = hybrid;
             info.hybrid = { used: true, confidence: hybrid.confidence, stages: hybrid.usedStages };
