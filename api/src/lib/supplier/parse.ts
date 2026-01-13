@@ -27,6 +27,7 @@ import {
   parsePdfWithTemplate,
   type TemplateParseMeta,
 } from "../pdf/layoutTemplates";
+import { callMlWithUpload, normaliseMlPayload } from "../ml";
 
 const STRUCTURE_TOOL = {
   type: "function" as const,
@@ -378,6 +379,39 @@ async function runStageB(
 
   if (!shouldAttempt) {
     return { parse: stageA.parse, used: false, warnings: [] };
+  }
+
+  // Prefer a real OCR-backed parse via the ML parser when available.
+  // This is the most reliable way to recover text from PDFs with broken/garbled text layers.
+  const ocrEnabled = String(process.env.PARSER_OCR_ENABLED ?? "true").toLowerCase() !== "false";
+  if (ocrEnabled) {
+    try {
+      const filename = `${cleanText(stageA.parse.supplier || "quote") || "quote"}.pdf`;
+      const ml = await callMlWithUpload({
+        buffer,
+        filename,
+        timeoutMs: 25000,
+        headers: {
+          "X-OCR-Enabled": "true",
+          // We do our own LLM structuring in Stage C; keep ML deterministic here.
+          "X-LLM-Enabled": "false",
+        },
+      });
+
+      if (ml.ok) {
+        const parsed = normaliseMlPayload(ml.data);
+        if (parsed?.lines?.length) {
+          const warnings = [
+            `OCR fallback used: ML parser (${ml.tookMs}ms)`,
+            ...(parsed.warnings ?? []),
+          ];
+          return { parse: attachWarnings(parsed, warnings), used: true, warnings };
+        }
+      }
+    } catch (err: any) {
+      // Non-fatal: fall back to local replacement strategy.
+      console.warn("[runStageB] ML OCR fallback failed:", err?.message || err);
+    }
   }
 
   const fallback = await runOcrFallback(buffer, stageA.extraction);

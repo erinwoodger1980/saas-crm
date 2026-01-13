@@ -170,4 +170,45 @@ router.get("/:id", async (req, res) => {
   await sendFile(req, res, "GET");
 });
 
+/**
+ * DELETE /files/:id
+ * Deletes an uploaded file for the authenticated tenant.
+ * This removes the DB record and best-effort removes the underlying file on disk.
+ */
+router.delete("/:id", async (req: any, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const id = String(req.params.id || "").trim();
+    if (!id) return res.status(400).json({ error: "missing_id" });
+
+    const file = await prisma.uploadedFile.findFirst({
+      where: { id, tenantId },
+      select: { id: true, path: true },
+    });
+
+    if (!file) return res.status(404).json({ error: "not_found" });
+
+    const abs = path.isAbsolute(file.path) ? file.path : path.join(process.cwd(), file.path);
+    let fileDeleted = false;
+    try {
+      await fs.promises.unlink(abs);
+      fileDeleted = true;
+    } catch (err: any) {
+      // Best-effort: allow DB cleanup even if file missing or locked.
+      if (err?.code !== "ENOENT") {
+        console.warn("[/files/:id] unlink failed:", err?.message || err);
+      }
+    }
+
+    await prisma.uploadedFile.delete({ where: { id } });
+
+    return res.json({ ok: true, fileDeleted });
+  } catch (e: any) {
+    console.error("[/files/:id] delete failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
 export default router;

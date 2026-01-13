@@ -13,7 +13,7 @@ import { UnifiedQuoteLineItems } from "@/components/quotes/UnifiedQuoteLineItems
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
-import { Loader2, Sparkles, Printer, ChevronDown, ChevronRight, Download, FileText, Building2, Cpu, Edit3, Eye, FileUp, Mail, Save, Box, Wand2 } from "lucide-react";
+import { Loader2, Sparkles, Printer, ChevronDown, ChevronRight, Download, FileText, Building2, Cpu, Edit3, Eye, FileUp, Mail, Save, Box, Wand2, X } from "lucide-react";
 import { TypeSelectorModal } from "@/components/TypeSelectorModal";
 import { AIComponentConfigurator } from "@/components/configurator/AIComponentConfigurator";
 import {
@@ -997,6 +997,29 @@ export default function QuoteBuilderPage() {
     [quoteId, toast],
   );
 
+  const handleDeleteUploadedFile = useCallback(
+    async (fileId: string) => {
+      if (!fileId) return;
+      setError(null);
+      try {
+        await apiFetch(`/files/${encodeURIComponent(fileId)}`, { method: "DELETE" });
+        toast({ title: "File deleted", description: "The uploaded file was removed." });
+
+        if (ownQuotePreviewFileId === fileId) {
+          setOwnQuotePreviewFileId(null);
+          setOwnQuotePreviewUrl(null);
+          setOwnQuotePreviewLoading(false);
+        }
+
+        await mutateQuote();
+      } catch (err: any) {
+        setError(err?.message || "Delete failed");
+        toast({ title: "Delete failed", description: err?.message || "Unable to delete file", variant: "destructive" });
+      }
+    },
+    [mutateQuote, ownQuotePreviewFileId, toast],
+  );
+
   // Handle product type selection from type selector modal
   const handleTypeSelection = useCallback((selection: { category: string; type: string; option: string }) => {
     // Product type selection now happens within UnifiedQuoteLineItems component
@@ -1663,6 +1686,7 @@ export default function QuoteBuilderPage() {
                   quoteSourceType={quote?.quoteSourceType}
                   supplierProfileId={quote?.supplierProfileId}
                   onOpen={handleOpenFile}
+                  onDelete={(file) => void handleDeleteUploadedFile(file.id)}
                   onUpload={handleUploadFiles}
                   onUploadClick={openUploadDialog}
                   isUploading={isUploading}
@@ -1827,21 +1851,39 @@ export default function QuoteBuilderPage() {
                     <div className="space-y-2">
                       <h4 className="text-sm font-medium">Uploaded files:</h4>
                       {quote.supplierFiles.map((file) => (
-                        <button
-                          type="button"
+                        <div
                           key={file.id}
-                          className={`flex w-full items-center gap-2 text-sm p-2 rounded border text-left hover:bg-muted/30 ${
+                          className={`flex items-center gap-2 text-sm p-2 rounded border hover:bg-muted/30 ${
                             ownQuotePreviewFileId === file.id ? "border-primary" : ""
                           }`}
-                          onClick={() => void handlePreviewOwnQuoteFile(file.id)}
                         >
-                          <FileText className="h-4 w-4" />
-                          <span>{file.name}</span>
-                          <span className="text-muted-foreground">
-                            ({(file.sizeBytes ? file.sizeBytes / 1024 : 0).toFixed(1)} KB)
-                          </span>
-                          <span className="ml-auto text-xs text-muted-foreground">Preview</span>
-                        </button>
+                          <button
+                            type="button"
+                            className="flex flex-1 min-w-0 items-center gap-2 text-left"
+                            onClick={() => void handlePreviewOwnQuoteFile(file.id)}
+                          >
+                            <FileText className="h-4 w-4 flex-shrink-0" />
+                            <span className="truncate">{file.name}</span>
+                            <span className="text-muted-foreground flex-shrink-0">
+                              ({(file.sizeBytes ? file.sizeBytes / 1024 : 0).toFixed(1)} KB)
+                            </span>
+                            <span className="ml-auto text-xs text-muted-foreground">Preview</span>
+                          </button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleDeleteUploadedFile(file.id);
+                            }}
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                            aria-label="Delete file"
+                            title="Delete"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
                       ))}
                     </div>
                   )}
