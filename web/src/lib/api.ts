@@ -164,15 +164,25 @@ export async function apiFetch<T = unknown>(
     body,
   });
 
+  const contentType = String(res.headers.get("content-type") || "");
   const text = await res.text();
   const parsed = text ? safeJson(text) : null;
 
+  const looksLikeHtml =
+    /text\/html/i.test(contentType) ||
+    /^\s*<!doctype\s+html/i.test(text) ||
+    /^\s*<html[\s>]/i.test(text);
+
   const details = parsed ?? (text || null);
+  const msgFromJson =
+    details && typeof details === "object" ? (details as any).error || (details as any).message : null;
+  const msgFromText =
+    typeof details === "string" && details.trim() ? details.trim() : null;
+
+  // Avoid throwing massive HTML error pages as the Error.message (Render 502s, Cloudflare blocks, etc.)
   const msg =
-    (details && typeof details === "object"
-      ? (details as any).error || (details as any).message
-      : null) ||
-    (typeof details === "string" && details.trim() ? details : null) ||
+    msgFromJson ||
+    (looksLikeHtml ? `Request failed ${res.status} ${res.statusText}` : msgFromText) ||
     `Request failed ${res.status} ${res.statusText}`;
 
   if (res.status === 401) {

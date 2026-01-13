@@ -1767,6 +1767,10 @@ router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: an
     return 15 * 1024 * 1024;
   })();
 
+  if (!storeUploadsInDb) {
+    console.log("[quotes/:id/files] UPLOADS_STORE_IN_DB is disabled; uploads will rely on local disk paths.");
+  }
+
   for (const f of incomingFiles) {
     try {
       const isPdf =
@@ -1881,6 +1885,12 @@ router.post("/:id/client-quote-files", requireAuth, upload.array("files", 10), a
     if (Number.isFinite(raw) && raw > 0) return raw;
     return 15 * 1024 * 1024;
   })();
+
+  if (!storeUploadsInDb) {
+    console.log(
+      "[quotes/:id/client-quote-files] UPLOADS_STORE_IN_DB is disabled; uploads will rely on local disk paths.",
+    );
+  }
 
   for (const f of (req.files as Express.Multer.File[])) {
     const isPdf =

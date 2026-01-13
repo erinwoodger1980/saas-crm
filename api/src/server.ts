@@ -1109,6 +1109,14 @@ function startServer() {
       let writable = true;
       try { fs.accessSync(resolvedUpload, fs.constants.W_OK); } catch { writable = false; }
       console.log(`[storage] UPLOAD_DIR -> ${resolvedUpload} (writable=${writable})`);
+
+      const uploadsStoreInDb = String(process.env.UPLOADS_STORE_IN_DB ?? "true").toLowerCase() !== "false";
+      const uploadsDbMaxBytes = (() => {
+        const raw = Number(process.env.UPLOADS_DB_MAX_BYTES);
+        if (Number.isFinite(raw) && raw > 0) return raw;
+        return 15 * 1024 * 1024;
+      })();
+      console.log(`[storage] UPLOADS_STORE_IN_DB -> ${uploadsStoreInDb} (maxBytes=${uploadsDbMaxBytes})`);
       
       // Validate AI/ML service configuration
       const isProd = process.env.NODE_ENV === "production";

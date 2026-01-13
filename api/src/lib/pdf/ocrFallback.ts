@@ -25,6 +25,63 @@ function formatErr(err: any): string {
   return String(err?.message || err || "unknown_error");
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return promise;
+  return new Promise<T>((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+    promise
+      .then((v) => {
+        clearTimeout(id);
+        resolve(v);
+      })
+      .catch((e) => {
+        clearTimeout(id);
+        reject(e);
+      });
+  });
+}
+
+async function downscalePngForOcr(png: Buffer): Promise<Buffer> {
+  const maxPixels = (() => {
+    const raw = Number(process.env.OCR_MAX_PIXELS);
+    if (Number.isFinite(raw) && raw > 0) return raw;
+    // Keep under ~3MP to avoid OOM/slow OCR on small instances.
+    return 3_000_000;
+  })();
+  const maxWidth = (() => {
+    const raw = Number(process.env.OCR_MAX_WIDTH);
+    if (Number.isFinite(raw) && raw > 0) return raw;
+    return 1800;
+  })();
+
+  try {
+    const meta = await sharp(png).metadata();
+    const w = Number(meta.width || 0);
+    const h = Number(meta.height || 0);
+    if (!w || !h) return png;
+
+    const pixels = w * h;
+    const needsDownscale = pixels > maxPixels || w > maxWidth;
+    if (!needsDownscale) {
+      return sharp(png).grayscale().toBuffer();
+    }
+
+    // Scale to satisfy both pixel and width caps.
+    const scaleByPixels = Math.sqrt(maxPixels / pixels);
+    const scaleByWidth = maxWidth / w;
+    const scale = Math.min(1, scaleByPixels, scaleByWidth);
+    const newW = Math.max(1, Math.floor(w * scale));
+
+    return sharp(png)
+      .resize({ width: newW, fit: "inside", withoutEnlargement: true })
+      .grayscale()
+      .toBuffer();
+  } catch {
+    // Best-effort only.
+    return png;
+  }
+}
+
 async function renderPdfFirstPageToPngViaPuppeteer(pdfBuffer: Buffer): Promise<Buffer> {
   // Dynamically load puppeteer + chromium fallback to avoid hard crashes if dependencies differ by env.
   let puppeteer: any;
@@ -43,23 +100,25 @@ async function renderPdfFirstPageToPngViaPuppeteer(pdfBuffer: Buffer): Promise<B
 
   let browser: any;
   try {
+    const viewport = { width: 1200, height: 1600, deviceScaleFactor: 1 };
     const resolvedExec = typeof puppeteer.executablePath === "function" ? puppeteer.executablePath() : undefined;
     const execPath = resolvedExec || process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
     browser = await puppeteer.launch({
       headless: true,
       executablePath: execPath,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
-      defaultViewport: { width: 1400, height: 1800, deviceScaleFactor: 2 },
+      defaultViewport: viewport,
     });
   } catch (firstErr: any) {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const chromium = require("@sparticuz/chromium");
+    const viewport = chromium.defaultViewport ?? { width: 1200, height: 1600, deviceScaleFactor: 1 };
     const execPath2 = await chromium.executablePath();
     browser = await puppeteer.launch({
       headless: chromium.headless !== undefined ? chromium.headless : true,
       executablePath: execPath2,
       args: chromium.args ?? ["--no-sandbox", "--disable-setuid-sandbox"],
-      defaultViewport: chromium.defaultViewport ?? { width: 1400, height: 1800, deviceScaleFactor: 2 },
+      defaultViewport: viewport,
     });
   }
 
@@ -75,8 +134,14 @@ async function renderPdfFirstPageToPngViaPuppeteer(pdfBuffer: Buffer): Promise<B
 
     // Give the PDF viewer a moment to paint.
     await page.waitForTimeout(800);
-
-    const png = await page.screenshot({ type: "png", fullPage: true });
+    // NOTE: Do NOT use fullPage for PDFs; it can generate extremely tall images
+    // (multiple pages in a single scroll) which can OOM-kill small instances.
+    await page.evaluate(() => {
+      try {
+        window.scrollTo(0, 0);
+      } catch {}
+    });
+    const png = await page.screenshot({ type: "png", fullPage: false });
     return Buffer.from(png);
   } finally {
     try {
@@ -224,15 +289,36 @@ export async function runOcrFallback(
     // This avoids the "OCR the already-garbled text" problem and works for scanned PDFs.
     let png: Buffer | null = null;
     const renderErrors: string[] = [];
+    let rendererUsed: "sharp" | "puppeteer" | null = null;
     try {
-      png = await sharp(_buffer, { density: 220 }).png({ quality: 90 }).toBuffer();
+      // Keep density modest to avoid memory spikes on small instances.
+      const density = (() => {
+        const raw = Number(process.env.OCR_RENDER_DENSITY);
+        if (Number.isFinite(raw) && raw > 0) return raw;
+        return 130;
+      })();
+
+      png = await sharp(_buffer, { density }).png({ quality: 85 }).toBuffer();
+      rendererUsed = "sharp";
     } catch (e: any) {
       renderErrors.push(`sharp: ${formatErr(e)}`);
       try {
         png = await renderPdfFirstPageToPngViaPuppeteer(_buffer);
+        rendererUsed = "puppeteer";
       } catch (e2: any) {
         renderErrors.push(`puppeteer: ${formatErr(e2)}`);
       }
+    }
+
+    if (png) {
+      png = await downscalePngForOcr(png);
+    }
+
+    if (png && rendererUsed) {
+      console.log("[runOcrFallback] Rendered PDF page for OCR", {
+        renderer: rendererUsed,
+        pngBytes: png.length,
+      });
     }
 
     if (!png) {
@@ -245,7 +331,12 @@ export async function runOcrFallback(
       };
     }
 
-    const rec = await worker.recognize(png);
+    const recognizeTimeoutMs = (() => {
+      const raw = Number(process.env.OCR_RECOGNIZE_TIMEOUT_MS);
+      if (Number.isFinite(raw) && raw > 0) return raw;
+      return 45_000;
+    })();
+    const rec: any = await withTimeout<any>(worker.recognize(png), recognizeTimeoutMs, "ocr_timeout");
     const ocrText = String(rec?.data?.text || "");
 
     const lines = splitOcrTextIntoLines(ocrText);
