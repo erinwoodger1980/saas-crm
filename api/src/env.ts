@@ -79,6 +79,7 @@ const parsedWebOrigin = rawWebOrigin
   .filter(Boolean);
 
 const billingEnabled = String(process.env.BILLING_ENABLED ?? "true").toLowerCase() !== "false";
+const localOcrEnabledDefault = process.env.NODE_ENV === "production" ? "false" : "true";
 
 export const env = {
   // core
@@ -89,6 +90,9 @@ export const env = {
   DATABASE_URL: requireEnv("DATABASE_URL"),
   PARSER_MAX_PAGES: Math.max(1, Number(process.env.PARSER_MAX_PAGES ?? 3)),
   PARSER_OCR_ENABLED: String(process.env.PARSER_OCR_ENABLED ?? "true").toLowerCase() !== "false",
+  // Local OCR (Chromium + image processing + Tesseract) can be memory-heavy. Default off in production.
+  PARSER_LOCAL_OCR_ENABLED:
+    String(process.env.PARSER_LOCAL_OCR_ENABLED ?? localOcrEnabledDefault).toLowerCase() === "true",
   BILLING_ENABLED: billingEnabled,
 
   // Gmail OAuth
@@ -136,6 +140,7 @@ console.log(`🔐 JWT configured: ${!!env.APP_JWT_SECRET}`);
 console.log(`🤖 OpenAI configured: ${!!env.OPENAI_API_KEY}`);
 console.log(`📄 Parser pages: ${env.PARSER_MAX_PAGES}`);
 console.log(`👁️‍🗨️ OCR enabled: ${env.PARSER_OCR_ENABLED}`);
+console.log(`🧠 Local OCR enabled: ${env.PARSER_LOCAL_OCR_ENABLED}`);
 console.log(`📧 Gmail configured: ${!!env.GMAIL_CLIENT_ID}`);
 console.log(`📧 MS365 configured: ${!!env.MS365_CLIENT_ID}`);
 console.log(`🛡️ ML redaction enabled: ${env.ML_REDACT_PII}`);

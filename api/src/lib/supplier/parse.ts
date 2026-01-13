@@ -523,6 +523,22 @@ async function runStageB(
     }
   }
 
+  // Local OCR is memory-heavy (Chromium render + image processing). On small production instances
+  // this can crash the whole API. Only allow it when explicitly enabled.
+  const localOcrEnabled = String(
+    process.env.PARSER_LOCAL_OCR_ENABLED ?? (process.env.NODE_ENV === "production" ? "false" : "true"),
+  ).toLowerCase() === "true";
+
+  if (!localOcrEnabled) {
+    const warning =
+      "OCR recovery requires ML_URL (ML OCR) or enabling PARSER_LOCAL_OCR_ENABLED; local OCR is disabled";
+    return {
+      parse: attachWarnings(stageA.parse, autoWarning ? [warning, autoWarning] : [warning]),
+      used: false,
+      warnings: autoWarning ? [warning, autoWarning] : [warning],
+    };
+  }
+
   const fallback = await runOcrFallback(buffer, stageA.extraction);
   if (!fallback) {
     // If we got here, Stage A looked unreliable. Surface a warning so it's visible in UI/debug.

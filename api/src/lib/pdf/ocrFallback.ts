@@ -407,6 +407,10 @@ export async function runOcrFallback(
       return 130;
     })();
 
+    const puppeteerEnabled = String(
+      process.env.OCR_PUPPETEER_ENABLED ?? (process.env.NODE_ENV === "production" ? "false" : "true"),
+    ).toLowerCase() === "true";
+
     const maxPages = (() => {
       const raw = Number(process.env.OCR_MAX_PAGES);
       if (Number.isFinite(raw) && raw > 0) return Math.max(1, Math.min(6, Math.floor(raw)));
@@ -435,6 +439,7 @@ export async function runOcrFallback(
       maxPages,
       maxTotalMs,
       recognizeTimeoutMs,
+      puppeteerEnabled,
     });
 
     // Tesseract configuration tuned for tabular invoices/quotes.
@@ -473,11 +478,15 @@ export async function runOcrFallback(
           sharpPdfUnsupported = true;
         }
         if (pageIndex === 0) {
-          try {
-            png = await renderPdfFirstPageToPngViaPuppeteer(buffer);
-            rendererUsed = "puppeteer";
-          } catch (e2: any) {
-            renderErrors.push(`puppeteer[p0]: ${formatErr(e2)}`);
+          if (puppeteerEnabled) {
+            try {
+              png = await renderPdfFirstPageToPngViaPuppeteer(buffer);
+              rendererUsed = "puppeteer";
+            } catch (e2: any) {
+              renderErrors.push(`puppeteer[p0]: ${formatErr(e2)}`);
+            }
+          } else {
+            renderErrors.push("puppeteer[p0]: disabled");
           }
         }
       }
