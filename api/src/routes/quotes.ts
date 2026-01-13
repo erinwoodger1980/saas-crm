@@ -623,8 +623,35 @@ async function loadQuoteFallback(
   if (options.includeSupplierFiles) {
     relationFetchers.push(
       prisma.uploadedFile
-        .findMany({ where: { quoteId, tenantId } })
+        .findMany({
+          where: { quoteId, tenantId },
+          orderBy: { uploadedAt: "desc" },
+          // IMPORTANT: do not select Bytes blobs (e.g., UploadedFile.content)
+          // so this fallback keeps working even if the DB schema is behind.
+          select: {
+            id: true,
+            tenantId: true,
+            quoteId: true,
+            kind: true,
+            name: true,
+            path: true,
+            mimeType: true,
+            sizeBytes: true,
+            uploadedAt: true,
+          },
+        })
         .then((files) => {
+          quote.supplierFiles = files;
+        })
+        .catch(async (err) => {
+          // If Prisma is ahead of the DB, fall back to a raw query that selects only stable columns.
+          const msg = err?.message || String(err);
+          console.warn("[loadQuoteFallback] uploadedFile.findMany failed; falling back to raw query:", msg);
+          const files: any[] = await prisma.$queryRawUnsafe(
+            `SELECT "id", "tenantId", "quoteId", "kind"::text AS "kind", "name", "path", "mimeType", "sizeBytes", "uploadedAt" FROM "UploadedFile" WHERE "quoteId" = $1 AND "tenantId" = $2 ORDER BY "uploadedAt" DESC`,
+            quoteId,
+            tenantId,
+          );
           quote.supplierFiles = files;
         }),
     );
