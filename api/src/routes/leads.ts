@@ -2746,10 +2746,12 @@ router.post("/parse-email", async (req, res) => {
         const parsed = await simpleParser(rawBuffer);
         const subjectOuter = typeof parsed.subject === "string" ? parsed.subject.trim() : "";
         const outerFromText = parsed.from?.text ? String(parsed.from.text) : null;
+        const outerFromParsed = parseFromHeader(outerFromText);
+        const outerFromEmail = outerFromParsed?.email ? String(outerFromParsed.email).toLowerCase() : null;
         const text = typeof parsed.text === "string" ? parsed.text : "";
 
-        const forwarded = extractForwardedEmailContext(text);
-        const chosenFrom = forwarded?.from || parseFromHeader(outerFromText);
+        const forwarded = extractForwardedEmailContext(text, outerFromEmail);
+        const chosenFrom = forwarded?.from || outerFromParsed;
         const chosenSubject = (subjectOuter && /^fwd?:\s*/i.test(subjectOuter) && forwarded?.subject)
           ? forwarded.subject
           : (subjectOuter || forwarded?.subject || null);
@@ -2880,7 +2882,10 @@ function cleanEmailBodyText(input: string): string {
   return cleaned.slice(0, 20000);
 }
 
-function extractForwardedEmailContext(text: string): { from: { name: string | null; email: string | null } | null; subject: string | null } | null {
+function extractForwardedEmailContext(
+  text: string,
+  outerFromEmail?: string | null,
+): { from: { name: string | null; email: string | null } | null; subject: string | null } | null {
   const raw = String(text || "");
   if (!raw) return null;
   const hay = raw.slice(0, 12000);
@@ -2889,12 +2894,56 @@ function extractForwardedEmailContext(text: string): { from: { name: string | nu
   const looksForwarded = /\b(fw|fwd):\b/i.test(hay) || /\bForwarded message\b/i.test(hay) || /\bOriginal Message\b/i.test(hay) || /\bSent:\b/i.test(hay);
   if (!looksForwarded) return null;
 
-  const fromLine = hay.match(/^From:\s*(.+)$/im);
-  const subjLine = hay.match(/^Subject:\s*(.+)$/im);
-  const from = fromLine?.[1] ? parseFromHeader(fromLine[1].trim()) : null;
-  const subject = subjLine?.[1] ? subjLine[1].trim() : null;
-  if (!from && !subject) return null;
-  return { from, subject };
+  const outer = outerFromEmail ? String(outerFromEmail).toLowerCase() : null;
+  const startIdx = (() => {
+    const markers: RegExp[] = [
+      /-{2,}\s*Forwarded message\s*-{2,}/i,
+      /-{2,}\s*Original Message\s*-{2,}/i,
+      /^Begin forwarded message:/im,
+      /\bForwarded message\b/i,
+      /\bOriginal Message\b/i,
+    ];
+    for (const re of markers) {
+      const idx = hay.search(re);
+      if (idx >= 0) return idx;
+    }
+    return 0;
+  })();
+
+  const segment = hay.slice(startIdx);
+  const lines = segment.split(/\r?\n/).slice(0, 250);
+
+  const fromCandidates: Array<{ name: string | null; email: string | null }> = [];
+  const subjectCandidates: string[] = [];
+
+  for (const lineRaw of lines) {
+    const line = String(lineRaw || "").trim();
+    const fromMatch = line.match(/^(?:>\s*)?From:\s*(.+)$/i);
+    if (fromMatch?.[1]) {
+      const parsed = parseFromHeader(fromMatch[1].trim());
+      if (parsed) fromCandidates.push(parsed);
+      continue;
+    }
+    const subjMatch = line.match(/^(?:>\s*)?Subject:\s*(.+)$/i);
+    if (subjMatch?.[1]) {
+      subjectCandidates.push(subjMatch[1].trim());
+      continue;
+    }
+  }
+
+  const pickFrom = (() => {
+    for (const c of fromCandidates) {
+      const email = c?.email ? String(c.email).toLowerCase() : null;
+      if (email && outer && email === outer) continue;
+      if (email || c?.name) return c;
+    }
+    // Fallback: if we didn't find a better one, allow a match (better than nothing)
+    return fromCandidates.length ? fromCandidates[0] : null;
+  })();
+  const pickSubject = subjectCandidates.length ? subjectCandidates[0] : null;
+
+  if (!pickFrom && !pickSubject) return null;
+  return { from: pickFrom, subject: pickSubject };
 }
 
 async function persistEmailAttachments(opts: {

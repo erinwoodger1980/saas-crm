@@ -1349,6 +1349,41 @@ router.post("/", requireAuth, async (req: any, res) => {
       quoteSourceType: null,
     },
   });
+
+  // If this quote was created from a lead that came from an email upload, attach any persisted
+  // PDF attachments to the quote so they appear in the Quote Builder file list.
+  try {
+    if (leadId) {
+      const lead = await prisma.lead.findFirst({ where: { id: String(leadId), tenantId }, select: { custom: true } });
+      const custom = (lead?.custom as any) || {};
+      const attachments = Array.isArray(custom?.attachments) ? custom.attachments : [];
+      const fileIds = attachments
+        .map((a: any) => (a && typeof a === "object" ? String(a.fileId || "").trim() : ""))
+        .filter(Boolean);
+
+      if (fileIds.length) {
+        const files = await prisma.uploadedFile.findMany({
+          where: { tenantId, id: { in: fileIds } },
+          select: { id: true, name: true, mimeType: true, quoteId: true, kind: true },
+        });
+        for (const f of files) {
+          if (f.quoteId && f.quoteId !== q.id) continue;
+          const isPdf = /pdf$/i.test(String(f.mimeType || "")) || /\.pdf$/i.test(String(f.name || ""));
+          const nextKind = isPdf ? ("SUPPLIER_QUOTE" as any) : f.kind;
+          await prisma.uploadedFile.update({
+            where: { id: f.id },
+            data: {
+              quoteId: q.id,
+              kind: nextKind,
+            },
+          });
+        }
+      }
+    }
+  } catch (e: any) {
+    console.warn("[quotes] failed to attach lead email attachments", e?.message || e);
+  }
+
   logOrderFlow("quote_created", { tenantId, quoteId: q.id, leadId: leadId || null, title });
   res.json(mapQuoteSourceForResponse(q));
 });
@@ -1588,8 +1623,49 @@ router.get("/:id", requireAuth, async (req: any, res) => {
       return res.json(mapQuoteSourceForResponse(q));
     }
 
+    // Backfill: if this quote is tied to a lead created via manual email upload,
+    // link any persisted PDF attachments (stored in lead.custom.attachments) to this quote
+    // so they show up in the file lists.
+    try {
+      const leadId = q.leadId ? String(q.leadId) : null;
+      if (leadId) {
+        const lead = await prisma.lead.findFirst({ where: { id: leadId, tenantId }, select: { custom: true } });
+        const custom = (lead?.custom as any) || {};
+        const attachments = Array.isArray(custom?.attachments) ? custom.attachments : [];
+        const fileIds = attachments
+          .map((a: any) => (a && typeof a === "object" ? String(a.fileId || "").trim() : ""))
+          .filter(Boolean);
+
+        if (fileIds.length) {
+          const files = await prisma.uploadedFile.findMany({
+            where: { tenantId, id: { in: fileIds } },
+            select: { id: true, name: true, mimeType: true, quoteId: true, kind: true },
+          });
+          for (const f of files) {
+            if (f.quoteId && f.quoteId !== id) continue;
+            const isPdf = /pdf$/i.test(String(f.mimeType || "")) || /\.pdf$/i.test(String(f.name || ""));
+            const nextKind = isPdf ? ("SUPPLIER_QUOTE" as any) : f.kind;
+            await prisma.uploadedFile.update({
+              where: { id: f.id },
+              data: {
+                quoteId: id,
+                kind: nextKind,
+              },
+            });
+          }
+        }
+      }
+    } catch (e: any) {
+      console.warn("[quotes/:id] failed to backfill lead email attachments", e?.message || e);
+    }
+
     const normalizedQuote = mapQuoteSourceForResponse(q);
-    const allFiles = Array.isArray(normalizedQuote?.supplierFiles) ? normalizedQuote.supplierFiles : [];
+    // Reload file list so the response includes any newly linked attachments.
+    const allFiles = await prisma.uploadedFile.findMany({
+      where: { tenantId, quoteId: id },
+      select: { id: true, name: true, mimeType: true, sizeBytes: true, uploadedAt: true, kind: true },
+      orderBy: { uploadedAt: "desc" },
+    });
     const supplierFiles = allFiles.filter((f: any) => String(f.kind) === "SUPPLIER_QUOTE");
     const clientQuoteFiles = allFiles.filter((f: any) => String(f.kind) === "CLIENT_QUOTE");
 
