@@ -778,6 +778,7 @@ model UploadedFile {
   kind       FileKind
   name       String
   path       String
+  content    Bytes?
   mimeType   String?
   sizeBytes  Int?
   uploadedAt DateTime @default(now())

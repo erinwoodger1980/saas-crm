@@ -1759,15 +1759,42 @@ router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: an
 
   const saved: any[] = [];
   const errors: Array<{ name: string; message: string }> = [];
+
+  const storeUploadsInDb = String(process.env.UPLOADS_STORE_IN_DB ?? "true").toLowerCase() !== "false";
+  const uploadsDbMaxBytes = (() => {
+    const raw = Number(process.env.UPLOADS_DB_MAX_BYTES);
+    if (Number.isFinite(raw) && raw > 0) return raw;
+    return 15 * 1024 * 1024;
+  })();
+
   for (const f of incomingFiles) {
     try {
+      const isPdf =
+        f.mimetype === "application/pdf" ||
+        /pdf$/i.test(String(f.mimetype || "")) ||
+        /\.pdf$/i.test(String(f.originalname || ""));
+
+      // Read file bytes once (used for auto-detect and optional DB persistence)
+      let fileBuffer: Buffer | null = null;
+      try {
+        if (isPdf || storeUploadsInDb) {
+          fileBuffer = await fs.promises.readFile(f.path);
+        }
+      } catch (readErr: any) {
+        // Non-fatal: we still persist the path, but DB content and auto-detect won't work.
+        console.warn(
+          "[quotes/:id/files] Failed to read uploaded file bytes:",
+          f.originalname,
+          readErr?.message || readErr,
+        );
+      }
+
       // Auto-detect quote source from first PDF (only attempt once, first PDF)
-      if (!detectedSourceType && f.mimetype === "application/pdf") {
+      if (!detectedSourceType && isPdf && fileBuffer) {
         try {
           const { extractFirstPageText } = await import("../lib/pdfMetadata");
           const { autoDetectQuoteSourceProfile } = await import("../lib/quoteSourceProfiles");
-          const buffer = await fs.promises.readFile(f.path);
-          const firstPageText = await extractFirstPageText(buffer);
+          const firstPageText = await extractFirstPageText(fileBuffer);
           const profile = autoDetectQuoteSourceProfile(f.originalname, firstPageText);
           if (profile) {
             detectedSourceType = profile.type;
@@ -1779,6 +1806,20 @@ router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: an
         }
       }
 
+      // Persist content bytes into DB for reliability on ephemeral disks.
+      let contentToStore: Buffer | undefined = undefined;
+      if (storeUploadsInDb && isPdf && fileBuffer) {
+        if (fileBuffer.length <= uploadsDbMaxBytes) {
+          contentToStore = fileBuffer;
+        } else {
+          console.warn("[quotes/:id/files] Skipping DB content storage (too large):", {
+            name: f.originalname,
+            sizeBytes: fileBuffer.length,
+            maxBytes: uploadsDbMaxBytes,
+          });
+        }
+      }
+
       const row = await prisma.uploadedFile.create({
         data: {
           tenantId,
@@ -1786,6 +1827,7 @@ router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: an
           kind: "SUPPLIER_QUOTE",
           name: (typeof f.originalname === 'string' && f.originalname.trim()) ? f.originalname.trim() : 'attachment',
           path: path.relative(process.cwd(), f.path),
+          content: contentToStore ? Uint8Array.from(contentToStore) : undefined,
           mimeType: (typeof f.mimetype === 'string' && f.mimetype.trim()) ? f.mimetype : 'application/octet-stream',
           sizeBytes: f.size,
         },
@@ -1833,7 +1875,41 @@ router.post("/:id/client-quote-files", requireAuth, upload.array("files", 10), a
   if (!q) return res.status(404).json({ error: "not_found" });
 
   const saved = [];
+  const storeUploadsInDb = String(process.env.UPLOADS_STORE_IN_DB ?? "true").toLowerCase() !== "false";
+  const uploadsDbMaxBytes = (() => {
+    const raw = Number(process.env.UPLOADS_DB_MAX_BYTES);
+    if (Number.isFinite(raw) && raw > 0) return raw;
+    return 15 * 1024 * 1024;
+  })();
+
   for (const f of (req.files as Express.Multer.File[])) {
+    const isPdf =
+      f.mimetype === "application/pdf" ||
+      /pdf$/i.test(String(f.mimetype || "")) ||
+      /\.pdf$/i.test(String(f.originalname || ""));
+
+    let contentToStore: Buffer | undefined = undefined;
+    if (storeUploadsInDb && isPdf) {
+      try {
+        const buf = await fs.promises.readFile(f.path);
+        if (buf.length <= uploadsDbMaxBytes) {
+          contentToStore = buf;
+        } else {
+          console.warn("[quotes/:id/client-quote-files] Skipping DB content storage (too large):", {
+            name: f.originalname,
+            sizeBytes: buf.length,
+            maxBytes: uploadsDbMaxBytes,
+          });
+        }
+      } catch (e: any) {
+        console.warn(
+          "[quotes/:id/client-quote-files] Failed to read uploaded file bytes:",
+          f.originalname,
+          e?.message || e,
+        );
+      }
+    }
+
     const row = await prisma.uploadedFile.create({
       data: {
         tenantId,
@@ -1842,6 +1918,7 @@ router.post("/:id/client-quote-files", requireAuth, upload.array("files", 10), a
   kind: "CLIENT_QUOTE" as any,
         name: (typeof f.originalname === 'string' && f.originalname.trim()) ? f.originalname.trim() : 'attachment',
         path: path.relative(process.cwd(), f.path),
+        content: contentToStore ? Uint8Array.from(contentToStore) : undefined,
         mimeType: (typeof f.mimetype === 'string' && f.mimetype.trim()) ? f.mimetype : 'application/octet-stream',
         sizeBytes: f.size,
       },
@@ -5000,7 +5077,22 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
         buffer = await fs.promises.readFile(abs);
       } catch (err: any) {
         console.error(`[process-supplier] Failed to read file ${f.id}:`, err?.message);
-        continue;
+        // Render local disk is ephemeral; attempt DB-backed recovery.
+        try {
+          const row = await prisma.uploadedFile.findUnique({
+            where: { id: f.id },
+            select: { content: true },
+          });
+          if (row?.content && (row.content as any).length) {
+            buffer = Buffer.from(row.content as any);
+            console.warn(`[process-supplier] Recovered file ${f.id} from DB content (local path missing).`);
+          } else {
+            continue;
+          }
+        } catch (dbErr: any) {
+          console.error(`[process-supplier] DB recovery failed for file ${f.id}:`, dbErr?.message || dbErr);
+          continue;
+        }
       }
       
       try {
