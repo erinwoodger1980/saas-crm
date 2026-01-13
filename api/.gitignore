@@ -3,3 +3,6 @@
 /dist
 
 node_modules/
+
+# Tesseract language data (large; downloaded locally during OCR debugging)
+*.traineddata

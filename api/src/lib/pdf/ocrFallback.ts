@@ -139,7 +139,16 @@ async function renderPdfFirstPageToPngViaPuppeteer(pdfBuffer: Buffer): Promise<B
     }
 
     // Give the PDF viewer a moment to paint.
-    await page.waitForTimeout(800);
+    const sleep = async (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    // Puppeteer versions differ; avoid relying on waitForTimeout.
+    if (typeof page.waitForTimeout === "function") {
+      await page.waitForTimeout(800);
+    } else if (typeof page.waitFor === "function") {
+      // Older Puppeteer.
+      await page.waitFor(800);
+    } else {
+      await sleep(800);
+    }
     // NOTE: Do NOT use fullPage for PDFs; it can generate extremely tall images
     // (multiple pages in a single scroll) which can OOM-kill small instances.
     await page.evaluate(() => {
@@ -170,9 +179,33 @@ function splitOcrTextIntoLines(text: string): string[] {
 function buildParseFromOcrLines(lines: string[], currencyHint?: string): SupplierParseResult | null {
   const parsedLines: SupplierParseResult["lines"] = [];
 
+  const shouldSkip = (text: string): boolean => {
+    const lower = text.toLowerCase();
+    // Boilerplate / headers / carry-forward lines that frequently OCR well but aren't items.
+    if (/(date of quotation|quotation date|validity|terms|conditions|lead time|order confirmation)/i.test(lower)) return true;
+    if (/(carried forward|brought forward)/i.test(lower)) return true;
+    // Totals and page references are handled elsewhere too, but be safe.
+    if (/\b(subtotal|total|grand total|vat|tax|page)\b/i.test(lower)) return true;
+    return false;
+  };
+
+  const isLikelyDeliveryLine = (text: string): boolean => {
+    const lower = text.toLowerCase();
+    return /(\bdelivery\b|\bcarriage\b|\bshipping\b|\bfreight\b|\bcourier\b|\btransport\b)/i.test(lower);
+  };
+
   for (const raw of lines) {
     const line = cleanText(raw);
     if (!line || line.length < 6) continue;
+
+    if (shouldSkip(line)) continue;
+
+    // Require something money-like, otherwise OCR output is too noisy (dates, weights, etc).
+    // Exception: delivery/carriage lines are useful even when OCR drops currency symbols/decimals.
+    const hasCurrencySymbol = /[£€$]/.test(line);
+    const hasDecimalMoney = /\b\d{1,6}\.\d{2}\b/.test(line);
+    const deliveryLike = isLikelyDeliveryLine(line);
+    if (!deliveryLike && !hasCurrencySymbol && !hasDecimalMoney) continue;
 
     // Heuristic: keep only lines that look like items with at least one numeric
     if (!/[0-9]/.test(line)) continue;
@@ -188,14 +221,37 @@ function buildParseFromOcrLines(lines: string[], currencyHint?: string): Supplie
     const maybeCostUnit = numbers.length >= 2 ? numbers[numbers.length - 2] : undefined;
 
     // Extract qty as the first small-ish integer-ish number in the line.
+    // For delivery/carriage style lines, OCR often returns only a single amount;
+    // treat that as a single-quantity line item.
     let qty: number | undefined;
-    for (const n of numbers) {
-      const asInt = Math.round(n);
-      if (Math.abs(n - asInt) < 0.01 && asInt > 0 && asInt <= 1000) {
-        qty = asInt;
-        break;
+    if (deliveryLike && numbers.length === 1) {
+      qty = 1;
+    } else {
+      for (const n of numbers) {
+        const asInt = Math.round(n);
+        if (Math.abs(n - asInt) < 0.01 && asInt > 0 && asInt <= 1000) {
+          qty = asInt;
+          break;
+        }
       }
     }
+
+    const derivedCostUnit =
+      typeof qty === "number" && qty > 0 && typeof lineTotal === "number" && lineTotal > 0
+        ? lineTotal / qty
+        : undefined;
+
+    const normaliseMoneyCandidate = (candidate: number | undefined): number | undefined => {
+      if (typeof candidate !== "number" || !Number.isFinite(candidate) || candidate <= 0) return undefined;
+      // If candidate is wildly large, OCR likely dropped a decimal (e.g. 168068 for 1680.68).
+      // Try dividing by 100 and check whether it agrees with derivedCostUnit.
+      if (candidate >= 10_000 && derivedCostUnit && derivedCostUnit > 0) {
+        const scaled = candidate / 100;
+        const rel = Math.abs(scaled - derivedCostUnit) / derivedCostUnit;
+        if (Number.isFinite(rel) && rel < 0.06) return Math.round(scaled * 100) / 100;
+      }
+      return candidate;
+    };
 
     // Description: take the prefix before the first number token.
     const firstNumIdx = line.search(/[-+]?\d/);
@@ -206,11 +262,25 @@ function buildParseFromOcrLines(lines: string[], currencyHint?: string): Supplie
     const quality = assessDescriptionQuality(description);
     if (quality.gibberish || quality.score < 0.55) continue;
 
+    let costUnit = normaliseMoneyCandidate(typeof maybeCostUnit === "number" ? maybeCostUnit : undefined);
+    // If costUnit still looks implausible, fall back to derivedCostUnit.
+    if (derivedCostUnit && derivedCostUnit > 0 && derivedCostUnit < 100_000) {
+      const roundedDerived = Math.round(derivedCostUnit * 100) / 100;
+      if (!costUnit) {
+        costUnit = roundedDerived;
+      } else {
+        const rel = Math.abs(costUnit - derivedCostUnit) / derivedCostUnit;
+        if (Number.isFinite(rel) && rel > 0.25) {
+          costUnit = roundedDerived;
+        }
+      }
+    }
+
     parsedLines.push({
       description,
       qty,
-      costUnit: typeof maybeCostUnit === "number" && maybeCostUnit > 0 ? maybeCostUnit : undefined,
-      lineTotal: typeof lineTotal === "number" && lineTotal > 0 ? lineTotal : undefined,
+      costUnit,
+      lineTotal: typeof lineTotal === "number" && lineTotal > 0 ? Math.round(lineTotal * 100) / 100 : undefined,
     });
   }
 
@@ -344,17 +414,25 @@ export async function runOcrFallback(
     const renderErrors: string[] = [];
     let pagesAttempted = 0;
     let rendererUsed: "sharp" | "puppeteer" | null = null;
+    let sharpPdfUnsupported = false;
 
     for (let pageIndex = 0; pageIndex < maxPages; pageIndex += 1) {
       if (Date.now() - startedAt > maxTotalMs) break;
 
       let png: Buffer | null = null;
       try {
-        png = await renderPdfPageToPngViaSharp(buffer, pageIndex, density);
-        rendererUsed = "sharp";
+        if (!sharpPdfUnsupported) {
+          png = await renderPdfPageToPngViaSharp(buffer, pageIndex, density);
+          rendererUsed = "sharp";
+        }
       } catch (e: any) {
         // If sharp can't render beyond page 0, stop trying further pages.
-        renderErrors.push(`sharp[p${pageIndex}]: ${formatErr(e)}`);
+        const msg = formatErr(e);
+        renderErrors.push(`sharp[p${pageIndex}]: ${msg}`);
+        if (/unsupported image format/i.test(msg)) {
+          // Common when sharp/libvips lacks PDF support in this environment.
+          sharpPdfUnsupported = true;
+        }
         if (pageIndex === 0) {
           try {
             png = await renderPdfFirstPageToPngViaPuppeteer(buffer);

@@ -162,6 +162,29 @@ function deriveCommonUnits(parse: SupplierParseResult): string[] {
   return unique(units);
 }
 
+function assessLineQuality(lines: SupplierParseResult["lines"]): {
+  avgScore: number;
+  gibberishRate: number;
+  scoredCount: number;
+} {
+  let scored = 0;
+  let scoreSum = 0;
+  let gibberish = 0;
+  for (const line of lines || []) {
+    const desc = String((line as any)?.description || "").trim();
+    if (!desc) continue;
+    const q = assessDescriptionQuality(desc);
+    scored += 1;
+    scoreSum += q.score;
+    if (q.gibberish || q.score < 0.55) gibberish += 1;
+  }
+  return {
+    scoredCount: scored,
+    avgScore: scored ? scoreSum / scored : 0,
+    gibberishRate: scored ? gibberish / scored : 0,
+  };
+}
+
 function attachWarnings(
   parse: SupplierParseResult,
   warnings: Iterable<string>,
@@ -333,21 +356,49 @@ function runStageA(
     lines: result.lines.map((line) => ({ ...line })),
   };
 
-  if (!baseParse.lines.length) {
-    const fallback = plainTextFallback(buffer, supplier, currency);
-    if (fallback) {
-      baseParse.lines = fallback.lines;
-      baseParse.detected_totals = fallback.detected_totals;
-      baseParse.supplier = fallback.supplier ?? baseParse.supplier;
-      baseParse.currency = fallback.currency ?? baseParse.currency;
-      baseParse.warnings = unique([...(baseParse.warnings ?? []), ...(fallback.warnings ?? [])]);
-    }
+  // If Stage A produces nothing, try a simple Tj-based plain-text fallback.
+  // This is also useful for some PDFs where the structured extraction is unusable.
+  const stageAFallback = plainTextFallback(buffer, supplier, currency);
+  if (!baseParse.lines.length && stageAFallback?.lines?.length) {
+    baseParse.lines = stageAFallback.lines;
+    baseParse.detected_totals = stageAFallback.detected_totals;
+    baseParse.supplier = stageAFallback.supplier ?? baseParse.supplier;
+    baseParse.currency = stageAFallback.currency ?? baseParse.currency;
+    baseParse.warnings = unique([...(baseParse.warnings ?? []), ...(stageAFallback.warnings ?? [])]);
   }
 
   // Check if this is a Joinerysoft PDF and apply special handling
   const isJoinerysoft = detectJoinerysoftPdf(extraction);
   if (isJoinerysoft) {
     baseParse = handleJoinerysoftPdf(extraction, baseParse);
+  }
+
+  // If Stage A returned lines but they look like gibberish, prefer the plain-text
+  // fallback when it yields higher-quality descriptions. This is critical when
+  // OCR is disabled (deterministic mode) so we don't persist/display garbage.
+  if (baseParse.lines.length && stageAFallback?.lines?.length) {
+    const baseQ = assessLineQuality(baseParse.lines);
+    const fbQ = assessLineQuality(stageAFallback.lines);
+
+    const baseLooksBad = baseQ.gibberishRate >= 0.3 || (baseQ.scoredCount >= 3 && baseQ.avgScore < 0.55);
+    const fallbackLooksBetter =
+      fbQ.scoredCount >= 2 &&
+      (fbQ.gibberishRate + 0.15 < baseQ.gibberishRate || fbQ.avgScore > baseQ.avgScore + 0.1);
+
+    if (baseLooksBad && fallbackLooksBetter) {
+      baseParse = {
+        ...baseParse,
+        lines: stageAFallback.lines,
+        detected_totals: stageAFallback.detected_totals ?? baseParse.detected_totals,
+        supplier: stageAFallback.supplier ?? baseParse.supplier,
+        currency: stageAFallback.currency ?? baseParse.currency,
+        warnings: unique([
+          ...(baseParse.warnings ?? []),
+          ...(stageAFallback.warnings ?? []),
+          "Fallback plain-text parser used (gibberish detected)",
+        ]),
+      };
+    }
   }
 
   const cues: PatternCues = {
@@ -374,13 +425,18 @@ function runStageA(
 async function runStageB(
   buffer: Buffer,
   stageA: StageAResult,
-  options?: { ocrEnabled?: boolean },
+  options?: { ocrEnabled?: boolean; ocrAutoWhenNoText?: boolean },
 ): Promise<StageBResult> {
   const stageStartedAt = Date.now();
-  const ocrEnabled = (() => {
+  const configuredOcrEnabled = (() => {
     if (typeof options?.ocrEnabled === "boolean") return options.ocrEnabled;
     return String(process.env.PARSER_OCR_ENABLED ?? "true").toLowerCase() !== "false";
   })();
+  const autoEnableOcr = !!options?.ocrAutoWhenNoText && stageA.extraction.rows.length === 0;
+  const ocrEnabled = configuredOcrEnabled || autoEnableOcr;
+  const autoWarning = autoEnableOcr && !configuredOcrEnabled
+    ? "OCR auto-enabled (no text layer detected)"
+    : null;
   const gibberishLineRate = (() => {
     const lines = stageA.parse.lines || [];
     if (!lines.length) return 0;
@@ -408,9 +464,9 @@ async function runStageB(
   if (!ocrEnabled) {
     const warning = "OCR disabled; parser could not recover text from PDF";
     return {
-      parse: attachWarnings(stageA.parse, [warning]),
+      parse: attachWarnings(stageA.parse, autoWarning ? [warning, autoWarning] : [warning]),
       used: false,
-      warnings: [warning],
+      warnings: autoWarning ? [warning, autoWarning] : [warning],
     };
   }
 
@@ -419,6 +475,7 @@ async function runStageB(
     lowConfidence: !!stageA.metadata.lowConfidence,
     descriptionQuality: stageA.metadata.descriptionQuality,
     gibberishLineRate,
+    autoEnabled: autoEnableOcr,
   });
 
   // Prefer a real OCR-backed parse via the ML parser when available.
@@ -441,6 +498,7 @@ async function runStageB(
         const parsed = normaliseMlPayload(ml.data);
         if (parsed?.lines?.length) {
           const warnings = [
+            ...(autoWarning ? [autoWarning] : []),
             `OCR fallback used: ML parser (${ml.tookMs}ms)`,
             ...(parsed.warnings ?? []),
           ];
@@ -470,15 +528,18 @@ async function runStageB(
     // If we got here, Stage A looked unreliable. Surface a warning so it's visible in UI/debug.
     const warning = "OCR fallback unavailable (parser could not recover text)";
     return {
-      parse: attachWarnings(stageA.parse, [warning]),
+      parse: attachWarnings(stageA.parse, autoWarning ? [warning, autoWarning] : [warning]),
       used: false,
-      warnings: [warning],
+      warnings: autoWarning ? [warning, autoWarning] : [warning],
     };
   }
 
   // If OCR produced a full parse (from page-image OCR), prefer that.
   if (fallback.parse?.lines?.length) {
-    const warnings = fallback.warnings ?? fallback.parse.warnings ?? [];
+    const warnings = [
+      ...(autoWarning ? [autoWarning] : []),
+      ...((fallback.warnings ?? fallback.parse.warnings ?? []) as string[]),
+    ];
     console.log("[runStageB] done (local OCR)", {
       tookMs: Date.now() - stageStartedAt,
       lines: fallback.parse.lines.length,
@@ -486,7 +547,10 @@ async function runStageB(
     return { parse: attachWarnings(fallback.parse, warnings), used: true, warnings };
   }
 
-  const warnings = fallback.warnings ?? [];
+  const warnings = [
+    ...(autoWarning ? [autoWarning] : []),
+    ...((fallback.warnings ?? []) as string[]),
+  ];
   if (!fallback.replacements.length) {
     return { parse: attachWarnings(stageA.parse, warnings), used: false, warnings };
   }
@@ -760,6 +824,8 @@ export async function parseSupplierPdf(
     supplierProfileId?: string | null;
     // Allow callers (e.g. own-quote flow) to run deterministic-only parsing.
     ocrEnabled?: boolean;
+    // When ocrEnabled is false, allow OCR only when the PDF has no text layer.
+    ocrAutoWhenNoText?: boolean;
     llmEnabled?: boolean;
     // Allow callers to explicitly skip layout-template parsing.
     templateEnabled?: boolean;
@@ -804,7 +870,10 @@ export async function parseSupplierPdf(
   let workingParse = { ...stageA.parse, currency: stageA.parse.currency || currencyHint };
   const collectedWarnings = new Set(stageA.warnings);
 
-  const stageB = await runStageB(buffer, stageA, { ocrEnabled: options?.ocrEnabled });
+  const stageB = await runStageB(buffer, stageA, {
+    ocrEnabled: options?.ocrEnabled,
+    ocrAutoWhenNoText: options?.ocrAutoWhenNoText,
+  });
   if (stageB.used) usedStages.add("ocr");
   stageB.warnings.forEach((warning) => collectedWarnings.add(warning));
   workingParse = stageB.parse;

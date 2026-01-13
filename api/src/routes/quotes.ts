@@ -5349,7 +5349,9 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
             supplierProfileId: deterministicOnly ? undefined : (quote.supplierProfileId ?? undefined),
             templateEnabled: deterministicOnly ? false : true,
             llmEnabled: deterministicOnly ? false : true,
+            // Deterministic own-quote mode: keep OCR off by default, but auto-enable when PDF has no text layer.
             ocrEnabled: deterministicOnly ? false : undefined,
+            ocrAutoWhenNoText: deterministicOnly ? true : undefined,
           }),
           parseFileTimeoutMs,
           "parseSupplierPdf",
