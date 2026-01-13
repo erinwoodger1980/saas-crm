@@ -203,8 +203,11 @@ export async function runOcrFallback(
   try {
     // tesseract.js v7: createWorker(langs='eng', oem?, options?, config?)
     // Passing an options object as the first arg will crash (langsArr.map is not a function).
+    const enableTesseractLogs =
+      String(process.env.TESSERACT_LOGS ?? "false").toLowerCase() === "true";
     worker = await tesseract.createWorker("eng", undefined, {
-      logger: undefined,
+      // Must be a function if provided; tesseract.js calls it directly.
+      logger: enableTesseractLogs ? (m: any) => console.log("[tesseract]", m) : () => {},
       // Ensure library-level errors don't throw uncaught exceptions.
       errorHandler: () => {},
     });
