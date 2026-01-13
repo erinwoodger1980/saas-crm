@@ -3,6 +3,10 @@ import type { SupplierParseResult } from "../../types/parse";
 import { cleanText, inferCurrency, parseMoney } from "./normalize";
 import { assessDescriptionQuality } from "./quality";
 import sharp from "sharp";
+import crypto from "crypto";
+import os from "os";
+import path from "path";
+import fs from "fs";
 
 export interface OcrReplacement {
   rowIndex: number;
@@ -15,6 +19,73 @@ export interface OcrFallbackResult {
   parse?: SupplierParseResult;
   warnings?: string[];
   stage: "tesseract" | "unavailable";
+}
+
+function formatErr(err: any): string {
+  return String(err?.message || err || "unknown_error");
+}
+
+async function renderPdfFirstPageToPngViaPuppeteer(pdfBuffer: Buffer): Promise<Buffer> {
+  // Dynamically load puppeteer + chromium fallback to avoid hard crashes if dependencies differ by env.
+  let puppeteer: any;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    puppeteer = require("puppeteer");
+  } catch (e: any) {
+    throw new Error(`puppeteer_missing: ${formatErr(e)}`);
+  }
+
+  const tmpDir = os.tmpdir();
+  const tmpName = `ocr-${crypto.randomBytes(8).toString("hex")}.pdf`;
+  const tmpPath = path.join(tmpDir, tmpName);
+
+  await fs.promises.writeFile(tmpPath, pdfBuffer);
+
+  let browser: any;
+  try {
+    const resolvedExec = typeof puppeteer.executablePath === "function" ? puppeteer.executablePath() : undefined;
+    const execPath = resolvedExec || process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
+    browser = await puppeteer.launch({
+      headless: true,
+      executablePath: execPath,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      defaultViewport: { width: 1400, height: 1800, deviceScaleFactor: 2 },
+    });
+  } catch (firstErr: any) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const chromium = require("@sparticuz/chromium");
+    const execPath2 = await chromium.executablePath();
+    browser = await puppeteer.launch({
+      headless: chromium.headless !== undefined ? chromium.headless : true,
+      executablePath: execPath2,
+      args: chromium.args ?? ["--no-sandbox", "--disable-setuid-sandbox"],
+      defaultViewport: chromium.defaultViewport ?? { width: 1400, height: 1800, deviceScaleFactor: 2 },
+    });
+  }
+
+  try {
+    const page = await browser.newPage();
+    const fileUrl = `file://${tmpPath}`;
+
+    try {
+      await page.goto(fileUrl, { waitUntil: "networkidle0", timeout: 15000 });
+    } catch {
+      await page.goto(fileUrl, { waitUntil: "domcontentloaded", timeout: 15000 });
+    }
+
+    // Give the PDF viewer a moment to paint.
+    await page.waitForTimeout(800);
+
+    const png = await page.screenshot({ type: "png", fullPage: true });
+    return Buffer.from(png);
+  } finally {
+    try {
+      await browser.close();
+    } catch {}
+    try {
+      await fs.promises.unlink(tmpPath);
+    } catch {}
+  }
 }
 
 function splitOcrTextIntoLines(text: string): string[] {
@@ -109,7 +180,17 @@ export async function runOcrFallback(
   }
 
   // Only attempt OCR when structured extraction looks poor.
-  const needsHelp = extraction.rows.some((row) => row.quality < 0.55);
+  // Note: some garbled PDFs still look "alphanumeric" (e.g. UUUUUU...) so we add entropy checks.
+  const sampleRows = extraction.rows.slice(0, 40);
+  const rowNeedsHelp = sampleRows.some((row) => {
+    const text = String(row.normalized || row.text || "");
+    if (!text) return false;
+    const q = assessDescriptionQuality(text);
+    return q.gibberish || q.score < 0.6 || q.dominantCharRatio > 0.6;
+  });
+  const rawSample = String(extraction.rawText || "").slice(0, 4000);
+  const overall = assessDescriptionQuality(rawSample);
+  const needsHelp = rowNeedsHelp || overall.gibberish || overall.score < 0.6 || overall.dominantCharRatio > 0.6;
   if (!needsHelp) {
     return {
       replacements: [],
@@ -127,25 +208,31 @@ export async function runOcrFallback(
 
     // Render the first page to an image and OCR that.
     // This avoids the "OCR the already-garbled text" problem and works for scanned PDFs.
-    let ocrText = "";
+    let png: Buffer | null = null;
+    const renderErrors: string[] = [];
     try {
-      const png = await sharp(_buffer, { density: 220 })
-        .png({ quality: 90 })
-        .toBuffer();
-      const rec = await worker.recognize(png);
-      ocrText = String(rec?.data?.text || "");
+      png = await sharp(_buffer, { density: 220 }).png({ quality: 90 }).toBuffer();
     } catch (e: any) {
-      // If sharp can't render PDFs in this environment, we can't do local OCR.
+      renderErrors.push(`sharp: ${formatErr(e)}`);
+      try {
+        png = await renderPdfFirstPageToPngViaPuppeteer(_buffer);
+      } catch (e2: any) {
+        renderErrors.push(`puppeteer: ${formatErr(e2)}`);
+      }
+    }
+
+    if (!png) {
+      const msg = `OCR fallback unavailable: PDF rendering failed (${renderErrors.join(" | ") || "unknown"}).`;
+      console.warn("[runOcrFallback]", msg);
       return {
         replacements: [],
-        warnings: [
-          `OCR fallback unavailable: PDF rendering failed (${e?.message || e}).`,
-        ],
+        warnings: [msg],
         stage: "tesseract",
       };
     }
 
-    await worker.terminate();
+    const rec = await worker.recognize(png);
+    const ocrText = String(rec?.data?.text || "");
 
     const lines = splitOcrTextIntoLines(ocrText);
     const currency = inferCurrency(extraction.rawText || "");
@@ -165,15 +252,14 @@ export async function runOcrFallback(
       stage: "tesseract",
     };
   } catch (err: any) {
+    return {
+      replacements: [],
+      warnings: [`OCR fallback failed: ${formatErr(err)}. Structured parser output retained.`],
+      stage: "tesseract",
+    };
+  } finally {
     try {
       await worker.terminate();
     } catch {}
-    return {
-      replacements: [],
-      warnings: [
-        `OCR fallback failed: ${err?.message || err}. Structured parser output retained.`,
-      ],
-      stage: "tesseract",
-    };
   }
 }
