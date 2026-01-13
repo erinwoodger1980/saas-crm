@@ -228,6 +228,7 @@ export async function runOcrFallback(
   buffer: Buffer,
   extraction: ExtractionSummary,
 ): Promise<OcrFallbackResult | null> {
+  const ocrStartedAt = Date.now();
   let tesseract: any;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -317,6 +318,16 @@ export async function runOcrFallback(
       return 35_000;
     })();
 
+    const ocrDebug = String(process.env.OCR_DEBUG ?? "false").toLowerCase() === "true";
+
+    console.log("[runOcrFallback] starting", {
+      pdfBytes: buffer.length,
+      density,
+      maxPages,
+      maxTotalMs,
+      recognizeTimeoutMs,
+    });
+
     // Tesseract configuration tuned for tabular invoices/quotes.
     try {
       await worker.setParameters({
@@ -363,10 +374,29 @@ export async function runOcrFallback(
       pagesAttempted += 1;
       png = await downscalePngForOcr(png);
 
+      if (ocrDebug) {
+        console.log("[runOcrFallback] page rendered", {
+          pageIndex,
+          renderer: rendererUsed,
+          pngBytes: png.length,
+          elapsedMs: Date.now() - startedAt,
+        });
+      }
+
       const rec: any = await withTimeout<any>(worker.recognize(png), recognizeTimeoutMs, "ocr_timeout");
       const ocrText = String(rec?.data?.text || "");
       const lines = splitOcrTextIntoLines(ocrText);
       aggregatedLines.push(...lines);
+
+      if (ocrDebug) {
+        console.log("[runOcrFallback] page OCR complete", {
+          pageIndex,
+          textChars: ocrText.length,
+          addedLines: lines.length,
+          totalLines: aggregatedLines.length,
+          elapsedMs: Date.now() - startedAt,
+        });
+      }
 
       // Early stop once we have enough potentially-parseable lines.
       if (aggregatedLines.length >= 250) break;
@@ -383,6 +413,7 @@ export async function runOcrFallback(
         renderer: rendererUsed,
         pagesAttempted,
         lines: aggregatedLines.length,
+        tookMs: Date.now() - startedAt,
       });
     }
 
@@ -402,6 +433,7 @@ export async function runOcrFallback(
       warnings: [
         ...(parse.warnings ?? []),
         `OCR pages scanned: ${pagesAttempted}`,
+        `OCR tookMs: ${Date.now() - startedAt}`,
       ],
       stage: "tesseract",
     };
@@ -415,5 +447,7 @@ export async function runOcrFallback(
     try {
       await worker.terminate();
     } catch {}
+
+    console.log("[runOcrFallback] finished", { tookMs: Date.now() - ocrStartedAt });
   }
 }

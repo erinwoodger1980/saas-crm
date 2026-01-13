@@ -375,6 +375,7 @@ async function runStageB(
   buffer: Buffer,
   stageA: StageAResult,
 ): Promise<StageBResult> {
+  const stageStartedAt = Date.now();
   const gibberishLineRate = (() => {
     const lines = stageA.parse.lines || [];
     if (!lines.length) return 0;
@@ -397,6 +398,13 @@ async function runStageB(
   if (!shouldAttempt) {
     return { parse: stageA.parse, used: false, warnings: [] };
   }
+
+  console.log("[runStageB] starting OCR recovery", {
+    lines: stageA.parse.lines.length,
+    lowConfidence: !!stageA.metadata.lowConfidence,
+    descriptionQuality: stageA.metadata.descriptionQuality,
+    gibberishLineRate,
+  });
 
   // Prefer a real OCR-backed parse via the ML parser when available.
   // This is the most reliable way to recover text from PDFs with broken/garbled text layers.
@@ -422,6 +430,10 @@ async function runStageB(
             `OCR fallback used: ML parser (${ml.tookMs}ms)`,
             ...(parsed.warnings ?? []),
           ];
+          console.log("[runStageB] done (ML OCR)", {
+            tookMs: Date.now() - stageStartedAt,
+            lines: parsed.lines.length,
+          });
           return { parse: attachWarnings(parsed, warnings), used: true, warnings };
         }
       } else {
@@ -453,6 +465,10 @@ async function runStageB(
   // If OCR produced a full parse (from page-image OCR), prefer that.
   if (fallback.parse?.lines?.length) {
     const warnings = fallback.warnings ?? fallback.parse.warnings ?? [];
+    console.log("[runStageB] done (local OCR)", {
+      tookMs: Date.now() - stageStartedAt,
+      lines: fallback.parse.lines.length,
+    });
     return { parse: attachWarnings(fallback.parse, warnings), used: true, warnings };
   }
 
@@ -479,7 +495,28 @@ async function runStageB(
     warnings,
   );
 
+  console.log("[runStageB] done (replacements)", {
+    tookMs: Date.now() - stageStartedAt,
+    replacements: fallback.replacements.length,
+  });
+
   return { parse: mergedParse, used: true, warnings };
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return promise;
+  return new Promise<T>((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+    promise
+      .then((v) => {
+        clearTimeout(id);
+        resolve(v);
+      })
+      .catch((e) => {
+        clearTimeout(id);
+        reject(e);
+      });
+  });
 }
 
 function formatLinesForLlm(parse: SupplierParseResult): string {
@@ -550,6 +587,7 @@ async function runStageC(
     patternSummary?: string;
   },
 ): Promise<StageCResult> {
+  const stageStartedAt = Date.now();
   if (!base.lines.length) {
     return { parse: base, used: false, warnings: ["LLM structuring skipped: no lines available"] };
   }
@@ -591,7 +629,14 @@ async function runStageC(
     .join("\n\n");
 
   try {
-    const response = await openaiClient.responses.create({
+    const timeoutMs = (() => {
+      const raw = Number(process.env.PARSER_LLM_TIMEOUT_MS);
+      if (Number.isFinite(raw) && raw > 0) return raw;
+      return 25_000;
+    })();
+
+    const response = await withTimeout(
+      openaiClient.responses.create({
       model: "gpt-4o-mini",
       input: [
         {
@@ -607,7 +652,10 @@ async function runStageC(
       ],
       tools: [STRUCTURE_TOOL],
       tool_choice: { type: "function", name: STRUCTURE_TOOL.name },
-    });
+      }),
+      timeoutMs,
+      "llm_timeout",
+    );
 
     const toolCall = response.output?.find((item) => item.type === "function_call");
 
@@ -645,6 +693,7 @@ async function runStageC(
     };
   } catch (error: any) {
     const message = error?.message || String(error);
+    console.warn("[runStageC] failed", { tookMs: Date.now() - stageStartedAt, message });
     return {
       parse: attachWarnings(base, [
         `OpenAI structuring failed: ${message}. Falling back to structured parser output.`,

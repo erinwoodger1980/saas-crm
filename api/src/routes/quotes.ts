@@ -5057,6 +5057,22 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
     if (!quote.supplierFiles || quote.supplierFiles.length === 0) {
       return res.status(400).json({ error: "no_supplier_files" });
     }
+
+    const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
+      if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return promise;
+      return new Promise<T>((resolve, reject) => {
+        const id = setTimeout(() => reject(new Error(`${label}_timeout`)), timeoutMs);
+        promise
+          .then((v) => {
+            clearTimeout(id);
+            resolve(v);
+          })
+          .catch((e) => {
+            clearTimeout(id);
+            reject(e);
+          });
+      });
+    };
     
     const {
       convertCurrency = true,
@@ -5125,11 +5141,47 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
       return null;
     };
     
-    // Parse each supplier file
-    for (const f of quote.supplierFiles) {
+    // Parse each supplier file (cap work per request to avoid platform/proxy timeouts)
+    const maxFiles = (() => {
+      const raw = Number(process.env.PROCESS_SUPPLIER_MAX_FILES);
+      if (Number.isFinite(raw) && raw > 0) return Math.max(1, Math.min(6, Math.floor(raw)));
+      return 2;
+    })();
+
+    const parseFileTimeoutMs = (() => {
+      const raw = Number(process.env.PROCESS_SUPPLIER_FILE_TIMEOUT_MS);
+      if (Number.isFinite(raw) && raw > 0) return raw;
+      return 80_000;
+    })();
+
+    const pdfFiles = (quote.supplierFiles || [])
+      .filter((f: any) => /pdf$/i.test(f.mimeType || "") || /\.pdf$/i.test(f.name || ""))
+      .sort((a: any, b: any) => {
+        const at = a?.uploadedAt ? new Date(a.uploadedAt).getTime() : 0;
+        const bt = b?.uploadedAt ? new Date(b.uploadedAt).getTime() : 0;
+        return bt - at;
+      });
+
+    const filesToParse = pdfFiles.slice(0, maxFiles);
+    if (pdfFiles.length > filesToParse.length) {
+      console.warn("[process-supplier] Too many supplier PDFs; limiting this run", {
+        total: pdfFiles.length,
+        processing: filesToParse.length,
+        maxFiles,
+      });
+    }
+
+    for (const f of filesToParse) {
       if (!/pdf$/i.test(f.mimeType || "") && !/\.pdf$/i.test(f.name || "")) {
         continue;
       }
+
+      const fileStartedAt = Date.now();
+      console.log("[process-supplier] Parsing file", {
+        fileId: f.id,
+        name: f.name,
+        sizeBytes: f.sizeBytes,
+      });
       
       const abs = path.isAbsolute(f.path) ? f.path : path.join(process.cwd(), f.path);
       let buffer: Buffer;
@@ -5157,16 +5209,24 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
       }
       
       try {
-        let parseResult = await parseSupplierPdf(buffer, {
-          supplierHint: f.name ?? undefined,
-          currencyHint: quote.currency || "GBP",
-          supplierProfileId: quote.supplierProfileId ?? undefined,
-        });
+        let parseResult = await withTimeout(
+          parseSupplierPdf(buffer, {
+            supplierHint: f.name ?? undefined,
+            currencyHint: quote.currency || "GBP",
+            supplierProfileId: quote.supplierProfileId ?? undefined,
+          }),
+          parseFileTimeoutMs,
+          "parseSupplierPdf",
+        );
 
         // Fallback: if structured parser returns no lines, try simple fallback parser
         if (!parseResult?.lines || !Array.isArray(parseResult.lines) || parseResult.lines.length === 0) {
           try {
-            const fb = await fallbackParseSupplierPdf(buffer);
+            const fb = await withTimeout(
+              fallbackParseSupplierPdf(buffer),
+              Math.min(30_000, parseFileTimeoutMs),
+              "fallbackParseSupplierPdf",
+            );
             if (fb?.lines?.length) {
               parseResult = fb as any;
             }
@@ -5177,6 +5237,14 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
             );
           }
         }
+
+        console.log("[process-supplier] Parsed", {
+          fileId: f.id,
+          tookMs: Date.now() - fileStartedAt,
+          lines: Array.isArray(parseResult?.lines) ? parseResult.lines.length : 0,
+          usedStages: (parseResult as any)?.usedStages,
+          confidence: (parseResult as any)?.confidence,
+        });
 
         if (parseResult?.lines && Array.isArray(parseResult.lines)) {
           const sourceCurrency = parseResult.currency || quote.currency || "GBP";

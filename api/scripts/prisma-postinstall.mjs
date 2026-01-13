@@ -9,19 +9,46 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-function run(command, args, { ignoreFailure = false } = {}) {
+function run(command, args, { ignoreFailure = false, suppressIfMatches = [] } = {}) {
   return new Promise((resolve, reject) => {
+    const capture = suppressIfMatches.length > 0;
     const child = spawn(command, args, {
-      stdio: 'inherit',
+      stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
       shell: false,
     });
 
+    let out = '';
+    let err = '';
+    if (capture) {
+      child.stdout?.on('data', (d) => { out += String(d); });
+      child.stderr?.on('data', (d) => { err += String(d); });
+    }
+
     child.on('exit', (code) => {
-      if (code === 0 || (ignoreFailure && code !== 0)) {
-        resolve(code ?? 0);
-      } else {
-        reject(new Error(`${command} ${args.join(' ')} exited with code ${code}`));
+      const exitCode = code ?? 0;
+      if (exitCode === 0) return resolve(exitCode);
+
+      const combined = `${out}\n${err}`.trim();
+      const shouldSuppress = suppressIfMatches.some((pattern) => {
+        try {
+          return typeof pattern === 'string' ? combined.includes(pattern) : pattern.test(combined);
+        } catch {
+          return false;
+        }
+      });
+
+      if (ignoreFailure || shouldSuppress) {
+        if (shouldSuppress) {
+          console.log('[prisma-postinstall] Migration resolve no-op (not applied); continuing.');
+        }
+        return resolve(exitCode);
       }
+
+      if (capture && combined) {
+        // Re-emit output for debugging in non-suppressed failure cases.
+        console.error(combined);
+      }
+      return reject(new Error(`${command} ${args.join(' ')} exited with code ${exitCode}`));
     });
 
     child.on('error', (error) => {
@@ -56,7 +83,14 @@ await run('npx', [
   '20251021173644_early_adopter_feedback',
   '--schema',
   schemaPath,
-], { ignoreFailure: true });
+], {
+  ignoreFailure: true,
+  suppressIfMatches: [
+    /Error:\s*P3011/i,
+    /20251021173644_early_adopter_feedback/i,
+    /was never applied to the database/i,
+  ],
+});
 
 console.log('[prisma-postinstall] Resolving failed landing slug migration if present...');
 await run('npx', [
@@ -67,6 +101,13 @@ await run('npx', [
   '20251110_remove_landing_slug',
   '--schema',
   schemaPath,
-], { ignoreFailure: true });
+], {
+  ignoreFailure: true,
+  suppressIfMatches: [
+    /Error:\s*P3011/i,
+    /20251110_remove_landing_slug/i,
+    /was never applied to the database/i,
+  ],
+});
 
 console.log('[prisma-postinstall] (Skipped migrate deploy here; handled in Render preDeployCommand)');
