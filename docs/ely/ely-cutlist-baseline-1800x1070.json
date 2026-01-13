@@ -1,0 +1,55 @@
+{
+  "source": {
+    "pdf": "docs/ely/Ely Cut list.pdf",
+    "render": "QuickLook (qlmanage)",
+    "ocr": "tesseract.js",
+    "notes": "Baseline is derived from OCR of cropped table regions; some values are inferred where OCR dropped digits."
+  },
+  "window": {
+    "name": "Ely – Hi-Performance Flush Window (Ovolo)",
+    "widthMm": 1800,
+    "heightMm": 1070
+  },
+  "assumptions": [
+    "Source PDF summarizes two identical windows (W1 and W2); quantities below are per-window.",
+    "For frame members where OCR only reliably captured rough length, shoulder length is inferred as rough - 50mm (25mm tenon each end), matching the head/cill/jamb pattern.",
+    "Sash bottom rail quantity is inferred from 'W1x3, W2x3' (3 per window: 2 main sashes + 1 fanlight)."
+  ],
+  "items": [
+    {
+      "name": "Jamb",
+      "section": "96x63",
+      "shoulderLengthMm": 1070,
+      "roughLengthMm": 1120,
+      "quantity": 2
+    },
+    {
+      "name": "Head",
+      "section": "96x75",
+      "shoulderLengthMm": 1800,
+      "roughLengthMm": 1850,
+      "quantity": 1
+    },
+    {
+      "name": "Cill",
+      "section": "96x75",
+      "shoulderLengthMm": 1800,
+      "roughLengthMm": 1850,
+      "quantity": 1
+    },
+    {
+      "name": "Transom",
+      "section": "96x75",
+      "shoulderLengthMm": 652,
+      "roughLengthMm": 702,
+      "quantity": 1
+    },
+    {
+      "name": "Sash bottom rail (incl. fanlight)",
+      "section": "63x75",
+      "shoulderLengthMm": 550.7,
+      "roughLengthMm": 600,
+      "quantity": 3
+    }
+  ]
+}

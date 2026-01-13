@@ -2458,9 +2458,9 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
               supplierHint: supplierHint ?? f.name ?? undefined,
               currencyHint: quote.currency || "GBP",
               supplierProfileId: quote.supplierProfileId ?? undefined,
-              // Match the deterministic behaviour we validated locally:
-              // keep OCR disabled by default, but auto-enable it when the PDF has no text layer.
-              ocrEnabled: false,
+              // Deterministic parsing (no LLM/templates), but allow OCR recovery when Stage A is low-confidence.
+              // This is critical for scanned PDFs and PDFs with broken/garbled text layers.
+              ocrEnabled: true,
               ocrAutoWhenNoText: true,
               // Avoid LLM/template behaviour in this generic quote-upload parser.
               llmEnabled: false,
@@ -5356,29 +5356,42 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
             supplierProfileId: deterministicOnly ? undefined : (quote.supplierProfileId ?? undefined),
             templateEnabled: deterministicOnly ? false : true,
             llmEnabled: deterministicOnly ? false : true,
-            // Deterministic own-quote mode: keep OCR off by default, but auto-enable when PDF has no text layer.
-            ocrEnabled: deterministicOnly ? false : undefined,
-            ocrAutoWhenNoText: deterministicOnly ? true : undefined,
+            // Always allow OCR recovery when Stage A is low-confidence (even if PARSER_OCR_ENABLED=false in env).
+            // This keeps supplier parsing reliable for scanned PDFs and PDFs with broken/garbled text layers.
+            ocrEnabled: true,
+            // And explicitly auto-enable OCR when no text layer is detected.
+            ocrAutoWhenNoText: true,
           }),
           parseFileTimeoutMs,
           "parseSupplierPdf",
         );
 
-        // Fallback: if structured parser returns no lines, try simple fallback parser
+        // If we still got no lines, retry deterministically with OCR forced and templates/LLM disabled.
         if (!parseResult?.lines || !Array.isArray(parseResult.lines) || parseResult.lines.length === 0) {
           try {
-            const fb = await withTimeout(
-              fallbackParseSupplierPdf(buffer),
-              Math.min(30_000, parseFileTimeoutMs),
-              "fallbackParseSupplierPdf",
+            const retry = await withTimeout(
+              parseSupplierPdf(buffer, {
+                supplierHint: f.name ?? undefined,
+                currencyHint: quote.currency || "GBP",
+                supplierProfileId: undefined,
+                templateEnabled: false,
+                llmEnabled: false,
+                ocrEnabled: true,
+                ocrAutoWhenNoText: true,
+              }),
+              Math.min(parseFileTimeoutMs, 80_000),
+              "parseSupplierPdf_retry_ocr",
             );
-            if (fb?.lines?.length) {
-              parseResult = fb as any;
+            if (retry?.lines?.length) {
+              parseResult = retry as any;
+              if (Array.isArray((retry as any)?.warnings)) {
+                (retry as any).warnings.push("Retried parsing with OCR forced (templates/LLM disabled)");
+              }
             }
-          } catch (fallbackErr: any) {
+          } catch (retryErr: any) {
             console.warn(
-              `[process-supplier] Fallback parser failed for file ${f.id}:`,
-              fallbackErr?.message || fallbackErr,
+              `[process-supplier] OCR retry failed for file ${f.id}:`,
+              retryErr?.message || retryErr,
             );
           }
         }

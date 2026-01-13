@@ -21,6 +21,16 @@ export interface OcrFallbackResult {
   stage: "tesseract" | "unavailable";
 }
 
+export interface OcrLinesResult {
+  lines: string[];
+  pagesAttempted: number;
+  rendererUsed: "sharp" | "puppeteer" | null;
+  renderErrors: string[];
+  warnings: string[];
+  tookMs: number;
+  stage: "tesseract" | "unavailable";
+}
+
 function formatErr(err: any): string {
   return String(err?.message || err || "unknown_error");
 }
@@ -106,7 +116,23 @@ async function renderPdfFirstPageToPngViaPuppeteer(pdfBuffer: Buffer): Promise<B
 
   let browser: any;
   try {
-    const viewport = { width: 1200, height: 1600, deviceScaleFactor: 1 };
+    const viewport = {
+      width: (() => {
+        const raw = Number(process.env.OCR_VIEWPORT_WIDTH);
+        if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
+        return 1200;
+      })(),
+      height: (() => {
+        const raw = Number(process.env.OCR_VIEWPORT_HEIGHT);
+        if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
+        return 1600;
+      })(),
+      deviceScaleFactor: (() => {
+        const raw = Number(process.env.OCR_DEVICE_SCALE);
+        if (Number.isFinite(raw) && raw > 0) return Math.max(1, Math.min(4, raw));
+        return 1;
+      })(),
+    };
     const resolvedExec = typeof puppeteer.executablePath === "function" ? puppeteer.executablePath() : undefined;
     const execPath = resolvedExec || process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
     browser = await puppeteer.launch({
@@ -156,6 +182,19 @@ async function renderPdfFirstPageToPngViaPuppeteer(pdfBuffer: Buffer): Promise<B
         window.scrollTo(0, 0);
       } catch {}
     });
+
+    // Optional zoom: can significantly improve OCR on scanned cutlists.
+    const zoom = Number(process.env.OCR_PUPPETEER_ZOOM);
+    if (Number.isFinite(zoom) && zoom > 1) {
+      await page.evaluate((z: number) => {
+        try {
+          (document.body as any).style.zoom = String(z);
+        } catch {}
+      }, zoom);
+      const sleep = async (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+      await sleep(250);
+    }
+
     const png = await page.screenshot({ type: "png", fullPage: false });
     return Buffer.from(png);
   } finally {
@@ -527,5 +566,202 @@ export async function runOcrFallback(
     } catch {}
 
     console.log("[runOcrFallback] finished", { tookMs: Date.now() - ocrStartedAt });
+  }
+}
+
+/**
+ * OCR a PDF into plain text lines.
+ *
+ * This is intended for scripts and non-quote OCR use-cases (e.g. cutlists).
+ * It shares the same rendering/Tesseract settings and safety caps as `runOcrFallback`.
+ */
+export async function ocrPdfToLines(buffer: Buffer): Promise<OcrLinesResult> {
+  const startedAt = Date.now();
+
+  let tesseract: any;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    tesseract = require("tesseract.js");
+  } catch {
+    return {
+      lines: [],
+      pagesAttempted: 0,
+      rendererUsed: null,
+      renderErrors: [],
+      warnings: ["OCR unavailable: tesseract.js dependency is not installed."],
+      tookMs: Date.now() - startedAt,
+      stage: "unavailable",
+    };
+  }
+
+  if (!tesseract?.createWorker) {
+    return {
+      lines: [],
+      pagesAttempted: 0,
+      rendererUsed: null,
+      renderErrors: [],
+      warnings: ["OCR unavailable: tesseract.js worker factory missing."],
+      tookMs: Date.now() - startedAt,
+      stage: "unavailable",
+    };
+  }
+
+  let worker: any;
+  try {
+    const enableTesseractLogs =
+      String(process.env.TESSERACT_LOGS ?? "false").toLowerCase() === "true";
+    worker = await tesseract.createWorker("eng", undefined, {
+      logger: enableTesseractLogs ? (m: any) => console.log("[tesseract]", m) : () => {},
+      errorHandler: () => {},
+    });
+  } catch (err: any) {
+    return {
+      lines: [],
+      pagesAttempted: 0,
+      rendererUsed: null,
+      renderErrors: [],
+      warnings: [`OCR unavailable: tesseract worker init failed (${formatErr(err)}).`],
+      tookMs: Date.now() - startedAt,
+      stage: "tesseract",
+    };
+  }
+
+  const density = (() => {
+    const raw = Number(process.env.OCR_RENDER_DENSITY);
+    if (Number.isFinite(raw) && raw > 0) return raw;
+    return 130;
+  })();
+
+  const maxPages = (() => {
+    const raw = Number(process.env.OCR_MAX_PAGES);
+    if (Number.isFinite(raw) && raw > 0) return Math.max(1, Math.min(12, Math.floor(raw)));
+    const fallback = Number(process.env.PARSER_MAX_PAGES);
+    if (Number.isFinite(fallback) && fallback > 0) return Math.max(1, Math.min(12, Math.floor(fallback)));
+    return 2;
+  })();
+
+  const maxTotalMs = (() => {
+    const raw = Number(process.env.OCR_MAX_TOTAL_MS);
+    if (Number.isFinite(raw) && raw > 0) return raw;
+    return 55_000;
+  })();
+
+  const recognizeTimeoutMs = (() => {
+    const raw = Number(process.env.OCR_RECOGNIZE_TIMEOUT_MS);
+    if (Number.isFinite(raw) && raw > 0) return raw;
+    return 35_000;
+  })();
+
+  const ocrDebug = String(process.env.OCR_DEBUG ?? "false").toLowerCase() === "true";
+
+  const aggregatedLines: string[] = [];
+  const renderErrors: string[] = [];
+  let pagesAttempted = 0;
+  let rendererUsed: "sharp" | "puppeteer" | null = null;
+  let sharpPdfUnsupported = false;
+
+  try {
+    try {
+      await worker.setParameters({
+        tessedit_pageseg_mode: "6",
+        preserve_interword_spaces: "1",
+        user_defined_dpi: String(Math.max(200, Math.min(400, Math.floor(density * 2)))),
+      });
+    } catch {}
+
+    for (let pageIndex = 0; pageIndex < maxPages; pageIndex += 1) {
+      if (Date.now() - startedAt > maxTotalMs) break;
+
+      let png: Buffer | null = null;
+      try {
+        if (!sharpPdfUnsupported) {
+          png = await renderPdfPageToPngViaSharp(buffer, pageIndex, density);
+          rendererUsed = "sharp";
+        }
+      } catch (e: any) {
+        const msg = formatErr(e);
+        renderErrors.push(`sharp[p${pageIndex}]: ${msg}`);
+        if (/unsupported image format/i.test(msg)) {
+          sharpPdfUnsupported = true;
+        }
+
+        if (pageIndex === 0) {
+          try {
+            png = await renderPdfFirstPageToPngViaPuppeteer(buffer);
+            rendererUsed = "puppeteer";
+          } catch (e2: any) {
+            renderErrors.push(`puppeteer[p0]: ${formatErr(e2)}`);
+          }
+        }
+      }
+
+      if (!png) {
+        if (pageIndex > 0) break;
+        continue;
+      }
+
+      pagesAttempted += 1;
+      png = await downscalePngForOcr(png);
+
+      if (ocrDebug) {
+        console.log("[ocrPdfToLines] page rendered", {
+          pageIndex,
+          renderer: rendererUsed,
+          pngBytes: png.length,
+          elapsedMs: Date.now() - startedAt,
+        });
+      }
+
+      const rec: any = await withTimeout<any>(worker.recognize(png), recognizeTimeoutMs, "ocr_timeout");
+      const ocrText = String(rec?.data?.text || "");
+      const lines = splitOcrTextIntoLines(ocrText);
+      aggregatedLines.push(...lines);
+
+      if (ocrDebug) {
+        console.log("[ocrPdfToLines] page OCR complete", {
+          pageIndex,
+          textChars: ocrText.length,
+          addedLines: lines.length,
+          totalLines: aggregatedLines.length,
+          elapsedMs: Date.now() - startedAt,
+        });
+      }
+
+      // Early stop when we have a reasonable amount of text.
+      if (aggregatedLines.length >= 1200) break;
+    }
+
+    const warnings: string[] = [];
+    if (!aggregatedLines.length) {
+      warnings.push(`OCR produced no text (${renderErrors.join(" | ") || "unknown"}).`);
+    }
+    if (rendererUsed) {
+      warnings.push(`OCR renderer: ${rendererUsed}`);
+    }
+    warnings.push(`OCR pages scanned: ${pagesAttempted}`);
+
+    return {
+      lines: aggregatedLines,
+      pagesAttempted,
+      rendererUsed,
+      renderErrors,
+      warnings,
+      tookMs: Date.now() - startedAt,
+      stage: "tesseract",
+    };
+  } catch (err: any) {
+    return {
+      lines: aggregatedLines,
+      pagesAttempted,
+      rendererUsed,
+      renderErrors,
+      warnings: [`OCR failed: ${formatErr(err)}`],
+      tookMs: Date.now() - startedAt,
+      stage: "tesseract",
+    };
+  } finally {
+    try {
+      await worker.terminate();
+    } catch {}
   }
 }
