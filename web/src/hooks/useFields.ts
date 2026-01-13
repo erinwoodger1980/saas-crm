@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { getAuthIdsFromJwt } from '@/lib/auth';
+import { useAuthIds } from '@/hooks/useAuthIds';
 
 interface QuestionnaireField {
   id: string;
@@ -46,6 +47,8 @@ export function useFields(options: UseFieldsOptions = {}): UseFieldsReturn {
   const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const { ids } = useAuthIds();
+
   const cacheKey = `fields:${tenantId}:${scope || 'all'}:${context || 'all'}`;
 
   const fetchFields = useCallback(async () => {
@@ -68,9 +71,10 @@ export function useFields(options: UseFieldsOptions = {}): UseFieldsReturn {
       if (includeDisplayContexts) params.append('includeDisplayContexts', 'true');
 
       const headers: Record<string, string> = {};
-      if (auth) {
-        headers['x-user-id'] = auth.userId;
-        headers['x-tenant-id'] = auth.tenantId;
+      const effective = auth ? auth : ids;
+      if (effective) {
+        headers['x-user-id'] = effective.userId;
+        headers['x-tenant-id'] = effective.tenantId;
       }
 
       const response = await fetch(`/api/flexible-fields?${params.toString()}`, {
@@ -94,7 +98,7 @@ export function useFields(options: UseFieldsOptions = {}): UseFieldsReturn {
     } finally {
       setLoading(false);
     }
-  }, [cacheKey, scope, context, includeDisplayContexts]);
+  }, [cacheKey, scope, context, includeDisplayContexts, ids?.tenantId, ids?.userId]);
 
   useEffect(() => {
     fetchFields();

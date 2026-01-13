@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api";
-import { getAuthIdsFromJwt } from "@/lib/auth";
 import { emit, on } from "@/lib/events";
 import { TaskModal } from "@/components/tasks/TaskModal";
 import { NewTaskModal } from "@/components/tasks/NewTaskModal";
 import { Button } from "@/components/ui/button";
+import { useAuthIds } from "@/hooks/useAuthIds";
 
 type Task = {
   id: string;
@@ -23,7 +23,7 @@ type Task = {
 };
 
 export function TasksDrawer({ tenantId, userId }: { tenantId: string; userId: string }) {
-  const ids = getAuthIdsFromJwt();
+  const { ids } = useAuthIds();
   const tId = tenantId || ids?.tenantId || "";
   const uId = userId || ids?.userId || "";
 

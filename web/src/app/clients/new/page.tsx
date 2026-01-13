@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
-import { getAuthIdsFromJwt } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,12 +11,14 @@ import SectionCard from "@/components/SectionCard";
 import { ArrowLeft, Save } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/components/ui/use-toast";
+import { useAuthIds } from "@/hooks/useAuthIds";
 
 export default function NewClientPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
   const [authHeaders, setAuthHeaders] = useState<Record<string, string>>({});
+  const { ids, loading: authLoading } = useAuthIds();
 
   const [formData, setFormData] = useState({
     name: "",
@@ -31,13 +32,12 @@ export default function NewClientPage() {
   });
 
   useEffect(() => {
-    const auth = getAuthIdsFromJwt();
-    if (auth) {
-      setAuthHeaders({
-        "x-user-id": auth.userId,
-        "x-tenant-id": auth.tenantId,
-      });
-    }
+    if (authLoading) return;
+    if (!ids?.tenantId) return;
+    setAuthHeaders({
+      "x-user-id": ids.userId,
+      "x-tenant-id": ids.tenantId,
+    });
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {

@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { API_BASE, apiFetch } from "@/lib/api";
-import { getAuthIdsFromJwt } from "@/lib/auth";
+import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Plus, Mail, Phone, MapPin, User, Tag } from "lucide-react";
 import { DeskSurface } from "@/components/DeskSurface";
 import Link from "next/link";
+import { useAuthIds } from "@/hooks/useAuthIds";
 
 type Client = {
   id: string;
@@ -33,28 +33,25 @@ export default function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [authHeaders, setAuthHeaders] = useState<Record<string, string>>({});
+  const { ids, loading: authLoading } = useAuthIds();
 
   useEffect(() => {
-    const auth = getAuthIdsFromJwt();
-    if (auth) {
-      setAuthHeaders({
-        "x-user-id": auth.userId,
-        "x-tenant-id": auth.tenantId,
-      });
+    if (authLoading) return;
+    if (!ids?.tenantId) {
+      setLoading(false);
+      return;
     }
-  }, []);
+    loadClients(ids);
+  }, [authLoading, ids?.tenantId, ids?.userId]);
 
-  useEffect(() => {
-    if (!authHeaders["x-tenant-id"]) return;
-    loadClients();
-  }, [authHeaders]);
-
-  async function loadClients() {
+  async function loadClients(auth: { tenantId: string; userId: string }) {
     setLoading(true);
     try {
       const data = await apiFetch<Client[]>("/clients", {
-        headers: authHeaders,
+        headers: {
+          "x-tenant-id": auth.tenantId,
+          "x-user-id": auth.userId,
+        },
       });
       // Sort alphabetically by name
       const sorted = (data || []).sort((a, b) => 

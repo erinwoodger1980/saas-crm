@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { API_BASE, apiFetch } from "@/lib/api";
-import { getAuthIdsFromJwt } from "@/lib/auth";
+import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,6 +15,7 @@ import { useFields } from "@/hooks/useFields";
 import { ArrowLeft, Save, Mail, Phone, MapPin, Building, Edit, Check, X, Trash } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/components/ui/use-toast";
+import { useAuthIds } from "@/hooks/useAuthIds";
 
 type ClientContact = {
   id: string;
@@ -99,6 +99,7 @@ export default function ClientDetailPage() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [authHeaders, setAuthHeaders] = useState<Record<string, string>>({});
+  const { ids, loading: authLoading } = useAuthIds();
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, any>>({});
   const [savingFields, setSavingFields] = useState(false);
   const [tenants, setTenants] = useState<Array<{ id: string; name: string; slug: string }>>([]);
@@ -123,14 +124,13 @@ export default function ClientDetailPage() {
   });
 
   useEffect(() => {
-    const auth = getAuthIdsFromJwt();
-    if (auth) {
-      setAuthHeaders({
-        "x-user-id": auth.userId,
-        "x-tenant-id": auth.tenantId,
-      });
-    }
-  }, []);
+    if (authLoading) return;
+    if (!ids?.tenantId) return;
+    setAuthHeaders({
+      "x-user-id": ids.userId,
+      "x-tenant-id": ids.tenantId,
+    });
+  }, [authLoading, ids?.tenantId, ids?.userId]);
 
   useEffect(() => {
     if (!authHeaders["x-tenant-id"] || !clientId) return;

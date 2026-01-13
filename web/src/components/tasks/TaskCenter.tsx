@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { apiFetch } from "@/lib/api";
-import { getAuthIdsFromJwt } from "@/lib/auth";
 import { CheckSquare, Mail, Plus, Search, Filter, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -12,6 +11,7 @@ import { TaskModal } from "./TaskModal";
 import { CreateTaskWizard } from "./CreateTaskWizard";
 import { TaskCelebration } from "./TaskCelebration";
 import { TaskStreakTracker } from "./TaskStreakTracker";
+import { useAuthIds } from "@/hooks/useAuthIds";
 
 type Task = {
   id: string;
@@ -44,6 +44,8 @@ export function TaskCenter({ filterRelatedType, filterRelatedId, embedded = fals
   const [tenantId, setTenantId] = useState("");
   const [userId, setUserId] = useState("");
 
+  const { ids } = useAuthIds();
+
   const [activeTab] = useState("all");
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
@@ -53,12 +55,10 @@ export function TaskCenter({ filterRelatedType, filterRelatedId, embedded = fals
   const [taskEditMap, setTaskEditMap] = useState<Record<string, { taskType: Task['taskType']; status: Task['status']; priority: Task['priority']; dueAt: string; description: string; linkId?: string; recordId?: string; }>>({});
 
   useEffect(() => {
-    const ids = getAuthIdsFromJwt();
-    if (ids) {
-      setTenantId(ids.tenantId);
-      setUserId(ids.userId);
-    }
-  }, []);
+    if (!ids?.tenantId) return;
+    setTenantId(ids.tenantId);
+    setUserId(ids.userId);
+  }, [ids?.tenantId, ids?.userId]);
 
   const [showCelebration, setShowCelebration] = useState(false);
   const [celebrationTask, setCelebrationTask] = useState<Task | null>(null);
