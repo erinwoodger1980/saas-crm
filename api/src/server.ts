@@ -1200,13 +1200,46 @@ function startServer() {
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
-  console.error('❌ Uncaught Exception:', error);
-  process.exit(1);
+  const fatalOnUnhandled = process.env.FATAL_ON_UNHANDLED === 'true';
+
+  console.error('❌ Uncaught Exception:', {
+    message: (error as any)?.message || String(error),
+    stack: (error as any)?.stack,
+    name: (error as any)?.name,
+    pid: process.pid,
+    node: process.version,
+    memory: process.memoryUsage(),
+    fatalOnUnhandled,
+  });
+
+  // Historically we exited immediately, which causes 502s on Render for transient
+  // library-level issues (e.g. OCR / browser rendering). Keep the process alive by
+  // default so the request fails but the API stays up.
+  if (fatalOnUnhandled) {
+    process.exit(1);
+  }
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
-  process.exit(1);
+  const fatalOnUnhandled = process.env.FATAL_ON_UNHANDLED === 'true';
+
+  const reasonDetails =
+    reason instanceof Error
+      ? { name: reason.name, message: reason.message, stack: reason.stack }
+      : { value: reason };
+
+  console.error('❌ Unhandled Rejection:', {
+    reason: reasonDetails,
+    promise: String(promise),
+    pid: process.pid,
+    node: process.version,
+    memory: process.memoryUsage(),
+    fatalOnUnhandled,
+  });
+
+  if (fatalOnUnhandled) {
+    process.exit(1);
+  }
 });
 
 startServer();
