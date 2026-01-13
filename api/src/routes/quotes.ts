@@ -694,6 +694,196 @@ const storage = multer.diskStorage({
   },
 });
 
+function extractFirstDimensionsMm(text: string): { widthMm: number; heightMm: number } | null {
+  const raw = String(text || "").toLowerCase();
+  // Accept common separators and optional units
+  // Examples: 2400 x 1200, 2400x1200mm, 240 x 120 cm
+  const re = /(\d{2,5})\s*[x×]\s*(\d{2,5})\s*(mm|cm|m)?/i;
+  const m = raw.match(re);
+  if (!m) return null;
+  const w = Number(m[1]);
+  const h = Number(m[2]);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+  const unit = (m[3] || "mm").toLowerCase();
+  const factor = unit === "m" ? 1000 : unit === "cm" ? 10 : 1;
+  const widthMm = Math.round(w * factor);
+  const heightMm = Math.round(h * factor);
+  if (widthMm < 10 || heightMm < 10 || widthMm > 20000 || heightMm > 20000) return null;
+  return { widthMm, heightMm };
+}
+
+function inferLineStandardFromParsedMeta(opts: {
+  description: string;
+  meta: any;
+}): Record<string, any> {
+  const description = String(opts.description || "");
+  const meta = (opts.meta && typeof opts.meta === "object") ? opts.meta : {};
+  const raw = (meta.raw && typeof meta.raw === "object") ? meta.raw : {};
+
+  const out: Record<string, any> = {};
+
+  const widthCandidates = [raw.widthMm, raw.width_mm, raw.width, raw.w, raw.W];
+  const heightCandidates = [raw.heightMm, raw.height_mm, raw.height, raw.h, raw.H];
+  const pickMm = (cands: any[]): number | null => {
+    for (const c of cands) {
+      if (c == null) continue;
+      const n = Number(c);
+      if (Number.isFinite(n) && n > 0 && n < 20000) return n;
+    }
+    return null;
+  };
+  const w = pickMm(widthCandidates);
+  const h = pickMm(heightCandidates);
+
+  if (w && h) {
+    out.widthMm = Math.round(w);
+    out.heightMm = Math.round(h);
+  } else {
+    const dims = extractFirstDimensionsMm(description);
+    if (dims) {
+      out.widthMm = dims.widthMm;
+      out.heightMm = dims.heightMm;
+    }
+  }
+
+  const descLower = description.toLowerCase();
+  const pickString = (v: any): string | null => {
+    if (typeof v === "string") {
+      const s = v.trim();
+      return s ? s : null;
+    }
+    return null;
+  };
+
+  const timber = pickString(raw.timber || raw.wood || raw.material);
+  if (timber) out.timber = timber;
+  else if (/(accoya|oak|sapele|pine|idighbo|mahogany)/i.test(descLower)) {
+    const m = descLower.match(/(accoya|oak|sapele|pine|idighbo|mahogany)/i);
+    if (m?.[1]) out.timber = m[1];
+  }
+
+  const finish = pickString(raw.finish || raw.coating || raw.paint);
+  if (finish) out.finish = finish;
+  else if (/(primed|painted|sprayed|stained|ral\s*\d{3,4})/i.test(descLower)) {
+    const m = descLower.match(/(primed|painted|sprayed|stained|ral\s*\d{3,4})/i);
+    if (m?.[1]) out.finish = m[1];
+  }
+
+  const glazing = pickString(raw.glazing || raw.glass);
+  if (glazing) out.glazing = glazing;
+  else if (/(double\s*glazed|triple\s*glazed|toughened|laminated|\b4\/\d{2}\/4\b)/i.test(descLower)) {
+    const m = descLower.match(/(double\s*glazed|triple\s*glazed|toughened|laminated|\b4\/\d{2}\/4\b)/i);
+    if (m?.[1]) out.glazing = m[1];
+  }
+
+  const ironmongery = pickString(raw.ironmongery || raw.hardware);
+  if (ironmongery) out.ironmongery = ironmongery;
+  else if (/(hinge|lock|handle|espag|espagnolette|shoot\s*bolt)/i.test(descLower)) {
+    const m = descLower.match(/(hinge|lock|handle|espag|espagnolette|shoot\s*bolt)/i);
+    if (m?.[1]) out.ironmongery = m[1];
+  }
+
+  return out;
+}
+
+/**
+ * POST /quotes/:id/lines/fill-standard-from-parsed
+ * Bulk-fill standardised product fields (lineStandard) from parsed quote data.
+ * Intended for "Upload your own quote" flow to help training + downstream pricing.
+ */
+router.post("/:id/lines/fill-standard-from-parsed", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = await getTenantId(req);
+    const quoteId = String(req.params.id);
+    const quote = await prisma.quote.findFirst({
+      where: { id: quoteId, tenantId },
+      include: { lines: true, supplierFiles: true },
+    });
+    if (!quote) return res.status(404).json({ error: "not_found" });
+
+    const nowIso = new Date().toISOString();
+    let updated = 0;
+    let inferredAny = 0;
+
+    for (const line of quote.lines as any[]) {
+      const existingStandard: any = (line as any)?.lineStandard || {};
+      const inferred = inferLineStandardFromParsedMeta({
+        description: String(line.description || ""),
+        meta: (line.meta as any) || {},
+      });
+
+      const merged: any = { ...existingStandard };
+      for (const [k, v] of Object.entries(inferred)) {
+        if (v == null) continue;
+        if (merged[k] === undefined || merged[k] === null || merged[k] === "") {
+          merged[k] = v;
+        }
+      }
+
+      const changed = JSON.stringify(existingStandard || {}) !== JSON.stringify(merged || {});
+      if (!changed) continue;
+
+      inferredAny += 1;
+      const existingMeta: any = (line.meta as any) || {};
+      const mergedMeta: any = {
+        ...existingMeta,
+        standardisedFromParsedQuoteAt: nowIso,
+        standardisedFromParsedQuoteMethod: "heuristic_v1",
+      };
+
+      await prisma.quoteLine.update({
+        where: { id: line.id },
+        data: {
+          lineStandard: Object.keys(merged).length ? (merged as any) : undefined,
+          meta: mergedMeta as any,
+        },
+      });
+      updated += 1;
+    }
+
+    try {
+      const inputHash = crypto
+        .createHash("sha256")
+        .update(`${tenantId}:${quoteId}:${nowIso}`)
+        .digest("hex")
+        .slice(0, 16);
+      await logInferenceEvent({
+        tenantId,
+        model: "quote_line_standardiser",
+        modelVersionId: "heuristic_v1",
+        inputHash,
+        outputJson: {
+          updated,
+          considered: quote.lines.length,
+          supplierFileCount: quote.supplierFiles?.length || 0,
+        },
+        confidence: 1.0,
+        meta: { quoteId },
+      });
+      await logInsight({
+        tenantId,
+        module: "quote_line_standardiser",
+        inputSummary: `quote:${quoteId}:fill-standard-from-parsed`,
+        decision: `updated_${updated}`,
+        confidence: 1.0,
+        userFeedback: {
+          kind: "fill_line_standard",
+          quoteId,
+          updated,
+          inferredAny,
+        },
+      });
+    } catch (err: any) {
+      console.warn("[fill-standard-from-parsed] training log failed:", err?.message || err);
+    }
+
+    return res.json({ ok: true, updated, inferredAny });
+  } catch (e: any) {
+    console.error("[/quotes/:id/lines/fill-standard-from-parsed] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
 /**
  * GET /quotes/:id/lines
  * Fetch quote lines for editing/viewing
