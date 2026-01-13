@@ -425,6 +425,12 @@ async function runStageB(
     };
   }
 
+  // If OCR produced a full parse (from page-image OCR), prefer that.
+  if (fallback.parse?.lines?.length) {
+    const warnings = fallback.warnings ?? fallback.parse.warnings ?? [];
+    return { parse: attachWarnings(fallback.parse, warnings), used: true, warnings };
+  }
+
   const warnings = fallback.warnings ?? [];
   if (!fallback.replacements.length) {
     return { parse: attachWarnings(stageA.parse, warnings), used: false, warnings };
