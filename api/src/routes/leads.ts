@@ -9,6 +9,9 @@ import jwt from "jsonwebtoken";
 import { env } from "../env";
 import { randomUUID } from "crypto";
 import multer from "multer";
+import fs from "fs";
+import path from "path";
+import { simpleParser } from "mailparser";
 import {
   CANONICAL_FIELD_CONFIG,
   lookupCsvField,
@@ -2714,11 +2717,86 @@ router.post("/parse-email", async (req, res) => {
       return res.status(400).json({ error: "Missing filename or file content" });
     }
 
-    // Decode base64 content
-    const fileContent = Buffer.from(base64, 'base64').toString('utf-8');
-    
-    // Parse email content to extract lead information
-    const emailData = parseEmailContent(fileContent);
+    const rawBuffer = Buffer.from(base64, "base64");
+    const looksLikeEml = (() => {
+      const lowerName = String(filename || "").toLowerCase();
+      const lowerType = String(mimeType || "").toLowerCase();
+      if (lowerName.endsWith(".eml")) return true;
+      if (lowerType === "message/rfc822") return true;
+      // Lightweight heuristic: RFC822-ish headers present in first chunk
+      const head = rawBuffer.subarray(0, Math.min(rawBuffer.length, 8192)).toString("utf8");
+      return /\bMIME-Version:\s*1\.0\b/i.test(head) || /\bContent-Type:\s*multipart\//i.test(head);
+    })();
+
+    let emailData:
+      | {
+          contactName: string | null;
+          email: string | null;
+          subject: string | null;
+          bodyText: string | null;
+          summary: string | null;
+          confidence: number;
+          fromEmail: string | null;
+          attachments?: Array<{ source: "upload"; fileId: string; filename: string; mimeType?: string | null; size?: number | null }>;
+        }
+      | null = null;
+
+    if (looksLikeEml) {
+      try {
+        const parsed = await simpleParser(rawBuffer);
+        const subjectOuter = typeof parsed.subject === "string" ? parsed.subject.trim() : "";
+        const outerFromText = parsed.from?.text ? String(parsed.from.text) : null;
+        const text = typeof parsed.text === "string" ? parsed.text : "";
+
+        const forwarded = extractForwardedEmailContext(text);
+        const chosenFrom = forwarded?.from || parseFromHeader(outerFromText);
+        const chosenSubject = (subjectOuter && /^fwd?:\s*/i.test(subjectOuter) && forwarded?.subject)
+          ? forwarded.subject
+          : (subjectOuter || forwarded?.subject || null);
+
+        const bodyText = cleanEmailBodyText(text);
+        const summary = bodyText
+          ? bodyText.slice(0, 250) + (bodyText.length > 250 ? "..." : "")
+          : null;
+
+        const attachments = Array.isArray(parsed.attachments) ? parsed.attachments : [];
+        const persisted = await persistEmailAttachments({ tenantId, attachments, originalFilename: filename });
+
+        const email = chosenFrom?.email ? String(chosenFrom.email).toLowerCase() : null;
+        const contactName = chosenFrom?.name || (email ? deriveNameFromEmail(email) : null);
+        const fromEmailForUi = (() => {
+          if (chosenFrom?.name && chosenFrom?.email) return `${chosenFrom.name} <${chosenFrom.email}>`;
+          if (chosenFrom?.email) return chosenFrom.email;
+          return outerFromText;
+        })();
+
+        let confidence = 0.6;
+        if (email && contactName && chosenSubject) confidence = 0.9;
+        else if (email && chosenSubject) confidence = 0.8;
+        else if (email || contactName) confidence = 0.6;
+        else confidence = 0.3;
+
+        emailData = {
+          contactName,
+          email,
+          subject: chosenSubject,
+          bodyText: bodyText || null,
+          summary,
+          confidence,
+          fromEmail: fromEmailForUi || null,
+          attachments: persisted,
+        };
+      } catch (e: any) {
+        console.warn("[leads] parse-email mailparser failed; falling back:", e?.message || e);
+      }
+    }
+
+    if (!emailData) {
+      // Decode base64 content (best-effort) and fall back to legacy parsing
+      const fileContent = rawBuffer.toString("utf-8");
+      const legacy = parseEmailContent(fileContent);
+      emailData = { ...legacy, fromEmail: null };
+    }
     
     if (!emailData.contactName && !emailData.email) {
       return res.status(400).json({ error: "Could not extract contact information from email" });
@@ -2738,6 +2816,8 @@ router.post("/parse-email", async (req, res) => {
           provider: provider || "manual",
           bodyText: emailData.bodyText,
           summary: emailData.summary,
+          fromEmail: emailData.fromEmail,
+          attachments: (emailData as any)?.attachments,
           uiStatus: "NEW_ENQUIRY" as UiStatus,
           confidence: emailData.confidence,
           source: "manual_upload",
@@ -2773,6 +2853,99 @@ router.post("/parse-email", async (req, res) => {
     res.status(500).json({ error: e?.message || "email parsing failed" });
   }
 });
+
+function parseFromHeader(fromHeader: string | null): { name: string | null; email: string | null } | null {
+  if (!fromHeader) return null;
+  const raw = String(fromHeader).trim();
+  if (!raw) return null;
+  const emailMatch = raw.match(/<([^>]+)>/);
+  if (emailMatch?.[1]) {
+    const email = emailMatch[1].trim();
+    const name = raw.replace(/<[^>]+>/, "").trim().replace(/^\"|\"$/g, "");
+    return { name: name || null, email: email || null };
+  }
+  const simpleEmail = raw.match(/\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b/);
+  if (simpleEmail?.[1]) return { name: null, email: simpleEmail[1] };
+  return null;
+}
+
+function cleanEmailBodyText(input: string): string {
+  const s = String(input || "");
+  // mailparser already decodes MIME; this is just whitespace cleanup + safety trimming.
+  const cleaned = s
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{4,}/g, "\n\n\n")
+    .trim();
+  // Avoid accidental gigantic bodies (e.g. weird encodings). Keep enough for context.
+  return cleaned.slice(0, 20000);
+}
+
+function extractForwardedEmailContext(text: string): { from: { name: string | null; email: string | null } | null; subject: string | null } | null {
+  const raw = String(text || "");
+  if (!raw) return null;
+  const hay = raw.slice(0, 12000);
+
+  // Only attempt if it looks like a forwarded/quoted block.
+  const looksForwarded = /\b(fw|fwd):\b/i.test(hay) || /\bForwarded message\b/i.test(hay) || /\bOriginal Message\b/i.test(hay) || /\bSent:\b/i.test(hay);
+  if (!looksForwarded) return null;
+
+  const fromLine = hay.match(/^From:\s*(.+)$/im);
+  const subjLine = hay.match(/^Subject:\s*(.+)$/im);
+  const from = fromLine?.[1] ? parseFromHeader(fromLine[1].trim()) : null;
+  const subject = subjLine?.[1] ? subjLine[1].trim() : null;
+  if (!from && !subject) return null;
+  return { from, subject };
+}
+
+async function persistEmailAttachments(opts: {
+  tenantId: string;
+  attachments: Array<{ filename?: string | null; contentType?: string | null; content?: Buffer | Uint8Array; size?: number | null }>;
+  originalFilename?: string;
+}): Promise<Array<{ source: "upload"; fileId: string; filename: string; mimeType?: string | null; size?: number | null }>> {
+  const { tenantId } = opts;
+  const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+  const out: Array<{ source: "upload"; fileId: string; filename: string; mimeType?: string | null; size?: number | null }> = [];
+  const attachments = Array.isArray(opts.attachments) ? opts.attachments : [];
+  for (const [idx, a] of attachments.entries()) {
+    const buf = a?.content ? Buffer.from(a.content as any) : null;
+    if (!buf || !buf.length) continue;
+
+    const mimeType = typeof a?.contentType === "string" && a.contentType.trim() ? a.contentType.trim() : null;
+    const safeBase = (() => {
+      const rawName = typeof a?.filename === "string" && a.filename.trim() ? a.filename.trim() : `attachment_${idx + 1}`;
+      return rawName.replace(/[^\w.\-]+/g, "_");
+    })();
+
+    const ts = Date.now();
+    const diskName = `${ts}__${safeBase}`;
+    const absPath = path.join(UPLOAD_DIR, diskName);
+    await fs.promises.writeFile(absPath, buf);
+
+    const row = await prisma.uploadedFile.create({
+      data: {
+        tenantId,
+        quoteId: null,
+        kind: "OTHER",
+        name: safeBase,
+        path: path.relative(process.cwd(), absPath),
+        mimeType: mimeType || "application/octet-stream",
+        sizeBytes: typeof a?.size === "number" ? a.size : buf.length,
+      },
+      select: { id: true, name: true, mimeType: true, sizeBytes: true },
+    });
+
+    out.push({
+      source: "upload",
+      fileId: row.id,
+      filename: row.name,
+      mimeType: row.mimeType,
+      size: row.sizeBytes,
+    });
+  }
+  return out;
+}
 
 /**
  * Parse email content and extract lead information

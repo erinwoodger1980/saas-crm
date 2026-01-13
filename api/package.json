@@ -75,6 +75,7 @@
     "minimatch": "^9.0.5",
     "minimist": "^1.2.8",
     "multer": "^2.0.2",
+    "mailparser": "^3.7.5",
     "node-cron": "^4.2.1",
     "node-fetch": "^3.3.2",
     "nodemailer": "^7.0.10",
