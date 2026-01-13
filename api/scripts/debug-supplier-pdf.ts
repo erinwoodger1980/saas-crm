@@ -139,9 +139,48 @@ async function loadBuffer(args: Args): Promise<{ buffer: Buffer; label: string }
       }
       const buffer = byteaToBuffer(row.content);
       if (!buffer.length) {
+        const rawPath = String(row.path || "").trim();
+        const candidates: string[] = [];
+
+        if (rawPath) {
+          if (path.isAbsolute(rawPath)) {
+            candidates.push(rawPath);
+          } else {
+            // Best-effort candidates:
+            // - relative to current working dir (useful when path is workspace-relative)
+            candidates.push(path.resolve(process.cwd(), rawPath));
+            // - relative to filesystem root (useful for Render-style paths like ../../../data/<file> → /data/<file>)
+            candidates.push(path.resolve("/", rawPath));
+          }
+
+          const uploadsDir = String(process.env.UPLOADS_DIR || "").trim();
+          if (uploadsDir) candidates.push(path.resolve(uploadsDir, rawPath));
+
+          const dataDir = String(process.env.DATA_DIR || "").trim();
+          if (dataDir) candidates.push(path.resolve(dataDir, path.basename(rawPath)));
+        }
+
+        for (const candidate of candidates) {
+          try {
+            if (!candidate) continue;
+            if (!fs.existsSync(candidate)) continue;
+            const stat = fs.statSync(candidate);
+            if (!stat.isFile()) continue;
+            const diskBuffer = await fs.promises.readFile(candidate);
+            if (diskBuffer.length) {
+              return { buffer: diskBuffer, label: `UploadedFile:${row.id} (disk:${candidate})` };
+            }
+          } catch {
+            // keep trying other candidates
+          }
+        }
+
         throw new Error(
           `UploadedFile.content is empty for ${args.uploadedFileId} (name=${row.name || ""}, mime=${row.mimeType || ""}, path=${row.path || ""}). ` +
-            "This upload was stored as a disk path only; to debug/parse from DB, re-upload with UPLOADS_STORE_IN_DB enabled.",
+            (candidates.length
+              ? `Tried disk paths: ${candidates.join(" | ")}. `
+              : "No disk path candidates available. ") +
+            "This upload was stored as a disk path only; to debug/parse from DB, re-upload with UPLOADS_STORE_IN_DB enabled or run this script on the host that has the file on disk.",
         );
       }
       return {
