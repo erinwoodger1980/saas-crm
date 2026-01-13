@@ -761,16 +761,19 @@ export async function parseSupplierPdf(
     // Allow callers (e.g. own-quote flow) to run deterministic-only parsing.
     ocrEnabled?: boolean;
     llmEnabled?: boolean;
+    // Allow callers to explicitly skip layout-template parsing.
+    templateEnabled?: boolean;
   },
 ): Promise<SupplierParseResult> {
   const supplierHint = options?.supplierHint;
   const currencyHint = options?.currencyHint || "GBP";
   const supplierProfileId = options?.supplierProfileId ?? null;
   const llmEnabled = options?.llmEnabled ?? true;
+  const templateEnabled = options?.templateEnabled ?? true;
 
   let templateMeta: TemplateParseMeta | null = null;
 
-  if (supplierProfileId) {
+  if (supplierProfileId && templateEnabled) {
     try {
       const layoutTemplate = await loadPdfLayoutTemplate(supplierProfileId);
       if (layoutTemplate) {

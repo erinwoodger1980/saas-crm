@@ -5344,7 +5344,10 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
           parseSupplierPdf(buffer, {
             supplierHint: f.name ?? undefined,
             currencyHint: quote.currency || "GBP",
-            supplierProfileId: quote.supplierProfileId ?? undefined,
+            // In deterministic-only mode (own-quote), avoid layout templates entirely.
+            // Auto-detection can set supplierProfileId on upload, which may mis-parse some PDFs.
+            supplierProfileId: deterministicOnly ? undefined : (quote.supplierProfileId ?? undefined),
+            templateEnabled: deterministicOnly ? false : true,
             llmEnabled: deterministicOnly ? false : true,
             ocrEnabled: deterministicOnly ? false : undefined,
           }),
