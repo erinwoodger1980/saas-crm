@@ -16,6 +16,8 @@ type Args = {
   ocrAutoWhenNoText?: boolean;
   llmEnabled?: boolean;
   templateEnabled?: boolean;
+  dumpPdfjsLines?: boolean;
+  maxPages?: number;
 };
 
 function parseArgs(argv: string[]): Args {
@@ -23,6 +25,16 @@ function parseArgs(argv: string[]): Args {
   const rest = [...argv];
   while (rest.length) {
     const token = rest.shift() as string;
+    if (token === "--dump-pdfjs-lines" || token === "--dump-pdfjs") {
+      args.dumpPdfjsLines = true;
+      continue;
+    }
+    if (token === "--max-pages" || token === "--maxPages") {
+      const raw = rest.shift();
+      const n = raw != null ? Number(raw) : NaN;
+      if (Number.isFinite(n) && n > 0) args.maxPages = Math.floor(n);
+      continue;
+    }
     if (token === "--pdf" || token === "--path") {
       args.pdfPath = rest.shift();
       continue;
@@ -124,6 +136,71 @@ async function extractPdfJsTextByPage(buffer: Buffer, maxPages = 2): Promise<str
         .join(" ")
         .trim();
       pages.push(text);
+    }
+
+    try {
+      await doc.destroy();
+    } catch {}
+
+    return pages;
+  } catch {
+    return [];
+  }
+}
+
+async function extractPdfJsLinesByPage(buffer: Buffer, maxPages = 2): Promise<string[][]> {
+  try {
+    const pdfjsLib: any = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const data = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+
+    const standardFontDataUrl = (() => {
+      try {
+        const pkgPath = require.resolve("pdfjs-dist/package.json");
+        const fontsDir = path.join(path.dirname(pkgPath), "standard_fonts/");
+        const { pathToFileURL } = require("url");
+        return pathToFileURL(fontsDir).href;
+      } catch {
+        return undefined;
+      }
+    })();
+
+    const doc = await pdfjsLib
+      .getDocument({
+        data,
+        ...(standardFontDataUrl ? { standardFontDataUrl } : {}),
+      })
+      .promise;
+
+    const pages: string[][] = [];
+    const pageCount = Math.max(0, Math.min(maxPages, Number(doc?.numPages || 0)));
+    for (let pageNum = 1; pageNum <= pageCount; pageNum += 1) {
+      const page = await doc.getPage(pageNum);
+      const tc = await page.getTextContent();
+
+      const groups = new Map<number, { x: number; str: string }[]>();
+      for (const it of tc?.items || []) {
+        const s = String((it as any)?.str || "").trim();
+        if (!s) continue;
+        const t = (it as any)?.transform;
+        const x = Array.isArray(t) && typeof t[4] === "number" ? t[4] : 0;
+        const yRaw = Array.isArray(t) && typeof t[5] === "number" ? t[5] : 0;
+        const y = Math.round(yRaw);
+        const bucket = groups.get(y) || [];
+        bucket.push({ x, str: s });
+        groups.set(y, bucket);
+      }
+
+      const ys = Array.from(groups.keys()).sort((a, b) => b - a);
+      const lines: string[] = [];
+      for (const y of ys) {
+        const parts = groups.get(y) || [];
+        parts.sort((a, b) => a.x - b.x);
+        const line = parts.map((p) => p.str).join(" ").replace(/\s{2,}/g, " ").trim();
+        if (!line) continue;
+        lines.push(line);
+      }
+
+      pages.push(lines);
     }
 
     try {
@@ -293,6 +370,16 @@ async function main() {
 
   console.log("\n=== Input ===");
   console.log({ label, bytes: buffer.length, supplierHint: supplierHint ?? null, currencyHint });
+
+  if (args.dumpPdfjsLines) {
+    const pages = await extractPdfJsLinesByPage(buffer, args.maxPages ?? 1);
+    console.log("\n=== pdfjs reconstructed lines (debug) ===");
+    pages.forEach((lines, idx) => {
+      console.log(`\n--- page ${idx + 1} (${lines.length} lines) ---`);
+      for (const ln of lines.slice(0, 250)) console.log(ln);
+      if (lines.length > 250) console.log(`... (${lines.length - 250} more lines)`);
+    });
+  }
 
   console.log("\n=== Stage A: extractStructuredText ===");
   const extraction = extractStructuredText(buffer);

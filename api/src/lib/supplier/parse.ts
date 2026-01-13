@@ -134,13 +134,43 @@ function parseLineItemsFromTextLines(
   // Only treat explicit currency amounts as "money" to avoid matching weights/dimensions.
   const moneyRe = /[£€$]\s*\d[\d,]*\.\d{2}/g;
 
-  for (const line of cleanedLines) {
+  const isHeaderOrMeta = (text: string): boolean => {
+    if (!text) return true;
+    const lower = text.toLowerCase();
+    if (/\bquotation\b|\bquote\b|\binvoice\b/i.test(text)) return true;
+    if (/\bpage\b\s*\d+\s*(of\s*\d+)?/i.test(text)) return true;
+    if (/\bcarried\s+forward\b|\bbrought\s+forward\b/i.test(text)) return true;
+    if (/\bitem\b\s*description\b\s*qty\b|\bunit\b\s*total\b/i.test(lower)) return true;
+    if (/^\s*dear\b/i.test(lower)) return true;
+    if (/\bthank you\b/i.test(lower)) return true;
+    if (/\bvalidity\b/i.test(lower)) return true;
+    if (/\bdate\s+of\s+quotation\b/i.test(lower)) return true;
+    return false;
+  };
+
+  const isLikelyDetailLine = (text: string): boolean => {
+    const t = String(text || "").trim();
+    if (!t) return false;
+    if (isHeaderOrMeta(t)) return false;
+    if (/^\s*[£€$]\s*\d/.test(t)) return false;
+    if (/\btotal\s+weight\b/i.test(t)) return false;
+    if (/\bvat\b/i.test(t)) return false;
+    if (/\bkg\b/i.test(t) && !/[A-Za-z]{3,}/.test(t)) return false;
+    // Keep spec-like lines.
+    if (/:/.test(t)) return true;
+    if (/\b(mm|cm|m)\b/i.test(t)) return true;
+    if (/(timber|softwood|hardwood|glazed|glass|planitherm|argon|u-?value|fittings|hinge|handle|lock|finish|ral)/i.test(t)) return true;
+    // Otherwise: require meaningful words.
+    return /[A-Za-z]{4,}/.test(t);
+  };
+
+  for (let i = 0; i < cleanedLines.length; i += 1) {
+    const line = cleanedLines[i];
     const lower = line.toLowerCase();
     if (!supplier && /\bfit47\b/i.test(line)) supplier = "Fit47";
 
     // Skip obvious headers.
-    if (/\bquotation\b|\bquote\b|\binvoice\b|\bpage\b\s*\d+/i.test(line)) continue;
-    if (/\bbrought forward\b/i.test(line)) continue;
+    if (isHeaderOrMeta(line)) continue;
 
     // Totals.
     if (/\btotal\s+weight\b/i.test(lower)) continue;
@@ -176,13 +206,27 @@ function parseLineItemsFromTextLines(
       ? qtyCandidate
       : undefined;
 
+    // Collect detail/spec lines that follow this line item (often multi-line specs without prices).
+    const detailLines: string[] = [];
+    let j = i + 1;
+    const maxDetailLines = 14;
+    while (j < cleanedLines.length && detailLines.length < maxDetailLines) {
+      const next = cleanedLines[j];
+      if (!next) {
+        j += 1;
+        continue;
+      }
+      // Stop if we hit another priced row (likely next item) or totals.
+      if (moneyRe.test(next)) break;
+      if (/\bsubtotal\b|\bsub total\b|\btotal\b|\bgrand total\b/i.test(next.toLowerCase())) break;
+      if (/\bcarried\s+forward\b|\bbrought\s+forward\b/i.test(next)) break;
+
+      if (isLikelyDetailLine(next)) detailLines.push(next);
+      j += 1;
+    }
+
     // Description: strip trailing money tokens, collapse whitespace.
-    let desc = cleanText(
-      line
-        .replace(moneyRe, " ")
-        .replace(/\s{2,}/g, " ")
-        .trim(),
-    );
+    let desc = cleanText(line.replace(moneyRe, " ").replace(/\s{2,}/g, " ").trim());
 
     // Drop trailing repeated qty token (common when qty is a column).
     if (qty != null) {
@@ -191,12 +235,29 @@ function parseLineItemsFromTextLines(
 
     if (!desc) continue;
 
+    const details = detailLines
+      .map((l) => cleanText(l).replace(/\s{2,}/g, " ").trim())
+      .filter(Boolean);
+
+    if (details.length) {
+      desc = `${desc} — ${details.join(" ")}`.replace(/\s{2,}/g, " ").trim();
+    }
+
+    const rawText = [line, ...details].join("\n");
+
     parsedLines.push({
       description: desc,
       ...(qty != null ? { qty } : {}),
       ...(Number.isFinite(costUnit) ? { costUnit } : {}),
       ...(Number.isFinite(lineTotal) ? { lineTotal } : {}),
+      ...(rawText ? { rawText } : {}),
+      ...(details.length
+        ? { meta: { sourceLine: line, detailLines: details } as any }
+        : { meta: { sourceLine: line } as any }),
     });
+
+    // Skip any consumed detail lines.
+    if (j > i + 1) i = j - 1;
   }
 
   if (!parsedLines.length) return null;

@@ -765,6 +765,29 @@ function inferLineStandardFromParsedMeta(opts: {
   const meta = (opts.meta && typeof opts.meta === "object") ? opts.meta : {};
   const raw = (meta.raw && typeof meta.raw === "object") ? meta.raw : {};
 
+  const pickString = (v: any): string | null => {
+    if (typeof v === "string") {
+      const s = v.trim();
+      return s ? s : null;
+    }
+    return null;
+  };
+
+  const extraTextParts: string[] = [];
+  const metaRawText = pickString(meta.rawText) || pickString(meta.parsedQuoteText);
+  if (metaRawText) extraTextParts.push(metaRawText);
+
+  const rawSourceLine = pickString((raw as any)?.sourceLine);
+  if (rawSourceLine) extraTextParts.push(rawSourceLine);
+
+  const rawDetailLines = Array.isArray((raw as any)?.detailLines) ? (raw as any).detailLines : [];
+  for (const l of rawDetailLines) {
+    const s = pickString(l);
+    if (s) extraTextParts.push(s);
+  }
+
+  const combinedText = [description, ...extraTextParts].filter(Boolean).join("\n");
+
   const out: Record<string, any> = {};
 
   const widthCandidates = [raw.widthMm, raw.width_mm, raw.width, raw.w, raw.W];
@@ -784,7 +807,7 @@ function inferLineStandardFromParsedMeta(opts: {
     out.widthMm = Math.round(w);
     out.heightMm = Math.round(h);
   } else {
-    const dims = extractFirstDimensionsMm(description);
+    const dims = extractFirstDimensionsMm(combinedText || description);
     if (dims) {
       out.widthMm = dims.widthMm;
       out.heightMm = dims.heightMm;
@@ -792,46 +815,60 @@ function inferLineStandardFromParsedMeta(opts: {
   }
 
   const descLower = description.toLowerCase();
-  const pickString = (v: any): string | null => {
-    if (typeof v === "string") {
-      const s = v.trim();
-      return s ? s : null;
-    }
-    return null;
+  const combinedLower = (combinedText || description).toLowerCase();
+
+  const pickLabelValue = (labelRe: RegExp): string | null => {
+    const m = (combinedText || "").match(labelRe);
+    if (!m) return null;
+    const rawValue = (m[1] || "").trim();
+    if (!rawValue) return null;
+    // Trim trailing punctuation + obvious endings
+    return rawValue.replace(/\s{2,}/g, " ").replace(/[\s.;,:-]+$/, "").trim() || null;
   };
 
-  const timber = pickString(raw.timber || raw.wood || raw.material);
+  const timber =
+    pickString(raw.timber || raw.wood || raw.material) ||
+    pickLabelValue(/timber\s*type\s*:\s*([^\n]+)/i) ||
+    pickLabelValue(/material\s*:\s*([^\n]+)/i);
   if (timber) out.timber = timber;
-  else if (/(accoya|oak|sapele|pine|idighbo|mahogany)/i.test(descLower)) {
-    const m = descLower.match(/(accoya|oak|sapele|pine|idighbo|mahogany)/i);
+  else if (/(accoya|oak|sapele|pine|idighbo|mahogany|softwood|hardwood)/i.test(combinedLower)) {
+    const m = combinedLower.match(/(accoya|oak|sapele|pine|idighbo|mahogany|softwood|hardwood)/i);
     if (m?.[1]) out.timber = m[1];
   }
 
-  const finish = pickString(raw.finish || raw.coating || raw.paint);
+  const finish =
+    pickString(raw.finish || raw.coating || raw.paint) ||
+    pickLabelValue(/finish\s*:\s*([^\n]+)/i) ||
+    pickLabelValue(/factory\s+finished\s+in\s+(?:a\s+)?([^\n]+)/i);
   if (finish) out.finish = finish;
-  else if (/(primed|painted|sprayed|stained|ral\s*\d{3,4})/i.test(descLower)) {
-    const m = descLower.match(/(primed|painted|sprayed|stained|ral\s*\d{3,4})/i);
+  else if (/(primed|painted|sprayed|stained|ral\s*\d{3,4}|satin\s+finish)/i.test(combinedLower)) {
+    const m = combinedLower.match(/(primed|painted|sprayed|stained|ral\s*\d{3,4}|satin\s+finish)/i);
     if (m?.[1]) out.finish = m[1];
   }
 
-  const glazing = pickString(raw.glazing || raw.glass);
+  const glazing =
+    pickString(raw.glazing || raw.glass) ||
+    pickLabelValue(/glazing\s*:\s*([^\n]+)/i) ||
+    pickLabelValue(/glass\s*:\s*([^\n]+)/i);
   if (glazing) out.glazing = glazing;
-  else if (/(double\s*glazed|triple\s*glazed|toughened|laminated|\b4\/\d{2}\/4\b)/i.test(descLower)) {
-    const m = descLower.match(/(double\s*glazed|triple\s*glazed|toughened|laminated|\b4\/\d{2}\/4\b)/i);
+  else if (/(double\s*glazed|triple\s*glazed|toughened|laminated|planitherm|argon|warmedge|thermobar|\b\d+(?:\.\d+)?\/\d{2}\/\d+(?:\.\d+)?\b)/i.test(combinedLower)) {
+    const m = combinedLower.match(/(double\s*glazed|triple\s*glazed|toughened|laminated|planitherm|argon|warmedge|thermobar|\b\d+(?:\.\d+)?\/\d{2}\/\d+(?:\.\d+)?\b)/i);
     if (m?.[1]) out.glazing = m[1];
   }
 
-  const ironmongery = pickString(raw.ironmongery || raw.hardware);
+  const ironmongery =
+    pickString(raw.ironmongery || raw.hardware) ||
+    pickLabelValue(/fittings\s*type\s*:\s*([^\n]+)/i);
   if (ironmongery) out.ironmongery = ironmongery;
-  else if (/(hinge|lock|handle|espag|espagnolette|shoot\s*bolt)/i.test(descLower)) {
-    const m = descLower.match(/(hinge|lock|handle|espag|espagnolette|shoot\s*bolt)/i);
+  else if (/(hinge|lock|handle|espag|espagnolette|shoot\s*bolt|multipoint\s+locking)/i.test(combinedLower)) {
+    const m = combinedLower.match(/(hinge|lock|handle|espag|espagnolette|shoot\s*bolt|multipoint\s+locking)/i);
     if (m?.[1]) out.ironmongery = m[1];
   }
 
   const productType = pickString(raw.productType || raw.product_type || raw.type);
   if (productType) out.productType = productType;
-  else if (/(door|window|bifold|bi-fold|sliding|sash)/i.test(descLower)) {
-    const m = descLower.match(/(bifold|bi-fold|sliding|sash|door|window)/i);
+  else if (/(door|window|bifold|bi-fold|sliding|sash)/i.test(combinedLower)) {
+    const m = combinedLower.match(/(bifold|bi-fold|sliding|sash|door|window)/i);
     if (m?.[1]) out.productType = m[1].replace(/bi-fold/i, "bifold");
   }
 

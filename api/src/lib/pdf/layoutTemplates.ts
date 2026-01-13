@@ -472,7 +472,7 @@ export async function parsePdfWithTemplate(
 }
 
 export async function extractPositionedText(buffer: Buffer): Promise<PdfLayout> {
-  const pdfjsLib: any = await import("pdfjs-dist/legacy/build/pdf.js");
+  const pdfjsLib: any = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const loadingTask = pdfjsLib.getDocument({ data: buffer, useWorker: false });
   const doc = await loadingTask.promise;
   const textBlocks: PositionedText[] = [];
