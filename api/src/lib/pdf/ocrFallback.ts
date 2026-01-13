@@ -199,12 +199,23 @@ export async function runOcrFallback(
     };
   }
 
-  const worker = await tesseract.createWorker({ logger: undefined });
+  let worker: any;
+  try {
+    // tesseract.js v7: createWorker(langs='eng', oem?, options?, config?)
+    // Passing an options object as the first arg will crash (langsArr.map is not a function).
+    worker = await tesseract.createWorker("eng", undefined, {
+      logger: undefined,
+      // Ensure library-level errors don't throw uncaught exceptions.
+      errorHandler: () => {},
+    });
+  } catch (err: any) {
+    const msg = `OCR fallback unavailable: tesseract worker init failed (${formatErr(err)}).`;
+    console.warn("[runOcrFallback]", msg);
+    return { replacements: [], warnings: [msg], stage: "tesseract" };
+  }
 
   try {
-    await worker.load();
-    await worker.loadLanguage("eng");
-    await worker.initialize("eng");
+    // v7 workers come pre-loaded; load/loadLanguage/initialize are not needed.
 
     // Render the first page to an image and OCR that.
     // This avoids the "OCR the already-garbled text" problem and works for scanned PDFs.
