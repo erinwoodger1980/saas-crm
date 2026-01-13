@@ -38,6 +38,19 @@ import {
 
 const router = Router();
 
+// IMPORTANT: UploadedFile now includes a potentially large `content` blob.
+// Never select it by default; only fetch it explicitly when needed.
+const UPLOADED_FILE_SAFE_SELECT = {
+  id: true,
+  name: true,
+  kind: true,
+  quoteId: true,
+  mimeType: true,
+  sizeBytes: true,
+  uploadedAt: true,
+  path: true,
+} as const;
+
 type ParserStageName = NonNullable<SupplierParseResult["usedStages"]>[number];
 
 /**
@@ -823,7 +836,7 @@ router.post("/:id/lines/fill-standard-from-parsed", requireAuth, async (req: any
     const quoteId = String(req.params.id);
     const quote = await prisma.quote.findFirst({
       where: { id: quoteId, tenantId },
-      include: { lines: true, supplierFiles: true },
+      include: { lines: true },
     });
     if (!quote) return res.status(404).json({ error: "not_found" });
 
@@ -1628,7 +1641,7 @@ router.get("/:id", requireAuth, async (req: any, res) => {
     try {
       q = await prisma.quote.findFirst({
         where: { id, tenantId },
-        include: { lines: true, supplierFiles: true },
+        include: { lines: true, supplierFiles: { select: UPLOADED_FILE_SAFE_SELECT } },
       });
     } catch (inner: any) {
       const msg = inner?.message || String(inner);
@@ -2127,7 +2140,7 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
     try {
       quote = await prisma.quote.findFirst({
         where: { id: quoteId, tenantId },
-        include: { supplierFiles: true },
+        include: { supplierFiles: { select: UPLOADED_FILE_SAFE_SELECT } },
       });
     } catch (err: any) {
       if (shouldFallbackQuoteQuery(err)) {
@@ -3465,6 +3478,7 @@ async function fetchLineImageUrls(lines: any[], tenantId: string): Promise<Recor
       id: { in: imageFileIds },
       kind: "LINE_IMAGE" as FileKind,
     },
+    select: { id: true },
   });
   
   // Generate signed URLs for each image
@@ -4324,7 +4338,10 @@ router.get("/:id/files/:fileId/signed", requireAuth, async (req: any, res) => {
     const fileId = String(req.params.fileId);
     let quote: any;
     try {
-      quote = await prisma.quote.findFirst({ where: { id, tenantId }, include: { supplierFiles: true } });
+      quote = await prisma.quote.findFirst({
+        where: { id, tenantId },
+        include: { supplierFiles: { select: UPLOADED_FILE_SAFE_SELECT } },
+      });
     } catch (inner: any) {
       // Mirror fallback logic used in other quote endpoints to handle production schema drift
       if (shouldFallbackQuoteQuery(inner)) {
@@ -5004,7 +5021,7 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
     try {
       quote = await prisma.quote.findFirst({
         where: { id: quoteId, tenantId },
-        include: { supplierFiles: true, lines: true },
+        include: { supplierFiles: { select: UPLOADED_FILE_SAFE_SELECT }, lines: true },
       });
     } catch (err: any) {
       if (shouldFallbackQuoteQuery(err)) {
