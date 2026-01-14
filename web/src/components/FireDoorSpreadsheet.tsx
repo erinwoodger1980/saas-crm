@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { apiFetch } from "@/lib/api";
 import DataGrid, { Column, SelectColumn, RenderEditCellProps } from "react-data-grid";
 import "react-data-grid/lib/styles.css";
+import clsx from "clsx";
 import { Button } from "@/components/ui/button";
 import { Settings, Download } from "lucide-react";
 import { ColumnHeaderModal } from "@/components/FireDoorGridConfig";
@@ -81,6 +82,95 @@ interface FireDoorSpreadsheetProps {
   importId?: string;
   onQuoteCreated?: (quoteId: string) => void;
   onComponentCreated?: () => void;
+}
+
+function normalizeHeaderKey(input: string): string {
+  return String(input || "")
+    .toLowerCase()
+    .replace(/\u00a0/g, " ") // nbsp
+    .replace(/\s+/g, " ")
+    .replace(/\s*\/\s*/g, "/")
+    .replace(/\s*-\s*/g, "-")
+    .trim();
+}
+
+function maybeParseNumber(value: any): any {
+  if (typeof value !== "string") return value;
+  const v = value.trim();
+  if (!v) return value;
+  // Basic numeric coercion for formula support (keeps non-numeric strings as-is)
+  if (/^-?\d+(\.\d+)?$/.test(v)) return Number(v);
+  return value;
+}
+
+function hydrateImportRow(item: any, columns: ReadonlyArray<Column<any>>): any {
+  const row: any = { ...(item || {}) };
+  const raw = item?.rawRowJson && typeof item.rawRowJson === "object" ? item.rawRowJson : {};
+
+  // Persisted edits for non-DB columns are stored here (keyed by grid column key)
+  const persistedGrid = (raw && typeof raw === "object" && (raw as any).__grid && typeof (raw as any).__grid === "object")
+    ? (raw as any).__grid
+    : {};
+
+  const rawByNorm = new Map<string, any>();
+  for (const [k, v] of Object.entries(raw)) {
+    rawByNorm.set(normalizeHeaderKey(k), v);
+  }
+
+  // Map grid column keys (UI) to stored DB keys when they differ.
+  const alias: Record<string, string> = {
+    doorsetLeafFrame: "doorsetType",
+    acousticRating: "acousticRatingDb",
+    fanlightSidelightGlazing: "fanlightSidelightGlz",
+    doorEdgeProtPosition: "doorEdgeProtPos",
+    visionPanelQtyLeaf1: "visionQtyLeaf1",
+    visionPanelQtyLeaf2: "visionQtyLeaf2",
+    leaf1Aperture1Width: "vp1WidthLeaf1",
+    leaf1Aperture1Height: "vp1HeightLeaf1",
+    leaf1Aperture2Width: "vp2WidthLeaf1",
+    leaf1Aperture2Height: "vp2HeightLeaf1",
+    leaf2Aperture1Width: "vp1WidthLeaf2",
+    leaf2Aperture1Height: "vp1HeightLeaf2",
+    leaf2Aperture2Width: "vp2WidthLeaf2",
+    leaf2Aperture2Height: "vp2HeightLeaf2",
+    addition1: "additionNote1",
+    addition1Qty: "additionNote1Qty",
+    closersFloorsprings: "closerOrFloorSpring",
+    closerType: "closerOrFloorSpring",
+    mLeafWidth: "masterLeafWidth",
+    sLeafWidth: "slaveLeafWidth",
+    priceEa: "unitValue",
+    linePrice: "lineTotal",
+  };
+
+  for (const col of columns) {
+    const key = (col as any)?.key;
+    if (!key || typeof key !== "string") continue;
+
+    // 0) Apply persisted grid overrides (take precedence)
+    if (Object.prototype.hasOwnProperty.call(persistedGrid, key)) {
+      row[key] = persistedGrid[key];
+    }
+
+    // 1) Alias from DB field
+    if ((row[key] === undefined || row[key] === null) && alias[key] && row[alias[key]] != null) {
+      row[key] = row[alias[key]];
+    }
+
+    // 2) Fall back to raw CSV value by matching the displayed header name
+    const colName = typeof (col as any)?.name === "string" ? (col as any).name : "";
+    if ((row[key] === undefined || row[key] === null) && colName) {
+      const rawVal = rawByNorm.get(normalizeHeaderKey(colName));
+      if (rawVal !== undefined) {
+        row[key] = maybeParseNumber(rawVal);
+      }
+    }
+
+    // 3) Ensure the field exists for consistent grid behavior
+    if (row[key] === undefined) row[key] = null;
+  }
+
+  return row;
 }
 
 // Define all columns matching the exact order and names provided (223 columns total)
@@ -298,10 +388,14 @@ const COLUMNS: Column<FireDoorRow>[] = [
   { key: "doorsetWeight", name: "Doorset Weight (Approx) kg - Ironmongery not allowed for", width: 380, editable: true },
 ];
 
+const GRID_KEYS: string[] = Array.from(new Set(COLUMNS.map((c) => String((c as any).key || "")).filter(Boolean)));
+
 export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onComponentCreated }: FireDoorSpreadsheetProps) {
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<FireDoorRow[]>([]);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
+  const [activeCell, setActiveCell] = useState<{ rowIdx: number; colKey: string } | null>(null);
+  const [selection, setSelection] = useState<{ anchor: { rowIdx: number; colKey: string }; focus: { rowIdx: number; colKey: string } } | null>(null);
   const [creatingQuote, setCreatingQuote] = useState(false);
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [configModalColumn, setConfigModalColumn] = useState<string>("");
@@ -312,6 +406,15 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   const [availableComponents, setAvailableComponents] = useState<Array<{ id: string; code: string; name: string }>>([]);
   const [availableFields, setAvailableFields] = useState<Array<{ name: string; type: string }>>([]);
 
+  const rowsRef = useRef<FireDoorRow[]>([]);
+  const saveTimersRef = useRef<Map<string, any>>(new Map());
+  const bomTimerRef = useRef<any>(null);
+  const gridContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
+
   // Load fire door data from import
   useEffect(() => {
     if (!importId) return;
@@ -321,9 +424,10 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       setError(null);
       try {
         const data = await apiFetch<any>(`/fire-doors/imports/${importId}`);
-        setRows(data.lineItems || []);
+        const hydrated = (data.lineItems || []).map((item: any) => hydrateImportRow(item, COLUMNS));
+        setRows(hydrated);
         // Select all rows by default
-        setSelectedRows(new Set(data.lineItems.map((r: any) => r.id)));
+        setSelectedRows(new Set((data.lineItems || []).map((r: any) => r.id)));
       } catch (err: any) {
         setError(err.message || "Failed to load import");
       } finally {
@@ -334,8 +438,190 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     loadImport();
   }, [importId]);
 
+  const editableKeySet = useMemo(() => {
+    const s = new Set<string>();
+    for (const col of COLUMNS) {
+      const cfg = gridConfig[col.key];
+      const isFormula = cfg?.inputType === 'formula';
+      if (!isFormula && col.editable) s.add(col.key);
+    }
+    return s;
+  }, [gridConfig]);
+
+  const getSelectableColumns = useCallback((gridCols: readonly Column<FireDoorRow>[]) => {
+    return gridCols
+      .map((c: any) => String(c?.key || ''))
+      .filter((k) => k && k !== 'select-row');
+  }, []);
+
+  const bulkPersist = useCallback(async (updates: Array<{ id: string; changes: Record<string, any> }>) => {
+    if (!updates.length) return;
+    try {
+      await apiFetch(`/fire-doors/line-items/bulk`, {
+        method: 'PATCH',
+        json: { updates },
+      });
+    } catch (err: any) {
+      console.error('[fire-door-grid] Bulk save failed:', err);
+      setError(err?.message || 'Failed to save changes');
+    }
+  }, []);
+
+  const selectionRange = useMemo(() => {
+    if (!selection) return null;
+
+    const gridCols = [SelectColumn, ...COLUMNS] as unknown as readonly Column<FireDoorRow>[];
+    const keys = getSelectableColumns(gridCols);
+    const idx = new Map<string, number>();
+    keys.forEach((k, i) => idx.set(k, i));
+
+    const aCol = idx.get(selection.anchor.colKey);
+    const fCol = idx.get(selection.focus.colKey);
+    if (aCol == null || fCol == null) return null;
+
+    const startRow = Math.min(selection.anchor.rowIdx, selection.focus.rowIdx);
+    const endRow = Math.max(selection.anchor.rowIdx, selection.focus.rowIdx);
+    const startColIdx = Math.min(aCol, fCol);
+    const endColIdx = Math.max(aCol, fCol);
+
+    return { startRow, endRow, startColIdx, endColIdx, keys };
+  }, [selection, getSelectableColumns]);
+
+  const isCellInSelection = useCallback((rowIdx: number, colKey: string) => {
+    if (!selectionRange) return false;
+    const colIdx = selectionRange.keys.indexOf(colKey);
+    if (colIdx < 0) return false;
+    return (
+      rowIdx >= selectionRange.startRow &&
+      rowIdx <= selectionRange.endRow &&
+      colIdx >= selectionRange.startColIdx &&
+      colIdx <= selectionRange.endColIdx
+    );
+  }, [selectionRange]);
+
+  const buildTsvFromSelection = useCallback((): string | null => {
+    if (!selectionRange) return null;
+    const { startRow, endRow, startColIdx, endColIdx, keys } = selectionRange;
+    const currentRows = rowsRef.current;
+
+    const lines: string[] = [];
+    for (let r = startRow; r <= endRow; r++) {
+      const row = currentRows[r];
+      if (!row) continue;
+      const vals: string[] = [];
+      for (let c = startColIdx; c <= endColIdx; c++) {
+        const key = keys[c];
+        const v = (row as any)[key];
+        vals.push(v == null ? '' : String(v));
+      }
+      lines.push(vals.join('\t'));
+    }
+    return lines.join('\n');
+  }, [selectionRange]);
+
+  const applyPasteTsv = useCallback(async (tsv: string) => {
+    const currentRows = rowsRef.current;
+    if (!currentRows.length) return;
+
+    const start = activeCell || (selection?.anchor ?? null);
+    if (!start) return;
+
+    const gridCols = [SelectColumn, ...COLUMNS] as unknown as readonly Column<FireDoorRow>[];
+    const keys = getSelectableColumns(gridCols);
+    const idx = new Map<string, number>();
+    keys.forEach((k, i) => idx.set(k, i));
+
+    const startColIdx = idx.get(start.colKey);
+    if (startColIdx == null) return;
+
+    const rowsText = tsv.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    // ignore trailing empty line from many clipboards
+    while (rowsText.length > 0 && rowsText[rowsText.length - 1] === '') rowsText.pop();
+    if (rowsText.length === 0) return;
+
+    const nextRows = currentRows.map((r) => ({ ...r }));
+    const updates: Array<{ id: string; changes: Record<string, any> }> = [];
+    const changedById = new Map<string, Record<string, any>>();
+
+    for (let rOff = 0; rOff < rowsText.length; rOff++) {
+      const targetRowIdx = start.rowIdx + rOff;
+      if (targetRowIdx < 0 || targetRowIdx >= nextRows.length) break;
+      const targetRow = nextRows[targetRowIdx];
+      const prevRow = currentRows[targetRowIdx];
+      const cells = rowsText[rOff].split('\t');
+
+      for (let cOff = 0; cOff < cells.length; cOff++) {
+        const targetColIdx = startColIdx + cOff;
+        if (targetColIdx < 0 || targetColIdx >= keys.length) break;
+        const key = keys[targetColIdx];
+        if (!editableKeySet.has(key)) continue;
+
+        const rawVal = cells[cOff];
+        const nextVal = maybeParseNumber(rawVal);
+        if (Object.is((prevRow as any)[key], nextVal)) continue;
+        (targetRow as any)[key] = nextVal === '' ? null : nextVal;
+
+        const patch = changedById.get(targetRow.id) || {};
+        patch[key] = (targetRow as any)[key];
+        changedById.set(targetRow.id, patch);
+      }
+    }
+
+    for (const [id, changes] of changedById.entries()) {
+      updates.push({ id, changes });
+    }
+
+    if (updates.length === 0) return;
+    setRows(nextRows);
+    rowsRef.current = nextRows;
+
+    await bulkPersist(updates);
+  }, [activeCell, selection, bulkPersist, getSelectableColumns, editableKeySet]);
+
   const handleRowsChange = useCallback((newRows: FireDoorRow[]) => {
+    const oldRows = rowsRef.current;
+    const oldById = new Map<string, FireDoorRow>();
+    for (const r of oldRows) oldById.set(r.id, r);
+
     setRows(newRows);
+
+    // Debounced persistence: only send the changed keys for each changed row.
+    const persistRowPatch = async (rowId: string, patch: Record<string, any>) => {
+      try {
+        await apiFetch(`/fire-doors/line-items/${encodeURIComponent(rowId)}`, {
+          method: "PATCH",
+          json: { changes: patch },
+        });
+      } catch (err: any) {
+        console.error("[fire-door-grid] Failed to save row:", err);
+        setError(err?.message || "Failed to save changes");
+      }
+    };
+
+    for (const row of newRows) {
+      const prev = oldById.get(row.id);
+      if (!prev) continue;
+
+      const patch: Record<string, any> = {};
+      for (const key of GRID_KEYS) {
+        if (key === "rowIndex" || key === "id") continue;
+        if (!Object.is((prev as any)[key], (row as any)[key])) {
+          patch[key] = (row as any)[key];
+        }
+      }
+
+      if (Object.keys(patch).length === 0) continue;
+
+      const existingTimer = saveTimersRef.current.get(row.id);
+      if (existingTimer) clearTimeout(existingTimer);
+
+      const timer = setTimeout(() => {
+        persistRowPatch(row.id, patch);
+        saveTimersRef.current.delete(row.id);
+      }, 600);
+
+      saveTimersRef.current.set(row.id, timer);
+    }
 
     // Auto-generate BOMs for all rows
     const batchGenerateBOMs = async () => {
@@ -370,8 +656,9 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     };
 
     // Debounce BOM generation
-    const timer = setTimeout(batchGenerateBOMs, 1000);
-    return () => clearTimeout(timer);
+    if (bomTimerRef.current) clearTimeout(bomTimerRef.current);
+    bomTimerRef.current = setTimeout(batchGenerateBOMs, 1000);
+    return;
 
     // Check for component creation triggers
     newRows.forEach((newRow, index) => {
@@ -668,38 +955,136 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
           renderEditCell: isDropdown ? DropdownCell : undefined,
           renderCell: (props: any) => {
             const row = props.row;
+            const rowIdx = props.rowIdx as number;
             let value = row[col.key];
+            const inSelection = isCellInSelection(rowIdx, col.key);
+            const isActive = activeCell?.rowIdx === rowIdx && activeCell?.colKey === col.key;
+            const baseClass = clsx(
+              'px-2',
+              inSelection && 'bg-blue-50',
+              isActive && 'ring-2 ring-blue-500 ring-inset'
+            );
             
             // Evaluate formula if configured
             if (isFormula && fieldConfig?.formula) {
               value = evaluateFormula(fieldConfig.formula, row);
             }
             
-            if (value === null || value === undefined) return <div className="px-2 text-gray-400">-</div>;
+            if (value === null || value === undefined) return <div className={clsx(baseClass, 'text-gray-400')}>-</div>;
             
             // Format currency columns
             if (['labourCost', 'materialCost', 'unitValue', 'lineTotal', 'priceEa', 'linePrice'].includes(col.key)) {
-              return <div className="px-2 font-semibold text-green-700">£{Number(value).toFixed(2)}</div>;
+              return <div className={clsx(baseClass, 'font-semibold text-green-700')}>£{Number(value).toFixed(2)}</div>;
             }
             
             // Show lookup label if configured
             if (isDropdown && fieldConfig?.lookupTable) {
               const options = lookupOptions[fieldConfig.lookupTable] || [];
               const option = options.find(opt => opt.value === value);
-              return <div className="px-2">{option?.label || value}</div>;
+              return <div className={baseClass}>{option?.label || value}</div>;
             }
             
             // Formula indicator
             if (isFormula) {
-              return <div className="px-2 bg-blue-50 text-blue-700 font-mono text-xs">{value}</div>;
+              return <div className={clsx(baseClass, 'text-blue-700 font-mono text-xs')}>{value}</div>;
             }
           
-            return <div className="px-2">{value}</div>;
+            return <div className={baseClass}>{value}</div>;
           },
         };
       }),
     ];
-  }, [gridConfig, lookupOptions]);
+  }, [gridConfig, lookupOptions, activeCell, isCellInSelection]);
+
+  const handleCellClick = useCallback((args: any, event: any) => {
+    try {
+      const colKey = String(args?.column?.key || '').trim();
+      if (!colKey || colKey === 'select-row') return;
+      const rowId = String(args?.row?.id || '').trim();
+      if (!rowId) return;
+      const rowIdx = rowsRef.current.findIndex((r) => r.id === rowId);
+      if (rowIdx < 0) return;
+
+      const next = { rowIdx, colKey };
+      setActiveCell(next);
+      if (event?.shiftKey && selection?.anchor) {
+        setSelection({ anchor: selection.anchor, focus: next });
+      } else {
+        setSelection({ anchor: next, focus: next });
+      }
+
+      // Ensure copy/paste handlers can fire via container capture
+      gridContainerRef.current?.focus?.();
+    } catch {
+      // no-op
+    }
+  }, [selection]);
+
+  const handleCopyCapture = useCallback((e: React.ClipboardEvent) => {
+    const tsv = buildTsvFromSelection();
+    if (!tsv) return;
+    try {
+      e.clipboardData.setData('text/plain', tsv);
+      e.preventDefault();
+    } catch {
+      // ignore
+    }
+  }, [buildTsvFromSelection]);
+
+  const handlePasteCapture = useCallback((e: React.ClipboardEvent) => {
+    const text = e.clipboardData.getData('text/plain');
+    if (!text) return;
+    // Only handle multi-cell paste when we have an active cell/selection.
+    if (!activeCell && !selection) return;
+    e.preventDefault();
+    applyPasteTsv(text);
+  }, [applyPasteTsv, activeCell, selection]);
+
+  const handleKeyDownCapture = useCallback((e: React.KeyboardEvent) => {
+    // Fill-down (Ctrl/Cmd + D)
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'd' || e.key === 'D')) {
+      if (!selectionRange) return;
+      e.preventDefault();
+
+      const { startRow, endRow, startColIdx, endColIdx, keys } = selectionRange;
+      if (endRow <= startRow) return;
+
+      const currentRows = rowsRef.current;
+      const nextRows = currentRows.map((r) => ({ ...r }));
+      const changedById = new Map<string, Record<string, any>>();
+
+      // Copy values from the top row of the selection downwards within the selection.
+      const sourceRow = currentRows[startRow];
+      if (!sourceRow) return;
+
+      for (let r = startRow + 1; r <= endRow; r++) {
+        const target = nextRows[r];
+        const prev = currentRows[r];
+        if (!target || !prev) continue;
+
+        for (let c = startColIdx; c <= endColIdx; c++) {
+          const key = keys[c];
+          // only fill editable cells
+          const colDef = columns.find((cc: any) => String(cc?.key || '') === key);
+          if (!(colDef as any)?.editable) continue;
+
+          const nextVal = (sourceRow as any)[key];
+          if (Object.is((prev as any)[key], nextVal)) continue;
+          (target as any)[key] = nextVal;
+          const patch = changedById.get(target.id) || {};
+          patch[key] = nextVal;
+          changedById.set(target.id, patch);
+        }
+      }
+
+      const updates = Array.from(changedById.entries()).map(([id, changes]) => ({ id, changes }));
+      if (!updates.length) return;
+
+      setRows(nextRows);
+      rowsRef.current = nextRows;
+      bulkPersist(updates);
+    }
+  }, [selectionRange, columns, bulkPersist]);
 
   const selectedRowsSet = useMemo(() => {
     const set = new Set<string>();
@@ -930,7 +1315,15 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       )}
 
       {/* DataGrid with 144 columns */}
-      <div className="h-[600px] bg-white rounded-lg shadow border border-white/20">
+      <div
+        ref={gridContainerRef}
+        tabIndex={0}
+        onCopyCapture={handleCopyCapture}
+        onPasteCapture={handlePasteCapture}
+        onKeyDownCapture={handleKeyDownCapture}
+        className="h-[600px] bg-white rounded-lg shadow border border-white/20 outline-none"
+        onMouseDown={() => gridContainerRef.current?.focus()}
+      >
         <DataGrid
           columns={columns}
           rows={rows}
@@ -938,6 +1331,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
           selectedRows={selectedRowsSet}
           onSelectedRowsChange={setSelectedRows}
           onRowsChange={handleRowsChange}
+          onCellClick={handleCellClick}
           className="fill-grid"
           style={{ height: '100%' }}
           rowHeight={35}

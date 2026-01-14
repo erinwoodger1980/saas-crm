@@ -22,6 +22,70 @@ function getTenantId(req: any): string | null {
   return tenantId ? (tenantId as string) : null;
 }
 
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((v) => (typeof v === 'string' ? v.trim() : ''))
+    .filter((v) => v.length > 0);
+}
+
+function normalizeLookupRows(value: unknown): Record<string, any>[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((r) => r && typeof r === 'object') as Record<string, any>[];
+}
+
+function buildUiRowFromDbRow(dbRow: any): Record<string, any> {
+  const base = (dbRow?.customProps && typeof dbRow.customProps === 'object' && !Array.isArray(dbRow.customProps))
+    ? { ...(dbRow.customProps as Record<string, any>) }
+    : {};
+
+  // Always ensure core identifiers are present for consumers
+  base.value = dbRow.value;
+  base.label = dbRow.label;
+  if (dbRow.description != null) base.description = dbRow.description;
+  if (dbRow.code != null) base.code = dbRow.code;
+  if (dbRow.costPerUnit != null) base.costPerUnit = dbRow.costPerUnit;
+  if (dbRow.unitType != null) base.unitType = dbRow.unitType;
+  if (dbRow.currency != null) base.currency = dbRow.currency;
+  if (dbRow.markup != null) base.markup = dbRow.markup;
+  if (dbRow.isActive != null) base.isActive = dbRow.isActive;
+
+  return base;
+}
+
+function buildDbRowFromUiRow(uiRow: Record<string, any>, columns: string[], index: number): {
+  value: string;
+  label: string;
+  description?: string;
+  code?: string;
+  customProps: Record<string, any>;
+  sortOrder: number;
+  isActive: boolean;
+} {
+  const firstCol = columns[0];
+  const secondCol = columns[1];
+
+  const rawValue = uiRow.value ?? (firstCol ? uiRow[firstCol] : undefined) ?? uiRow.id ?? uiRow.code;
+  const rawLabel = uiRow.label ?? (secondCol ? uiRow[secondCol] : undefined) ?? uiRow.name;
+
+  let value = String(rawValue ?? '').trim();
+  if (!value) value = `row-${index + 1}`;
+
+  const label = String(rawLabel ?? value).trim() || value;
+  const description = typeof uiRow.description === 'string' ? uiRow.description : undefined;
+  const code = typeof uiRow.code === 'string' ? uiRow.code : undefined;
+
+  return {
+    value,
+    label,
+    description,
+    code,
+    customProps: { ...uiRow, value, label, ...(description ? { description } : {}), ...(code ? { code } : {}) },
+    sortOrder: index,
+    isActive: uiRow.isActive === false ? false : true,
+  };
+}
+
 // ============================================================================
 // FIELD ENDPOINTS
 // ============================================================================
@@ -381,9 +445,13 @@ router.get('/lookup-tables', async (req: Request, res: Response) => {
 
     console.log(`[lookup-tables] Found ${tables.length} tables for tenant ${tenantId}`);
     
-    // Return as-is - rows contain all the LookupTableRow fields
-    console.log(`[lookup-tables] Returning ${tables.length} lookup tables`);
-    return res.json(tables);
+    const payload = tables.map((t: any) => ({
+      ...t,
+      rows: Array.isArray(t.rows) ? t.rows.map(buildUiRowFromDbRow) : [],
+    }));
+
+    console.log(`[lookup-tables] Returning ${payload.length} lookup tables`);
+    return res.json(payload);
   } catch (error) {
     console.error('[lookup-tables] Error fetching lookup tables:', error);
     return res.status(500).json({ 
@@ -394,12 +462,42 @@ router.get('/lookup-tables', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/lookup-tables/:tableId
+ * Get a single lookup table (by id) for a tenant
+ */
+router.get('/lookup-tables/:tableId', async (req: Request, res: Response) => {
+  try {
+    const { tableId } = req.params;
+    const tenantId = getTenantId(req);
+
+    if (!tenantId) {
+      return res.status(400).json({ error: 'tenantId is required for /api/flexible-fields' });
+    }
+
+    const table = await prisma.lookupTable.findFirst({
+      where: { id: tableId, tenantId },
+      include: { rows: { orderBy: { sortOrder: 'asc' } } },
+    });
+
+    if (!table) return res.status(404).json({ error: 'Lookup table not found' });
+
+    return res.json({
+      ...table,
+      rows: Array.isArray((table as any).rows) ? (table as any).rows.map(buildUiRowFromDbRow) : [],
+    });
+  } catch (error) {
+    console.error('[lookup-tables] Error fetching lookup table:', error);
+    return res.status(500).json({ error: 'Failed to fetch lookup table' });
+  }
+});
+
+/**
  * POST /api/lookup-tables
  * Create a new lookup table
  */
 router.post('/lookup-tables', async (req: Request, res: Response) => {
   try {
-    const { tenantId: bodyTenantId, tableName, name, description, rows: rowsData, category } = req.body;
+    const { tenantId: bodyTenantId, tableName, name, description, rows: rowsData, category, columns } = req.body;
     const tenantId = getTenantId(req) || bodyTenantId;
     const finalTableName = tableName || name;
 
@@ -409,26 +507,76 @@ router.post('/lookup-tables', async (req: Request, res: Response) => {
       });
     }
 
-    // Check for duplicate name
-    const existing = await prisma.lookupTable.findFirst({
-      where: { tenantId, id: finalTableName },
+    // Check for duplicate tableName within tenant
+    const existing = await prisma.lookupTable.findUnique({
+      where: {
+        tenantId_tableName: {
+          tenantId,
+          tableName: finalTableName,
+        },
+      },
     });
 
     if (existing) {
       return res.status(409).json({ error: `Lookup table "${finalTableName}" already exists` });
     }
 
-    // Create table with rows
-    const table = await prisma.lookupTable.create({
-      data: {
-        tenantId,
-        tableName: finalTableName,
-        description,
-        isStandard: false,
-      },
+    const normalizedColumns = normalizeStringArray(columns);
+    const normalizedRows = normalizeLookupRows(rowsData);
+    const effectiveColumns = normalizedColumns.length
+      ? normalizedColumns
+      : (normalizedRows[0] ? Object.keys(normalizedRows[0]) : []);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const table = await tx.lookupTable.create({
+        data: {
+          tenantId,
+          tableName: finalTableName,
+          name: typeof name === 'string' && name.trim() ? name.trim() : finalTableName,
+          description,
+          category,
+          columns: effectiveColumns,
+          isStandard: false,
+        },
+      });
+
+      if (normalizedRows.length) {
+        // Ensure unique values within this payload
+        const seen = new Map<string, number>();
+        const rowsToCreate = normalizedRows.map((r, i) => {
+          const dbRow = buildDbRowFromUiRow(r, effectiveColumns, i);
+          const count = (seen.get(dbRow.value) ?? 0) + 1;
+          seen.set(dbRow.value, count);
+          const value = count > 1 ? `${dbRow.value}-${count}` : dbRow.value;
+          return {
+            lookupTableId: table.id,
+            value,
+            label: dbRow.label,
+            description: dbRow.description,
+            code: dbRow.code,
+            sortOrder: i,
+            isActive: true,
+            customProps: { ...dbRow.customProps, value },
+          };
+        });
+
+        for (const row of rowsToCreate) {
+          await tx.lookupTableRow.create({ data: row });
+        }
+      }
+
+      const full = await tx.lookupTable.findUnique({
+        where: { id: table.id },
+        include: { rows: { orderBy: { sortOrder: 'asc' } } },
+      });
+
+      return full;
     });
 
-    return res.status(201).json(table);
+    return res.status(201).json({
+      ...result,
+      rows: Array.isArray((result as any)?.rows) ? (result as any).rows.map(buildUiRowFromDbRow) : [],
+    });
   } catch (error) {
     console.error('Error creating lookup table:', error);
     return res.status(500).json({ error: 'Failed to create lookup table' });
@@ -442,18 +590,100 @@ router.post('/lookup-tables', async (req: Request, res: Response) => {
 router.patch('/lookup-tables/:tableId', async (req: Request, res: Response) => {
   try {
     const { tableId } = req.params;
-    const { rows, name, description } = req.body;
+    const { rows: rowsData, name, description, category, tableName, columns } = req.body;
+    const tenantId = getTenantId(req);
 
-    const table = await prisma.lookupTable.update({
-      where: { id: tableId },
-      data: {
-        ...(rows && { rows }),
-        ...(name && { name }),
-        ...(description && { description }),
-      },
+    if (!tenantId) {
+      return res.status(400).json({ error: 'tenantId is required for /api/flexible-fields' });
+    }
+
+    const existing = await prisma.lookupTable.findFirst({
+      where: { id: tableId, tenantId },
+      include: { rows: true },
     });
 
-    return res.json(table);
+    if (!existing) return res.status(404).json({ error: 'Lookup table not found' });
+
+    const normalizedColumns = normalizeStringArray(columns);
+    const normalizedRows = normalizeLookupRows(rowsData);
+    const effectiveColumns = normalizedColumns.length
+      ? normalizedColumns
+      : (existing as any).columns || [];
+
+    const nextTableName =
+      (typeof tableName === 'string' && tableName.trim())
+        ? tableName.trim()
+        : (typeof name === 'string' && name.trim() ? name.trim() : undefined);
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const table = await tx.lookupTable.update({
+        where: { id: tableId },
+        data: {
+          ...(nextTableName ? { tableName: nextTableName } : {}),
+          ...(typeof name === 'string' ? { name: name.trim() || null } : {}),
+          ...(typeof description === 'string' ? { description: description.trim() || null } : {}),
+          ...(typeof category === 'string' ? { category: category.trim() || null } : {}),
+          ...(effectiveColumns ? { columns: effectiveColumns } : {}),
+        },
+      });
+
+      if (Array.isArray(rowsData)) {
+        const incoming = normalizedRows.map((r, i) => buildDbRowFromUiRow(r, effectiveColumns, i));
+        const incomingValues = new Set(incoming.map((r) => r.value));
+
+        // Upsert each incoming row by (lookupTableId,value)
+        for (const [i, r] of incoming.entries()) {
+          await tx.lookupTableRow.upsert({
+            where: {
+              lookupTableId_value: {
+                lookupTableId: tableId,
+                value: r.value,
+              },
+            },
+            update: {
+              label: r.label,
+              description: r.description,
+              code: r.code,
+              sortOrder: i,
+              isActive: true,
+              customProps: r.customProps,
+            },
+            create: {
+              lookupTableId: tableId,
+              value: r.value,
+              label: r.label,
+              description: r.description,
+              code: r.code,
+              sortOrder: i,
+              isActive: true,
+              customProps: r.customProps,
+            },
+          });
+        }
+
+        // Soft-deactivate rows removed from payload
+        await tx.lookupTableRow.updateMany({
+          where: {
+            lookupTableId: tableId,
+            value: { notIn: Array.from(incomingValues) },
+            isActive: true,
+          },
+          data: { isActive: false },
+        });
+      }
+
+      const full = await tx.lookupTable.findUnique({
+        where: { id: table.id },
+        include: { rows: { orderBy: { sortOrder: 'asc' } } },
+      });
+
+      return full;
+    });
+
+    return res.json({
+      ...updated,
+      rows: Array.isArray((updated as any)?.rows) ? (updated as any).rows.map(buildUiRowFromDbRow) : [],
+    });
   } catch (error) {
     console.error('Error updating lookup table:', error);
     return res.status(500).json({ error: 'Failed to update lookup table' });
@@ -467,6 +697,14 @@ router.patch('/lookup-tables/:tableId', async (req: Request, res: Response) => {
 router.delete('/lookup-tables/:tableId', async (req: Request, res: Response) => {
   try {
     const { tableId } = req.params;
+    const tenantId = getTenantId(req);
+
+    if (!tenantId) {
+      return res.status(400).json({ error: 'tenantId is required for /api/flexible-fields' });
+    }
+
+    const existing = await prisma.lookupTable.findFirst({ where: { id: tableId, tenantId } });
+    if (!existing) return res.status(404).json({ error: 'Lookup table not found' });
 
     await prisma.lookupTable.delete({
       where: { id: tableId },
@@ -613,10 +851,10 @@ router.post('/evaluate-field', async (req: Request, res: Response) => {
     if (field.lookupTableId && inputs && field.lookupInputFields) {
       const table = await prisma.lookupTable.findUnique({
         where: { id: field.lookupTableId },
-        include: {}
+        include: { rows: { where: { isActive: true }, orderBy: { sortOrder: 'asc' } } },
       });
       if (!table) return res.status(404).json({ error: 'Lookup table not found' });
-      const rows = (table as any)?.rows || [];
+      const rows = Array.isArray((table as any)?.rows) ? (table as any).rows.map(buildUiRowFromDbRow) : [];
 
       // Filter rows based on lookup input fields
       const matchingRow = (rows as any[])?.find?.((row: any) =>

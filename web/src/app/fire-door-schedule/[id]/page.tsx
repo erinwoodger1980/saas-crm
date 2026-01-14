@@ -479,9 +479,9 @@ export default function FireDoorScheduleDetailPage() {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("projectId", id);
-      
-      const apiBase = getApiBase();
-      const response = await fetch(`${apiBase}/fire-doors/import`, {
+
+      // Always hit same-origin Next.js API route; it proxies to the backend.
+      const response = await fetch(`/api/fire-doors/import`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("jwt")}`,

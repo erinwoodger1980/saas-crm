@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   } catch (error: any) {
-    console.error("[grid-config/all GET] Error:", error);
+    console.error("[grid/config/all GET] Error:", error);
     return NextResponse.json(
       { error: "Failed to fetch grid configs", message: error.message },
       { status: 500 }
