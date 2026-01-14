@@ -31,7 +31,7 @@ interface FormulaWizardProps {
   onSave: (formula: string) => void;
   initialFormula?: string;
   availableFields: Array<{ name: string; type: string }>;
-  availableLookupTables: Array<{ id: string; tableName?: string; name?: string; category?: string }>;
+  availableLookupTables: Array<{ id: string; tableName?: string; name?: string; category?: string; columns?: string[] }>;
   availableFunctions?: string[];
 }
 
@@ -68,6 +68,10 @@ export function FormulaWizard({
   const [selectedField, setSelectedField] = useState<string>("");
   const [selectedOperator, setSelectedOperator] = useState<string>("");
   const [selectedLookupTable, setSelectedLookupTable] = useState<string>("");
+  const [lookupMatches, setLookupMatches] = useState<Array<{ tableColumn: string; fieldName: string }>>([
+    { tableColumn: "", fieldName: "" },
+  ]);
+  const [lookupReturnColumn, setLookupReturnColumn] = useState<string>("");
   const [numberInput, setNumberInput] = useState<string>("");
   const [textInput, setTextInput] = useState<string>("");
 
@@ -198,16 +202,36 @@ export function FormulaWizard({
     if (table) {
       const tableName = table.tableName || table.name;
       if (!tableName) return;
+
+      const conditions = lookupMatches
+        .map((m) => {
+          const col = String(m.tableColumn || "").trim();
+          const field = String(m.fieldName || "").trim();
+          if (!col || !field) return null;
+          return `${col}=\${${field}}`;
+        })
+        .filter(Boolean)
+        .join("&");
+
+      const returnCol = String(lookupReturnColumn || "").trim();
+      if (!returnCol) return;
+
+      const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/\"/g, '\\"');
       const newToken: FormulaToken = {
         type: "lookup",
-        value: `LOOKUP(${tableName}, , )`,
+        value: `LOOKUP("${esc(tableName)}", "${esc(conditions)}", "${esc(returnCol)}")`,
         label: `LOOKUP(${tableName})`,
       };
       setTokens([...tokens, newToken]);
       updateFormula([...tokens, newToken]);
       setSelectedLookupTable("");
+      setLookupMatches([{ tableColumn: "", fieldName: "" }]);
+      setLookupReturnColumn("");
     }
   };
+
+  const selectedLookupTableObj = availableLookupTables.find((t) => t.id === selectedLookupTable);
+  const lookupTableColumns = Array.isArray(selectedLookupTableObj?.columns) ? selectedLookupTableObj!.columns! : [];
 
   const removeToken = (index: number) => {
     const newTokens = tokens.filter((_, i) => i !== index);
@@ -278,6 +302,95 @@ export function FormulaWizard({
                       return (
                         <SelectItem key={fn} value={fn}>
                           {fn} {funcDef ? ` - ${funcDef.description}` : ""}
+
+                  {selectedLookupTable && (
+                    <div className="mt-3 space-y-3 rounded-md border p-3">
+                      <div>
+                        <div className="text-xs font-semibold mb-2">Match columns</div>
+                        <div className="space-y-2">
+                          {lookupMatches.map((m, idx) => (
+                            <div key={idx} className="flex gap-2 items-center">
+                              <Select
+                                value={m.tableColumn}
+                                onValueChange={(v) =>
+                                  setLookupMatches((prev) => prev.map((x, i) => (i === idx ? { ...x, tableColumn: v } : x)))
+                                }
+                              >
+                                <SelectTrigger className="flex-1">
+                                  <SelectValue placeholder="Lookup table column..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {lookupTableColumns.map((c) => (
+                                    <SelectItem key={c} value={c}>
+                                      {c}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+
+                              <Select
+                                value={m.fieldName}
+                                onValueChange={(v) =>
+                                  setLookupMatches((prev) => prev.map((x, i) => (i === idx ? { ...x, fieldName: v } : x)))
+                                }
+                              >
+                                <SelectTrigger className="flex-1">
+                                  <SelectValue placeholder="Match to field..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {availableFields.map((field) => (
+                                    <SelectItem key={field.name} value={field.name}>
+                                      {field.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setLookupMatches((prev) =>
+                                    prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx)
+                                  );
+                                }}
+                                disabled={lookupMatches.length <= 1}
+                                title="Remove match"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setLookupMatches((prev) => [...prev, { tableColumn: "", fieldName: "" }])}
+                            disabled={lookupTableColumns.length === 0}
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add match
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-xs font-semibold mb-2">Return column</div>
+                        <Select value={lookupReturnColumn} onValueChange={setLookupReturnColumn}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select return column..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {lookupTableColumns.map((c) => (
+                              <SelectItem key={c} value={c}>
+                                {c}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
                         </SelectItem>
                       );
                     })}

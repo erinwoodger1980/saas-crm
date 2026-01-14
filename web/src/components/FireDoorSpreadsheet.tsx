@@ -504,7 +504,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   const [gridConfig, setGridConfig] = useState<Record<string, any>>({});
   const [lookupOptions, setLookupOptions] = useState<Record<string, Array<{value: string; label: string}>>>({});
   const [error, setError] = useState<string | null>(null);
-  const [availableLookupTables, setAvailableLookupTables] = useState<Array<{ id: string; tableName: string; category?: string }>>([]);
+  const [availableLookupTables, setAvailableLookupTables] = useState<Array<{ id: string; tableName?: string; name?: string; category?: string; columns?: string[]; rows?: Array<Record<string, any>> }>>([]);
   const [availableComponents, setAvailableComponents] = useState<Array<{ id: string; code: string; name: string }>>([]);
   const [availableFields, setAvailableFields] = useState<Array<{ name: string; type: string }>>([]);
 
@@ -1182,9 +1182,166 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   };
 
   // Evaluate formulas
+  const lookupTablesByName = useMemo(() => {
+    const m = new Map<string, any>();
+    for (const t of availableLookupTables as any[]) {
+      const name = String(t?.tableName || t?.name || '').trim();
+      if (!name) continue;
+      m.set(name, t);
+    }
+    return m;
+  }, [availableLookupTables]);
+
+  const unquote = (s: string) => {
+    const t = String(s || '').trim();
+    if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) {
+      return t.slice(1, -1);
+    }
+    return t;
+  };
+
+  const splitTopLevelArgs = (s: string): string[] => {
+    const out: string[] = [];
+    let cur = '';
+    let depth = 0;
+    let quote: '"' | "'" | null = null;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (quote) {
+        cur += ch;
+        if (ch === quote && s[i - 1] !== '\\') quote = null;
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        quote = ch;
+        cur += ch;
+        continue;
+      }
+      if (ch === '(') {
+        depth++;
+        cur += ch;
+        continue;
+      }
+      if (ch === ')') {
+        depth = Math.max(0, depth - 1);
+        cur += ch;
+        continue;
+      }
+      if (ch === ',' && depth === 0) {
+        out.push(cur.trim());
+        cur = '';
+        continue;
+      }
+      cur += ch;
+    }
+    if (cur.trim()) out.push(cur.trim());
+    return out;
+  };
+
+  const valuesEqual = (a: any, b: any) => {
+    if (a == null && b == null) return true;
+    const as = String(a ?? '').trim();
+    const bs = String(b ?? '').trim();
+    const an = Number(as);
+    const bn = Number(bs);
+    const aNumOk = as !== '' && Number.isFinite(an);
+    const bNumOk = bs !== '' && Number.isFinite(bn);
+    if (aNumOk && bNumOk) return an === bn;
+    return as.localeCompare(bs, undefined, { sensitivity: 'accent' }) === 0;
+  };
+
+  const resolveLookup = (tableName: string, conditions: string, returnField: string, row: FireDoorRow) => {
+    const table = lookupTablesByName.get(tableName);
+    const rows = Array.isArray(table?.rows) ? (table.rows as Array<Record<string, any>>) : [];
+    if (!rows.length) return null;
+
+    const condStr = String(conditions || '').replace(/\$\{([^}]+)\}/g, (_m, keyRaw) => {
+      const key = String(keyRaw || '').trim();
+      const v = (row as any)[key];
+      return v == null ? '' : String(v);
+    });
+
+    const conds: Array<{ key: string; value: string }> = [];
+    for (const part of condStr.split('&')) {
+      const p = String(part || '').trim();
+      if (!p) continue;
+      const eq = p.indexOf('=');
+      if (eq < 0) continue;
+      const k = p.slice(0, eq).trim();
+      const v = p.slice(eq + 1).trim();
+      if (!k) continue;
+      conds.push({ key: k, value: unquote(v) });
+    }
+
+    const ret = String(returnField || '').trim();
+    if (!ret) return null;
+
+    const found = rows.find((r) => {
+      if (r && r.isActive === false) return false;
+      for (const c of conds) {
+        if (!valuesEqual((r as any)[c.key], c.value)) return false;
+      }
+      return true;
+    });
+
+    if (!found) return null;
+    const v = (found as any)[ret];
+    return v == null ? null : v;
+  };
+
+  const replaceLookupCalls = (input: string, row: FireDoorRow): string => {
+    let out = String(input || '');
+    if (!out.includes('LOOKUP(')) return out;
+
+    let guard = 0;
+    while (out.includes('LOOKUP(') && guard++ < 25) {
+      const start = out.indexOf('LOOKUP(');
+      if (start < 0) break;
+      let i = start + 'LOOKUP('.length;
+      let depth = 1;
+      let quote: '"' | "'" | null = null;
+      for (; i < out.length; i++) {
+        const ch = out[i];
+        if (quote) {
+          if (ch === quote && out[i - 1] !== '\\') quote = null;
+          continue;
+        }
+        if (ch === '"' || ch === "'") {
+          quote = ch;
+          continue;
+        }
+        if (ch === '(') depth++;
+        if (ch === ')') {
+          depth--;
+          if (depth === 0) break;
+        }
+      }
+      if (depth !== 0) break;
+
+      const call = out.slice(start, i + 1);
+      const inner = call.slice('LOOKUP('.length, -1);
+      const args = splitTopLevelArgs(inner);
+      const tableName = unquote(args[0] || '');
+      const conditions = unquote(args[1] || '');
+      const returnField = unquote(args[2] || '');
+      const resolved = resolveLookup(tableName, conditions, returnField, row);
+
+      let replacement = 'null';
+      if (typeof resolved === 'number' && Number.isFinite(resolved)) replacement = String(resolved);
+      else if (typeof resolved === 'boolean') replacement = resolved ? 'true' : 'false';
+      else if (resolved != null) replacement = JSON.stringify(String(resolved));
+
+      out = out.slice(0, start) + replacement + out.slice(i + 1);
+    }
+    return out;
+  };
+
   const evaluateFormula = (formula: string, row: FireDoorRow): any => {
     try {
       let expression = String(formula || '');
+
+      // Resolve LOOKUP(...) calls first, using loaded flexible lookup tables.
+      expression = replaceLookupCalls(expression, row);
 
       // Primary syntax: ${fieldName}
       expression = expression.replace(/\$\{([^}]+)\}/g, (_m, fieldRaw) => {
@@ -1271,6 +1428,24 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
           renderCell: (props: any) => {
             const row = props.row;
             const rowIdx = props.rowIdx as number;
+
+            // Display row number starting at 1 (not 0)
+            if (col.key === 'rowIndex') {
+              const inSelection = isCellInSelection(rowIdx, col.key);
+              const isActive = activeCell?.rowIdx === rowIdx && activeCell?.colKey === col.key;
+              return (
+                <div
+                  className={clsx(
+                    'px-2 text-slate-700',
+                    inSelection && 'bg-blue-50',
+                    isActive && 'ring-2 ring-blue-500 ring-inset'
+                  )}
+                >
+                  {rowIdx + 1}
+                </div>
+              );
+            }
+
             const overrideActive = allowOverride && getFormulaOverrideFlag(row, col.key);
             let value = overrideActive ? row[col.key] : row[col.key];
             const inSelection = isCellInSelection(rowIdx, col.key);
