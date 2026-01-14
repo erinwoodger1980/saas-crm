@@ -6,6 +6,7 @@ import FireDoorSpreadsheet from '@/components/FireDoorSpreadsheet';
 import { FireDoorRFIPanel } from '@/components/FireDoorRFIPanel';
 import { MessageSquare, ArrowLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { apiFetch } from '@/lib/api';
 
 interface RFI {
   id: string;
@@ -33,6 +34,8 @@ function FireDoorsPageContent() {
   const [showRFIPanel, setShowRFIPanel] = useState(false);
   const [selectedLineItemId, setSelectedLineItemId] = useState<string | undefined>(undefined);
   const [projectInfo, setProjectInfo] = useState<{ mjsNumber: string; jobName: string; fireDoorImportId: string | null } | null>(null);
+  const [creatingManual, setCreatingManual] = useState(false);
+  const [manualError, setManualError] = useState<string | null>(null);
   
   // Fetch project info
   useEffect(() => {
@@ -117,7 +120,41 @@ function FireDoorsPageContent() {
           <FireDoorSpreadsheet importId={projectInfo.fireDoorImportId} />
         ) : (
           <div className="flex items-center justify-center h-full">
-            <p className="text-slate-600">No fire door data available for this project</p>
+            <div className="text-center space-y-3">
+              <p className="text-slate-600">No fire door data available for this project</p>
+              {manualError && (
+                <p className="text-sm text-red-700">{manualError}</p>
+              )}
+              <button
+                disabled={creatingManual}
+                onClick={async () => {
+                  if (!projectId) return;
+                  try {
+                    setManualError(null);
+                    setCreatingManual(true);
+                    const imp = await apiFetch<{ id: string }>(`/fire-door-schedule/imports`, {
+                      method: 'POST',
+                      json: { projectId, sourceName: 'Manual Entry', totalValue: 0, rowCount: 0 },
+                    });
+
+                    // Create one initial blank line item so the grid is immediately editable.
+                    await apiFetch(`/fire-doors/line-items/bulk-create`, {
+                      method: 'POST',
+                      json: { fireDoorImportId: imp.id, count: 1 },
+                    });
+
+                    setProjectInfo((prev) => prev ? ({ ...prev, fireDoorImportId: imp.id }) : prev);
+                  } catch (err: any) {
+                    setManualError(err?.message || 'Failed to start manual entry');
+                  } finally {
+                    setCreatingManual(false);
+                  }
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {creatingManual ? 'Creating…' : 'Start Manual Entry'}
+              </button>
+            </div>
           </div>
         )}
       </div>

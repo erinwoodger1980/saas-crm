@@ -815,4 +815,183 @@ router.patch('/line-items/:id', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/fire-doors/line-items/bulk-create
+ * Create N blank line items for an import.
+ *
+ * Body: { fireDoorImportId: string; count: number }
+ */
+router.post('/line-items/bulk-create', async (req, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    // Check fire door manufacturer status
+    const tenantSettings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { isFireDoorManufacturer: true },
+    });
+
+    if (!tenantSettings?.isFireDoorManufacturer) {
+      return res.status(403).json({ error: 'Fire door import access required' });
+    }
+
+    const fireDoorImportId = String((req.body as any)?.fireDoorImportId || '').trim();
+    const countRaw = (req.body as any)?.count;
+    const count = Number(countRaw);
+
+    if (!fireDoorImportId) {
+      return res.status(400).json({ error: 'fireDoorImportId is required' });
+    }
+    if (!Number.isFinite(count) || count <= 0) {
+      return res.status(400).json({ error: 'count must be a positive number' });
+    }
+    if (count > 500) {
+      return res.status(400).json({ error: 'count too large (max 500)' });
+    }
+
+    const created = await prisma.$transaction(async (tx) => {
+      const imp = await tx.fireDoorImport.findFirst({
+        where: { id: fireDoorImportId, tenantId },
+        select: { id: true },
+      });
+      if (!imp) {
+        throw Object.assign(new Error('Import not found'), { status: 404 });
+      }
+
+      const max = await tx.fireDoorLineItem.aggregate({
+        where: { tenantId, fireDoorImportId },
+        _max: { rowIndex: true },
+      });
+      const startRowIndex = (max?._max?.rowIndex ?? -1) + 1;
+
+      const data: Array<{ tenantId: string; fireDoorImportId: string; rowIndex: number; rawRowJson: any }> = [];
+      for (let i = 0; i < count; i++) {
+        data.push({
+          tenantId,
+          fireDoorImportId,
+          rowIndex: startRowIndex + i,
+          rawRowJson: { __grid: {} },
+        });
+      }
+
+      await tx.fireDoorLineItem.createMany({ data });
+      await tx.fireDoorImport.update({
+        where: { id: fireDoorImportId },
+        data: { rowCount: { increment: count } },
+      });
+
+      const items = await tx.fireDoorLineItem.findMany({
+        where: {
+          tenantId,
+          fireDoorImportId,
+          rowIndex: { gte: startRowIndex },
+        },
+        orderBy: { rowIndex: 'asc' },
+      });
+
+      return items;
+    });
+
+    return res.json({ ok: true, items: created.map(serializeLineItemForJson) });
+  } catch (error: any) {
+    const status = (error && typeof error === 'object' && (error as any).status) ? (error as any).status : null;
+    if (status === 404) {
+      return res.status(404).json({ error: 'Import not found' });
+    }
+    console.error('[fire-doors] Bulk create line items error:', error);
+    return res.status(500).json({ error: 'Failed to bulk create line items', message: error.message || 'Unknown error' });
+  }
+});
+
+/**
+ * POST /api/fire-doors/line-items/bulk-delete
+ * Delete one or more line items and reindex remaining rows for each affected import.
+ *
+ * Body: { ids: string[] }
+ */
+router.post('/line-items/bulk-delete', async (req, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    // Check fire door manufacturer status
+    const tenantSettings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { isFireDoorManufacturer: true },
+    });
+
+    if (!tenantSettings?.isFireDoorManufacturer) {
+      return res.status(403).json({ error: 'Fire door import access required' });
+    }
+
+    const body = (req.body && typeof req.body === 'object') ? req.body : null;
+    const idsRaw = (body && Array.isArray((body as any).ids)) ? (body as any).ids : null;
+    if (!idsRaw || idsRaw.length === 0) {
+      return res.status(400).json({ error: 'ids must be a non-empty array' });
+    }
+
+    const ids = Array.from(new Set(idsRaw.map((x: any) => String(x || '').trim()).filter(Boolean)));
+    if (ids.length === 0) {
+      return res.status(400).json({ error: 'ids must contain valid ids' });
+    }
+    if (ids.length > 200) {
+      return res.status(400).json({ error: 'Too many ids (max 200)' });
+    }
+
+    const existing = await prisma.fireDoorLineItem.findMany({
+      where: { tenantId, id: { in: ids } },
+      select: { id: true, fireDoorImportId: true },
+    });
+    const existingIds = new Set(existing.map((x) => x.id));
+    const missing = ids.filter((id) => !existingIds.has(id));
+    if (missing.length) {
+      return res.status(404).json({ error: 'One or more line items not found', missing });
+    }
+
+    const importIds = Array.from(new Set(existing.map((x) => x.fireDoorImportId)));
+
+    await prisma.$transaction(async (tx) => {
+      await tx.fireDoorLineItem.deleteMany({
+        where: { tenantId, id: { in: ids } },
+      });
+
+      // Maintain import rowCount best-effort
+      await tx.fireDoorImport.updateMany({
+        where: { tenantId, id: { in: importIds } },
+        data: { rowCount: { decrement: ids.length } },
+      });
+
+      // Reindex each affected import for stable ordering
+      for (const fireDoorImportId of importIds) {
+        const remaining = await tx.fireDoorLineItem.findMany({
+          where: { tenantId, fireDoorImportId },
+          select: { id: true, rowIndex: true },
+          orderBy: { rowIndex: 'asc' },
+        });
+
+        const updates: Prisma.PrismaPromise<any>[] = [];
+        for (let i = 0; i < remaining.length; i++) {
+          const item = remaining[i];
+          if (item.rowIndex !== i) {
+            updates.push(tx.fireDoorLineItem.update({ where: { id: item.id }, data: { rowIndex: i } }));
+          }
+        }
+        if (updates.length) {
+          await tx.$transaction(updates);
+        }
+      }
+    });
+
+    return res.json({ ok: true, deleted: ids.length });
+  } catch (error: any) {
+    console.error('[fire-doors] Bulk delete line items error:', error);
+    return res.status(500).json({ error: 'Failed to bulk delete line items', message: error.message || 'Unknown error' });
+  }
+});
+
 export default router;

@@ -508,6 +508,8 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   const [availableComponents, setAvailableComponents] = useState<Array<{ id: string; code: string; name: string }>>([]);
   const [availableFields, setAvailableFields] = useState<Array<{ name: string; type: string }>>([]);
 
+  const [mutatingRows, setMutatingRows] = useState(false);
+
   const [rfis, setRfis] = useState<RfiRecord[]>([]);
   const [rfiDialogOpen, setRfiDialogOpen] = useState(false);
   const [rfiMode, setRfiMode] = useState<"create" | "edit" | "view">("create");
@@ -530,28 +532,70 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     rowsRef.current = rows;
   }, [rows]);
 
+  const loadImport = useCallback(async (opts?: { selectAll?: boolean }) => {
+    if (!importId) return;
+    const selectAll = !!opts?.selectAll;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await apiFetch<any>(`/fire-doors/imports/${importId}`);
+      const hydrated = (data.lineItems || []).map((item: any) => hydrateImportRow(item, COLUMNS));
+      setRows(hydrated);
+      if (selectAll) {
+        setSelectedRows(new Set((data.lineItems || []).map((r: any) => r.id)));
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to load import");
+    } finally {
+      setLoading(false);
+    }
+  }, [importId]);
+
   // Load fire door data from import
   useEffect(() => {
-    if (!importId) return;
-    
-    const loadImport = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await apiFetch<any>(`/fire-doors/imports/${importId}`);
-        const hydrated = (data.lineItems || []).map((item: any) => hydrateImportRow(item, COLUMNS));
-        setRows(hydrated);
-        // Select all rows by default
-        setSelectedRows(new Set((data.lineItems || []).map((r: any) => r.id)));
-      } catch (err: any) {
-        setError(err.message || "Failed to load import");
-      } finally {
-        setLoading(false);
-      }
-    };
+    loadImport({ selectAll: true });
+  }, [loadImport]);
 
-    loadImport();
+  const bulkCreateRows = useCallback(async (count: number) => {
+    if (!importId) return [] as any[];
+    const n = Number(count);
+    if (!Number.isFinite(n) || n <= 0) return [] as any[];
+    const res = await apiFetch<{ ok: boolean; items: any[] }>(`/fire-doors/line-items/bulk-create`, {
+      method: 'POST',
+      json: { fireDoorImportId: importId, count: n },
+    });
+    const items = Array.isArray(res?.items) ? res.items : [];
+    return items;
   }, [importId]);
+
+  const ensureRowCount = useCallback(async (minRowCount: number) => {
+    if (!importId) return;
+    const current = rowsRef.current;
+    const need = Math.max(0, Math.floor(minRowCount) - current.length);
+    if (need <= 0) return;
+
+    const created = await bulkCreateRows(need);
+    if (!created.length) return;
+
+    const hydratedNew = created.map((item) => hydrateImportRow(item, COLUMNS));
+    const merged = [...current, ...hydratedNew].sort((a: any, b: any) => {
+      const ai = Number((a as any)?.rowIndex ?? 0);
+      const bi = Number((b as any)?.rowIndex ?? 0);
+      return ai - bi;
+    });
+
+    setRows(merged);
+    rowsRef.current = merged;
+  }, [importId, bulkCreateRows]);
+
+  const bulkDeleteRows = useCallback(async (ids: string[]) => {
+    const clean = Array.from(new Set((ids || []).map((x) => String(x || '').trim()).filter(Boolean)));
+    if (!clean.length) return;
+    await apiFetch(`/fire-doors/line-items/bulk-delete`, {
+      method: 'POST',
+      json: { ids: clean },
+    });
+  }, []);
 
   // Load and persist column widths per import (Excel-like drag resize)
   useEffect(() => {
@@ -735,8 +779,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   }, [selectionRange]);
 
   const applyPasteTsv = useCallback(async (tsv: string) => {
-    const currentRows = rowsRef.current;
-    if (!currentRows.length) return;
+    let currentRows = rowsRef.current;
 
     const start = activeCell || (selection?.anchor ?? null);
     if (!start) return;
@@ -753,6 +796,22 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     // ignore trailing empty line from many clipboards
     while (rowsText.length > 0 && rowsText[rowsText.length - 1] === '') rowsText.pop();
     if (rowsText.length === 0) return;
+
+    // Auto-create missing line items when pasting extends beyond current row count.
+    const requiredRowCount = start.rowIdx + rowsText.length;
+    if (requiredRowCount > currentRows.length) {
+      try {
+        setMutatingRows(true);
+        await ensureRowCount(requiredRowCount);
+        currentRows = rowsRef.current;
+      } catch (err: any) {
+        console.error('[fire-door-grid] Failed to create rows for paste:', err);
+        setError(err?.message || 'Failed to create new rows for paste');
+        return;
+      } finally {
+        setMutatingRows(false);
+      }
+    }
 
     const nextRows = currentRows.map((r) => ({ ...r }));
     const updates: Array<{ id: string; changes: Record<string, any> }> = [];
@@ -836,7 +895,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     rowsRef.current = nextRows;
 
     await bulkPersist(updates);
-  }, [activeCell, selection, bulkPersist, getSelectableColumns, editableKeySet, gridConfig]);
+  }, [activeCell, selection, bulkPersist, getSelectableColumns, editableKeySet, gridConfig, ensureRowCount]);
 
   const handleRowsChange = useCallback((newRows: FireDoorRow[]) => {
     const oldRows = rowsRef.current;
@@ -1767,10 +1826,6 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     return <div className="p-4 text-center text-gray-500">Select an import in the Project Overview tab to view line items.</div>;
   }
 
-  if (rows.length === 0) {
-    return <div className="p-4 text-center text-gray-500">No doors found in this import</div>;
-  }
-
   const currentColumnConfig = configModalColumn ? COLUMNS.find(c => c.key === configModalColumn) : null;
 
   return (
@@ -1911,6 +1966,44 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
           <span className="text-sm font-semibold text-slate-700">
             {selectedRows.size} of {rows.length} doors selected
           </span>
+          <Button
+            variant="outline"
+            disabled={mutatingRows}
+            onClick={async () => {
+              try {
+                setMutatingRows(true);
+                await ensureRowCount(rowsRef.current.length + 1);
+              } catch (err: any) {
+                setError(err?.message || 'Failed to add row');
+              } finally {
+                setMutatingRows(false);
+              }
+            }}
+          >
+            {mutatingRows ? 'Working…' : 'Add Row'}
+          </Button>
+          <Button
+            variant="outline"
+            disabled={mutatingRows || selectedRows.size === 0}
+            onClick={async () => {
+              const ids = Array.from(selectedRows || []);
+              if (!ids.length) return;
+              const ok = window.confirm(`Delete ${ids.length} row${ids.length === 1 ? '' : 's'}? This cannot be undone.`);
+              if (!ok) return;
+              try {
+                setMutatingRows(true);
+                setSelectedRows(new Set());
+                await bulkDeleteRows(ids);
+                await loadImport({ selectAll: false });
+              } catch (err: any) {
+                setError(err?.message || 'Failed to delete rows');
+              } finally {
+                setMutatingRows(false);
+              }
+            }}
+          >
+            Delete Row{selectedRows.size === 1 ? '' : 's'}
+          </Button>
         </div>
         <Button
           onClick={createQuoteFromSelected}
