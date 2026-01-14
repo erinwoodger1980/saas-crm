@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -74,6 +75,11 @@ export function FormulaWizard({
   const [numberInput, setNumberInput] = useState<string>("");
   const [textInput, setTextInput] = useState<string>("");
 
+  const [aiPrompt, setAiPrompt] = useState<string>("");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiNotes, setAiNotes] = useState<string>("");
+  const [aiIssues, setAiIssues] = useState<string[]>([]);
+
   // Parse formula into tokens on load
   useEffect(() => {
     if (initialFormula) {
@@ -82,10 +88,17 @@ export function FormulaWizard({
     }
   }, [initialFormula, isOpen]);
 
+  useEffect(() => {
+    // keep token list somewhat in sync when user types directly
+    if (!isOpen) return;
+    parseFormula(formula);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formula, isOpen]);
+
   const parseFormula = (f: string) => {
     // Simple parser - would need to be enhanced for complex formulas
     const newTokens: FormulaToken[] = [];
-    const parts = f.match(/\$\{[\w.]+\}|[A-Z_]+\(|[)(\s,+\-*/=!><&|]+|"[^"]*"|'[^']*'|\d+(\.\d+)?|[a-zA-Z_]\w*/g) || [];
+    const parts = f.match(/\$\{[\w.]+\}|[A-Z_]+\(|[()\s,]+|[+\-*/=!><&|]+|"[^"]*"|'[^']*'|\d+(\.\d+)?|[a-zA-Z_]\w*/g) || [];
 
     for (const part of parts) {
       if (part.match(/^\s+$/)) continue; // skip whitespace
@@ -253,6 +266,51 @@ export function FormulaWizard({
       onClose();
     }
   };
+
+  async function callAi(mode: "generate" | "check") {
+    try {
+      setAiBusy(true);
+      setAiNotes("");
+      setAiIssues([]);
+      const res = await fetch('/api/ai/formula-helper', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode,
+          prompt: aiPrompt,
+          formula,
+          availableFields,
+          availableLookupTables,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json?.ok) {
+        setAiNotes(json?.error || 'AI request failed');
+        return;
+      }
+
+      const nextFormula = typeof json.formula === 'string' ? json.formula.trim() : '';
+      const notes = typeof json.notes === 'string' ? json.notes : '';
+      const issues = Array.isArray(json.issues) ? json.issues.map((s: any) => String(s)).filter(Boolean) : [];
+      const suggestedFix = typeof json.suggestedFix === 'string' ? json.suggestedFix.trim() : '';
+
+      setAiNotes(notes);
+      setAiIssues(issues);
+
+      if (mode === 'generate' && nextFormula) {
+        setFormula(nextFormula);
+      }
+      if (mode === 'check' && issues.length && suggestedFix) {
+        // don't auto-overwrite; provide as note
+        setAiNotes((prev) => `${prev ? prev + "\n\n" : ""}Suggested fix:\n${suggestedFix}`);
+      }
+    } catch (e: any) {
+      setAiNotes(e?.message || 'AI request failed');
+    } finally {
+      setAiBusy(false);
+    }
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -505,9 +563,13 @@ export function FormulaWizard({
           <div className="space-y-4">
             <div>
               <h3 className="text-sm font-semibold mb-2">Formula</h3>
-              <div className="bg-gray-50 border rounded p-3 min-h-[80px]">
-                <code className="text-sm font-mono break-words">{formula || "No formula yet"}</code>
-              </div>
+              <Textarea
+                value={formula}
+                onChange={(e) => setFormula(e.target.value)}
+                placeholder="Type a formula here (recommended for IF / complex formulas)…"
+                className="font-mono text-sm"
+                rows={6}
+              />
               <Button onClick={copyToClipboard} size="sm" className="mt-2 w-full" variant="outline">
                 <Copy className="w-4 h-4 mr-2" />
                 Copy Formula
@@ -554,6 +616,56 @@ export function FormulaWizard({
                 <li>• Use the Lookup section to add LOOKUP()</li>
                 <li>• Build complex formulas by combining tokens</li>
               </ul>
+            </div>
+
+            <div className="border rounded p-3">
+              <h4 className="text-sm font-semibold mb-2">AI Helper</h4>
+              <p className="text-xs text-slate-500 mb-2">Describe what you want in plain English; AI will suggest a formula using available fields and lookup tables.</p>
+              <Textarea
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                placeholder='e.g. "If Doorset Type is Doorset then add 10% to Line Price; otherwise use Line Price"'
+                rows={3}
+              />
+              <div className="flex gap-2 mt-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  disabled={aiBusy || !aiPrompt.trim()}
+                  onClick={() => callAi('generate')}
+                >
+                  Generate Formula
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  disabled={aiBusy || !formula.trim()}
+                  onClick={() => callAi('check')}
+                >
+                  Check Formula
+                </Button>
+              </div>
+
+              {(aiNotes || aiIssues.length > 0) && (
+                <div className="mt-3 bg-slate-50 border rounded p-2 text-xs whitespace-pre-wrap">
+                  {aiIssues.length > 0 && (
+                    <div className="mb-2">
+                      <div className="font-semibold">Issues</div>
+                      <ul className="list-disc pl-5">
+                        {aiIssues.map((x, i) => (
+                          <li key={i}>{x}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {aiNotes && (
+                    <div>
+                      <div className="font-semibold">Notes</div>
+                      <div>{aiNotes}</div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

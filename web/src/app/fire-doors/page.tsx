@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import FireDoorSpreadsheet from '@/components/FireDoorSpreadsheet';
-import { FireDoorRFIPanel } from '@/components/FireDoorRFIPanel';
+import { FireDoorGridRFIPanel } from '@/components/FireDoorGridRFIPanel';
 import { MessageSquare, ArrowLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
@@ -32,10 +32,10 @@ function FireDoorsPageContent() {
   const projectId = searchParams?.get?.('projectId');
   
   const [showRFIPanel, setShowRFIPanel] = useState(false);
-  const [selectedLineItemId, setSelectedLineItemId] = useState<string | undefined>(undefined);
   const [projectInfo, setProjectInfo] = useState<{ mjsNumber: string; jobName: string; fireDoorImportId: string | null } | null>(null);
   const [creatingManual, setCreatingManual] = useState(false);
   const [manualError, setManualError] = useState<string | null>(null);
+  const [rfiCount, setRfiCount] = useState<number>(0);
   
   // Fetch project info
   useEffect(() => {
@@ -61,6 +61,30 @@ function FireDoorsPageContent() {
 
     fetchProjectInfo();
   }, [projectId]);
+
+  useEffect(() => {
+    if (!projectInfo?.fireDoorImportId) {
+      setRfiCount(0);
+      return;
+    }
+
+    let cancelled = false;
+    async function loadRfiCount() {
+      try {
+        const res = await apiFetch<{ ok: boolean; items: Array<any> }>(
+          `/rfis?projectId=${encodeURIComponent(projectInfo.fireDoorImportId!)}&includeClosed=true`
+        );
+        if (!cancelled) setRfiCount(Array.isArray(res?.items) ? res.items.length : 0);
+      } catch {
+        if (!cancelled) setRfiCount(0);
+      }
+    }
+
+    loadRfiCount();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectInfo?.fireDoorImportId]);
 
   if (!projectId || !projectInfo) {
     return (
@@ -102,13 +126,12 @@ function FireDoorsPageContent() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => {
-                setSelectedLineItemId(undefined);
                 setShowRFIPanel(true);
               }}
               className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition flex items-center gap-2"
             >
               <MessageSquare className="w-4 h-4" />
-              RFI Manager (0)
+              RFI Manager ({rfiCount})
             </button>
           </div>
         </div>
@@ -161,14 +184,22 @@ function FireDoorsPageContent() {
 
       {/* RFI Panel */}
       {showRFIPanel && (
-        <FireDoorRFIPanel
-          projectId={projectId || undefined}
-          lineItemId={selectedLineItemId}
-          onClose={() => setShowRFIPanel(false)}
-          onRFICreated={() => {
-            setShowRFIPanel(false);
-          }}
-        />
+        projectInfo.fireDoorImportId ? (
+          <FireDoorGridRFIPanel
+            importId={projectInfo.fireDoorImportId}
+            onClose={() => setShowRFIPanel(false)}
+            onChanged={async () => {
+              try {
+                const res = await apiFetch<{ ok: boolean; items: Array<any> }>(
+                  `/rfis?projectId=${encodeURIComponent(projectInfo.fireDoorImportId!)}&includeClosed=true`
+                );
+                setRfiCount(Array.isArray(res?.items) ? res.items.length : 0);
+              } catch {
+                setRfiCount(0);
+              }
+            }}
+          />
+        ) : null
       )}
     </div>
   );
