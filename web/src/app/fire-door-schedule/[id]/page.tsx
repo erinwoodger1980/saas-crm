@@ -481,12 +481,26 @@ export default function FireDoorScheduleDetailPage() {
       formData.append("projectId", id);
 
       // Always hit same-origin Next.js API route; it proxies to the backend.
+      const legacyJwt = (() => {
+        try {
+          return localStorage.getItem("jwt");
+        } catch {
+          return null;
+        }
+      })();
+
+      const headers: HeadersInit = {};
+      // Only attach legacy Bearer token when present. If we send "Bearer null",
+      // the backend will prefer the (invalid) header over the valid HttpOnly cookie.
+      if (legacyJwt) {
+        headers.Authorization = `Bearer ${legacyJwt}`;
+      }
+
       const response = await fetch(`/api/fire-doors/import`, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("jwt")}`,
-        },
+        headers,
         body: formData,
+        credentials: "include",
       });
 
       if (!response.ok) {

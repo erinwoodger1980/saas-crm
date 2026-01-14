@@ -9,6 +9,67 @@ import { Button } from "@/components/ui/button";
 import { Settings, Download } from "lucide-react";
 import { ColumnHeaderModal } from "@/components/FireDoorGridConfig";
 
+function DefaultEditCell({
+  row,
+  column,
+  onRowChange,
+  onClose,
+  inputType,
+}: RenderEditCellProps<FireDoorRow> & { inputType?: string }) {
+  const initial = row[column.key];
+  const [draft, setDraft] = useState<string>(initial == null ? "" : String(initial));
+
+  useEffect(() => {
+    const next = row[column.key];
+    setDraft(next == null ? "" : String(next));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [row, column.key]);
+
+  const commit = useCallback(() => {
+    const trimmed = draft;
+    let nextValue: any = trimmed;
+    if (!trimmed) nextValue = null;
+    if (inputType === "number") {
+      if (!trimmed) {
+        nextValue = null;
+      } else {
+        const n = Number(trimmed);
+        nextValue = Number.isFinite(n) ? n : null;
+      }
+    }
+    onRowChange({ ...row, [column.key]: nextValue }, true);
+    try {
+      (onClose as any)?.(true);
+    } catch {
+      // ignore
+    }
+  }, [draft, inputType, onRowChange, row, column.key, onClose]);
+
+  return (
+    <input
+      className="w-full h-full px-2 border-0 outline-none bg-white"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          commit();
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          try {
+            (onClose as any)?.(false);
+          } catch {
+            // ignore
+          }
+        }
+      }}
+      autoFocus
+    />
+  );
+}
+
 interface FireDoorRow {
   id: string;
   rowIndex: number;
@@ -932,7 +993,8 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       SelectColumn,
       ...COLUMNS.map(col => {
         const fieldConfig = gridConfig[col.key];
-        const isDropdown = fieldConfig?.inputType === 'dropdown' && fieldConfig?.lookupTable;
+        const inputType = fieldConfig?.inputType || 'text';
+        const isDropdown = (inputType === 'dropdown' || inputType === 'lookup') && fieldConfig?.lookupTable;
         const isFormula = fieldConfig?.inputType === 'formula';
         
         return {
@@ -952,7 +1014,13 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
               <Settings className="w-3 h-3 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
           ),
-          renderEditCell: isDropdown ? DropdownCell : undefined,
+          renderEditCell: isDropdown
+            ? DropdownCell
+            : col.editable
+              ? (p: RenderEditCellProps<FireDoorRow>) => (
+                  <DefaultEditCell {...p} inputType={inputType} />
+                )
+              : undefined,
           renderCell: (props: any) => {
             const row = props.row;
             const rowIdx = props.rowIdx as number;
