@@ -6,8 +6,19 @@ import DataGrid, { Column, SelectColumn, RenderEditCellProps } from "react-data-
 import "react-data-grid/lib/styles.css";
 import clsx from "clsx";
 import { Button } from "@/components/ui/button";
-import { Settings, Download } from "lucide-react";
+import { Settings, Download, MessageSquare } from "lucide-react";
 import { ColumnHeaderModal } from "@/components/FireDoorGridConfig";
+import { RfiDialog } from "@/components/rfi-dialog";
+
+type RfiRecord = {
+  id: string;
+  rowId: string | null;
+  columnKey: string;
+  title?: string | null;
+  message: string;
+  status: string;
+  visibleToClient: boolean;
+};
 
 function DefaultEditCell({
   row,
@@ -497,10 +508,23 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   const [availableComponents, setAvailableComponents] = useState<Array<{ id: string; code: string; name: string }>>([]);
   const [availableFields, setAvailableFields] = useState<Array<{ name: string; type: string }>>([]);
 
+  const [rfis, setRfis] = useState<RfiRecord[]>([]);
+  const [rfiDialogOpen, setRfiDialogOpen] = useState(false);
+  const [rfiMode, setRfiMode] = useState<"create" | "edit" | "view">("create");
+  const [currentRfi, setCurrentRfi] = useState<RfiRecord | null>(null);
+  const [rfiContext, setRfiContext] = useState<{ rowId: string | null; columnKey: string; columnName?: string } | null>(null);
+
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+
   const rowsRef = useRef<FireDoorRow[]>([]);
   const saveTimersRef = useRef<Map<string, any>>(new Map());
   const bomTimerRef = useRef<any>(null);
   const gridContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const columnWidthStorageKey = useMemo(() => {
+    if (!importId) return null;
+    return `fire-door-grid:column-widths:${importId}`;
+  }, [importId]);
 
   useEffect(() => {
     rowsRef.current = rows;
@@ -528,6 +552,104 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
 
     loadImport();
   }, [importId]);
+
+  // Load and persist column widths per import (Excel-like drag resize)
+  useEffect(() => {
+    if (!columnWidthStorageKey) return;
+    try {
+      const raw = window.localStorage.getItem(columnWidthStorageKey);
+      if (!raw) {
+        setColumnWidths({});
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        setColumnWidths(parsed);
+      } else {
+        setColumnWidths({});
+      }
+    } catch {
+      setColumnWidths({});
+    }
+  }, [columnWidthStorageKey]);
+
+  useEffect(() => {
+    if (!columnWidthStorageKey) return;
+    const t = window.setTimeout(() => {
+      try {
+        window.localStorage.setItem(columnWidthStorageKey, JSON.stringify(columnWidths || {}));
+      } catch {
+        // ignore
+      }
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [columnWidthStorageKey, columnWidths]);
+
+  const loadRfis = useCallback(async () => {
+    if (!importId) return;
+    try {
+      const res = await apiFetch<{ ok: boolean; items: RfiRecord[] }>(
+        `/rfis?projectId=${encodeURIComponent(importId)}`
+      );
+      if (res?.ok) setRfis(Array.isArray(res.items) ? res.items : []);
+    } catch (err) {
+      console.error('[fire-door-grid] Failed to load RFIs', err);
+    }
+  }, [importId]);
+
+  useEffect(() => {
+    loadRfis();
+  }, [loadRfis]);
+
+  const { rfiColumns, rfiCells } = useMemo(() => {
+    const cols = new Set<string>();
+    const cells = new Set<string>();
+    for (const rfi of rfis) {
+      const colKey = String(rfi?.columnKey || '').trim();
+      if (!colKey) continue;
+      if (rfi?.rowId) {
+        cells.add(`${rfi.rowId}::${colKey}`);
+      } else {
+        cols.add(colKey);
+      }
+    }
+    return { rfiColumns: cols, rfiCells: cells };
+  }, [rfis]);
+
+  const openRfiCreate = useCallback((rowId: string | null, columnKey: string, columnName?: string) => {
+    setRfiContext({ rowId, columnKey, columnName });
+    setCurrentRfi(null);
+    setRfiMode('create');
+    setRfiDialogOpen(true);
+  }, []);
+
+  const handleSaveRfi = useCallback(async (rfiData: Partial<RfiRecord>) => {
+    if (!importId) return;
+    if (!rfiData.message || !String(rfiData.message).trim()) {
+      alert('RFI message is required');
+      return;
+    }
+
+    const endpoint = rfiData.id ? `/rfis/${rfiData.id}` : '/rfis';
+    const method = rfiData.id ? 'PUT' : 'POST';
+
+    const payload = {
+      projectId: importId,
+      rowId: rfiData.rowId ?? null,
+      columnKey: String(rfiData.columnKey || ''),
+      title: (rfiData.title ?? null) ? String(rfiData.title).trim() || null : null,
+      message: String(rfiData.message).trim(),
+      status: rfiData.status || 'open',
+      visibleToClient: rfiData.visibleToClient !== undefined ? rfiData.visibleToClient : false,
+    };
+
+    await apiFetch(endpoint, {
+      method,
+      json: payload,
+    });
+
+    await loadRfis();
+  }, [importId, loadRfis]);
 
   const editableKeySet = useMemo(() => {
     const s = new Set<string>();
@@ -1100,10 +1222,18 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
         const isCalculated = !!fieldConfig?.formula || fieldConfig?.inputType === 'formula';
         const allowOverride = !!fieldConfig?.allowFormulaOverride;
         
+        const resizedWidth = columnWidths[col.key];
+        const columnHasRfi = rfiColumns.has(col.key);
+
         return {
           ...col,
+          width: typeof resizedWidth === 'number' && Number.isFinite(resizedWidth) ? resizedWidth : col.width,
+          resizable: true,
           editable: isCalculated ? (allowOverride ? !!col.editable : false) : col.editable,
-          headerCellClass: "cursor-pointer hover:bg-blue-50 transition-colors",
+          headerCellClass: clsx(
+            "cursor-pointer hover:bg-blue-50 transition-colors",
+            columnHasRfi && 'bg-yellow-100'
+          ),
           renderHeaderCell: (props: any) => (
             <div 
               className="flex items-center justify-between gap-1 h-full px-2 group"
@@ -1114,7 +1244,21 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
               }}
             >
               <span className="truncate" title={typeof col.name === 'string' ? col.name : ''}>{typeof col.name === 'string' ? col.name : 'Column'}</span>
-              <Settings className="w-3 h-3 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-500 hover:text-slate-700"
+                  title="Add RFI for this column"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openRfiCreate(null, col.key, typeof col.name === 'string' ? col.name : undefined);
+                  }}
+                >
+                  <MessageSquare className="w-3 h-3" />
+                </button>
+                <Settings className="w-3 h-3 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
             </div>
           ),
           renderEditCell: isDropdown
@@ -1131,8 +1275,12 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
             let value = overrideActive ? row[col.key] : row[col.key];
             const inSelection = isCellInSelection(rowIdx, col.key);
             const isActive = activeCell?.rowIdx === rowIdx && activeCell?.colKey === col.key;
+
+            const cellHasRfi =
+              (row?.id ? rfiCells.has(`${row.id}::${col.key}`) : false) || rfiColumns.has(col.key);
             const baseClass = clsx(
-              'px-2',
+              'px-2 group relative',
+              cellHasRfi && 'bg-yellow-100',
               inSelection && 'bg-blue-50',
               isActive && 'ring-2 ring-blue-500 ring-inset',
               // Highlight cells that are overriding a column formula
@@ -1155,7 +1303,31 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
             if (isDropdown && fieldConfig?.lookupTable) {
               const options = lookupOptions[fieldConfig.lookupTable] || [];
               const option = options.find(opt => opt.value === value);
-              return <div className={baseClass}>{option?.label || value}</div>;
+
+              const hasTypedValue = value != null && String(value).trim() !== '';
+              const isInvalidDropdownValue = hasTypedValue && !option;
+
+              return (
+                <div className={clsx(baseClass, isInvalidDropdownValue && !cellHasRfi && 'bg-orange-100')}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate">{option?.label || value}</span>
+                    {isActive && (
+                      <button
+                        type="button"
+                        className="opacity-60 hover:opacity-100 text-slate-600"
+                        title="Add RFI for this cell"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          openRfiCreate(row.id, col.key, typeof col.name === 'string' ? col.name : undefined);
+                        }}
+                      >
+                        <MessageSquare className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
             }
             
             // Formula indicator (only when the formula is in effect)
@@ -1168,6 +1340,20 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
               return (
                 <div className={clsx(baseClass, 'flex items-center justify-between gap-2')}>
                   <span className="truncate">{value}</span>
+                  {isActive && (
+                    <button
+                      type="button"
+                      className="text-[11px] text-slate-600 hover:text-slate-800"
+                      title="Add RFI for this cell"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openRfiCreate(row.id, col.key, typeof col.name === 'string' ? col.name : undefined);
+                      }}
+                    >
+                      <MessageSquare className="w-3 h-3" />
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="text-[11px] text-blue-600 hover:text-blue-700 underline-offset-2 hover:underline"
@@ -1187,12 +1373,52 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
               );
             }
 
-            return <div className={baseClass}>{value}</div>;
+            return (
+              <div className={baseClass}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate">{value}</span>
+                  {isActive && (
+                    <button
+                      type="button"
+                      className="opacity-60 hover:opacity-100 text-slate-600"
+                      title="Add RFI for this cell"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openRfiCreate(row.id, col.key, typeof col.name === 'string' ? col.name : undefined);
+                      }}
+                    >
+                      <MessageSquare className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
           },
         };
       }),
     ];
-  }, [gridConfig, lookupOptions, activeCell, isCellInSelection]);
+  }, [gridConfig, lookupOptions, activeCell, isCellInSelection, columnWidths, openRfiCreate, rfiCells, rfiColumns]);
+
+  const handleColumnResize = useCallback((colOrIdx: any, widthMaybe: any) => {
+    let colKey: string | null = null;
+    let nextWidth: number | null = null;
+
+    if (typeof colOrIdx === 'number') {
+      const c = (columns as any[])?.[colOrIdx];
+      colKey = c?.key ? String(c.key) : null;
+      nextWidth = Number(widthMaybe);
+    } else {
+      colKey = colOrIdx?.key ? String(colOrIdx.key) : null;
+      nextWidth = Number(widthMaybe);
+    }
+
+    if (!colKey || colKey === 'select-row') return;
+    if (!Number.isFinite(nextWidth)) return;
+
+    const clamped = Math.max(60, Math.min(800, Math.round(nextWidth)));
+    setColumnWidths((prev) => ({ ...prev, [colKey as string]: clamped }));
+  }, [columns]);
 
   const handleCellClick = useCallback((args: any, event: any) => {
     try {
@@ -1544,6 +1770,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
           onSelectedRowsChange={setSelectedRows}
           onRowsChange={handleRowsChange}
           onCellClick={handleCellClick}
+          onColumnResize={handleColumnResize as any}
           className="fill-grid"
           style={{ height: '100%' }}
           rowHeight={35}
@@ -1551,6 +1778,17 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
           enableVirtualization
         />
       </div>
+
+      <RfiDialog
+        open={rfiDialogOpen}
+        onOpenChange={setRfiDialogOpen}
+        rfi={currentRfi}
+        rowId={rfiContext?.rowId ?? null}
+        columnKey={rfiContext?.columnKey ?? ''}
+        columnName={rfiContext?.columnName}
+        onSave={handleSaveRfi}
+        mode={rfiMode}
+      />
 
       {/* Summary */}
       <div className="bg-white/60 backdrop-blur-sm p-4 rounded-lg shadow border border-white/20">
