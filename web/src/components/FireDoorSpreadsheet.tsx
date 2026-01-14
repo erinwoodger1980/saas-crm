@@ -173,6 +173,9 @@ function hydrateImportRow(item: any, columns: ReadonlyArray<Column<any>>): any {
     ? (raw as any).__grid
     : {};
 
+  // Keep persisted grid metadata around for UI logic (e.g. formula override flags)
+  row.__gridMeta = persistedGrid;
+
   const rawByNorm = new Map<string, any>();
   for (const [k, v] of Object.entries(raw)) {
     rawByNorm.set(normalizeHeaderKey(k), v);
@@ -232,6 +235,28 @@ function hydrateImportRow(item: any, columns: ReadonlyArray<Column<any>>): any {
   }
 
   return row;
+}
+
+function getFormulaOverrideFlag(row: any, colKey: string): boolean {
+  const meta = row && typeof row === "object" ? (row as any).__gridMeta : null;
+  const k = `__override:${colKey}`;
+  return !!(meta && typeof meta === "object" && (meta as any)[k]);
+}
+
+function setFormulaOverrideFlag(row: any, colKey: string, value: boolean | null) {
+  if (!row || typeof row !== "object") return;
+  const k = `__override:${colKey}`;
+  const meta =
+    (row as any).__gridMeta && typeof (row as any).__gridMeta === "object"
+      ? { ...(row as any).__gridMeta }
+      : {};
+
+  if (value === null) {
+    delete (meta as any)[k];
+  } else {
+    (meta as any)[k] = value;
+  }
+  (row as any).__gridMeta = meta;
 }
 
 // Define all columns matching the exact order and names provided (223 columns total)
@@ -503,8 +528,10 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     const s = new Set<string>();
     for (const col of COLUMNS) {
       const cfg = gridConfig[col.key];
-      const isFormula = cfg?.inputType === 'formula';
-      if (!isFormula && col.editable) s.add(col.key);
+      const hasFormula = !!cfg?.formula || cfg?.inputType === 'formula';
+      const allowOverride = !!cfg?.allowFormulaOverride;
+      const editable = !!col.editable && (!hasFormula || allowOverride);
+      if (editable) s.add(col.key);
     }
     return s;
   }, [gridConfig]);
@@ -604,6 +631,8 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     const updates: Array<{ id: string; changes: Record<string, any> }> = [];
     const changedById = new Map<string, Record<string, any>>();
 
+    let willTouchCalculated = false;
+
     for (let rOff = 0; rOff < rowsText.length; rOff++) {
       const targetRowIdx = start.rowIdx + rOff;
       if (targetRowIdx < 0 || targetRowIdx >= nextRows.length) break;
@@ -615,6 +644,14 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
         const targetColIdx = startColIdx + cOff;
         if (targetColIdx < 0 || targetColIdx >= keys.length) break;
         const key = keys[targetColIdx];
+
+        const cfg = gridConfig[key];
+        const isCalculated = !!cfg?.formula || cfg?.inputType === 'formula';
+        const allowOverride = !!cfg?.allowFormulaOverride;
+
+        // Never paste into calculated fields unless overwrite is enabled
+        if (isCalculated && !allowOverride) continue;
+
         if (!editableKeySet.has(key)) continue;
 
         const rawVal = cells[cOff];
@@ -622,9 +659,44 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
         if (Object.is((prevRow as any)[key], nextVal)) continue;
         (targetRow as any)[key] = nextVal === '' ? null : nextVal;
 
+        if (isCalculated && allowOverride) willTouchCalculated = true;
+
+        if (isCalculated && allowOverride) {
+          if ((targetRow as any)[key] == null || (targetRow as any)[key] === '') {
+            setFormulaOverrideFlag(targetRow as any, key, null);
+          } else {
+            setFormulaOverrideFlag(targetRow as any, key, true);
+          }
+        }
+
         const patch = changedById.get(targetRow.id) || {};
         patch[key] = (targetRow as any)[key];
+
+        if (isCalculated && allowOverride) {
+          patch[`__override:${key}`] = getFormulaOverrideFlag(targetRow as any, key) ? true : null;
+        }
         changedById.set(targetRow.id, patch);
+      }
+    }
+
+    if (willTouchCalculated) {
+      const ok = window.confirm(
+        'This paste includes calculated (formula) fields. Do you want to overwrite the formulas for the pasted cells?'
+      );
+      if (!ok) {
+        // Drop calculated-field changes; keep the rest.
+        for (const [id, patch] of changedById.entries()) {
+          for (const k of Object.keys({ ...patch })) {
+            const cfg = gridConfig[k];
+            const isCalculated = !!cfg?.formula || cfg?.inputType === 'formula';
+            const allowOverride = !!cfg?.allowFormulaOverride;
+            if (isCalculated && allowOverride) {
+              delete (patch as any)[k];
+              delete (patch as any)[`__override:${k}`];
+            }
+          }
+          if (Object.keys(patch).length === 0) changedById.delete(id);
+        }
       }
     }
 
@@ -637,7 +709,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     rowsRef.current = nextRows;
 
     await bulkPersist(updates);
-  }, [activeCell, selection, bulkPersist, getSelectableColumns, editableKeySet]);
+  }, [activeCell, selection, bulkPersist, getSelectableColumns, editableKeySet, gridConfig]);
 
   const handleRowsChange = useCallback((newRows: FireDoorRow[]) => {
     const oldRows = rowsRef.current;
@@ -668,6 +740,20 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
         if (key === "rowIndex" || key === "id") continue;
         if (!Object.is((prev as any)[key], (row as any)[key])) {
           patch[key] = (row as any)[key];
+
+          const cfg = gridConfig[key];
+          const isCalculated = !!cfg?.formula || cfg?.inputType === 'formula';
+          const allowOverride = !!cfg?.allowFormulaOverride;
+          if (isCalculated && allowOverride) {
+            const flagKey = `__override:${key}`;
+            if ((row as any)[key] == null || (row as any)[key] === '') {
+              setFormulaOverrideFlag(row as any, key, null);
+              patch[flagKey] = null;
+            } else {
+              setFormulaOverrideFlag(row as any, key, true);
+              patch[flagKey] = true;
+            }
+          }
         }
       }
 
@@ -971,16 +1057,26 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   // Evaluate formulas
   const evaluateFormula = (formula: string, row: FireDoorRow): any => {
     try {
-      // Simple formula evaluation - replace field names with values
-      let expression = formula;
-      Object.keys(row).forEach(key => {
-        const value = row[key];
-        if (typeof value === 'number') {
+      let expression = String(formula || '');
+
+      // Primary syntax: ${fieldName}
+      expression = expression.replace(/\$\{([^}]+)\}/g, (_m, fieldRaw) => {
+        const key = String(fieldRaw || '').trim();
+        const value = (row as any)[key];
+        if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+        if (value == null || value === '') return '0';
+        return JSON.stringify(String(value));
+      });
+
+      // Back-compat: replace bare identifiers for numeric fields
+      for (const key of Object.keys(row)) {
+        const value = (row as any)[key];
+        if (typeof value === 'number' && Number.isFinite(value)) {
           expression = expression.replace(new RegExp(`\\b${key}\\b`, 'g'), String(value));
         }
-      });
-      
-      // Evaluate using Function constructor (safe in this context)
+      }
+
+      // eslint-disable-next-line no-new-func
       return new Function('return ' + expression)();
     } catch (err) {
       console.error('Formula evaluation error:', err);
@@ -993,13 +1089,15 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       SelectColumn,
       ...COLUMNS.map(col => {
         const fieldConfig = gridConfig[col.key];
-        const inputType = fieldConfig?.inputType || 'text';
+        const baseInputType = fieldConfig?.inputType || 'text';
+        const inputType = String(baseInputType).toLowerCase();
         const isDropdown = (inputType === 'dropdown' || inputType === 'lookup') && fieldConfig?.lookupTable;
-        const isFormula = fieldConfig?.inputType === 'formula';
+        const isCalculated = !!fieldConfig?.formula || fieldConfig?.inputType === 'formula';
+        const allowOverride = !!fieldConfig?.allowFormulaOverride;
         
         return {
           ...col,
-          editable: isFormula ? false : col.editable,
+          editable: isCalculated ? (allowOverride ? !!col.editable : false) : col.editable,
           headerCellClass: "cursor-pointer hover:bg-blue-50 transition-colors",
           renderHeaderCell: (props: any) => (
             <div 
@@ -1024,7 +1122,8 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
           renderCell: (props: any) => {
             const row = props.row;
             const rowIdx = props.rowIdx as number;
-            let value = row[col.key];
+            const overrideActive = allowOverride && getFormulaOverrideFlag(row, col.key);
+            let value = overrideActive ? row[col.key] : row[col.key];
             const inSelection = isCellInSelection(rowIdx, col.key);
             const isActive = activeCell?.rowIdx === rowIdx && activeCell?.colKey === col.key;
             const baseClass = clsx(
@@ -1033,8 +1132,8 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
               isActive && 'ring-2 ring-blue-500 ring-inset'
             );
             
-            // Evaluate formula if configured
-            if (isFormula && fieldConfig?.formula) {
+            // Evaluate formula if configured and not overridden
+            if (isCalculated && fieldConfig?.formula && !overrideActive) {
               value = evaluateFormula(fieldConfig.formula, row);
             }
             
@@ -1053,7 +1152,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
             }
             
             // Formula indicator
-            if (isFormula) {
+            if (isCalculated && !overrideActive) {
               return <div className={clsx(baseClass, 'text-blue-700 font-mono text-xs')}>{value}</div>;
             }
           

@@ -6,12 +6,13 @@ import { useState, useEffect } from "react";
 import { FormulaWizard } from "./FormulaWizard";
 import { Sparkles } from "lucide-react";
 
-export type FireDoorColumnInputType = "text" | "number" | "dropdown" | "formula";
+export type FireDoorColumnInputType = "text" | "number" | "dropdown";
 
 export interface FireDoorColumnConfig {
   inputType?: FireDoorColumnInputType;
   lookupTable?: string | null;
   formula?: string | null;
+  allowFormulaOverride?: boolean;
   componentLink?: string | null; // hinges, locks, glass, doorBlank
   required?: boolean;
 }
@@ -38,16 +39,30 @@ export function ColumnHeaderModal({
   availableFields = [],
 }: ColumnHeaderModalProps) {
   const [formData, setFormData] = useState<FireDoorColumnConfig>(
-    currentConfig || { inputType: "text", lookupTable: null, formula: null, componentLink: null, required: false }
+    currentConfig || {
+      inputType: "text",
+      lookupTable: null,
+      formula: null,
+      allowFormulaOverride: false,
+      componentLink: null,
+      required: false,
+    }
   );
   const [showAdvanced, setShowAdvanced] = useState(!!currentConfig?.componentLink);
   const [showFormulaWizard, setShowFormulaWizard] = useState(false);
   const [formulaInput, setFormulaInput] = useState<string>(currentConfig?.formula || "");
 
   useEffect(() => {
-    setFormData(
-      currentConfig || { inputType: "text", lookupTable: null, formula: null, componentLink: null, required: false }
-    );
+    const normalized: FireDoorColumnConfig = {
+      inputType: (currentConfig as any)?.inputType === "formula" ? "text" : (currentConfig?.inputType || "text"),
+      lookupTable: currentConfig?.lookupTable || null,
+      formula: currentConfig?.formula || null,
+      allowFormulaOverride: !!currentConfig?.allowFormulaOverride,
+      componentLink: currentConfig?.componentLink || null,
+      required: !!currentConfig?.required,
+    };
+
+    setFormData(normalized);
     setFormulaInput(currentConfig?.formula || "");
   }, [currentConfig, fieldName]);
 
@@ -71,7 +86,6 @@ export function ColumnHeaderModal({
                 <SelectItem value="text">Text Input</SelectItem>
                 <SelectItem value="number">Number Input</SelectItem>
                 <SelectItem value="dropdown">Lookup Table</SelectItem>
-                <SelectItem value="formula">Formula (Read-only)</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -164,6 +178,21 @@ export function ColumnHeaderModal({
             <p className="text-xs text-gray-500">
               Use ${'{fieldName}'} to reference other fields, or use the wizard to build formulas visually
             </p>
+
+            {formulaInput?.trim() ? (
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id={`allow-formula-override-${fieldName}`}
+                  className="rounded"
+                  checked={!!formData.allowFormulaOverride}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, allowFormulaOverride: e.target.checked }))}
+                />
+                <label htmlFor={`allow-formula-override-${fieldName}`} className="text-sm text-slate-700">
+                  Allow overwrite of formula
+                </label>
+              </div>
+            ) : null}
           </div>
 
           <div className="flex items-center gap-2">
@@ -185,11 +214,11 @@ export function ColumnHeaderModal({
               onClick={() => {
                 onSave({
                   ...formData,
-                  // If a formula is set, ensure the field is treated as formula/read-only
-                  inputType: formulaInput ? "formula" : (formData.inputType || "text"),
+                  inputType: formData.inputType || "text",
                   formula: formulaInput ? formulaInput : null,
                   // lookupTable only makes sense for dropdown
                   lookupTable: (formData.inputType === "dropdown") ? (formData.lookupTable || null) : null,
+                  allowFormulaOverride: formulaInput ? !!formData.allowFormulaOverride : false,
                 });
               }}
             >
