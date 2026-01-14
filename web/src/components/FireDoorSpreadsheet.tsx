@@ -1068,6 +1068,20 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     try {
       const colKey = String(args?.column?.key || '').trim();
       if (!colKey || colKey === 'select-row') return;
+
+      // If this is a dropdown/lookup-configured column, open the editor on single click.
+      // react-data-grid only enters edit mode on double click by default.
+      const cfg = gridConfig[colKey];
+      const inputType = String(cfg?.inputType || '').toLowerCase();
+      const isDropdown = (inputType === 'dropdown' || inputType === 'lookup') && !!cfg?.lookupTable;
+      if (isDropdown && !event?.shiftKey && !event?.metaKey && !event?.ctrlKey && typeof args?.selectCell === 'function') {
+        try {
+          args.selectCell(true);
+        } catch {
+          // ignore
+        }
+      }
+
       const rowId = String(args?.row?.id || '').trim();
       if (!rowId) return;
       const rowIdx = rowsRef.current.findIndex((r) => r.id === rowId);
@@ -1086,7 +1100,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     } catch {
       // no-op
     }
-  }, [selection]);
+  }, [selection, gridConfig]);
 
   const handleCopyCapture = useCallback((e: React.ClipboardEvent) => {
     const tsv = buildTsvFromSelection();
