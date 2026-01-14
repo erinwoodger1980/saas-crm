@@ -38,6 +38,8 @@ export function ColumnHeaderModal({
   availableComponents = [],
   availableFields = [],
 }: ColumnHeaderModalProps) {
+  const NONE_VALUE = "__none__";
+
   const [formData, setFormData] = useState<FireDoorColumnConfig>(
     currentConfig || {
       inputType: "text",
@@ -166,14 +168,19 @@ export function ColumnHeaderModal({
                 <div>
                   <label className="block text-sm font-medium mb-1">Component Link</label>
                   <Select
-                    value={formData.componentLink || ""}
-                    onValueChange={(value) => setFormData((prev) => ({ ...prev, componentLink: value || null }))}
+                    value={formData.componentLink || NONE_VALUE}
+                    onValueChange={(value) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        componentLink: value === NONE_VALUE ? null : value,
+                      }))
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="None" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">None</SelectItem>
+                      <SelectItem value={NONE_VALUE}>None</SelectItem>
                       <SelectItem value="hinges">Hinges</SelectItem>
                       <SelectItem value="locks">Locks</SelectItem>
                       <SelectItem value="glass">Vision Glass</SelectItem>
