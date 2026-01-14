@@ -1129,7 +1129,9 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
             const baseClass = clsx(
               'px-2',
               inSelection && 'bg-blue-50',
-              isActive && 'ring-2 ring-blue-500 ring-inset'
+              isActive && 'ring-2 ring-blue-500 ring-inset',
+              // Highlight cells that are overriding a column formula
+              overrideActive && 'border border-blue-300 bg-white'
             );
             
             // Evaluate formula if configured and not overridden
@@ -1151,11 +1153,35 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
               return <div className={baseClass}>{option?.label || value}</div>;
             }
             
-            // Formula indicator
+            // Formula indicator (only when the formula is in effect)
             if (isCalculated && !overrideActive) {
               return <div className={clsx(baseClass, 'text-blue-700 font-mono text-xs')}>{value}</div>;
             }
-          
+
+            // When a formula override is active, show a reset control to return this cell to the column formula.
+            if (isCalculated && overrideActive) {
+              return (
+                <div className={clsx(baseClass, 'flex items-center justify-between gap-2')}>
+                  <span className="truncate">{value}</span>
+                  <button
+                    type="button"
+                    className="text-[11px] text-blue-600 hover:text-blue-700 underline-offset-2 hover:underline"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+
+                      const nextRow: any = { ...row, [col.key]: null };
+                      setFormulaOverrideFlag(nextRow, col.key, null);
+                      props.onRowChange(nextRow, true);
+                    }}
+                    title="Return this cell to the column formula"
+                  >
+                    Reset
+                  </button>
+                </div>
+              );
+            }
+
             return <div className={baseClass}>{value}</div>;
           },
         };
