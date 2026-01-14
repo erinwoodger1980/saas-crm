@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getBackendApiBase, forwardAuthHeaders } from "@/lib/api-route-helpers";
+import { getBackendApiBase, forwardAuthHeaders, readJsonFromUpstream } from "@/lib/api-route-helpers";
 
 export const runtime = "nodejs";
 
@@ -14,7 +14,8 @@ export async function POST(
     }
 
     const body = await request.json();
-    const res = await fetch(getBackendApiBase() + `/grid-config/${encodeURIComponent(fieldName)}` , {
+    const upstreamUrl = getBackendApiBase(request) + `/grid-config/${encodeURIComponent(fieldName)}`;
+    const res = await fetch(upstreamUrl, {
       method: "POST",
       headers: {
         ...forwardAuthHeaders(request),
@@ -24,8 +25,16 @@ export async function POST(
       credentials: "include",
     });
 
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+    const parsed = await readJsonFromUpstream(res);
+    if (parsed.looksLikeHtml) {
+      console.error("[grid-config POST] Upstream returned HTML", {
+        upstreamUrl,
+        status: res.status,
+        contentType: parsed.contentType,
+        preview: parsed.rawText.slice(0, 200),
+      });
+    }
+    return NextResponse.json(parsed.data, { status: res.status });
   } catch (error: any) {
     console.error("[grid-config POST] Error:", error);
     return NextResponse.json(
@@ -45,12 +54,21 @@ export async function GET(
       return NextResponse.json({ error: "fieldName required" }, { status: 400 });
     }
 
-    const res = await fetch(getBackendApiBase() + `/grid-config/${encodeURIComponent(fieldName)}` , {
+    const upstreamUrl = getBackendApiBase(request) + `/grid-config/${encodeURIComponent(fieldName)}`;
+    const res = await fetch(upstreamUrl, {
       headers: forwardAuthHeaders(request),
       credentials: "include",
     });
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+    const parsed = await readJsonFromUpstream(res);
+    if (parsed.looksLikeHtml) {
+      console.error("[grid-config GET] Upstream returned HTML", {
+        upstreamUrl,
+        status: res.status,
+        contentType: parsed.contentType,
+        preview: parsed.rawText.slice(0, 200),
+      });
+    }
+    return NextResponse.json(parsed.data, { status: res.status });
   } catch (error: any) {
     console.error("[grid-config GET] Error:", error);
     return NextResponse.json(

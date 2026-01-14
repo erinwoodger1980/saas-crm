@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getBackendApiBase, forwardAuthHeaders } from '@/lib/api-route-helpers';
+import { getBackendApiBase, forwardAuthHeaders, readJsonFromUpstream } from '@/lib/api-route-helpers';
 
 export const runtime = 'nodejs';
 
@@ -14,13 +14,23 @@ export const runtime = 'nodejs';
  */
 export async function GET(request: NextRequest) {
   try {
-    const res = await fetch(getBackendApiBase() + '/flexible-fields/lookup-tables', {
+    const upstreamUrl = getBackendApiBase(request) + '/flexible-fields/lookup-tables';
+    const res = await fetch(upstreamUrl, {
       headers: forwardAuthHeaders(request),
       credentials: 'include',
     });
-    
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+
+    const parsed = await readJsonFromUpstream(res);
+    if (parsed.looksLikeHtml) {
+      console.error('[lookup-tables GET] Upstream returned HTML', {
+        upstreamUrl,
+        status: res.status,
+        contentType: parsed.contentType,
+        preview: parsed.rawText.slice(0, 200),
+      });
+    }
+
+    return NextResponse.json(parsed.data, { status: res.status });
   } catch (error: any) {
     console.error('[lookup-tables GET] Error:', error);
     return NextResponse.json(
@@ -37,8 +47,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    
-    const res = await fetch(getBackendApiBase() + '/flexible-fields/lookup-tables', {
+
+    const upstreamUrl = getBackendApiBase(request) + '/flexible-fields/lookup-tables';
+    const res = await fetch(upstreamUrl, {
       method: 'POST',
       headers: {
         ...forwardAuthHeaders(request),
@@ -47,9 +58,18 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify(body),
       credentials: 'include',
     });
-    
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+
+    const parsed = await readJsonFromUpstream(res);
+    if (parsed.looksLikeHtml) {
+      console.error('[lookup-tables POST] Upstream returned HTML', {
+        upstreamUrl,
+        status: res.status,
+        contentType: parsed.contentType,
+        preview: parsed.rawText.slice(0, 200),
+      });
+    }
+
+    return NextResponse.json(parsed.data, { status: res.status });
   } catch (error: any) {
     console.error('[lookup-tables POST] Error:', error);
     return NextResponse.json(

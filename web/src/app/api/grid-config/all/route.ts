@@ -1,17 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getBackendApiBase, forwardAuthHeaders } from "@/lib/api-route-helpers";
+import { getBackendApiBase, forwardAuthHeaders, readJsonFromUpstream } from "@/lib/api-route-helpers";
 
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
   try {
-    const res = await fetch(getBackendApiBase() + "/grid-config/all", {
+    const upstreamUrl = getBackendApiBase(request) + "/grid-config/all";
+    const res = await fetch(upstreamUrl, {
       headers: forwardAuthHeaders(request),
       credentials: "include",
     });
 
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+    const parsed = await readJsonFromUpstream(res);
+    if (parsed.looksLikeHtml) {
+      console.error("[grid-config/all GET] Upstream returned HTML", {
+        upstreamUrl,
+        status: res.status,
+        contentType: parsed.contentType,
+        preview: parsed.rawText.slice(0, 200),
+      });
+    }
+
+    return NextResponse.json(parsed.data, { status: res.status });
   } catch (error: any) {
     console.error("[grid-config/all GET] Error:", error);
     return NextResponse.json(

@@ -504,8 +504,19 @@ export default function FireDoorScheduleDetailPage() {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Import failed");
+        let errorPayload: any = null;
+        try {
+          errorPayload = await response.json();
+        } catch {
+          errorPayload = null;
+        }
+
+        const message =
+          typeof errorPayload === "string"
+            ? errorPayload
+            : errorPayload?.message || errorPayload?.error || `Import failed (${response.status})`;
+
+        throw new Error(message);
       }
 
       const result = await response.json();

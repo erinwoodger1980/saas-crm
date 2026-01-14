@@ -101,15 +101,26 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
         formData.append("netValue", netValue);
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/fire-doors/import`, {
+      // Always use same-origin Next.js API route; it proxies to the backend with proper auth.
+      const response = await fetch(`/api/fire-doors/import`, {
         method: "POST",
         body: formData,
         credentials: "include",
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || errorData.error || "Upload failed");
+        let errorPayload: any = null;
+        try {
+          errorPayload = await response.json();
+        } catch {
+          errorPayload = null;
+        }
+        const message =
+          typeof errorPayload === "string"
+            ? errorPayload
+            : errorPayload?.message || errorPayload?.error || `Upload failed (${response.status})`;
+
+        throw new Error(message);
       }
 
       const data: FireDoorImportResponse = await response.json();

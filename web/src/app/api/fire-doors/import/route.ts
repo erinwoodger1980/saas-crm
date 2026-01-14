@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getBackendApiBase, forwardAuthHeaders } from "@/lib/api-route-helpers";
+import { getBackendApiBase, forwardAuthHeaders, readJsonFromUpstream } from "@/lib/api-route-helpers";
 
 export const runtime = "nodejs";
 
@@ -19,7 +19,8 @@ export async function POST(request: NextRequest) {
       outgoing.append(key, value);
     }
 
-    const res = await fetch(getBackendApiBase() + "/fire-doors/import", {
+    const upstreamUrl = getBackendApiBase(request) + "/fire-doors/import";
+    const res = await fetch(upstreamUrl, {
       method: "POST",
       headers: {
         ...forwardAuthHeaders(request),
@@ -29,8 +30,21 @@ export async function POST(request: NextRequest) {
       credentials: "include",
     });
 
-    const contentType = res.headers.get("content-type") || "";
-    const data = contentType.includes("application/json") ? await res.json() : await res.text();
+    const parsed = await readJsonFromUpstream(res);
+    if (parsed.looksLikeHtml) {
+      console.error("[fire-doors/import POST] Upstream returned HTML", {
+        upstreamUrl,
+        status: res.status,
+        contentType: parsed.contentType,
+        preview: parsed.rawText.slice(0, 200),
+      });
+    }
+
+    // Ensure we always respond with JSON object for error cases.
+    const data =
+      !res.ok && typeof parsed.data === "string"
+        ? { error: "UpstreamError", message: parsed.data }
+        : parsed.data;
 
     return NextResponse.json(data, { status: res.status });
   } catch (error: any) {
