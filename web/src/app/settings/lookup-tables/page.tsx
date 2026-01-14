@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useRef, useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Plus, Edit2, Trash2, Save, X, Table as TableIcon, Database } from 'lucide-react';
 
 interface LookupTable {
@@ -29,6 +30,8 @@ const emptyFormData: TableFormData = {
 };
 
 export default function LookupTablesPage() {
+  const searchParams = useSearchParams();
+  const deepLinkHandledRef = useRef(false);
   const [tables, setTables] = useState<LookupTable[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -40,6 +43,29 @@ export default function LookupTablesPage() {
   useEffect(() => {
     fetchTables();
   }, []);
+
+  useEffect(() => {
+    if (deepLinkHandledRef.current) return;
+    if (isLoading) return;
+
+    const create = searchParams.get('create');
+    const edit = searchParams.get('edit');
+
+    if (create === '1' || create === 'true') {
+      deepLinkHandledRef.current = true;
+      handleCreate();
+      return;
+    }
+
+    if (edit) {
+      const table = tables.find((t: any) => t.id === edit || t.name === edit || t.tableName === edit);
+      if (table) {
+        deepLinkHandledRef.current = true;
+        handleEdit(table);
+        setExpandedTableId(table.id);
+      }
+    }
+  }, [isLoading, searchParams, tables]);
 
   const fetchTables = async () => {
     try {

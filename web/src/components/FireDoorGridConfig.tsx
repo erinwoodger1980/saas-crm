@@ -23,7 +23,7 @@ interface ColumnHeaderModalProps {
   currentConfig: FireDoorColumnConfig | null;
   onClose: () => void;
   onSave: (config: FireDoorColumnConfig) => void;
-  availableLookupTables?: Array<{ id: string; tableName: string; category?: string }>;
+  availableLookupTables?: Array<{ id: string; tableName?: string; name?: string; category?: string }>;
   availableComponents?: Array<{ id: string; code: string; name: string }>;
   availableFields?: Array<{ name: string; type: string }>;
 }
@@ -66,6 +66,15 @@ export function ColumnHeaderModal({
     setFormulaInput(currentConfig?.formula || "");
   }, [currentConfig, fieldName]);
 
+  const selectedLookupTableId = (() => {
+    const selected = (formData.lookupTable || '').trim();
+    if (!selected) return null;
+    const match = availableLookupTables.find(
+      (t) => t.tableName === selected || t.name === selected
+    );
+    return match?.id || null;
+  })();
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-md">
@@ -104,8 +113,8 @@ export function ColumnHeaderModal({
                     </SelectTrigger>
                     <SelectContent>
                       {availableLookupTables.map((table) => (
-                        <SelectItem key={table.id} value={table.tableName}>
-                          {table.tableName} {table.category ? `(${table.category})` : ''}
+                        <SelectItem key={table.id} value={table.tableName || table.name || ""}>
+                          {table.tableName || table.name} {table.category ? `(${table.category})` : ''}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -117,6 +126,29 @@ export function ColumnHeaderModal({
                     onChange={(e) => setFormData((prev) => ({ ...prev, lookupTable: e.target.value }))}
                   />
                 )}
+
+                <div className="mt-2 flex items-center gap-3 text-xs">
+                  <a
+                    href={
+                      selectedLookupTableId
+                        ? `/settings/lookup-tables?edit=${encodeURIComponent(selectedLookupTableId)}`
+                        : '/settings/lookup-tables'
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-600 hover:text-blue-700 hover:underline underline-offset-2"
+                  >
+                    Edit lookup table
+                  </a>
+                  <a
+                    href="/settings/lookup-tables?create=1"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-600 hover:text-blue-700 hover:underline underline-offset-2"
+                  >
+                    Create new
+                  </a>
+                </div>
               </div>
 
               <div className="border-t pt-4">

@@ -31,7 +31,7 @@ interface FormulaWizardProps {
   onSave: (formula: string) => void;
   initialFormula?: string;
   availableFields: Array<{ name: string; type: string }>;
-  availableLookupTables: Array<{ id: string; tableName: string; category?: string }>;
+  availableLookupTables: Array<{ id: string; tableName?: string; name?: string; category?: string }>;
   availableFunctions?: string[];
 }
 
@@ -196,10 +196,12 @@ export function FormulaWizard({
     if (!selectedLookupTable) return;
     const table = availableLookupTables.find((t) => t.id === selectedLookupTable);
     if (table) {
+      const tableName = table.tableName || table.name;
+      if (!tableName) return;
       const newToken: FormulaToken = {
         type: "lookup",
-        value: `LOOKUP(${table.tableName}, , )`,
-        label: `LOOKUP(${table.tableName})`,
+        value: `LOOKUP(${tableName}, , )`,
+        label: `LOOKUP(${tableName})`,
       };
       setTokens([...tokens, newToken]);
       updateFormula([...tokens, newToken]);
@@ -362,7 +364,7 @@ export function FormulaWizard({
                     <SelectContent>
                       {availableLookupTables.map((table) => (
                         <SelectItem key={table.id} value={table.id}>
-                          {table.tableName} {table.category ? `(${table.category})` : ""}
+                          {table.tableName || table.name} {table.category ? `(${table.category})` : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>
