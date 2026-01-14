@@ -660,12 +660,21 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     return { rfiColumns: cols, rfiCells: cells };
   }, [rfis]);
 
-  const openRfiCreate = useCallback((rowId: string | null, columnKey: string, columnName?: string) => {
-    setRfiContext({ rowId, columnKey, columnName });
-    setCurrentRfi(null);
-    setRfiMode('create');
+  const openRfiDialog = useCallback((rowId: string | null, columnKey: string, columnName?: string) => {
+    const colKey = String(columnKey || '').trim();
+    const rid = rowId ? String(rowId).trim() : null;
+    const existing = rfis.find((r) => {
+      const rCol = String((r as any)?.columnKey || '').trim();
+      if (!rCol || rCol !== colKey) return false;
+      const rRow = (r as any)?.rowId ? String((r as any).rowId).trim() : null;
+      return (rid ? rRow === rid : rRow == null);
+    }) || null;
+
+    setRfiContext({ rowId: rid, columnKey: colKey, columnName });
+    setCurrentRfi(existing);
+    setRfiMode(existing ? 'edit' : 'create');
     setRfiDialogOpen(true);
-  }, []);
+  }, [rfis]);
 
   const handleSaveRfi = useCallback(async (rfiData: Partial<RfiRecord>) => {
     if (!importId) return;
@@ -1032,7 +1041,8 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   useEffect(() => {
     const loadLookupTables = async () => {
       try {
-        const tables = await apiFetch('/api/lookup-tables');
+        // Use flexible-fields lookup tables endpoint (includes `columns`)
+        const tables = await apiFetch('/flexible-fields/lookup-tables');
         if (Array.isArray(tables)) {
           setAvailableLookupTables(tables);
         }
@@ -1452,23 +1462,26 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
           ),
           renderHeaderCell: (props: any) => (
             <div 
-              className="flex items-center justify-between gap-1 h-full px-2 group"
+              className="relative flex items-center h-full px-2 group"
               onClick={(e) => {
                 e.stopPropagation();
                 setConfigModalColumn(col.key);
                 setConfigModalOpen(true);
               }}
             >
-              <span className="truncate" title={typeof col.name === 'string' ? col.name : ''}>{typeof col.name === 'string' ? col.name : 'Column'}</span>
-              <div className="flex items-center gap-1">
+              <span className="truncate flex-1" title={typeof col.name === 'string' ? col.name : ''}>{typeof col.name === 'string' ? col.name : 'Column'}</span>
+              <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
                 <button
                   type="button"
-                  className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-500 hover:text-slate-700"
-                  title="Add RFI for this column"
+                  className={clsx(
+                    'transition-opacity text-slate-500 hover:text-slate-700',
+                    columnHasRfi ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                  )}
+                  title={columnHasRfi ? 'Open RFI for this column' : 'Add RFI for this column'}
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    openRfiCreate(null, col.key, typeof col.name === 'string' ? col.name : undefined);
+                    openRfiDialog(null, col.key, typeof col.name === 'string' ? col.name : undefined);
                   }}
                 >
                   <MessageSquare className="w-3 h-3" />
@@ -1513,7 +1526,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
             const cellHasRfi =
               (row?.id ? rfiCells.has(`${row.id}::${col.key}`) : false) || rfiColumns.has(col.key);
             const baseClass = clsx(
-              'px-2 group relative',
+              'px-2 group relative h-full w-full',
               cellHasRfi && 'bg-yellow-100',
               inSelection && 'bg-blue-50',
               isActive && 'ring-2 ring-blue-500 ring-inset',
@@ -1549,11 +1562,11 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
                       <button
                         type="button"
                         className="opacity-60 hover:opacity-100 text-slate-600"
-                        title="Add RFI for this cell"
+                        title={cellHasRfi ? 'Open RFI for this cell' : 'Add RFI for this cell'}
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          openRfiCreate(row.id, col.key, typeof col.name === 'string' ? col.name : undefined);
+                          openRfiDialog(row.id, col.key, typeof col.name === 'string' ? col.name : undefined);
                         }}
                       >
                         <MessageSquare className="w-3 h-3" />
@@ -1578,11 +1591,11 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
                     <button
                       type="button"
                       className="text-[11px] text-slate-600 hover:text-slate-800"
-                      title="Add RFI for this cell"
+                      title={cellHasRfi ? 'Open RFI for this cell' : 'Add RFI for this cell'}
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        openRfiCreate(row.id, col.key, typeof col.name === 'string' ? col.name : undefined);
+                        openRfiDialog(row.id, col.key, typeof col.name === 'string' ? col.name : undefined);
                       }}
                     >
                       <MessageSquare className="w-3 h-3" />
@@ -1615,11 +1628,11 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
                     <button
                       type="button"
                       className="opacity-60 hover:opacity-100 text-slate-600"
-                      title="Add RFI for this cell"
+                      title={cellHasRfi ? 'Open RFI for this cell' : 'Add RFI for this cell'}
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        openRfiCreate(row.id, col.key, typeof col.name === 'string' ? col.name : undefined);
+                        openRfiDialog(row.id, col.key, typeof col.name === 'string' ? col.name : undefined);
                       }}
                     >
                       <MessageSquare className="w-3 h-3" />
@@ -1632,7 +1645,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
         };
       }),
     ];
-  }, [gridConfig, lookupOptions, activeCell, isCellInSelection, columnWidths, openRfiCreate, rfiCells, rfiColumns]);
+  }, [gridConfig, lookupOptions, activeCell, isCellInSelection, columnWidths, openRfiDialog, rfiCells, rfiColumns]);
 
   const handleColumnResize = useCallback((colOrIdx: any, widthMaybe: any) => {
     let colKey: string | null = null;

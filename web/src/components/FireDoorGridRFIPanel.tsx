@@ -33,6 +33,7 @@ export function FireDoorGridRFIPanel({
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedRfiId, setSelectedRfiId] = useState<string | null>(null);
+  const [doorRefByRowId, setDoorRefByRowId] = useState<Record<string, string>>({});
 
   const [newRfi, setNewRfi] = useState({
     columnKey: '',
@@ -60,6 +61,32 @@ export function FireDoorGridRFIPanel({
   useEffect(() => {
     fetchRFIs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [importId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadDoorRefs() {
+      try {
+        // Only used for nicer display labels in the RFI manager.
+        const res = await apiFetch<any>(`/fire-doors/imports/${encodeURIComponent(importId)}`);
+        const items = Array.isArray(res?.lineItems) ? res.lineItems : [];
+        const next: Record<string, string> = {};
+        for (const it of items) {
+          const id = String((it as any)?.id || '').trim();
+          if (!id) continue;
+          const dr = (it as any)?.doorRef;
+          const label = dr == null ? '' : String(dr).trim();
+          if (label) next[id] = label;
+        }
+        if (!cancelled) setDoorRefByRowId(next);
+      } catch (e) {
+        if (!cancelled) setDoorRefByRowId({});
+      }
+    }
+    if (importId) loadDoorRefs();
+    return () => {
+      cancelled = true;
+    };
   }, [importId]);
 
   const openRFIs = useMemo(() => rfis.filter((r) => r.status === 'open'), [rfis]);
@@ -236,7 +263,10 @@ export function FireDoorGridRFIPanel({
         ) : (
           rfis.map((rfi) => {
             const selected = selectedRfiId === rfi.id;
-            const context = rfi.rowId ? `Cell: ${rfi.rowId} • ${rfi.columnKey}` : `Column: ${rfi.columnKey}`;
+            const doorRef = rfi.rowId ? doorRefByRowId[String(rfi.rowId)] : undefined;
+            const context = rfi.rowId
+              ? `Cell: ${doorRef || '(no Door Ref)'} • ${rfi.columnKey}`
+              : `Column: ${rfi.columnKey}`;
             return (
               <div
                 key={rfi.id}
@@ -244,6 +274,7 @@ export function FireDoorGridRFIPanel({
                   selected ? 'border-blue-500 shadow-md' : 'border-gray-200 hover:border-gray-300'
                 }`}
                 onClick={() => setSelectedRfiId(selected ? null : rfi.id)}
+                title={rfi.rowId ? `Row: ${rfi.rowId}` : undefined}
               >
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center gap-2">
