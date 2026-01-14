@@ -150,41 +150,43 @@ export function ColumnHeaderModal({
                   </a>
                 </div>
               </div>
-
-              <div className="border-t pt-4">
-                <button
-                  onClick={() => setShowAdvanced(!showAdvanced)}
-                  className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1"
-                >
-                  {showAdvanced ? '▼' : '▶'} Component Linking (Advanced)
-                </button>
-                
-                {showAdvanced && (
-                  <div className="mt-3 space-y-3 bg-blue-50 p-3 rounded">
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Component Link</label>
-                      <Select
-                        value={formData.componentLink || ""}
-                        onValueChange={(value) => setFormData((prev) => ({ ...prev, componentLink: value || null }))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="None" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="">None</SelectItem>
-                          <SelectItem value="hinges">Hinges</SelectItem>
-                          <SelectItem value="locks">Locks</SelectItem>
-                          <SelectItem value="glass">Vision Glass</SelectItem>
-                          <SelectItem value="doorBlank">Door Blank</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-gray-500 mt-1">When this field is filled, a component can be auto-created.</p>
-                    </div>
-                  </div>
-                )}
-              </div>
             </>
           )}
+
+          <div className="border-t pt-4">
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1"
+            >
+              {showAdvanced ? '▼' : '▶'} Component Linking (Advanced)
+            </button>
+
+            {showAdvanced && (
+              <div className="mt-3 space-y-3 bg-blue-50 p-3 rounded">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Component Link</label>
+                  <Select
+                    value={formData.componentLink || ""}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, componentLink: value || null }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="None" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">None</SelectItem>
+                      <SelectItem value="hinges">Hinges</SelectItem>
+                      <SelectItem value="locks">Locks</SelectItem>
+                      <SelectItem value="glass">Vision Glass</SelectItem>
+                      <SelectItem value="doorBlank">Door Blank</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    When this field is filled, a component can be auto-created.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Formula input section */}
           <div className="border-t pt-4 space-y-2">
