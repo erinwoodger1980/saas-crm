@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useState, useEffect } from "react";
-import { ChevronDown, Plus, Trash2, Copy } from "lucide-react";
+import { Plus, Trash2, Copy } from "lucide-react";
 
 interface FormulaToken {
   type: "field" | "operator" | "function" | "lookup" | "number" | "text";
@@ -46,7 +46,6 @@ const AVAILABLE_FUNCTIONS = [
   { name: "ROUND", description: "Round: ROUND(number, decimals)" },
   { name: "CEIL", description: "Round up: CEIL(number)" },
   { name: "FLOOR", description: "Round down: FLOOR(number)" },
-  { name: "LOOKUP", description: "Lookup value: LOOKUP(table, field=value, return_field)" },
   { name: "CONCAT", description: "Combine text: CONCAT(a, b, c)" },
   { name: "LENGTH", description: "Text length: LENGTH(text)" },
 ];
@@ -291,106 +290,18 @@ export function FormulaWizard({
 
             <div>
               <h3 className="text-sm font-semibold mb-2">Add Functions</h3>
+              <p className="text-xs text-slate-500 mb-2">For math/text functions. Use the Lookup section below for LOOKUP.</p>
               <div className="flex gap-2">
                 <Select value={selectedFunction} onValueChange={setSelectedFunction}>
                   <SelectTrigger className="flex-1">
                     <SelectValue placeholder="Select function..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableFunctions.map((fn) => {
+                    {availableFunctions.filter((fn) => fn !== "LOOKUP").map((fn) => {
                       const funcDef = AVAILABLE_FUNCTIONS.find((f) => f.name === fn);
                       return (
                         <SelectItem key={fn} value={fn}>
                           {fn} {funcDef ? ` - ${funcDef.description}` : ""}
-
-                  {selectedLookupTable && (
-                    <div className="mt-3 space-y-3 rounded-md border p-3">
-                      <div>
-                        <div className="text-xs font-semibold mb-2">Match columns</div>
-                        <div className="space-y-2">
-                          {lookupMatches.map((m, idx) => (
-                            <div key={idx} className="flex gap-2 items-center">
-                              <Select
-                                value={m.tableColumn}
-                                onValueChange={(v) =>
-                                  setLookupMatches((prev) => prev.map((x, i) => (i === idx ? { ...x, tableColumn: v } : x)))
-                                }
-                              >
-                                <SelectTrigger className="flex-1">
-                                  <SelectValue placeholder="Lookup table column..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {lookupTableColumns.map((c) => (
-                                    <SelectItem key={c} value={c}>
-                                      {c}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-
-                              <Select
-                                value={m.fieldName}
-                                onValueChange={(v) =>
-                                  setLookupMatches((prev) => prev.map((x, i) => (i === idx ? { ...x, fieldName: v } : x)))
-                                }
-                              >
-                                <SelectTrigger className="flex-1">
-                                  <SelectValue placeholder="Match to field..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {availableFields.map((field) => (
-                                    <SelectItem key={field.name} value={field.name}>
-                                      {field.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  setLookupMatches((prev) =>
-                                    prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx)
-                                  );
-                                }}
-                                disabled={lookupMatches.length <= 1}
-                                title="Remove match"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          ))}
-
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setLookupMatches((prev) => [...prev, { tableColumn: "", fieldName: "" }])}
-                            disabled={lookupTableColumns.length === 0}
-                          >
-                            <Plus className="h-4 w-4 mr-2" />
-                            Add match
-                          </Button>
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="text-xs font-semibold mb-2">Return column</div>
-                        <Select value={lookupReturnColumn} onValueChange={setLookupReturnColumn}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select return column..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {lookupTableColumns.map((c) => (
-                              <SelectItem key={c} value={c}>
-                                {c}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  )}
                         </SelectItem>
                       );
                     })}
@@ -465,8 +376,9 @@ export function FormulaWizard({
 
             {availableLookupTables.length > 0 && (
               <div>
-                <h3 className="text-sm font-semibold mb-2">Add Lookup</h3>
-                <div className="flex gap-2">
+                <h3 className="text-sm font-semibold mb-2">Lookup</h3>
+                <p className="text-xs text-slate-500 mb-2">Build a LOOKUP by choosing match columns and a return column.</p>
+                <div className="flex gap-2 items-start">
                   <Select
                     value={selectedLookupTable}
                     onValueChange={setSelectedLookupTable}
@@ -482,10 +394,109 @@ export function FormulaWizard({
                       ))}
                     </SelectContent>
                   </Select>
-                  <Button onClick={addLookup} size="sm" variant="outline">
+                  <Button
+                    onClick={addLookup}
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      !selectedLookupTable ||
+                      !lookupReturnColumn ||
+                      lookupMatches.some((m) => !String(m.tableColumn || "").trim() || !String(m.fieldName || "").trim())
+                    }
+                    title="Add this lookup to the formula"
+                  >
                     <Plus className="w-4 h-4" />
                   </Button>
                 </div>
+
+                {selectedLookupTable && (
+                  <div className="mt-3 space-y-3 rounded-md border p-3">
+                    <div>
+                      <div className="text-xs font-semibold mb-2">Match columns</div>
+                      <div className="space-y-2">
+                        {lookupMatches.map((m, idx) => (
+                          <div key={idx} className="flex gap-2 items-center">
+                            <Select
+                              value={m.tableColumn}
+                              onValueChange={(v) =>
+                                setLookupMatches((prev) => prev.map((x, i) => (i === idx ? { ...x, tableColumn: v } : x)))
+                              }
+                            >
+                              <SelectTrigger className="flex-1">
+                                <SelectValue placeholder="Lookup table column..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {lookupTableColumns.map((c) => (
+                                  <SelectItem key={c} value={c}>
+                                    {c}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+
+                            <Select
+                              value={m.fieldName}
+                              onValueChange={(v) =>
+                                setLookupMatches((prev) => prev.map((x, i) => (i === idx ? { ...x, fieldName: v } : x)))
+                              }
+                            >
+                              <SelectTrigger className="flex-1">
+                                <SelectValue placeholder="Match to field..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {availableFields.map((field) => (
+                                  <SelectItem key={field.name} value={field.name}>
+                                    {field.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setLookupMatches((prev) =>
+                                  prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx)
+                                );
+                              }}
+                              disabled={lookupMatches.length <= 1}
+                              title="Remove match"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setLookupMatches((prev) => [...prev, { tableColumn: "", fieldName: "" }])}
+                          disabled={lookupTableColumns.length === 0}
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add match
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-semibold mb-2">Return column</div>
+                      <Select value={lookupReturnColumn} onValueChange={setLookupReturnColumn}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select return column..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {lookupTableColumns.map((c) => (
+                            <SelectItem key={c} value={c}>
+                              {c}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -540,7 +551,7 @@ export function FormulaWizard({
                 <li>• Use fields like $&#123;fieldName&#125; to reference questionnaire fields</li>
                 <li>• Operators connect values: +, -, *, /, =, !=, &gt;, &lt;, etc.</li>
                 <li>• Functions perform calculations: SUM, MULTIPLY, IF, MAX, MIN, etc.</li>
-                <li>• LOOKUP() retrieves values from lookup tables</li>
+                <li>• Use the Lookup section to add LOOKUP()</li>
                 <li>• Build complex formulas by combining tokens</li>
               </ul>
             </div>
