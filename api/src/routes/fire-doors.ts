@@ -935,7 +935,9 @@ router.post('/line-items/bulk-delete', async (req, res) => {
       return res.status(400).json({ error: 'ids must be a non-empty array' });
     }
 
-    const ids = Array.from(new Set(idsRaw.map((x: any) => String(x || '').trim()).filter(Boolean)));
+    const ids: string[] = Array.from(
+      new Set((idsRaw as any[]).map((x: any) => String(x || '').trim()).filter(Boolean))
+    );
     if (ids.length === 0) {
       return res.status(400).json({ error: 'ids must contain valid ids' });
     }
@@ -953,7 +955,11 @@ router.post('/line-items/bulk-delete', async (req, res) => {
       return res.status(404).json({ error: 'One or more line items not found', missing });
     }
 
-    const importIds = Array.from(new Set(existing.map((x) => x.fireDoorImportId)));
+    const importIds: string[] = Array.from(new Set(existing.map((x) => x.fireDoorImportId)));
+    const deleteCountByImportId = new Map<string, number>();
+    for (const li of existing) {
+      deleteCountByImportId.set(li.fireDoorImportId, (deleteCountByImportId.get(li.fireDoorImportId) || 0) + 1);
+    }
 
     await prisma.$transaction(async (tx) => {
       await tx.fireDoorLineItem.deleteMany({
@@ -961,10 +967,14 @@ router.post('/line-items/bulk-delete', async (req, res) => {
       });
 
       // Maintain import rowCount best-effort
-      await tx.fireDoorImport.updateMany({
-        where: { tenantId, id: { in: importIds } },
-        data: { rowCount: { decrement: ids.length } },
-      });
+      for (const fireDoorImportId of importIds) {
+        const dec = deleteCountByImportId.get(fireDoorImportId) || 0;
+        if (dec <= 0) continue;
+        await tx.fireDoorImport.updateMany({
+          where: { tenantId, id: fireDoorImportId },
+          data: { rowCount: { decrement: dec } },
+        });
+      }
 
       // Reindex each affected import for stable ordering
       for (const fireDoorImportId of importIds) {
@@ -982,7 +992,7 @@ router.post('/line-items/bulk-delete', async (req, res) => {
           }
         }
         if (updates.length) {
-          await tx.$transaction(updates);
+          await Promise.all(updates);
         }
       }
     });
