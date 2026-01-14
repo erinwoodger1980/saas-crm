@@ -56,6 +56,11 @@ function DefaultEditCell({
           e.preventDefault();
           commit();
         }
+        if (e.key === "Tab") {
+          // react-data-grid may close the editor on Tab before blur fires.
+          // Commit here so tabbing behaves like clicking out.
+          commit();
+        }
         if (e.key === "Escape") {
           e.preventDefault();
           try {
