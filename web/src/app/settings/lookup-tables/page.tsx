@@ -1,7 +1,6 @@
 'use client';
 
 import { useRef, useState, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { Plus, Edit2, Trash2, Save, X, Table as TableIcon, Database } from 'lucide-react';
 
 interface LookupTable {
@@ -30,7 +29,6 @@ const emptyFormData: TableFormData = {
 };
 
 export default function LookupTablesPage() {
-  const searchParams = useSearchParams();
   const deepLinkHandledRef = useRef(false);
   const [tables, setTables] = useState<LookupTable[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -48,8 +46,12 @@ export default function LookupTablesPage() {
     if (deepLinkHandledRef.current) return;
     if (isLoading) return;
 
-    const create = searchParams.get('create');
-    const edit = searchParams.get('edit');
+    // This page is client-only. Read query params directly from window to avoid
+    // Next.js prerender/Suspense requirements around useSearchParams.
+    const params = new URLSearchParams(window.location.search);
+
+    const create = params.get('create');
+    const edit = params.get('edit');
 
     if (create === '1' || create === 'true') {
       deepLinkHandledRef.current = true;
@@ -65,7 +67,7 @@ export default function LookupTablesPage() {
         setExpandedTableId(table.id);
       }
     }
-  }, [isLoading, searchParams, tables]);
+  }, [isLoading, tables]);
 
   const fetchTables = async () => {
     try {
