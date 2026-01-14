@@ -1469,7 +1469,12 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
                 setConfigModalOpen(true);
               }}
             >
-              <span className="truncate flex-1" title={typeof col.name === 'string' ? col.name : ''}>{typeof col.name === 'string' ? col.name : 'Column'}</span>
+              <span
+                className="min-w-0 flex-1 whitespace-normal break-words leading-tight line-clamp-2"
+                title={typeof col.name === 'string' ? col.name : ''}
+              >
+                {typeof col.name === 'string' ? col.name : 'Column'}
+              </span>
               <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
                 <button
                   type="button"
@@ -2055,7 +2060,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
           className="fill-grid"
           style={{ height: '100%' }}
           rowHeight={35}
-          headerRowHeight={40}
+          headerRowHeight={56}
           enableVirtualization
         />
       </div>
