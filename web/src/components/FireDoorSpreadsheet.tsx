@@ -2057,7 +2057,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
           onRowsChange={handleRowsChange}
           onCellClick={handleCellClick}
           onColumnResize={handleColumnResize as any}
-          className="fill-grid"
+          className="rdg-light fill-grid"
           style={{ height: '100%' }}
           rowHeight={35}
           headerRowHeight={56}
