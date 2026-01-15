@@ -764,8 +764,8 @@ export default function ProductionPage() {
                           {items.length > 3 && (
                             <div className="text-[11px] text-muted-foreground">+{items.length - 3} more</div>
                           )}
+                        </div>
 
-                        </Fragment>
                         {isAdmin && items.length > 0 && (
                           <div className="mt-2">
                             <Button
@@ -785,7 +785,7 @@ export default function ProductionPage() {
                       </div>
                     );
                   })}
-                </>
+                </Fragment>
               );
             })}
           </div>
