@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ type UserLite = {
   email: string;
   role: string;
   isInstaller?: boolean;
+  isWorkshopUser?: boolean;
   workshopHoursPerDay?: number | null;
   workshopColor?: string | null;
   workshopProcessCodes?: string[];
@@ -78,6 +79,7 @@ type AllocationItem = {
   processCode: string;
   processName: string;
   hours: number;
+  valueGBPAllocated?: number;
   workshopColor?: string | null;
   // Minimal planning indicators already available on the Opportunity
   materials: {
@@ -132,6 +134,37 @@ function clampHours(value: unknown): number {
   return Math.max(0, n);
 }
 
+function parseGBP(value: unknown): number {
+  if (value == null) return 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "string") {
+    const cleaned = value.replace(/[^0-9.\-]/g, "");
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : 0;
+  }
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+const gbpFormatter = new Intl.NumberFormat("en-GB", {
+  style: "currency",
+  currency: "GBP",
+  maximumFractionDigits: 0,
+});
+
+function formatGBP(value: number): string {
+  return gbpFormatter.format(Number.isFinite(value) ? value : 0);
+}
+
+function startOfWeekMonday(d: Date): Date {
+  const out = new Date(d);
+  out.setHours(0, 0, 0, 0);
+  const day = out.getDay(); // 0=Sun..6=Sat
+  const diff = (day + 6) % 7; // Mon->0, Sun->6
+  out.setDate(out.getDate() - diff);
+  return out;
+}
+
 function formatDayLabel(d: Date): string {
   const wd = d.toLocaleDateString("en-GB", { weekday: "short" });
   const day = d.getDate();
@@ -167,6 +200,7 @@ type ComputedSchedule = {
   byUser: Record<string, Record<string, AllocationItem[]>>;
   // userId -> dateStr -> usedHours
   usedHours: Record<string, Record<string, number>>;
+  overflow: Array<{ userId: string; projectId: string; processAssignmentId: string; remainingHours: number }>;
 };
 
 function computeScheduleForYear(params: {
@@ -179,8 +213,21 @@ function computeScheduleForYear(params: {
 
   const byUser: ComputedSchedule["byUser"] = {};
   const usedHours: ComputedSchedule["usedHours"] = {};
+  const overflow: ComputedSchedule["overflow"] = [];
 
   const projectById = new Map(projects.map((p) => [p.id, p] as const));
+  const projectTotalHours = new Map<string, number>();
+  const projectValueGBP = new Map<string, number>();
+
+  for (const p of projects) {
+    projectValueGBP.set(p.id, parseGBP(p.valueGBP));
+    let total = 0;
+    for (const pa of p.processAssignments || []) {
+      if (pa.completedAt) continue;
+      total += clampHours(pa.estimatedHours);
+    }
+    projectTotalHours.set(p.id, total);
+  }
 
   for (const user of users) {
     byUser[user.id] = {};
@@ -229,7 +276,15 @@ function computeScheduleForYear(params: {
           cursor.setHours(0, 0, 0, 0);
           if (cursor.getFullYear() !== year) break;
         }
-        if (cursor.getFullYear() !== year) break;
+        if (cursor.getFullYear() !== year) {
+          overflow.push({
+            userId: user.id,
+            projectId: project.id,
+            processAssignmentId: pa.id,
+            remainingHours: remaining,
+          });
+          break;
+        }
 
         const dayKey = isoDate(cursor);
         const already = usedHours[user.id][dayKey] || 0;
@@ -242,6 +297,10 @@ function computeScheduleForYear(params: {
 
         const chunk = Math.min(remaining, free);
 
+        const projValue = projectValueGBP.get(project.id) || 0;
+        const projTotalHrs = projectTotalHours.get(project.id) || 0;
+        const valueChunk = projTotalHrs > 0 ? (projValue * chunk) / projTotalHrs : 0;
+
         const projLatest = projectById.get(project.id) || project;
         const item: AllocationItem = {
           projectId: project.id,
@@ -251,6 +310,7 @@ function computeScheduleForYear(params: {
           processCode: pa.processCode,
           processName: pa.processName,
           hours: chunk,
+          valueGBPAllocated: valueChunk,
           workshopColor: user.workshopColor || null,
           materials: {
             timber: materialStatus(projLatest.timberOrderedAt, projLatest.timberReceivedAt, projLatest.timberNotApplicable),
@@ -274,7 +334,7 @@ function computeScheduleForYear(params: {
     }
   }
 
-  return { byUser, usedHours };
+  return { byUser, usedHours, overflow };
 }
 
 function statusDotClass(status: AllocationItem["materials"]["timber"]): string {
@@ -337,11 +397,11 @@ export default function ProductionPage() {
   const yearDays = useMemo(() => createYearDays(year), [year]);
 
   const workshopUsers = useMemo(() => {
-    const items = (users || []).filter((u) => u.role === "workshop" || u.isInstaller);
+    const items = (users || []).filter((u) => u.isWorkshopUser || u.role === "workshop" || u.isInstaller);
     // Stable sort: workshop first, then installers; then name/email
     return items.sort((a, b) => {
-      const aw = a.role === "workshop" ? 0 : 1;
-      const bw = b.role === "workshop" ? 0 : 1;
+      const aw = a.isWorkshopUser || a.role === "workshop" ? 0 : 1;
+      const bw = b.isWorkshopUser || b.role === "workshop" ? 0 : 1;
       if (aw !== bw) return aw - bw;
       const an = (a.name || a.email).toLowerCase();
       const bn = (b.name || b.email).toLowerCase();
@@ -352,6 +412,89 @@ export default function ProductionPage() {
   const computed = useMemo(() => {
     return computeScheduleForYear({ year, users: workshopUsers, holidays, projects });
   }, [year, workshopUsers, holidays, projects]);
+
+  const undatedWonProjects = useMemo(() => {
+    return (projects || []).filter((p) => !p.startDate && !p.deliveryDate);
+  }, [projects]);
+
+  const dayTotals = useMemo(() => {
+    const totals: Record<string, { scheduledHours: number; capacityHours: number; valueGBP: number; idleUsers: number }> = {};
+
+    const holidaysByUserId = new Map<string, Holiday[]>();
+    for (const h of holidays) {
+      const list = holidaysByUserId.get(h.userId) || [];
+      list.push(h);
+      holidaysByUserId.set(h.userId, list);
+    }
+
+    for (const d of yearDays) {
+      const dayKey = isoDate(d);
+      let scheduledHours = 0;
+      let valueGBP = 0;
+      let capacityHours = 0;
+      let idleUsers = 0;
+
+      if (!isWeekend(d)) {
+        for (const u of workshopUsers) {
+          const hoursPerDay = u.workshopHoursPerDay != null ? Number(u.workshopHoursPerDay) : 8;
+          const userHolidays = holidaysByUserId.get(u.id) || [];
+          const isOnHoliday = userHolidays.some((h) => dayInHoliday(d, h));
+          const hasCapacity = !isOnHoliday && hoursPerDay > 0;
+          if (hasCapacity) capacityHours += hoursPerDay;
+
+          const userScheduled = computed.usedHours[u.id]?.[dayKey] || 0;
+          scheduledHours += userScheduled;
+          if (hasCapacity && userScheduled <= 0) idleUsers += 1;
+          const items = computed.byUser[u.id]?.[dayKey] || [];
+          for (const it of items) valueGBP += it.valueGBPAllocated || 0;
+        }
+      }
+
+      totals[dayKey] = { scheduledHours, capacityHours, valueGBP, idleUsers };
+    }
+
+    return totals;
+  }, [computed.byUser, computed.usedHours, holidays, workshopUsers, yearDays]);
+
+  const periodSummary = useMemo(() => {
+    const now = new Date();
+    const ref = year === now.getFullYear() ? now : startOfYear(year);
+
+    const weekStart = startOfWeekMonday(ref);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
+
+    const monthStart = new Date(ref.getFullYear(), ref.getMonth(), 1);
+    monthStart.setHours(0, 0, 0, 0);
+    const monthEnd = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
+    monthEnd.setHours(23, 59, 59, 999);
+
+    const yearStart = startOfYear(year);
+    const yearEnd = endOfYear(year);
+
+    function sumRange(from: Date, to: Date) {
+      let valueGBP = 0;
+      let scheduledHours = 0;
+      let capacityHours = 0;
+      for (const d of yearDays) {
+        if (d < from || d > to) continue;
+        const t = dayTotals[isoDate(d)];
+        if (!t) continue;
+        valueGBP += t.valueGBP;
+        scheduledHours += t.scheduledHours;
+        capacityHours += t.capacityHours;
+      }
+      return { valueGBP, scheduledHours, capacityHours };
+    }
+
+    return {
+      refDate: ref,
+      week: sumRange(weekStart, weekEnd),
+      month: sumRange(monthStart, monthEnd),
+      year: sumRange(yearStart, yearEnd),
+    };
+  }, [dayTotals, year, yearDays]);
 
   useEffect(() => {
     // After render, scroll to "today" if it's in this year.
@@ -421,6 +564,8 @@ export default function ProductionPage() {
   }
 
   const totalAssignments = projects.reduce((acc, p) => acc + (p.processAssignments || []).length, 0);
+  const overflowCount = computed.overflow.length;
+  const overflowProjectCount = new Set(computed.overflow.map((o) => o.projectId)).size;
 
   return (
     <div className="mx-auto w-full px-6 py-6 space-y-4">
@@ -455,9 +600,31 @@ export default function ProductionPage() {
         <Badge variant="outline">Users: {workshopUsers.length}</Badge>
         <Badge variant="outline">Projects: {projects.length}</Badge>
         <Badge variant="outline">Process assignments: {totalAssignments}</Badge>
+        <Badge variant="outline">Undated WON: {undatedWonProjects.length}</Badge>
+        <Badge variant="outline">Backlog (not placed): {overflowProjectCount}</Badge>
         <Badge variant="outline">Holidays loaded: {holidays.length}</Badge>
+        <Badge variant="outline">£ week: {formatGBP(periodSummary.week.valueGBP)}</Badge>
+        <Badge variant="outline">£ month: {formatGBP(periodSummary.month.valueGBP)}</Badge>
+        <Badge variant="outline">£ year: {formatGBP(periodSummary.year.valueGBP)}</Badge>
         <Badge variant="outline">Auto schedule is computed (not saved)</Badge>
       </div>
+
+      {(undatedWonProjects.length > 0 || overflowCount > 0) && (
+        <Card className="p-4">
+          <div className="text-sm font-semibold">Visibility</div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            Undated WON jobs are included; backlog indicates work that could not be placed within this year’s capacity.
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2 text-sm">
+            {undatedWonProjects.length > 0 && (
+              <Badge variant="secondary">Undated WON: {undatedWonProjects.length}</Badge>
+            )}
+            {overflowCount > 0 && (
+              <Badge variant="secondary">Backlog hours: {computed.overflow.reduce((s, o) => s + o.remainingHours, 0).toFixed(1)}h</Badge>
+            )}
+          </div>
+        </Card>
+      )}
 
       <Card className="p-0 overflow-hidden">
         <div className="border-b bg-white px-4 py-3">
@@ -479,6 +646,8 @@ export default function ProductionPage() {
               const key = isoDate(d);
               const isToday = key === isoDate(new Date());
               const isNewMonth = d.getDate() === 1;
+              const t = dayTotals[key];
+              const pct = t && t.capacityHours > 0 ? Math.round((t.scheduledHours / t.capacityHours) * 100) : 0;
               return (
                 <div
                   key={key}
@@ -487,6 +656,41 @@ export default function ProductionPage() {
                 >
                   <div className={`font-semibold ${isNewMonth ? "text-slate-900" : "text-slate-700"}`}>{formatDayLabel(d)}</div>
                   <div className="text-[11px] text-muted-foreground">{isNewMonth ? d.toLocaleDateString("en-GB", { month: "long" }) : ""}</div>
+                  {!isWeekend(d) && t && (
+                    <div className="mt-1 text-[11px] text-muted-foreground">
+                      <div>
+                        {t.scheduledHours.toFixed(0)}/{t.capacityHours.toFixed(0)}h ({pct}%)
+                      </div>
+                      <div>{t.valueGBP > 0 ? formatGBP(t.valueGBP) : ""}</div>
+                      <div>{t.idleUsers > 0 ? `Idle: ${t.idleUsers}` : ""}</div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Totals row */}
+            <div className="sticky left-0 z-10 border-b bg-white px-4 py-3 text-sm font-semibold">Total</div>
+            {yearDays.map((d) => {
+              const key = isoDate(d);
+              const t = dayTotals[key];
+              const pct = t && t.capacityHours > 0 ? Math.round((t.scheduledHours / t.capacityHours) * 100) : 0;
+
+              return (
+                <div
+                  key={`total-${key}`}
+                  className={`border-b border-l px-3 py-2 text-xs ${isWeekend(d) ? "bg-slate-50" : "bg-white"}`}
+                >
+                  {!isWeekend(d) && t ? (
+                    <>
+                      <div className="text-[11px] text-slate-700 font-semibold">
+                        {t.scheduledHours.toFixed(0)}/{t.capacityHours.toFixed(0)}h
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">{pct}%</div>
+                      <div className="text-[11px] text-muted-foreground">{t.valueGBP > 0 ? formatGBP(t.valueGBP) : ""}</div>
+                      <div className="text-[11px] text-muted-foreground">{t.idleUsers > 0 ? `Idle: ${t.idleUsers}` : ""}</div>
+                    </>
+                  ) : null}
                 </div>
               );
             })}
@@ -495,10 +699,10 @@ export default function ProductionPage() {
             {workshopUsers.map((u) => {
               const displayName = (u.name || "").trim() || u.email;
               const hoursPerDay = u.workshopHoursPerDay != null ? Number(u.workshopHoursPerDay) : 8;
-              const roleLabel = u.role === "workshop" ? "Workshop" : u.isInstaller ? "Installer" : u.role;
+              const roleLabel = u.isWorkshopUser || u.role === "workshop" ? "Workshop" : u.isInstaller ? "Installer" : u.role;
 
               return (
-                <>
+                <Fragment key={u.id}>
                   <div key={`${u.id}-label`} className="sticky left-0 z-10 border-b bg-white px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div
@@ -560,8 +764,8 @@ export default function ProductionPage() {
                           {items.length > 3 && (
                             <div className="text-[11px] text-muted-foreground">+{items.length - 3} more</div>
                           )}
-                        </div>
 
+                        </Fragment>
                         {isAdmin && items.length > 0 && (
                           <div className="mt-2">
                             <Button

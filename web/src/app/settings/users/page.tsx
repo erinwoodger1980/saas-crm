@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Trash2, KeyRound } from "lucide-react";
 
-type UserRow = { id: string; name: string | null; email: string; workshopUsername?: string | null; role?: string; workshopHoursPerDay?: number | null; workshopProcessCodes?: string[]; holidayAllowance?: number | null; passwordHash?: string | null; firstName?: string | null; lastName?: string | null; emailFooter?: string | null; isEarlyAdopter?: boolean };
+type UserRow = { id: string; name: string | null; email: string; workshopUsername?: string | null; role?: string; isInstaller?: boolean; isWorkshopUser?: boolean; workshopHoursPerDay?: number | null; workshopProcessCodes?: string[]; holidayAllowance?: number | null; passwordHash?: string | null; firstName?: string | null; lastName?: string | null; emailFooter?: string | null; isEarlyAdopter?: boolean };
 
 type UsersResponse = { ok: boolean; items: UserRow[] };
 
@@ -226,6 +226,18 @@ export default function UsersSettingsPage() {
     }
   }
 
+  async function toggleWorkshopUser(userId: string, isWorkshopUser: boolean) {
+    try {
+      await apiFetch(`/workshop/users/${userId}/workshop-user`, {
+        method: "PATCH",
+        json: { isWorkshopUser },
+      });
+      await loadUsers();
+    } catch (e: any) {
+      setError(e?.message || "Failed to update workshop user status");
+    }
+  }
+
   async function resetUserPassword(userId: string) {
     if (!newPassword || newPassword.length < 8) {
       setError("Password must be at least 8 characters");
@@ -403,6 +415,15 @@ export default function UsersSettingsPage() {
                       </Button>
                     )}
                     <div className="text-xs uppercase bg-slate-100 text-slate-700 px-2 py-0.5 rounded">{(u.role || 'user').toString()}</div>
+                    <label className="flex items-center gap-2 text-xs cursor-pointer" title="Include this user on the Production board">
+                      <input
+                        type="checkbox"
+                        checked={!!u.isWorkshopUser}
+                        onChange={(e) => toggleWorkshopUser(u.id, e.target.checked)}
+                        className="h-4 w-4"
+                      />
+                      <span className="text-muted-foreground">Workshop user</span>
+                    </label>
                     <label className="flex items-center gap-2 text-xs cursor-pointer" title="Early adopters can see the feedback button">
                       <input
                         type="checkbox"

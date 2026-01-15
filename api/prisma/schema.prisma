@@ -787,6 +787,7 @@ model User {
   workshopColor              String?
   profilePictureUrl          String?
   isInstaller                Boolean                     @default(false)
+  isWorkshopUser             Boolean                     @default(false)
   isDeveloper                Boolean                     @default(false)
   isOwner                    Boolean                     @default(false)
   workshopProcessCodes       String[]

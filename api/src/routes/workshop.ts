@@ -51,7 +51,7 @@ router.get("/users", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
   const users = await prisma.user.findMany({
     where: { tenantId },
-    select: { id: true, name: true, email: true, role: true, isInstaller: true, workshopHoursPerDay: true, workshopColor: true, workshopProcessCodes: true, passwordHash: true, firstName: true, lastName: true, emailFooter: true, isEarlyAdopter: true },
+    select: { id: true, name: true, email: true, role: true, isInstaller: true, isWorkshopUser: true, workshopHoursPerDay: true, workshopColor: true, workshopProcessCodes: true, passwordHash: true, firstName: true, lastName: true, emailFooter: true, isEarlyAdopter: true },
     orderBy: { name: "asc" },
   });
   res.json({ ok: true, items: users });
@@ -450,6 +450,39 @@ router.patch("/users/:userId/early-adopter", async (req: any, res) => {
     res.json({ ok: true, user: updated });
   } catch (e: any) {
     console.error("[PATCH /users/:userId/early-adopter] failed:", e?.message || e);
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
+// PATCH /workshop/users/:userId/workshop-user { isWorkshopUser: boolean }
+router.patch("/users/:userId/workshop-user", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const { userId } = req.params;
+  const { isWorkshopUser } = req.body;
+
+  if (typeof isWorkshopUser !== "boolean") {
+    return res.status(400).json({ error: "isWorkshopUser must be a boolean" });
+  }
+
+  try {
+    const user = await prisma.user.findFirst({
+      where: { id: userId, tenantId },
+      select: { id: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { isWorkshopUser },
+      select: { id: true, name: true, email: true, role: true, isInstaller: true, isWorkshopUser: true },
+    });
+
+    res.json({ ok: true, user: updated });
+  } catch (e: any) {
+    console.error("[PATCH /users/:userId/workshop-user] failed:", e?.message || e);
     res.status(500).json({ error: "internal_error" });
   }
 });
