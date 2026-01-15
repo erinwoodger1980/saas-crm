@@ -11,6 +11,8 @@ import { useCurrentUser } from "@/lib/use-current-user";
 type UserLite = {
   id: string;
   name: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
   email: string;
   role: string;
   isInstaller?: boolean;
@@ -45,6 +47,8 @@ type Project = {
   name: string;
   number?: string | null;
   valueGBP?: string | number | null;
+  contractValue?: string | number | null;
+  leadUiStatus?: string | null;
   wonAt?: string | null;
   startDate?: string | null;
   deliveryDate?: string | null;
@@ -195,6 +199,24 @@ function defaultCursorStart(year: number): Date {
   return start;
 }
 
+type DragPayload =
+  | { kind: "project"; projectId: string }
+  | { kind: "process"; projectId: string; processAssignmentId: string };
+
+function tryParseDragPayload(raw: string | null): DragPayload | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw);
+    if (v?.kind === "project" && typeof v.projectId === "string") return { kind: "project", projectId: v.projectId };
+    if (v?.kind === "process" && typeof v.projectId === "string" && typeof v.processAssignmentId === "string") {
+      return { kind: "process", projectId: v.projectId, processAssignmentId: v.processAssignmentId };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 type ComputedSchedule = {
   // userId -> dateStr -> items
   byUser: Record<string, Record<string, AllocationItem[]>>;
@@ -220,7 +242,8 @@ function computeScheduleForYear(params: {
   const projectValueGBP = new Map<string, number>();
 
   for (const p of projects) {
-    projectValueGBP.set(p.id, parseGBP(p.valueGBP));
+    // Prefer contractValue as "net" value, fall back to valueGBP
+    projectValueGBP.set(p.id, parseGBP(p.contractValue ?? p.valueGBP));
     let total = 0;
     for (const pa of p.processAssignments || []) {
       if (pa.completedAt) continue;
@@ -268,6 +291,16 @@ function computeScheduleForYear(params: {
 
     for (const { project, pa, hours } of assignments) {
       let remaining = hours;
+
+      // If a project has an explicit startDate, treat it as the earliest date
+      // that this user's work for the project can begin.
+      if (project.startDate) {
+        const sd = new Date(project.startDate);
+        if (!Number.isNaN(sd.getTime())) {
+          sd.setHours(0, 0, 0, 0);
+          if (cursor < sd) cursor = sd;
+        }
+      }
 
       while (remaining > 0) {
         // Advance to next working day
@@ -362,6 +395,8 @@ export default function ProductionPage() {
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
 
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const todayColRef = useRef<HTMLDivElement | null>(null);
 
@@ -414,8 +449,68 @@ export default function ProductionPage() {
   }, [year, workshopUsers, holidays, projects]);
 
   const undatedWonProjects = useMemo(() => {
-    return (projects || []).filter((p) => !p.startDate && !p.deliveryDate);
+    // Only show WON projects that still have remaining (incomplete) process work
+    // and have no dates set.
+    return (projects || []).filter((p) => {
+      if (String(p.leadUiStatus || "").toUpperCase() === "COMPLETED") return false;
+      if (p.startDate || p.deliveryDate) return false;
+      const remaining = (p.processAssignments || []).some((pa) => {
+        if (pa.completedAt) return false;
+        const hrs = clampHours(pa.estimatedHours);
+        return hrs > 0;
+      });
+      return remaining;
+    });
   }, [projects]);
+
+  async function setProjectStartDate(projectId: string, startDate: string) {
+    await apiFetch(`/opportunities/${projectId}`, {
+      method: "PATCH",
+      json: { startDate },
+    });
+    setProjects((prev) => prev.map((p) => (p.id === projectId ? { ...p, startDate } : p)));
+  }
+
+  async function bulkAssignUnassignedProcesses(projectId: string, assignedUserId: string) {
+    await apiFetch(`/workshop/process-assignments/assign`, {
+      method: "PATCH",
+      json: { projectId, assignedUserId },
+    });
+    const u = workshopUsers.find((x) => x.id === assignedUserId);
+    if (!u) return;
+    setProjects((prev) =>
+      prev.map((p) => {
+        if (p.id !== projectId) return p;
+        const processAssignments = (p.processAssignments || []).map((pa) => {
+          if (pa.completedAt) return pa;
+          if (pa.assignedUser) return pa;
+          return {
+            ...pa,
+            assignedUser: { id: u.id, name: u.name || null, email: u.email },
+          };
+        });
+        return { ...p, processAssignments };
+      })
+    );
+  }
+
+  async function reassignProcessAssignment(processAssignmentId: string, assignedUserId: string) {
+    await apiFetch(`/workshop/process-assignment/${processAssignmentId}`, {
+      method: "PATCH",
+      json: { assignedUserId },
+    });
+    const u = workshopUsers.find((x) => x.id === assignedUserId);
+    if (!u) return;
+    setProjects((prev) =>
+      prev.map((p) => {
+        const idx = (p.processAssignments || []).findIndex((pa) => pa.id === processAssignmentId);
+        if (idx < 0) return p;
+        const next = [...(p.processAssignments || [])];
+        next[idx] = { ...next[idx], assignedUser: { id: u.id, name: u.name || null, email: u.email } };
+        return { ...p, processAssignments: next };
+      })
+    );
+  }
 
   const dayTotals = useMemo(() => {
     const totals: Record<string, { scheduledHours: number; capacityHours: number; valueGBP: number; idleUsers: number }> = {};
@@ -600,7 +695,7 @@ export default function ProductionPage() {
         <Badge variant="outline">Users: {workshopUsers.length}</Badge>
         <Badge variant="outline">Projects: {projects.length}</Badge>
         <Badge variant="outline">Process assignments: {totalAssignments}</Badge>
-        <Badge variant="outline">Undated WON: {undatedWonProjects.length}</Badge>
+        <Badge variant="outline">Needs scheduling: {undatedWonProjects.length}</Badge>
         <Badge variant="outline">Backlog (not placed): {overflowProjectCount}</Badge>
         <Badge variant="outline">Holidays loaded: {holidays.length}</Badge>
         <Badge variant="outline">£ week: {formatGBP(periodSummary.week.valueGBP)}</Badge>
@@ -611,18 +706,51 @@ export default function ProductionPage() {
 
       {(undatedWonProjects.length > 0 || overflowCount > 0) && (
         <Card className="p-4">
-          <div className="text-sm font-semibold">Visibility</div>
-          <div className="mt-1 text-sm text-muted-foreground">
-            Undated WON jobs are included; backlog indicates work that could not be placed within this year’s capacity.
-          </div>
-          <div className="mt-2 flex flex-wrap gap-2 text-sm">
-            {undatedWonProjects.length > 0 && (
-              <Badge variant="secondary">Undated WON: {undatedWonProjects.length}</Badge>
-            )}
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold">Needs scheduling</div>
+              <div className="mt-1 text-sm text-muted-foreground">
+                Won, not completed, and missing dates. Drag a project into the grid to assign it to a user and set a start date.
+              </div>
+            </div>
             {overflowCount > 0 && (
-              <Badge variant="secondary">Backlog hours: {computed.overflow.reduce((s, o) => s + o.remainingHours, 0).toFixed(1)}h</Badge>
+              <Badge variant="secondary">
+                Backlog hours: {computed.overflow.reduce((s, o) => s + o.remainingHours, 0).toFixed(1)}h
+              </Badge>
             )}
           </div>
+
+          {undatedWonProjects.length > 0 && (
+            <div className="mt-3 grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+              {undatedWonProjects
+                .slice()
+                .sort((a, b) => {
+                  const aw = a.wonAt ? new Date(a.wonAt).getTime() : Number.POSITIVE_INFINITY;
+                  const bw = b.wonAt ? new Date(b.wonAt).getTime() : Number.POSITIVE_INFINITY;
+                  return aw - bw;
+                })
+                .map((p) => (
+                  <div
+                    key={p.id}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("application/json", JSON.stringify({ kind: "project", projectId: p.id } satisfies DragPayload));
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                    className="rounded-md border bg-white p-3 text-sm shadow-sm cursor-grab active:cursor-grabbing"
+                    title="Drag into the grid to schedule"
+                  >
+                    <div className="font-medium text-slate-900 truncate">
+                      {p.number ? `${p.number} ` : ""}{p.name}
+                    </div>
+                    <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                      <span>{p.wonAt ? new Date(p.wonAt).toLocaleDateString("en-GB") : ""}</span>
+                      <span>{formatGBP(parseGBP(p.contractValue ?? p.valueGBP))}</span>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
         </Card>
       )}
 
@@ -697,7 +825,8 @@ export default function ProductionPage() {
 
             {/* User rows */}
             {workshopUsers.map((u) => {
-              const displayName = (u.name || "").trim() || u.email;
+              const fullName = `${u.firstName || ""} ${u.lastName || ""}`.trim();
+              const displayName = fullName || (u.name || "").trim() || u.email;
               const hoursPerDay = u.workshopHoursPerDay != null ? Number(u.workshopHoursPerDay) : 8;
               const roleLabel = u.isWorkshopUser || u.role === "workshop" ? "Workshop" : u.isInstaller ? "Installer" : u.role;
 
@@ -728,7 +857,35 @@ export default function ProductionPage() {
                     return (
                       <div
                         key={`${u.id}-${dayKey}`}
-                        className={`border-b border-l px-2 py-2 align-top ${isWeekend(d) ? "bg-slate-50" : "bg-white"}`}
+                        className={`border-b border-l px-2 py-2 align-top ${isWeekend(d) ? "bg-slate-50" : "bg-white"} ${dragOverKey === `${u.id}|${dayKey}` ? "ring-2 ring-[rgb(var(--brand))]/30" : ""}`}
+                        onDragOver={(e) => {
+                          if (isWeekend(d)) return;
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                          setDragOverKey(`${u.id}|${dayKey}`);
+                        }}
+                        onDragLeave={() => {
+                          setDragOverKey((cur) => (cur === `${u.id}|${dayKey}` ? null : cur));
+                        }}
+                        onDrop={async (e) => {
+                          if (isWeekend(d)) return;
+                          e.preventDefault();
+                          setDragOverKey(null);
+                          const payload = tryParseDragPayload(e.dataTransfer.getData("application/json"));
+                          if (!payload) return;
+
+                          try {
+                            if (payload.kind === "project") {
+                              await bulkAssignUnassignedProcesses(payload.projectId, u.id);
+                              await setProjectStartDate(payload.projectId, dayKey);
+                            } else {
+                              await reassignProcessAssignment(payload.processAssignmentId, u.id);
+                              await setProjectStartDate(payload.projectId, dayKey);
+                            }
+                          } catch (err: any) {
+                            alert(err?.message || "Failed to apply drop");
+                          }
+                        }}
                       >
                         <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-1">
                           <span>{used > 0 ? `${used.toFixed(1)}h` : ""}</span>
@@ -741,7 +898,15 @@ export default function ProductionPage() {
                             return (
                               <div
                                 key={`${it.processAssignmentId}-${it.projectId}-${it.hours}-${it.processCode}`}
-                                className="rounded px-2 py-1 text-[12px] font-medium text-white overflow-hidden"
+                                draggable
+                                onDragStart={(e) => {
+                                  e.dataTransfer.setData(
+                                    "application/json",
+                                    JSON.stringify({ kind: "process", projectId: it.projectId, processAssignmentId: it.processAssignmentId } satisfies DragPayload)
+                                  );
+                                  e.dataTransfer.effectAllowed = "move";
+                                }}
+                                className="rounded px-2 py-1 text-[12px] font-medium text-white overflow-hidden cursor-grab active:cursor-grabbing"
                                 style={{ backgroundColor: it.workshopColor || "#3b82f6" }}
                                 title={title}
                               >

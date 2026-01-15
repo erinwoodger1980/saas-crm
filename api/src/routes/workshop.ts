@@ -611,6 +611,62 @@ router.patch("/process-assignment/:id/complete", async (req: any, res) => {
   res.json({ ok: true, assignment: updated });
 });
 
+// PATCH /workshop/process-assignment/:id { assignedUserId?: string | null }
+// Allows reassigning work between users (used by drag/drop scheduling UIs)
+router.patch("/process-assignment/:id", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const id = String(req.params.id);
+
+  const assignment = await (prisma as any).projectProcessAssignment.findUnique({
+    where: { id },
+    include: { assignedUser: { select: { id: true, name: true, email: true } } },
+  });
+  if (!assignment || assignment.tenantId !== tenantId) {
+    return res.status(404).json({ error: "not_found" });
+  }
+
+  const updates: any = {};
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, "assignedUserId")) {
+    const assignedUserId = req.body?.assignedUserId ? String(req.body.assignedUserId) : null;
+    if (assignedUserId) {
+      const u = await prisma.user.findFirst({ where: { id: assignedUserId, tenantId }, select: { id: true } });
+      if (!u) return res.status(400).json({ error: "invalid_user" });
+    }
+    updates.assignedUserId = assignedUserId;
+  }
+
+  const saved = await (prisma as any).projectProcessAssignment.update({
+    where: { id },
+    data: updates,
+    include: { assignedUser: { select: { id: true, name: true, email: true } } },
+  });
+  res.json({ ok: true, assignment: saved });
+});
+
+// PATCH /workshop/process-assignments/assign { projectId, assignedUserId }
+// Bulk-assign any unassigned, incomplete process assignments for a project.
+router.patch("/process-assignments/assign", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const projectId = String(req.body?.projectId || "");
+  const assignedUserId = String(req.body?.assignedUserId || "");
+  if (!projectId || !assignedUserId) return res.status(400).json({ error: "invalid_payload" });
+
+  const u = await prisma.user.findFirst({ where: { id: assignedUserId, tenantId }, select: { id: true } });
+  if (!u) return res.status(400).json({ error: "invalid_user" });
+
+  const result = await (prisma as any).projectProcessAssignment.updateMany({
+    where: {
+      tenantId,
+      opportunityId: projectId,
+      completedAt: null,
+      assignedUserId: null,
+    },
+    data: { assignedUserId },
+  });
+
+  res.json({ ok: true, updated: Number((result as any)?.count || 0) });
+});
+
   // Calculate months to show (6 months from earliest start to latest delivery)
   const now = new Date();
   const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1);
@@ -711,6 +767,7 @@ router.get("/schedule", async (req: any, res) => {
       title: true,
       number: true,
       valueGBP: true, 
+      contractValue: true,
       wonAt: true, 
       startDate: true, 
       deliveryDate: true,
@@ -718,6 +775,7 @@ router.get("/schedule", async (req: any, res) => {
       installationEndDate: true,
       leadId: true,
       createdAt: true,
+      lead: { select: { id: true, status: true, custom: true } },
       // Material tracking
       timberOrderedAt: true,
       timberExpectedAt: true,
@@ -739,11 +797,18 @@ router.get("/schedule", async (req: any, res) => {
     orderBy: [{ wonAt: "desc" }, { title: "asc" }],
   });
 
+  // Order Desk uses Lead.custom.uiStatus ("COMPLETED") as the source of truth for completed orders.
+  // Keep the schedule aligned by excluding leads marked as completed.
+  const rawActiveProjects = (rawProjects as any[]).filter((p: any) => {
+    const uiStatus = String(p?.lead?.custom?.uiStatus || "").toUpperCase();
+    return uiStatus !== "COMPLETED";
+  });
+
   // Deduplicate by leadId, keeping the best candidate:
   // - Prefer the record that has startDate/deliveryDate set
   // - Otherwise prefer the most recent by createdAt
   const byLead: Record<string, any[]> = {};
-  for (const p of rawProjects as any[]) {
+  for (const p of rawActiveProjects as any[]) {
     const key = String(p.leadId || p.id);
     (byLead[key] ||= []).push(p);
   }
@@ -834,11 +899,13 @@ router.get("/schedule", async (req: any, res) => {
     name: proj.title,
     number: proj.number,
     valueGBP: proj.valueGBP,
+    contractValue: proj.contractValue,
     wonAt: proj.wonAt,
     startDate: proj.startDate,
     deliveryDate: proj.deliveryDate,
     installationStartDate: proj.installationStartDate,
     installationEndDate: proj.installationEndDate,
+    leadUiStatus: (proj.lead as any)?.custom?.uiStatus || null,
     // Expose material tracking to the client (including N/A flags)
     timberOrderedAt: proj.timberOrderedAt,
     timberExpectedAt: proj.timberExpectedAt,
