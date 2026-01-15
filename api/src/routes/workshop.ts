@@ -51,7 +51,7 @@ router.get("/users", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
   const users = await prisma.user.findMany({
     where: { tenantId },
-    select: { id: true, name: true, email: true, role: true, workshopHoursPerDay: true, workshopColor: true, workshopProcessCodes: true, passwordHash: true, firstName: true, lastName: true, emailFooter: true, isEarlyAdopter: true },
+    select: { id: true, name: true, email: true, role: true, isInstaller: true, workshopHoursPerDay: true, workshopColor: true, workshopProcessCodes: true, passwordHash: true, firstName: true, lastName: true, emailFooter: true, isEarlyAdopter: true },
     orderBy: { name: "asc" },
   });
   res.json({ ok: true, items: users });

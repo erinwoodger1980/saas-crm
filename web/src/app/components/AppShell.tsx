@@ -36,6 +36,7 @@ const BASE_NAV: Array<{ href: string; label: string; description: string; icon: 
   { href: "/opportunities", label: "Quotes", description: "Estimates & quotes", icon: Target },
   { href: "/orders", label: "Orders", description: "Won & completed", icon: ClipboardCheck },
   { href: "/workshop", label: "Workshop", description: "Production board", icon: Wrench },
+  { href: "/production", label: "Production", description: "Planning grid", icon: Calendar },
   { href: "/supplier-requests", label: "Outsourcing", description: "Supplier quotes", icon: Package },
 ] as Array<{ href: string; label: string; description: string; icon: any }>;
 
