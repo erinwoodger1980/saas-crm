@@ -616,7 +616,7 @@ export default function LeadModal({
   const [emailPreviewTo, setEmailPreviewTo] = useState("");
 
   // ---- Workshop Processes (WON flow) ----
-  type ProcDef = { id: string; code: string; name: string; sortOrder?: number|null; requiredByDefault?: boolean; estimatedHours?: number|null };
+  type ProcDef = { id: string; code: string; name: string; sortOrder?: number|null; requiredByDefault?: boolean; estimatedHours?: number|null; percentOfTotal?: number|null };
   type ProcUser = { id: string; name?: string|null; email: string };
   type ProcAssignment = {
     id: string;
@@ -635,7 +635,7 @@ export default function LeadModal({
   const [projectActualHours, setProjectActualHours] = useState<number | null>(null);
   const [processLoggedHours, setProcessLoggedHours] = useState<Record<string, number>>({});
   const [wkEstimatedDraft, setWkEstimatedDraft] = useState<Record<string, string>>({});
-  const wkEstimatedDebounceTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const [wkTotalHoursDraft, setWkTotalHoursDraft] = useState<string>("");
 
   // Project split modal state
   const [splitProjectOpen, setSplitProjectOpen] = useState(false);
@@ -1569,26 +1569,66 @@ export default function LeadModal({
       if (!response || !(response as any).ok) {
         throw new Error((response as any)?.error || "Assignment failed");
       }
-      
-      // reload assignments only
-  const project = await apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(projectId)}`).catch(() => ({ assignments: [] }));
-      const arr = Array.isArray(project?.assignments || project) ? (project.assignments || project) : [];
-      const norm: ProcAssignment[] = arr.map((it: any) => ({
-        id: String(it.id || it.assignmentId || crypto.randomUUID()),
-        processDefinitionId: it.processDefinitionId || it.processDefinition?.id,
-        processCode: it.processCode || it.processDefinition?.code,
-        processName: it.processName || it.processDefinition?.name,
-        required: Boolean(it.required ?? true),
-        estimatedHours: it.estimatedHours ?? it.processDefinition?.estimatedHours ?? null,
-        assignedUser: it.assignedUser ? { id: it.assignedUser.id, name: it.assignedUser.name ?? null, email: it.assignedUser.email } : null,
-      }));
-      setWkAssignments(norm);
+
+      const it: any = (response as any)?.assignment || null;
+      if (it) {
+        const updated: ProcAssignment = {
+          id: String(it.id || it.assignmentId || crypto.randomUUID()),
+          processDefinitionId: it.processDefinitionId || it.processDefinition?.id,
+          processCode: it.processCode || it.processDefinition?.code,
+          processName: it.processName || it.processDefinition?.name,
+          required: Boolean(it.required ?? true),
+          estimatedHours: it.estimatedHours ?? it.processDefinition?.estimatedHours ?? null,
+          assignedUser: it.assignedUser ? { id: it.assignedUser.id, name: it.assignedUser.name ?? null, email: it.assignedUser.email } : null,
+        };
+        setWkAssignments((prev) => {
+          const defId = def.id;
+          const idx = prev.findIndex((a) => (a.processDefinitionId === defId) || (a.processCode && a.processCode === def.code));
+          if (idx >= 0) {
+            const next = prev.slice();
+            next[idx] = { ...next[idx], ...updated };
+            return next;
+          }
+          return prev.concat(updated);
+        });
+      }
     } catch (e: any) {
       console.error("Workshop assignment error:", e);
       const message = e?.message || e?.detail || "Failed to save assignment";
   alert(`Could not assign user to process: ${message}\n\nOpportunity ID: ${lead?.id ?? 'unknown'}\nPlease check your connection and try again.`);
     } finally {
       setWkSavingId(null);
+    }
+  }
+
+  async function applyPercentAllocation() {
+    const parsedTotal = wkTotalHoursDraft.trim() === "" ? NaN : Number(wkTotalHoursDraft);
+    if (!Number.isFinite(parsedTotal) || parsedTotal < 0) {
+      toast("Enter a valid total hours number");
+      return;
+    }
+    if (wkDefs.length === 0) return;
+
+    setWkLoading(true);
+    try {
+      for (const def of wkDefs) {
+        const asn = getAssignmentFor(def.id);
+        const required = asn?.required ?? def.requiredByDefault ?? true;
+        if (!required) continue;
+        const pctRaw = def.percentOfTotal;
+        const pct = pctRaw == null ? null : Number(pctRaw);
+        if (pct == null || !Number.isFinite(pct) || pct <= 0) continue;
+        const hours = (parsedTotal * pct) / 100;
+        const rounded = Math.round(hours * 10) / 10;
+        await saveProjectAssignment(def, {
+          required: true,
+          assignedUserId: asn?.assignedUser?.id || null,
+          estimatedHours: Number.isFinite(rounded) ? rounded : null,
+        });
+      }
+      toast("Applied % allocations");
+    } finally {
+      setWkLoading(false);
     }
   }
 
@@ -5956,6 +5996,34 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         </div>
                       </div>
 
+                      <div className="flex flex-wrap items-end gap-2">
+                        <label className="block">
+                          <span className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+                            Total hours
+                          </span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            className="w-36 rounded-md border px-2 py-1 text-sm"
+                            value={wkTotalHoursDraft}
+                            onChange={(e) => setWkTotalHoursDraft(e.target.value)}
+                            onFocus={(e) => e.currentTarget.select()}
+                            placeholder="0"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className="rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-xs font-medium text-emerald-800 shadow-sm hover:bg-emerald-50 disabled:opacity-50"
+                          onClick={applyPercentAllocation}
+                          disabled={wkLoading || wkDefs.length === 0}
+                        >
+                          Apply %
+                        </button>
+                        <div className="text-[11px] text-slate-500">
+                          Uses each process’s “% of total” from Settings
+                        </div>
+                      </div>
+
                       {wkLoading ? (
                         <div className="text-sm text-emerald-800">
                           Loading processes…
@@ -6046,30 +6114,13 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                     onChange={(e) => {
                                       const raw = e.target.value;
                                       setWkEstimatedDraft((prev) => ({ ...prev, [def.id]: raw }));
-
-                                      const timers = wkEstimatedDebounceTimersRef.current;
-                                      if (timers[def.id]) clearTimeout(timers[def.id]);
-                                      timers[def.id] = setTimeout(() => {
-                                        const parsed = raw === "" ? null : Number(raw);
-                                        const val = parsed == null || Number.isNaN(parsed) ? null : parsed;
-                                        void saveProjectAssignment(def, {
-                                          required,
-                                          assignedUserId: userIdSel || null,
-                                          estimatedHours: val,
-                                        });
-                                        setWkEstimatedDraft((prev) => {
-                                          const next = { ...prev };
-                                          delete next[def.id];
-                                          return next;
-                                        });
-                                      }, 450);
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        (e.currentTarget as HTMLInputElement).blur();
+                                      }
                                     }}
                                     onBlur={(e) => {
-                                      const timers = wkEstimatedDebounceTimersRef.current;
-                                      if (timers[def.id]) {
-                                        clearTimeout(timers[def.id]);
-                                        delete timers[def.id];
-                                      }
                                       const raw = e.currentTarget.value;
                                       const parsed = raw === "" ? null : Number(raw);
                                       const val = parsed == null || Number.isNaN(parsed) ? null : parsed;
@@ -6084,7 +6135,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                         return next;
                                       });
                                     }}
-                                    disabled={wkSavingId === def.id}
                                   />
                                 </div>
                                 <div className="text-right">

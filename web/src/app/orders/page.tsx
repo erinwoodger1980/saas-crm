@@ -110,7 +110,7 @@ export default function OrdersPage() {
   const { shortName } = useTenantBrand();
   const { toast } = useToast();
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
-  const [clients, setClients] = useState<Array<{ id: string; name: string }>>([]);
+  const [clients, setClients] = useState<Array<{ id: string; name: string; email?: string | null }>>([]);
 
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Order | null>(null);
@@ -218,7 +218,7 @@ export default function OrdersPage() {
 
     // 3) Load clients for Create Project modal
     try {
-      const clientsList = await apiFetch<Array<{ id: string; name: string }>>("/clients");
+      const clientsList = await apiFetch<Array<{ id: string; name: string; email?: string | null }>>("/clients");
       setClients(clientsList || []);
     } catch {
       setClients([]);

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
@@ -7,7 +7,7 @@ import { useToast } from "@/components/ui/use-toast";
 interface CreateProjectModalProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  clients?: Array<{ id: string; name: string }>;
+  clients?: Array<{ id: string; name: string; email?: string | null }>;
   onCreated?: () => void | Promise<void>;
 }
 
@@ -26,6 +26,16 @@ export function CreateProjectModal({
   const [description, setDescription] = useState("");
   const { toast } = useToast();
 
+  const sortedClients = useMemo(() => {
+    const list = Array.isArray(clients) ? [...clients] : [];
+    list.sort((a, b) => {
+      const an = String(a?.name || "").trim();
+      const bn = String(b?.name || "").trim();
+      return an.localeCompare(bn, undefined, { sensitivity: "base" });
+    });
+    return list;
+  }, [clients]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     
@@ -36,38 +46,71 @@ export function CreateProjectModal({
 
     setLoading(true);
     try {
-      const data = {
-        title: title.trim(),
-        clientId: clientId || undefined,
-        valueGBP: valueGBP ? parseFloat(valueGBP) : undefined,
-        startDate: startDate || undefined,
-        deliveryDate: deliveryDate || undefined,
-        description: description || undefined,
-        stage: "WON",
-      };
+      const projectTitle = title.trim();
+      const selectedClient = clientId ? sortedClients.find((c) => c.id === clientId) : null;
+      const leadContactName = String(selectedClient?.name || projectTitle).trim();
+      const leadEmailRaw = selectedClient?.email != null ? String(selectedClient.email).trim() : "";
+      const leadEmail = leadEmailRaw || undefined;
+      const allowNoEmail = !leadEmail;
 
-      const response = await apiFetch("/opportunities", {
+      // 1) Create a WON Lead (Orders page is lead-driven)
+      const createdLead = await apiFetch<any>("/leads", {
         method: "POST",
-        json: data,
+        json: {
+          contactName: leadContactName,
+          email: leadEmail,
+          noEmail: allowNoEmail,
+          status: "WON",
+          description: projectTitle,
+        },
       });
 
-      if (response?.ok) {
-        toast({
-          title: "Success",
-          description: "Project created successfully",
-        });
+      const leadId = String(createdLead?.id || "");
+      if (!leadId) throw new Error("Lead creation failed");
 
-        // Reset form
-        setTitle("");
-        setClientId("");
-        setValueGBP("");
-        setStartDate("");
-        setDeliveryDate("");
-        setDescription("");
-        onOpenChange(false);
-        
-        if (onCreated) await onCreated();
+      // 2) If a client was selected, link the lead to that client explicitly
+      if (clientId) {
+        await apiFetch(`/leads/${encodeURIComponent(leadId)}`, {
+          method: "PATCH",
+          json: { clientId },
+        });
       }
+
+      // 3) Ensure an opportunity exists for the lead, then update key project fields
+      const ensured = await apiFetch<any>(`/opportunities/ensure-for-lead/${encodeURIComponent(leadId)}`, {
+        method: "POST",
+        json: {},
+      });
+      const oppId = String(ensured?.opportunity?.id || ensured?.id || "");
+      if (oppId) {
+        await apiFetch(`/opportunities/${encodeURIComponent(oppId)}`, {
+          method: "PATCH",
+          json: {
+            title: projectTitle,
+            description: description || undefined,
+            clientId: clientId || undefined,
+            stage: "WON",
+            valueGBP: valueGBP ? parseFloat(valueGBP) : null,
+            startDate: startDate || null,
+            deliveryDate: deliveryDate || null,
+          },
+        });
+      }
+
+      toast({
+        title: "Success",
+        description: "Project created successfully",
+      });
+
+      // Reset form
+      setTitle("");
+      setClientId("");
+      setValueGBP("");
+      setStartDate("");
+      setDeliveryDate("");
+      setDescription("");
+      onOpenChange(false);
+      if (onCreated) await onCreated();
     } catch (err: any) {
       console.error("Error creating project:", err);
       toast({
@@ -112,7 +155,7 @@ export function CreateProjectModal({
               disabled={loading}
             >
               <option value="">Select a client (optional)</option>
-              {clients.map((c) => (
+              {sortedClients.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>

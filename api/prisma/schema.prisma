@@ -2173,6 +2173,7 @@ model WorkshopProcessDefinition {
   sortOrder           Int                        @default(0)
   requiredByDefault   Boolean                    @default(true)
   estimatedHours      Decimal?
+  percentOfTotal      Int?
   isColorKey          Boolean                    @default(false)
   assignmentGroup     String?
   isGeneric           Boolean                    @default(false)

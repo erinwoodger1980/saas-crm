@@ -18,10 +18,17 @@ router.get("/", async (req: any, res) => {
 // POST /workshop-processes - Create a new process definition
 router.post("/", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
-  const { code, name, sortOrder, requiredByDefault, estimatedHours, isColorKey, assignmentGroup, isGeneric, isLastManufacturing, isLastInstallation } = req.body;
+  const { code, name, sortOrder, requiredByDefault, estimatedHours, percentOfTotal, isColorKey, assignmentGroup, isGeneric, isLastManufacturing, isLastInstallation } = req.body;
   
   if (!code || !name) {
     return res.status(400).json({ error: "code and name are required" });
+  }
+
+  const parsedPercent = percentOfTotal === undefined || percentOfTotal === null || percentOfTotal === ""
+    ? null
+    : Number(percentOfTotal);
+  if (parsedPercent !== null && (!Number.isFinite(parsedPercent) || parsedPercent < 0 || parsedPercent > 100)) {
+    return res.status(400).json({ error: "invalid_percent_of_total" });
   }
   
   try {
@@ -33,6 +40,7 @@ router.post("/", async (req: any, res) => {
         sortOrder: sortOrder ?? 0,
         requiredByDefault: requiredByDefault ?? true,
         estimatedHours: estimatedHours ? Number(estimatedHours) : null,
+        percentOfTotal: parsedPercent === null ? null : Math.round(parsedPercent),
         isColorKey: isColorKey ?? false,
         assignmentGroup: assignmentGroup || null,
         isGeneric: isGeneric ?? false,
@@ -54,7 +62,7 @@ router.post("/", async (req: any, res) => {
 router.patch("/:id", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
   const id = req.params.id;
-  const { name, sortOrder, requiredByDefault, estimatedHours, isColorKey, assignmentGroup, isGeneric, isLastManufacturing, isLastInstallation } = req.body;
+  const { name, sortOrder, requiredByDefault, estimatedHours, percentOfTotal, isColorKey, assignmentGroup, isGeneric, isLastManufacturing, isLastInstallation } = req.body;
   
   const existing = await prisma.workshopProcessDefinition.findFirst({
     where: { id, tenantId },
@@ -70,6 +78,13 @@ router.patch("/:id", async (req: any, res) => {
   if (requiredByDefault !== undefined) updates.requiredByDefault = requiredByDefault;
   if (estimatedHours !== undefined) {
     updates.estimatedHours = estimatedHours ? Number(estimatedHours) : null;
+  }
+  if (percentOfTotal !== undefined) {
+    const parsed = percentOfTotal === null || percentOfTotal === "" ? null : Number(percentOfTotal);
+    if (parsed !== null && (!Number.isFinite(parsed) || parsed < 0 || parsed > 100)) {
+      return res.status(400).json({ error: "invalid_percent_of_total" });
+    }
+    updates.percentOfTotal = parsed === null ? null : Math.round(parsed);
   }
   if (isColorKey !== undefined) updates.isColorKey = isColorKey;
   if (assignmentGroup !== undefined) updates.assignmentGroup = assignmentGroup || null;

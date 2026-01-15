@@ -322,6 +322,7 @@ export default function SettingsPage() {
     sortOrder: number;
     requiredByDefault: boolean;
     estimatedHours?: number | null;
+    percentOfTotal?: number | null;
     isColorKey?: boolean;
     isGeneric?: boolean;
     isLastManufacturing?: boolean;
@@ -331,7 +332,7 @@ export default function SettingsPage() {
   const [processes, setProcesses] = useState<ProcessDef[]>([]);
   const [procLoading, setProcLoading] = useState(false);
   const [procSavingId, setProcSavingId] = useState<string | "new" | null>(null);
-  const [newProcess, setNewProcess] = useState<Omit<ProcessDef, "id">>({ code: "", name: "", sortOrder: 0, requiredByDefault: true, estimatedHours: 1, isColorKey: false, isGeneric: false, isLastManufacturing: false, isLastInstallation: false, assignmentGroup: null });
+  const [newProcess, setNewProcess] = useState<Omit<ProcessDef, "id">>({ code: "", name: "", sortOrder: 0, requiredByDefault: true, estimatedHours: 1, percentOfTotal: null, isColorKey: false, isGeneric: false, isLastManufacturing: false, isLastInstallation: false, assignmentGroup: null });
 
   useEffect(() => {
     if (initialQuestionnaireScopeTab === "public") {
@@ -404,6 +405,7 @@ export default function SettingsPage() {
         sortOrder: Number(newProcess.sortOrder || 0),
         requiredByDefault: !!newProcess.requiredByDefault,
         estimatedHours: newProcess.estimatedHours == null || newProcess.estimatedHours === undefined ? null : Number(newProcess.estimatedHours),
+        percentOfTotal: newProcess.percentOfTotal == null || newProcess.percentOfTotal === undefined ? null : Number(newProcess.percentOfTotal),
         isColorKey: !!newProcess.isColorKey,
         isGeneric: !!newProcess.isGeneric,
         isLastManufacturing: !!newProcess.isLastManufacturing,
@@ -411,7 +413,7 @@ export default function SettingsPage() {
         assignmentGroup: newProcess.assignmentGroup?.trim() || null,
       };
       await apiFetch<ProcessDef>("/workshop-processes", { method: "POST", json: payload });
-      setNewProcess({ code: "", name: "", sortOrder: 0, requiredByDefault: true, estimatedHours: 1, isColorKey: false, isLastManufacturing: false, isLastInstallation: false, assignmentGroup: null });
+      setNewProcess({ code: "", name: "", sortOrder: 0, requiredByDefault: true, estimatedHours: 1, percentOfTotal: null, isColorKey: false, isLastManufacturing: false, isLastInstallation: false, assignmentGroup: null });
       await refreshProcesses();
       toast({ title: "Process created" });
     } catch (e: any) {
@@ -431,6 +433,7 @@ export default function SettingsPage() {
         sortOrder: Number(p.sortOrder || 0),
         requiredByDefault: !!p.requiredByDefault,
         estimatedHours: p.estimatedHours == null || p.estimatedHours === undefined ? null : Number(p.estimatedHours),
+        percentOfTotal: p.percentOfTotal == null || p.percentOfTotal === undefined ? null : Number(p.percentOfTotal),
         isColorKey: !!p.isColorKey,
         isGeneric: !!p.isGeneric,
         isLastManufacturing: !!p.isLastManufacturing,
@@ -2561,7 +2564,7 @@ export default function SettingsPage() {
             {/* New row */}
             <div className="rounded-xl border bg-white/80 p-3 overflow-x-auto">
               <div className="mb-2 text-sm font-semibold text-slate-800">Add process</div>
-              <div className="min-w-[1600px] grid grid-cols-[140px_1fr_80px_140px_100px_120px_120px_120px_140px_140px_180px] items-center gap-2">
+              <div className="min-w-[1750px] grid grid-cols-[140px_1fr_80px_140px_100px_90px_120px_120px_120px_140px_140px_180px] items-center gap-2">
                 <input
                   className="rounded-xl border bg-white/95 px-3 py-2 text-sm uppercase tracking-wide"
                   placeholder="CODE"
@@ -2595,6 +2598,15 @@ export default function SettingsPage() {
                   placeholder="Hours"
                   value={newProcess.estimatedHours ?? ""}
                   onChange={(e) => setNewProcess((p) => ({ ...p, estimatedHours: e.target.value === "" ? null : Number(e.target.value) }))}
+                />
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  className="rounded-xl border bg-white/95 px-3 py-2 text-sm"
+                  placeholder="%"
+                  value={newProcess.percentOfTotal ?? ""}
+                  onChange={(e) => setNewProcess((p) => ({ ...p, percentOfTotal: e.target.value === "" ? null : Number(e.target.value) }))}
                 />
                 <label className="inline-flex items-center gap-2 text-sm" title="This process determines the project's schedule color">
                   <input
@@ -2643,13 +2655,14 @@ export default function SettingsPage() {
 
             {/* List */}
             <div className="rounded-xl border bg-white/80 overflow-x-auto">
-              <div className="min-w-[1600px]">
-                <div className="grid grid-cols-[140px_1fr_80px_140px_100px_120px_120px_140px_140px_120px_180px] items-center gap-2 px-3 py-2 border-b text-[12px] text-slate-600 font-medium">
+              <div className="min-w-[1750px]">
+                <div className="grid grid-cols-[140px_1fr_80px_140px_100px_90px_120px_120px_140px_140px_120px_180px] items-center gap-2 px-3 py-2 border-b text-[12px] text-slate-600 font-medium">
                   <div>Code</div>
                   <div>Name</div>
                   <div>Sort</div>
                   <div>Required by default</div>
                   <div>Est. hours</div>
+                  <div>% of total</div>
                   <div>Color key</div>
                   <div>Generic</div>
                   <div>Last Mfg</div>
@@ -2664,7 +2677,7 @@ export default function SettingsPage() {
                 ) : (
                   <div className="divide-y">
                     {processes.map((p, idx) => (
-                      <div key={p.id} className="grid grid-cols-[140px_1fr_80px_140px_100px_120px_120px_140px_140px_120px_180px] items-center gap-2 px-3 py-2">
+                      <div key={p.id} className="grid grid-cols-[140px_1fr_80px_140px_100px_90px_120px_120px_140px_140px_120px_180px] items-center gap-2 px-3 py-2">
                       <input
                         className="rounded-xl border bg-white/95 px-3 py-1.5 text-sm uppercase"
                         value={p.code}
@@ -2694,6 +2707,14 @@ export default function SettingsPage() {
                         className="rounded-xl border bg-white/95 px-3 py-1.5 text-sm"
                         value={p.estimatedHours ?? ""}
                         onChange={(e) => setProcesses((prev) => prev.map((it) => (it.id === p.id ? { ...it, estimatedHours: e.target.value === "" ? null : Number(e.target.value) } : it)))}
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        className="rounded-xl border bg-white/95 px-3 py-1.5 text-sm"
+                        value={p.percentOfTotal ?? ""}
+                        onChange={(e) => setProcesses((prev) => prev.map((it) => (it.id === p.id ? { ...it, percentOfTotal: e.target.value === "" ? null : Number(e.target.value) } : it)))}
                       />
                       <label className="inline-flex items-center gap-2 text-sm" title="This process determines the project's schedule color">
                         <input
