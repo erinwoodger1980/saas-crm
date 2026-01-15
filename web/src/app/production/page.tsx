@@ -5,6 +5,7 @@ import { apiFetch } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCurrentUser } from "@/lib/use-current-user";
 
@@ -67,6 +68,14 @@ type Project = {
   paintReceivedAt?: string | null;
   paintNotApplicable?: boolean;
   processAssignments?: ProcessAssignment[];
+};
+
+type ProjectEditDraft = {
+  startDate: string;
+  deliveryDate: string;
+  installationStartDate: string;
+  installationEndDate: string;
+  contractValue: string;
 };
 
 type ScheduleResponse = { ok: boolean; projects: Project[] };
@@ -397,6 +406,12 @@ export default function ProductionPage() {
 
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
 
+  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
+  const [projectEdits, setProjectEdits] = useState<Record<string, ProjectEditDraft>>({});
+  const [saveErrorByProjectId, setSaveErrorByProjectId] = useState<Record<string, string | null>>({});
+  const [savingByProjectId, setSavingByProjectId] = useState<Record<string, boolean>>({});
+  const isDraggingProjectRef = useRef(false);
+
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const todayColRef = useRef<HTMLDivElement | null>(null);
 
@@ -462,6 +477,74 @@ export default function ProductionPage() {
       return remaining;
     });
   }, [projects]);
+
+  function defaultDraftFromProject(p: Project): ProjectEditDraft {
+    return {
+      startDate: p.startDate ? String(p.startDate).slice(0, 10) : "",
+      deliveryDate: p.deliveryDate ? String(p.deliveryDate).slice(0, 10) : "",
+      installationStartDate: p.installationStartDate ? String(p.installationStartDate).slice(0, 10) : "",
+      installationEndDate: p.installationEndDate ? String(p.installationEndDate).slice(0, 10) : "",
+      contractValue: p.contractValue != null ? String(p.contractValue) : "",
+    };
+  }
+
+  function draftForProject(p: Project): ProjectEditDraft {
+    return projectEdits[p.id] || defaultDraftFromProject(p);
+  }
+
+  function setDraft(projectId: string, patch: Partial<ProjectEditDraft>) {
+    setProjectEdits((prev) => {
+      const base = prev[projectId] || ({
+        startDate: "",
+        deliveryDate: "",
+        installationStartDate: "",
+        installationEndDate: "",
+        contractValue: "",
+      } satisfies ProjectEditDraft);
+      return { ...prev, [projectId]: { ...base, ...patch } };
+    });
+  }
+
+  async function saveProjectDetails(projectId: string) {
+    const p = (projects || []).find((x) => x.id === projectId);
+    if (!p) return;
+    const draft = draftForProject(p);
+
+    setSaveErrorByProjectId((prev) => ({ ...prev, [projectId]: null }));
+    setSavingByProjectId((prev) => ({ ...prev, [projectId]: true }));
+    try {
+      await apiFetch(`/workshop/project/${projectId}`, {
+        method: "PATCH",
+        json: {
+          startDate: draft.startDate || null,
+          deliveryDate: draft.deliveryDate || null,
+          installationStartDate: draft.installationStartDate || null,
+          installationEndDate: draft.installationEndDate || null,
+          contractValue: draft.contractValue ? Number(draft.contractValue) : null,
+        },
+      });
+
+      setProjects((prev) =>
+        prev.map((it) => {
+          if (it.id !== projectId) return it;
+          return {
+            ...it,
+            startDate: draft.startDate || null,
+            deliveryDate: draft.deliveryDate || null,
+            installationStartDate: draft.installationStartDate || null,
+            installationEndDate: draft.installationEndDate || null,
+            contractValue: draft.contractValue ? draft.contractValue : null,
+          };
+        })
+      );
+
+      setExpandedProjectId(null);
+    } catch (e: any) {
+      setSaveErrorByProjectId((prev) => ({ ...prev, [projectId]: e?.message || "save_failed" }));
+    } finally {
+      setSavingByProjectId((prev) => ({ ...prev, [projectId]: false }));
+    }
+  }
 
   async function setProjectStartDate(projectId: string, startDate: string) {
     await apiFetch(`/opportunities/${projectId}`, {
@@ -734,11 +817,26 @@ export default function ProductionPage() {
                     key={p.id}
                     draggable
                     onDragStart={(e) => {
-                      e.dataTransfer.setData("application/json", JSON.stringify({ kind: "project", projectId: p.id } satisfies DragPayload));
+                      isDraggingProjectRef.current = true;
+                      e.dataTransfer.setData(
+                        "application/json",
+                        JSON.stringify({ kind: "project", projectId: p.id } satisfies DragPayload)
+                      );
                       e.dataTransfer.effectAllowed = "move";
                     }}
-                    className="rounded-md border bg-white p-3 text-sm shadow-sm cursor-grab active:cursor-grabbing"
-                    title="Drag into the grid to schedule"
+                    onDragEnd={() => {
+                      window.setTimeout(() => {
+                        isDraggingProjectRef.current = false;
+                      }, 0);
+                    }}
+                    onClick={() => {
+                      if (isDraggingProjectRef.current) return;
+                      setExpandedProjectId((prev) => (prev === p.id ? null : p.id));
+                      setProjectEdits((prev) => (prev[p.id] ? prev : { ...prev, [p.id]: defaultDraftFromProject(p) }));
+                      setSaveErrorByProjectId((prev) => ({ ...prev, [p.id]: null }));
+                    }}
+                    className="rounded-md border bg-white p-3 text-sm shadow-sm cursor-pointer"
+                    title="Click to edit dates/value. Drag into the grid to schedule."
                   >
                     <div className="font-medium text-slate-900 truncate">
                       {p.number ? `${p.number} ` : ""}{p.name}
@@ -747,6 +845,82 @@ export default function ProductionPage() {
                       <span>{p.wonAt ? new Date(p.wonAt).toLocaleDateString("en-GB") : ""}</span>
                       <span>{formatGBP(parseGBP(p.contractValue ?? p.valueGBP))}</span>
                     </div>
+
+                    {expandedProjectId === p.id && (
+                      <div className="mt-3 space-y-3" onClick={(e) => e.stopPropagation()}>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <div className="text-[11px] font-medium text-slate-700">Manufacturing start</div>
+                            <Input
+                              type="date"
+                              value={draftForProject(p).startDate}
+                              onChange={(e) => setDraft(p.id, { startDate: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <div className="text-[11px] font-medium text-slate-700">Manufacturing end</div>
+                            <Input
+                              type="date"
+                              value={draftForProject(p).deliveryDate}
+                              onChange={(e) => setDraft(p.id, { deliveryDate: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <div className="text-[11px] font-medium text-slate-700">Fitting start</div>
+                            <Input
+                              type="date"
+                              value={draftForProject(p).installationStartDate}
+                              onChange={(e) => setDraft(p.id, { installationStartDate: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <div className="text-[11px] font-medium text-slate-700">Fitting end</div>
+                            <Input
+                              type="date"
+                              value={draftForProject(p).installationEndDate}
+                              onChange={(e) => setDraft(p.id, { installationEndDate: e.target.value })}
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-[11px] font-medium text-slate-700">Net value</div>
+                          <Input
+                            inputMode="decimal"
+                            placeholder="e.g. 12500"
+                            value={draftForProject(p).contractValue}
+                            onChange={(e) => setDraft(p.id, { contractValue: e.target.value })}
+                          />
+                        </div>
+
+                        {saveErrorByProjectId[p.id] && (
+                          <div className="text-xs text-red-600">{saveErrorByProjectId[p.id]}</div>
+                        )}
+
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setExpandedProjectId(null);
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={!!savingByProjectId[p.id]}
+                            onClick={() => {
+                              void saveProjectDetails(p.id);
+                            }}
+                          >
+                            {savingByProjectId[p.id] ? "Saving…" : "Save"}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
             </div>

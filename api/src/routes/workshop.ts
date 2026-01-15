@@ -1245,13 +1245,54 @@ router.patch("/project/:id", async (req: any, res) => {
 
   const updates: any = {};
   if (req.body.startDate !== undefined) {
-    updates.startDate = req.body.startDate ? new Date(req.body.startDate) : null;
+    if (!req.body.startDate) {
+      updates.startDate = null;
+    } else {
+      const d = new Date(String(req.body.startDate));
+      if (Number.isNaN(d.getTime())) return res.status(400).json({ error: "invalid_startDate" });
+      updates.startDate = d;
+    }
   }
   if (req.body.deliveryDate !== undefined) {
-    updates.deliveryDate = req.body.deliveryDate ? new Date(req.body.deliveryDate) : null;
+    if (!req.body.deliveryDate) {
+      updates.deliveryDate = null;
+    } else {
+      const d = new Date(String(req.body.deliveryDate));
+      if (Number.isNaN(d.getTime())) return res.status(400).json({ error: "invalid_deliveryDate" });
+      updates.deliveryDate = d;
+    }
+  }
+  if (req.body.installationStartDate !== undefined) {
+    if (!req.body.installationStartDate) {
+      updates.installationStartDate = null;
+    } else {
+      const d = new Date(String(req.body.installationStartDate));
+      if (Number.isNaN(d.getTime())) return res.status(400).json({ error: "invalid_installationStartDate" });
+      updates.installationStartDate = d;
+    }
+  }
+  if (req.body.installationEndDate !== undefined) {
+    if (!req.body.installationEndDate) {
+      updates.installationEndDate = null;
+    } else {
+      const d = new Date(String(req.body.installationEndDate));
+      if (Number.isNaN(d.getTime())) return res.status(400).json({ error: "invalid_installationEndDate" });
+      updates.installationEndDate = d;
+    }
   }
   if (req.body.valueGBP !== undefined) {
     updates.valueGBP = req.body.valueGBP ? Number(req.body.valueGBP) : null;
+  }
+  if (req.body.contractValue !== undefined) {
+    updates.contractValue = req.body.contractValue ? Number(req.body.contractValue) : null;
+  }
+  // Allow { netValue } as an alias for updating contractValue
+  if (req.body.netValue !== undefined && req.body.contractValue === undefined) {
+    updates.contractValue = req.body.netValue ? Number(req.body.netValue) : null;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return res.status(400).json({ error: "no_changes" });
   }
 
   const updated = await prisma.opportunity.update({
