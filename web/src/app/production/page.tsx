@@ -219,7 +219,7 @@ function computeScheduleForYear(params: {
     // Cursor through working days
     let cursor = defaultCursorStart(year);
 
-    for (const { project, pa } of assignments) {
+    for (const { project, pa, hours } of assignments) {
       let remaining = hours;
 
       while (remaining > 0) {
