@@ -1,4 +1,3 @@
-// Enhanced Fire Door Grid with Dropdown/Lookup Support
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -6,83 +5,25 @@ import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import { FormulaWizard } from "./FormulaWizard";
 import { Sparkles } from "lucide-react";
-import { apiFetch } from "@/lib/api";
 
-interface FieldDropdownConfig {
-  field: string;
-  lookupTableName: string;
-  displayField: string;
-  valueField: string;
-  options?: Array<{ id: string; label: string }>;
+export type FireDoorColumnInputType = "text" | "number" | "dropdown";
+
+export interface FireDoorColumnConfig {
+  inputType?: FireDoorColumnInputType;
+  lookupTable?: string | null;
+  formula?: string | null;
+  allowFormulaOverride?: boolean;
+  componentLink?: string | null; // hinges, locks, glass, doorBlank
+  required?: boolean;
 }
-
-interface FieldComponentLink {
-  field: string;
-  componentId: string;
-  triggerFields: string[];
-  propertyMappings: Record<string, string>;
-}
-
-export interface FireDoorGridConfig {
-  dropdownFields: Record<string, FieldDropdownConfig>;
-  componentLinks: FieldComponentLink[];
-  formulas: Record<string, string>;
-}
-
-const DEFAULT_GRID_CONFIG: FireDoorGridConfig = {
-  dropdownFields: {
-    hingeType: {
-      field: 'hingeType',
-      lookupTableName: 'IronmongeryPrices',
-      displayField: 'description',
-      valueField: 'id',
-    },
-    lockType: {
-      field: 'lockType',
-      lookupTableName: 'IronmongeryPrices',
-      displayField: 'description',
-      valueField: 'id',
-    },
-    glassType: {
-      field: 'glassType',
-      lookupTableName: 'GlassPrices',
-      displayField: 'glassType',
-      valueField: 'id',
-    },
-  },
-  componentLinks: [
-    {
-      field: 'hingeType',
-      componentId: 'hinges-component',
-      triggerFields: ['hingeType', 'qtyOfHinges'],
-      propertyMappings: {
-        'hingeType': 'hingeType',
-        'qtyOfHinges': 'quantity',
-      },
-    },
-    {
-      field: 'glassType',
-      componentId: 'glass-component',
-      triggerFields: ['glassType', 'totalGlazedAreaMaster'],
-      propertyMappings: {
-        'glassType': 'glassType',
-        'totalGlazedAreaMaster': 'area',
-      },
-    },
-  ],
-  formulas: {
-    'cncBlankWidth': 'masterWidth + (trim * 2)',
-    'lineTotal': '(materialCost + labourCost) * quantity',
-  },
-};
 
 interface ColumnHeaderModalProps {
   isOpen: boolean;
   fieldName: string;
-  currentConfig: FieldDropdownConfig | null;
+  currentConfig: FireDoorColumnConfig | null;
   onClose: () => void;
-  onSave: (config: FieldDropdownConfig) => void;
-  availableLookupTables?: Array<{ id: string; tableName: string; category?: string }>;
+  onSave: (config: FireDoorColumnConfig) => void;
+  availableLookupTables?: Array<{ id: string; tableName?: string; name?: string; category?: string }>;
   availableComponents?: Array<{ id: string; code: string; name: string }>;
   availableFields?: Array<{ name: string; type: string }>;
 }
@@ -97,20 +38,44 @@ export function ColumnHeaderModal({
   availableComponents = [],
   availableFields = [],
 }: ColumnHeaderModalProps) {
-  const [formData, setFormData] = useState<Partial<FieldDropdownConfig & { componentId?: string; triggerFields?: string }>>(
-    currentConfig || { field: fieldName }
+  const NONE_VALUE = "__none__";
+
+  const [formData, setFormData] = useState<FireDoorColumnConfig>(
+    currentConfig || {
+      inputType: "text",
+      lookupTable: null,
+      formula: null,
+      allowFormulaOverride: false,
+      componentLink: null,
+      required: false,
+    }
   );
-  const [showAdvanced, setShowAdvanced] = useState(!!currentConfig?.valueField);
+  const [showAdvanced, setShowAdvanced] = useState(!!currentConfig?.componentLink);
   const [showFormulaWizard, setShowFormulaWizard] = useState(false);
-  const [formulaInput, setFormulaInput] = useState<string>("");
+  const [formulaInput, setFormulaInput] = useState<string>(currentConfig?.formula || "");
 
   useEffect(() => {
-    if (currentConfig) {
-      setFormData(currentConfig);
-    } else {
-      setFormData({ field: fieldName });
-    }
+    const normalized: FireDoorColumnConfig = {
+      inputType: (currentConfig as any)?.inputType === "formula" ? "text" : (currentConfig?.inputType || "text"),
+      lookupTable: currentConfig?.lookupTable || null,
+      formula: currentConfig?.formula || null,
+      allowFormulaOverride: !!currentConfig?.allowFormulaOverride,
+      componentLink: currentConfig?.componentLink || null,
+      required: !!currentConfig?.required,
+    };
+
+    setFormData(normalized);
+    setFormulaInput(currentConfig?.formula || "");
   }, [currentConfig, fieldName]);
+
+  const selectedLookupTableId = (() => {
+    const selected = (formData.lookupTable || '').trim();
+    if (!selected) return null;
+    const match = availableLookupTables.find(
+      (t) => t.tableName === selected || t.name === selected
+    );
+    return match?.id || null;
+  })();
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -121,33 +86,37 @@ export function ColumnHeaderModal({
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1">Input Type</label>
-            <Select defaultValue={currentConfig ? 'lookup' : 'text'}>
+            <Select
+              value={formData.inputType || "text"}
+              onValueChange={(value) => setFormData((prev) => ({ ...prev, inputType: value as any }))}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="text">Text Input</SelectItem>
                 <SelectItem value="number">Number Input</SelectItem>
-                <SelectItem value="dropdown">Fixed Dropdown</SelectItem>
-                <SelectItem value="lookup">Lookup Table</SelectItem>
-                <SelectItem value="formula">Formula (Read-only)</SelectItem>
+                <SelectItem value="dropdown">Lookup Table</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          {formData.field && (
+          {formData.inputType === "dropdown" && (
             <>
               <div>
                 <label className="block text-sm font-medium mb-1">Lookup Table</label>
                 {availableLookupTables.length > 0 ? (
-                  <Select value={formData.lookupTableName || ''} onValueChange={(value) => setFormData({ ...formData, lookupTableName: value })}>
+                  <Select
+                    value={formData.lookupTable || ""}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, lookupTable: value }))}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select a lookup table..." />
                     </SelectTrigger>
                     <SelectContent>
                       {availableLookupTables.map((table) => (
-                        <SelectItem key={table.id} value={table.tableName}>
-                          {table.tableName} {table.category ? `(${table.category})` : ''}
+                        <SelectItem key={table.id} value={table.tableName || table.name || ""}>
+                          {table.tableName || table.name} {table.category ? `(${table.category})` : ''}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -155,116 +124,76 @@ export function ColumnHeaderModal({
                 ) : (
                   <Input
                     placeholder="e.g., Timber, Glass, Hinges"
-                    value={formData.lookupTableName || ''}
-                    onChange={(e) =>
-                      setFormData({ ...formData, lookupTableName: e.target.value })
-                    }
+                    value={formData.lookupTable || ''}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, lookupTable: e.target.value }))}
                   />
                 )}
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-1">Display Field (shows to user)</label>
-                <Input
-                  placeholder="e.g., label"
-                  value={formData.displayField || ''}
-                  onChange={(e) =>
-                    setFormData({ ...formData, displayField: e.target.value })
-                  }
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">Value Field (stored in grid)</label>
-                <Input
-                  placeholder="e.g., value"
-                  value={formData.valueField || ''}
-                  onChange={(e) =>
-                    setFormData({ ...formData, valueField: e.target.value })
-                  }
-                />
-              </div>
-
-              <div className="border-t pt-4">
-                <button
-                  onClick={() => setShowAdvanced(!showAdvanced)}
-                  className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1"
-                >
-                  {showAdvanced ? '▼' : '▶'} Component Linking (Advanced)
-                </button>
-                
-                {showAdvanced && (
-                  <div className="mt-3 space-y-3 bg-blue-50 p-3 rounded">
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Component ID</label>
-                      {availableComponents.length > 0 ? (
-                        <Select
-                          value={(formData as any).componentId || ''}
-                          onValueChange={(value) =>
-                            setFormData({ ...formData, componentId: value })
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select a component..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {availableComponents.map((comp) => (
-                              <SelectItem key={comp.id} value={comp.id}>
-                                {comp.name} ({comp.code})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <Input
-                          placeholder="e.g., hinges-component"
-                          value={(formData as any).componentId || ''}
-                          onChange={(e) =>
-                            setFormData({ ...formData, componentId: e.target.value })
-                          }
-                        />
-                      )}
-                      <p className="text-xs text-gray-500 mt-1">Leave empty to disable component linking</p>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Trigger Field Names</label>
-                      {availableFields.length > 0 ? (
-                        <Select
-                          value={(formData as any).triggerFields || ''}
-                          onValueChange={(value) =>
-                            setFormData({ ...formData, triggerFields: value })
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select fields (comma-separated)..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {availableFields.map((field) => (
-                              <SelectItem key={field.name} value={field.name}>
-                                {field.name} ({field.type})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <Input
-                          placeholder="e.g., hingeType, hingeQuantity"
-                          value={(formData as any).triggerFields || ''}
-                          onChange={(e) =>
-                            setFormData({ ...formData, triggerFields: e.target.value })
-                          }
-                        />
-                      )}
-                      <p className="text-xs text-gray-500 mt-1">Fields that will trigger component creation when filled</p>
-                    </div>
-
-                    <p className="text-xs text-gray-600">When the lookup field is filled, a component will be automatically created with the selected configuration.</p>
-                  </div>
-                )}
+                <div className="mt-2 flex items-center gap-3 text-xs">
+                  <a
+                    href={
+                      selectedLookupTableId
+                        ? `/settings/lookup-tables?edit=${encodeURIComponent(selectedLookupTableId)}`
+                        : '/settings/lookup-tables'
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-600 hover:text-blue-700 hover:underline underline-offset-2"
+                  >
+                    Edit lookup table
+                  </a>
+                  <a
+                    href="/settings/lookup-tables?create=1"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-600 hover:text-blue-700 hover:underline underline-offset-2"
+                  >
+                    Create new
+                  </a>
+                </div>
               </div>
             </>
           )}
+
+          <div className="border-t pt-4">
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1"
+            >
+              {showAdvanced ? '▼' : '▶'} Component Linking (Advanced)
+            </button>
+
+            {showAdvanced && (
+              <div className="mt-3 space-y-3 bg-blue-50 p-3 rounded">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Component Link</label>
+                  <Select
+                    value={formData.componentLink || NONE_VALUE}
+                    onValueChange={(value) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        componentLink: value === NONE_VALUE ? null : value,
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="None" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NONE_VALUE}>None</SelectItem>
+                      <SelectItem value="hinges">Hinges</SelectItem>
+                      <SelectItem value="locks">Locks</SelectItem>
+                      <SelectItem value="glass">Vision Glass</SelectItem>
+                      <SelectItem value="doorBlank">Door Blank</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    When this field is filled, a component can be auto-created.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Formula input section */}
           <div className="border-t pt-4 space-y-2">
@@ -290,6 +219,32 @@ export function ColumnHeaderModal({
             <p className="text-xs text-gray-500">
               Use ${'{fieldName}'} to reference other fields, or use the wizard to build formulas visually
             </p>
+
+            {formulaInput?.trim() ? (
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id={`allow-formula-override-${fieldName}`}
+                  className="rounded"
+                  checked={!!formData.allowFormulaOverride}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, allowFormulaOverride: e.target.checked }))}
+                />
+                <label htmlFor={`allow-formula-override-${fieldName}`} className="text-sm text-slate-700">
+                  Allow overwrite of formula
+                </label>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id={`required-${fieldName}`}
+              className="rounded"
+              checked={!!formData.required}
+              onChange={(e) => setFormData((prev) => ({ ...prev, required: e.target.checked }))}
+            />
+            <label htmlFor={`required-${fieldName}`} className="text-sm text-slate-700">Required field</label>
           </div>
 
           <div className="flex gap-2 pt-4">
@@ -298,12 +253,14 @@ export function ColumnHeaderModal({
             </Button>
             <Button
               onClick={() => {
-                if (formData.field && formData.lookupTableName && formData.displayField && formData.valueField) {
-                  onSave({
-                    ...formData as FieldDropdownConfig,
-                    formulaExpression: formulaInput || undefined,
-                  } as any);
-                }
+                onSave({
+                  ...formData,
+                  inputType: formData.inputType || "text",
+                  formula: formulaInput ? formulaInput : null,
+                  // lookupTable only makes sense for dropdown
+                  lookupTable: (formData.inputType === "dropdown") ? (formData.lookupTable || null) : null,
+                  allowFormulaOverride: formulaInput ? !!formData.allowFormulaOverride : false,
+                });
               }}
             >
               Save Configuration
@@ -353,5 +310,4 @@ export function DropdownCell({
   );
 }
 
-export { DEFAULT_GRID_CONFIG };
-// Removed duplicate export - FireDoorGridConfig exported as component default
+// ColumnHeaderModal is consumed by FireDoorSpreadsheet.

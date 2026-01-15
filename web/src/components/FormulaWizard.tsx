@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -17,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useState, useEffect } from "react";
-import { ChevronDown, Plus, Trash2, Copy } from "lucide-react";
+import { Plus, Trash2, Copy } from "lucide-react";
 
 interface FormulaToken {
   type: "field" | "operator" | "function" | "lookup" | "number" | "text";
@@ -31,7 +32,7 @@ interface FormulaWizardProps {
   onSave: (formula: string) => void;
   initialFormula?: string;
   availableFields: Array<{ name: string; type: string }>;
-  availableLookupTables: Array<{ id: string; tableName: string; category?: string }>;
+  availableLookupTables: Array<{ id: string; tableName?: string; name?: string; category?: string; columns?: string[] }>;
   availableFunctions?: string[];
 }
 
@@ -46,7 +47,6 @@ const AVAILABLE_FUNCTIONS = [
   { name: "ROUND", description: "Round: ROUND(number, decimals)" },
   { name: "CEIL", description: "Round up: CEIL(number)" },
   { name: "FLOOR", description: "Round down: FLOOR(number)" },
-  { name: "LOOKUP", description: "Lookup value: LOOKUP(table, field=value, return_field)" },
   { name: "CONCAT", description: "Combine text: CONCAT(a, b, c)" },
   { name: "LENGTH", description: "Text length: LENGTH(text)" },
 ];
@@ -68,8 +68,17 @@ export function FormulaWizard({
   const [selectedField, setSelectedField] = useState<string>("");
   const [selectedOperator, setSelectedOperator] = useState<string>("");
   const [selectedLookupTable, setSelectedLookupTable] = useState<string>("");
+  const [lookupMatches, setLookupMatches] = useState<Array<{ tableColumn: string; fieldName: string }>>([
+    { tableColumn: "", fieldName: "" },
+  ]);
+  const [lookupReturnColumn, setLookupReturnColumn] = useState<string>("");
   const [numberInput, setNumberInput] = useState<string>("");
   const [textInput, setTextInput] = useState<string>("");
+
+  const [aiPrompt, setAiPrompt] = useState<string>("");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiNotes, setAiNotes] = useState<string>("");
+  const [aiIssues, setAiIssues] = useState<string[]>([]);
 
   // Parse formula into tokens on load
   useEffect(() => {
@@ -79,10 +88,17 @@ export function FormulaWizard({
     }
   }, [initialFormula, isOpen]);
 
+  useEffect(() => {
+    // keep token list somewhat in sync when user types directly
+    if (!isOpen) return;
+    parseFormula(formula);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formula, isOpen]);
+
   const parseFormula = (f: string) => {
     // Simple parser - would need to be enhanced for complex formulas
     const newTokens: FormulaToken[] = [];
-    const parts = f.match(/\$\{[\w.]+\}|[A-Z_]+\(|[)(\s,+\-*/=!><&|]+|"[^"]*"|'[^']*'|\d+(\.\d+)?|[a-zA-Z_]\w*/g) || [];
+    const parts = f.match(/\$\{[\w.]+\}|[A-Z_]+\(|[()\s,]+|[+\-*/=!><&|]+|"[^"]*"|'[^']*'|\d+(\.\d+)?|[a-zA-Z_]\w*/g) || [];
 
     for (const part of parts) {
       if (part.match(/^\s+$/)) continue; // skip whitespace
@@ -196,16 +212,38 @@ export function FormulaWizard({
     if (!selectedLookupTable) return;
     const table = availableLookupTables.find((t) => t.id === selectedLookupTable);
     if (table) {
+      const tableName = table.tableName || table.name;
+      if (!tableName) return;
+
+      const conditions = lookupMatches
+        .map((m) => {
+          const col = String(m.tableColumn || "").trim();
+          const field = String(m.fieldName || "").trim();
+          if (!col || !field) return null;
+          return `${col}=\${${field}}`;
+        })
+        .filter(Boolean)
+        .join("&");
+
+      const returnCol = String(lookupReturnColumn || "").trim();
+      if (!returnCol) return;
+
+      const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/\"/g, '\\"');
       const newToken: FormulaToken = {
         type: "lookup",
-        value: `LOOKUP(${table.tableName}, , )`,
-        label: `LOOKUP(${table.tableName})`,
+        value: `LOOKUP("${esc(tableName)}", "${esc(conditions)}", "${esc(returnCol)}")`,
+        label: `LOOKUP(${tableName})`,
       };
       setTokens([...tokens, newToken]);
       updateFormula([...tokens, newToken]);
       setSelectedLookupTable("");
+      setLookupMatches([{ tableColumn: "", fieldName: "" }]);
+      setLookupReturnColumn("");
     }
   };
+
+  const selectedLookupTableObj = availableLookupTables.find((t) => t.id === selectedLookupTable);
+  const lookupTableColumns = Array.isArray(selectedLookupTableObj?.columns) ? selectedLookupTableObj!.columns! : [];
 
   const removeToken = (index: number) => {
     const newTokens = tokens.filter((_, i) => i !== index);
@@ -228,6 +266,51 @@ export function FormulaWizard({
       onClose();
     }
   };
+
+  async function callAi(mode: "generate" | "check") {
+    try {
+      setAiBusy(true);
+      setAiNotes("");
+      setAiIssues([]);
+      const res = await fetch('/api/ai/formula-helper', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode,
+          prompt: aiPrompt,
+          formula,
+          availableFields,
+          availableLookupTables,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json?.ok) {
+        setAiNotes(json?.error || 'AI request failed');
+        return;
+      }
+
+      const nextFormula = typeof json.formula === 'string' ? json.formula.trim() : '';
+      const notes = typeof json.notes === 'string' ? json.notes : '';
+      const issues = Array.isArray(json.issues) ? json.issues.map((s: any) => String(s)).filter(Boolean) : [];
+      const suggestedFix = typeof json.suggestedFix === 'string' ? json.suggestedFix.trim() : '';
+
+      setAiNotes(notes);
+      setAiIssues(issues);
+
+      if (mode === 'generate' && nextFormula) {
+        setFormula(nextFormula);
+      }
+      if (mode === 'check' && issues.length && suggestedFix) {
+        // don't auto-overwrite; provide as note
+        setAiNotes((prev) => `${prev ? prev + "\n\n" : ""}Suggested fix:\n${suggestedFix}`);
+      }
+    } catch (e: any) {
+      setAiNotes(e?.message || 'AI request failed');
+    } finally {
+      setAiBusy(false);
+    }
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -265,13 +348,14 @@ export function FormulaWizard({
 
             <div>
               <h3 className="text-sm font-semibold mb-2">Add Functions</h3>
+              <p className="text-xs text-slate-500 mb-2">For math/text functions. Use the Lookup section below for LOOKUP.</p>
               <div className="flex gap-2">
                 <Select value={selectedFunction} onValueChange={setSelectedFunction}>
                   <SelectTrigger className="flex-1">
                     <SelectValue placeholder="Select function..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableFunctions.map((fn) => {
+                    {availableFunctions.filter((fn) => fn !== "LOOKUP").map((fn) => {
                       const funcDef = AVAILABLE_FUNCTIONS.find((f) => f.name === fn);
                       return (
                         <SelectItem key={fn} value={fn}>
@@ -350,8 +434,9 @@ export function FormulaWizard({
 
             {availableLookupTables.length > 0 && (
               <div>
-                <h3 className="text-sm font-semibold mb-2">Add Lookup</h3>
-                <div className="flex gap-2">
+                <h3 className="text-sm font-semibold mb-2">Lookup</h3>
+                <p className="text-xs text-slate-500 mb-2">Build a LOOKUP by choosing match columns and a return column.</p>
+                <div className="flex gap-2 items-start">
                   <Select
                     value={selectedLookupTable}
                     onValueChange={setSelectedLookupTable}
@@ -362,15 +447,114 @@ export function FormulaWizard({
                     <SelectContent>
                       {availableLookupTables.map((table) => (
                         <SelectItem key={table.id} value={table.id}>
-                          {table.tableName} {table.category ? `(${table.category})` : ""}
+                          {table.tableName || table.name} {table.category ? `(${table.category})` : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  <Button onClick={addLookup} size="sm" variant="outline">
+                  <Button
+                    onClick={addLookup}
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      !selectedLookupTable ||
+                      !lookupReturnColumn ||
+                      lookupMatches.some((m) => !String(m.tableColumn || "").trim() || !String(m.fieldName || "").trim())
+                    }
+                    title="Add this lookup to the formula"
+                  >
                     <Plus className="w-4 h-4" />
                   </Button>
                 </div>
+
+                {selectedLookupTable && (
+                  <div className="mt-3 space-y-3 rounded-md border p-3">
+                    <div>
+                      <div className="text-xs font-semibold mb-2">Match columns</div>
+                      <div className="space-y-2">
+                        {lookupMatches.map((m, idx) => (
+                          <div key={idx} className="flex gap-2 items-center">
+                            <Select
+                              value={m.tableColumn}
+                              onValueChange={(v) =>
+                                setLookupMatches((prev) => prev.map((x, i) => (i === idx ? { ...x, tableColumn: v } : x)))
+                              }
+                            >
+                              <SelectTrigger className="flex-1">
+                                <SelectValue placeholder="Lookup table column..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {lookupTableColumns.map((c) => (
+                                  <SelectItem key={c} value={c}>
+                                    {c}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+
+                            <Select
+                              value={m.fieldName}
+                              onValueChange={(v) =>
+                                setLookupMatches((prev) => prev.map((x, i) => (i === idx ? { ...x, fieldName: v } : x)))
+                              }
+                            >
+                              <SelectTrigger className="flex-1">
+                                <SelectValue placeholder="Match to field..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {availableFields.map((field) => (
+                                  <SelectItem key={field.name} value={field.name}>
+                                    {field.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setLookupMatches((prev) =>
+                                  prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx)
+                                );
+                              }}
+                              disabled={lookupMatches.length <= 1}
+                              title="Remove match"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setLookupMatches((prev) => [...prev, { tableColumn: "", fieldName: "" }])}
+                          disabled={lookupTableColumns.length === 0}
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add match
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-semibold mb-2">Return column</div>
+                      <Select value={lookupReturnColumn} onValueChange={setLookupReturnColumn}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select return column..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {lookupTableColumns.map((c) => (
+                            <SelectItem key={c} value={c}>
+                              {c}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -379,9 +563,13 @@ export function FormulaWizard({
           <div className="space-y-4">
             <div>
               <h3 className="text-sm font-semibold mb-2">Formula</h3>
-              <div className="bg-gray-50 border rounded p-3 min-h-[80px]">
-                <code className="text-sm font-mono break-words">{formula || "No formula yet"}</code>
-              </div>
+              <Textarea
+                value={formula}
+                onChange={(e) => setFormula(e.target.value)}
+                placeholder="Type a formula here (recommended for IF / complex formulas)…"
+                className="font-mono text-sm"
+                rows={6}
+              />
               <Button onClick={copyToClipboard} size="sm" className="mt-2 w-full" variant="outline">
                 <Copy className="w-4 h-4 mr-2" />
                 Copy Formula
@@ -425,9 +613,59 @@ export function FormulaWizard({
                 <li>• Use fields like $&#123;fieldName&#125; to reference questionnaire fields</li>
                 <li>• Operators connect values: +, -, *, /, =, !=, &gt;, &lt;, etc.</li>
                 <li>• Functions perform calculations: SUM, MULTIPLY, IF, MAX, MIN, etc.</li>
-                <li>• LOOKUP() retrieves values from lookup tables</li>
+                <li>• Use the Lookup section to add LOOKUP()</li>
                 <li>• Build complex formulas by combining tokens</li>
               </ul>
+            </div>
+
+            <div className="border rounded p-3">
+              <h4 className="text-sm font-semibold mb-2">AI Helper</h4>
+              <p className="text-xs text-slate-500 mb-2">Describe what you want in plain English; AI will suggest a formula using available fields and lookup tables.</p>
+              <Textarea
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                placeholder='e.g. "If Doorset Type is Doorset then add 10% to Line Price; otherwise use Line Price"'
+                rows={3}
+              />
+              <div className="flex gap-2 mt-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  disabled={aiBusy || !aiPrompt.trim()}
+                  onClick={() => callAi('generate')}
+                >
+                  Generate Formula
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  disabled={aiBusy || !formula.trim()}
+                  onClick={() => callAi('check')}
+                >
+                  Check Formula
+                </Button>
+              </div>
+
+              {(aiNotes || aiIssues.length > 0) && (
+                <div className="mt-3 bg-slate-50 border rounded p-2 text-xs whitespace-pre-wrap">
+                  {aiIssues.length > 0 && (
+                    <div className="mb-2">
+                      <div className="font-semibold">Issues</div>
+                      <ul className="list-disc pl-5">
+                        {aiIssues.map((x, i) => (
+                          <li key={i}>{x}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {aiNotes && (
+                    <div>
+                      <div className="font-semibold">Notes</div>
+                      <div>{aiNotes}</div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

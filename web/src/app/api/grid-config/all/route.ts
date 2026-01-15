@@ -1,17 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { getBackendApiBase, forwardAuthHeaders, readJsonFromUpstream } from "@/lib/api-route-helpers";
+
+export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
   try {
-    const configs = await prisma.gridFieldConfig.findMany({
-      orderBy: {
-        fieldName: 'asc',
-      },
+    const upstreamUrl = getBackendApiBase(request) + "/grid-config/all";
+    const res = await fetch(upstreamUrl, {
+      headers: forwardAuthHeaders(request),
+      credentials: "include",
     });
 
-    return NextResponse.json(configs);
+    const parsed = await readJsonFromUpstream(res);
+    if (parsed.looksLikeHtml) {
+      console.error("[grid-config/all GET] Upstream returned HTML", {
+        upstreamUrl,
+        status: res.status,
+        contentType: parsed.contentType,
+        preview: parsed.rawText.slice(0, 200),
+      });
+    }
+
+    return NextResponse.json(parsed.data, { status: res.status });
   } catch (error: any) {
-    console.error("Grid config retrieval error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("[grid-config/all GET] Error:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch grid configs", message: error.message },
+      { status: 500 }
+    );
   }
 }

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { getBackendApiBase, forwardAuthHeaders, readJsonFromUpstream } from "@/lib/api-route-helpers";
+
+export const runtime = "nodejs";
 
 export async function POST(
   request: NextRequest,
@@ -11,37 +13,34 @@ export async function POST(
       return NextResponse.json({ error: "fieldName required" }, { status: 400 });
     }
 
-    const config = await request.json();
-
-    // Save or update grid field configuration
-    const updated = await prisma.gridFieldConfig.upsert({
-      where: {
-        fieldName,
+    const body = await request.json();
+    const upstreamUrl = getBackendApiBase(request) + `/grid-config/${encodeURIComponent(fieldName)}`;
+    const res = await fetch(upstreamUrl, {
+      method: "POST",
+      headers: {
+        ...forwardAuthHeaders(request),
+        "Content-Type": "application/json",
       },
-      update: {
-        inputType: config.inputType,
-        lookupTable: config.lookupTable,
-        formula: config.formula,
-        componentLink: config.componentLink,
-        required: config.required,
-        updatedAt: new Date(),
-      },
-      create: {
-        fieldName,
-        inputType: config.inputType,
-        lookupTable: config.lookupTable,
-        formula: config.formula,
-        componentLink: config.componentLink,
-        required: config.required,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
+      body: JSON.stringify(body),
+      credentials: "include",
     });
 
-    return NextResponse.json(updated);
+    const parsed = await readJsonFromUpstream(res);
+    if (parsed.looksLikeHtml) {
+      console.error("[grid-config POST] Upstream returned HTML", {
+        upstreamUrl,
+        status: res.status,
+        contentType: parsed.contentType,
+        preview: parsed.rawText.slice(0, 200),
+      });
+    }
+    return NextResponse.json(parsed.data, { status: res.status });
   } catch (error: any) {
-    console.error("Grid config error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("[grid-config POST] Error:", error);
+    return NextResponse.json(
+      { error: "Failed to save grid config", message: error.message },
+      { status: 500 }
+    );
   }
 }
 
@@ -55,13 +54,27 @@ export async function GET(
       return NextResponse.json({ error: "fieldName required" }, { status: 400 });
     }
 
-    const config = await prisma.gridFieldConfig.findUnique({
-      where: { fieldName },
+    const upstreamUrl = getBackendApiBase(request) + `/grid-config/${encodeURIComponent(fieldName)}`;
+    const res = await fetch(upstreamUrl, {
+      headers: forwardAuthHeaders(request),
+      credentials: "include",
     });
-
-    return NextResponse.json(config || {});
+    const parsed = await readJsonFromUpstream(res);
+    if (parsed.looksLikeHtml) {
+      console.error("[grid-config GET] Upstream returned HTML", {
+        upstreamUrl,
+        status: res.status,
+        contentType: parsed.contentType,
+        preview: parsed.rawText.slice(0, 200),
+      });
+    }
+    return NextResponse.json(parsed.data, { status: res.status });
   } catch (error: any) {
-    console.error("Grid config retrieval error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("[grid-config GET] Error:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch grid config", message: error.message },
+      { status: 500 }
+    );
   }
 }
+

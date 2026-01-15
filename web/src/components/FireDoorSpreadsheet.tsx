@@ -1,12 +1,90 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { apiFetch } from "@/lib/api";
 import DataGrid, { Column, SelectColumn, RenderEditCellProps } from "react-data-grid";
 import "react-data-grid/lib/styles.css";
+import clsx from "clsx";
 import { Button } from "@/components/ui/button";
-import { Settings, Download } from "lucide-react";
+import { Settings, Download, MessageSquare } from "lucide-react";
 import { ColumnHeaderModal } from "@/components/FireDoorGridConfig";
+import { RfiDialog } from "@/components/rfi-dialog";
+
+type RfiRecord = {
+  id: string;
+  rowId: string | null;
+  columnKey: string;
+  title?: string | null;
+  message: string;
+  status: string;
+  visibleToClient: boolean;
+};
+
+function DefaultEditCell({
+  row,
+  column,
+  onRowChange,
+  onClose,
+  inputType,
+}: RenderEditCellProps<FireDoorRow> & { inputType?: string }) {
+  const initial = row[column.key];
+  const [draft, setDraft] = useState<string>(initial == null ? "" : String(initial));
+
+  useEffect(() => {
+    const next = row[column.key];
+    setDraft(next == null ? "" : String(next));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [row, column.key]);
+
+  const commit = useCallback(() => {
+    const trimmed = draft;
+    let nextValue: any = trimmed;
+    if (!trimmed) nextValue = null;
+    if (inputType === "number") {
+      if (!trimmed) {
+        nextValue = null;
+      } else {
+        const n = Number(trimmed);
+        nextValue = Number.isFinite(n) ? n : null;
+      }
+    }
+    onRowChange({ ...row, [column.key]: nextValue }, true);
+    try {
+      (onClose as any)?.(true);
+    } catch {
+      // ignore
+    }
+  }, [draft, inputType, onRowChange, row, column.key, onClose]);
+
+  return (
+    <input
+      className="w-full h-full px-2 border-0 outline-none bg-white"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          commit();
+        }
+        if (e.key === "Tab") {
+          // react-data-grid may close the editor on Tab before blur fires.
+          // Commit here so tabbing behaves like clicking out.
+          commit();
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          try {
+            (onClose as any)?.(false);
+          } catch {
+            // ignore
+          }
+        }
+      }}
+      autoFocus
+    />
+  );
+}
 
 interface FireDoorRow {
   id: string;
@@ -81,6 +159,120 @@ interface FireDoorSpreadsheetProps {
   importId?: string;
   onQuoteCreated?: (quoteId: string) => void;
   onComponentCreated?: () => void;
+}
+
+function normalizeHeaderKey(input: string): string {
+  return String(input || "")
+    .toLowerCase()
+    .replace(/\u00a0/g, " ") // nbsp
+    .replace(/\s+/g, " ")
+    .replace(/\s*\/\s*/g, "/")
+    .replace(/\s*-\s*/g, "-")
+    .trim();
+}
+
+function maybeParseNumber(value: any): any {
+  if (typeof value !== "string") return value;
+  const v = value.trim();
+  if (!v) return value;
+  // Basic numeric coercion for formula support (keeps non-numeric strings as-is)
+  if (/^-?\d+(\.\d+)?$/.test(v)) return Number(v);
+  return value;
+}
+
+function hydrateImportRow(item: any, columns: ReadonlyArray<Column<any>>): any {
+  const row: any = { ...(item || {}) };
+  const raw = item?.rawRowJson && typeof item.rawRowJson === "object" ? item.rawRowJson : {};
+
+  // Persisted edits for non-DB columns are stored here (keyed by grid column key)
+  const persistedGrid = (raw && typeof raw === "object" && (raw as any).__grid && typeof (raw as any).__grid === "object")
+    ? (raw as any).__grid
+    : {};
+
+  // Keep persisted grid metadata around for UI logic (e.g. formula override flags)
+  row.__gridMeta = persistedGrid;
+
+  const rawByNorm = new Map<string, any>();
+  for (const [k, v] of Object.entries(raw)) {
+    rawByNorm.set(normalizeHeaderKey(k), v);
+  }
+
+  // Map grid column keys (UI) to stored DB keys when they differ.
+  const alias: Record<string, string> = {
+    doorsetLeafFrame: "doorsetType",
+    acousticRating: "acousticRatingDb",
+    fanlightSidelightGlazing: "fanlightSidelightGlz",
+    doorEdgeProtPosition: "doorEdgeProtPos",
+    visionPanelQtyLeaf1: "visionQtyLeaf1",
+    visionPanelQtyLeaf2: "visionQtyLeaf2",
+    leaf1Aperture1Width: "vp1WidthLeaf1",
+    leaf1Aperture1Height: "vp1HeightLeaf1",
+    leaf1Aperture2Width: "vp2WidthLeaf1",
+    leaf1Aperture2Height: "vp2HeightLeaf1",
+    leaf2Aperture1Width: "vp1WidthLeaf2",
+    leaf2Aperture1Height: "vp1HeightLeaf2",
+    leaf2Aperture2Width: "vp2WidthLeaf2",
+    leaf2Aperture2Height: "vp2HeightLeaf2",
+    addition1: "additionNote1",
+    addition1Qty: "additionNote1Qty",
+    closersFloorsprings: "closerOrFloorSpring",
+    closerType: "closerOrFloorSpring",
+    mLeafWidth: "masterLeafWidth",
+    sLeafWidth: "slaveLeafWidth",
+    priceEa: "unitValue",
+    linePrice: "lineTotal",
+  };
+
+  for (const col of columns) {
+    const key = (col as any)?.key;
+    if (!key || typeof key !== "string") continue;
+
+    // 0) Apply persisted grid overrides (take precedence)
+    if (Object.prototype.hasOwnProperty.call(persistedGrid, key)) {
+      row[key] = persistedGrid[key];
+    }
+
+    // 1) Alias from DB field
+    if ((row[key] === undefined || row[key] === null) && alias[key] && row[alias[key]] != null) {
+      row[key] = row[alias[key]];
+    }
+
+    // 2) Fall back to raw CSV value by matching the displayed header name
+    const colName = typeof (col as any)?.name === "string" ? (col as any).name : "";
+    if ((row[key] === undefined || row[key] === null) && colName) {
+      const rawVal = rawByNorm.get(normalizeHeaderKey(colName));
+      if (rawVal !== undefined) {
+        row[key] = maybeParseNumber(rawVal);
+      }
+    }
+
+    // 3) Ensure the field exists for consistent grid behavior
+    if (row[key] === undefined) row[key] = null;
+  }
+
+  return row;
+}
+
+function getFormulaOverrideFlag(row: any, colKey: string): boolean {
+  const meta = row && typeof row === "object" ? (row as any).__gridMeta : null;
+  const k = `__override:${colKey}`;
+  return !!(meta && typeof meta === "object" && (meta as any)[k]);
+}
+
+function setFormulaOverrideFlag(row: any, colKey: string, value: boolean | null) {
+  if (!row || typeof row !== "object") return;
+  const k = `__override:${colKey}`;
+  const meta =
+    (row as any).__gridMeta && typeof (row as any).__gridMeta === "object"
+      ? { ...(row as any).__gridMeta }
+      : {};
+
+  if (value === null) {
+    delete (meta as any)[k];
+  } else {
+    (meta as any)[k] = value;
+  }
+  (row as any).__gridMeta = meta;
 }
 
 // Define all columns matching the exact order and names provided (223 columns total)
@@ -298,44 +490,480 @@ const COLUMNS: Column<FireDoorRow>[] = [
   { key: "doorsetWeight", name: "Doorset Weight (Approx) kg - Ironmongery not allowed for", width: 380, editable: true },
 ];
 
+const GRID_KEYS: string[] = Array.from(new Set(COLUMNS.map((c) => String((c as any).key || "")).filter(Boolean)));
+
 export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onComponentCreated }: FireDoorSpreadsheetProps) {
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<FireDoorRow[]>([]);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
+  const [activeCell, setActiveCell] = useState<{ rowIdx: number; colKey: string } | null>(null);
+  const [selection, setSelection] = useState<{ anchor: { rowIdx: number; colKey: string }; focus: { rowIdx: number; colKey: string } } | null>(null);
   const [creatingQuote, setCreatingQuote] = useState(false);
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [configModalColumn, setConfigModalColumn] = useState<string>("");
   const [gridConfig, setGridConfig] = useState<Record<string, any>>({});
   const [lookupOptions, setLookupOptions] = useState<Record<string, Array<{value: string; label: string}>>>({});
   const [error, setError] = useState<string | null>(null);
-  const [availableLookupTables, setAvailableLookupTables] = useState<Array<{ id: string; tableName: string; category?: string }>>([]);
+  const [availableLookupTables, setAvailableLookupTables] = useState<Array<{ id: string; tableName?: string; name?: string; category?: string; columns?: string[]; rows?: Array<Record<string, any>> }>>([]);
   const [availableComponents, setAvailableComponents] = useState<Array<{ id: string; code: string; name: string }>>([]);
   const [availableFields, setAvailableFields] = useState<Array<{ name: string; type: string }>>([]);
 
+  const [mutatingRows, setMutatingRows] = useState(false);
+
+  const [rfis, setRfis] = useState<RfiRecord[]>([]);
+  const [rfiDialogOpen, setRfiDialogOpen] = useState(false);
+  const [rfiMode, setRfiMode] = useState<"create" | "edit" | "view">("create");
+  const [currentRfi, setCurrentRfi] = useState<RfiRecord | null>(null);
+  const [rfiContext, setRfiContext] = useState<{ rowId: string | null; columnKey: string; columnName?: string } | null>(null);
+
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+
+  const rowsRef = useRef<FireDoorRow[]>([]);
+  const saveTimersRef = useRef<Map<string, any>>(new Map());
+  const bomTimerRef = useRef<any>(null);
+  const gridContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const columnWidthStorageKey = useMemo(() => {
+    if (!importId) return null;
+    return `fire-door-grid:column-widths:${importId}`;
+  }, [importId]);
+
+  useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
+
+  const loadImport = useCallback(async (opts?: { selectAll?: boolean }) => {
+    if (!importId) return;
+    const selectAll = !!opts?.selectAll;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await apiFetch<any>(`/fire-doors/imports/${importId}`);
+      const hydrated = (data.lineItems || []).map((item: any) => hydrateImportRow(item, COLUMNS));
+      setRows(hydrated);
+      if (selectAll) {
+        setSelectedRows(new Set((data.lineItems || []).map((r: any) => r.id)));
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to load import");
+    } finally {
+      setLoading(false);
+    }
+  }, [importId]);
+
   // Load fire door data from import
   useEffect(() => {
+    loadImport({ selectAll: true });
+  }, [loadImport]);
+
+  const bulkCreateRows = useCallback(async (count: number) => {
+    if (!importId) return [] as any[];
+    const n = Number(count);
+    if (!Number.isFinite(n) || n <= 0) return [] as any[];
+    const res = await apiFetch<{ ok: boolean; items: any[] }>(`/fire-doors/line-items/bulk-create`, {
+      method: 'POST',
+      json: { fireDoorImportId: importId, count: n },
+    });
+    const items = Array.isArray(res?.items) ? res.items : [];
+    return items;
+  }, [importId]);
+
+  const ensureRowCount = useCallback(async (minRowCount: number) => {
     if (!importId) return;
-    
-    const loadImport = async () => {
-      setLoading(true);
-      setError(null);
+    const current = rowsRef.current;
+    const need = Math.max(0, Math.floor(minRowCount) - current.length);
+    if (need <= 0) return;
+
+    const created = await bulkCreateRows(need);
+    if (!created.length) return;
+
+    const hydratedNew = created.map((item) => hydrateImportRow(item, COLUMNS));
+    const merged = [...current, ...hydratedNew].sort((a: any, b: any) => {
+      const ai = Number((a as any)?.rowIndex ?? 0);
+      const bi = Number((b as any)?.rowIndex ?? 0);
+      return ai - bi;
+    });
+
+    setRows(merged);
+    rowsRef.current = merged;
+  }, [importId, bulkCreateRows]);
+
+  const bulkDeleteRows = useCallback(async (ids: string[]) => {
+    const clean = Array.from(new Set((ids || []).map((x) => String(x || '').trim()).filter(Boolean)));
+    if (!clean.length) return;
+    await apiFetch(`/fire-doors/line-items/bulk-delete`, {
+      method: 'POST',
+      json: { ids: clean },
+    });
+  }, []);
+
+  // Load and persist column widths per import (Excel-like drag resize)
+  useEffect(() => {
+    if (!columnWidthStorageKey) return;
+    try {
+      const raw = window.localStorage.getItem(columnWidthStorageKey);
+      if (!raw) {
+        setColumnWidths({});
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        setColumnWidths(parsed);
+      } else {
+        setColumnWidths({});
+      }
+    } catch {
+      setColumnWidths({});
+    }
+  }, [columnWidthStorageKey]);
+
+  useEffect(() => {
+    if (!columnWidthStorageKey) return;
+    const t = window.setTimeout(() => {
       try {
-        const data = await apiFetch<any>(`/fire-doors/imports/${importId}`);
-        setRows(data.lineItems || []);
-        // Select all rows by default
-        setSelectedRows(new Set(data.lineItems.map((r: any) => r.id)));
+        window.localStorage.setItem(columnWidthStorageKey, JSON.stringify(columnWidths || {}));
+      } catch {
+        // ignore
+      }
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [columnWidthStorageKey, columnWidths]);
+
+  const loadRfis = useCallback(async () => {
+    if (!importId) return;
+    try {
+      const res = await apiFetch<{ ok: boolean; items: RfiRecord[] }>(
+        `/rfis?projectId=${encodeURIComponent(importId)}`
+      );
+      if (res?.ok) setRfis(Array.isArray(res.items) ? res.items : []);
+    } catch (err) {
+      console.error('[fire-door-grid] Failed to load RFIs', err);
+    }
+  }, [importId]);
+
+  useEffect(() => {
+    loadRfis();
+  }, [loadRfis]);
+
+  const { rfiColumns, rfiCells } = useMemo(() => {
+    const cols = new Set<string>();
+    const cells = new Set<string>();
+    for (const rfi of rfis) {
+      const colKey = String(rfi?.columnKey || '').trim();
+      if (!colKey) continue;
+      if (rfi?.rowId) {
+        cells.add(`${rfi.rowId}::${colKey}`);
+      } else {
+        cols.add(colKey);
+      }
+    }
+    return { rfiColumns: cols, rfiCells: cells };
+  }, [rfis]);
+
+  const openRfiDialog = useCallback((rowId: string | null, columnKey: string, columnName?: string) => {
+    const colKey = String(columnKey || '').trim();
+    const rid = rowId ? String(rowId).trim() : null;
+    const existing = rfis.find((r) => {
+      const rCol = String((r as any)?.columnKey || '').trim();
+      if (!rCol || rCol !== colKey) return false;
+      const rRow = (r as any)?.rowId ? String((r as any).rowId).trim() : null;
+      return (rid ? rRow === rid : rRow == null);
+    }) || null;
+
+    setRfiContext({ rowId: rid, columnKey: colKey, columnName });
+    setCurrentRfi(existing);
+    setRfiMode(existing ? 'edit' : 'create');
+    setRfiDialogOpen(true);
+  }, [rfis]);
+
+  const handleSaveRfi = useCallback(async (rfiData: Partial<RfiRecord>) => {
+    if (!importId) return;
+    if (!rfiData.message || !String(rfiData.message).trim()) {
+      alert('RFI message is required');
+      return;
+    }
+
+    const endpoint = rfiData.id ? `/rfis/${rfiData.id}` : '/rfis';
+    const method = rfiData.id ? 'PUT' : 'POST';
+
+    const payload = {
+      projectId: importId,
+      rowId: rfiData.rowId ?? null,
+      columnKey: String(rfiData.columnKey || ''),
+      title: (rfiData.title ?? null) ? String(rfiData.title).trim() || null : null,
+      message: String(rfiData.message).trim(),
+      status: rfiData.status || 'open',
+      visibleToClient: rfiData.visibleToClient !== undefined ? rfiData.visibleToClient : false,
+    };
+
+    await apiFetch(endpoint, {
+      method,
+      json: payload,
+    });
+
+    await loadRfis();
+  }, [importId, loadRfis]);
+
+  const editableKeySet = useMemo(() => {
+    const s = new Set<string>();
+    for (const col of COLUMNS) {
+      const cfg = gridConfig[col.key];
+      const hasFormula = !!cfg?.formula || cfg?.inputType === 'formula';
+      const allowOverride = !!cfg?.allowFormulaOverride;
+      const editable = !!col.editable && (!hasFormula || allowOverride);
+      if (editable) s.add(col.key);
+    }
+    return s;
+  }, [gridConfig]);
+
+  const getSelectableColumns = useCallback((gridCols: readonly Column<FireDoorRow>[]) => {
+    return gridCols
+      .map((c: any) => String(c?.key || ''))
+      .filter((k) => k && k !== 'select-row');
+  }, []);
+
+  const bulkPersist = useCallback(async (updates: Array<{ id: string; changes: Record<string, any> }>) => {
+    if (!updates.length) return;
+    try {
+      await apiFetch(`/fire-doors/line-items/bulk`, {
+        method: 'PATCH',
+        json: { updates },
+      });
+    } catch (err: any) {
+      console.error('[fire-door-grid] Bulk save failed:', err);
+      setError(err?.message || 'Failed to save changes');
+    }
+  }, []);
+
+  const selectionRange = useMemo(() => {
+    if (!selection) return null;
+
+    const gridCols = [SelectColumn, ...COLUMNS] as unknown as readonly Column<FireDoorRow>[];
+    const keys = getSelectableColumns(gridCols);
+    const idx = new Map<string, number>();
+    keys.forEach((k, i) => idx.set(k, i));
+
+    const aCol = idx.get(selection.anchor.colKey);
+    const fCol = idx.get(selection.focus.colKey);
+    if (aCol == null || fCol == null) return null;
+
+    const startRow = Math.min(selection.anchor.rowIdx, selection.focus.rowIdx);
+    const endRow = Math.max(selection.anchor.rowIdx, selection.focus.rowIdx);
+    const startColIdx = Math.min(aCol, fCol);
+    const endColIdx = Math.max(aCol, fCol);
+
+    return { startRow, endRow, startColIdx, endColIdx, keys };
+  }, [selection, getSelectableColumns]);
+
+  const isCellInSelection = useCallback((rowIdx: number, colKey: string) => {
+    if (!selectionRange) return false;
+    const colIdx = selectionRange.keys.indexOf(colKey);
+    if (colIdx < 0) return false;
+    return (
+      rowIdx >= selectionRange.startRow &&
+      rowIdx <= selectionRange.endRow &&
+      colIdx >= selectionRange.startColIdx &&
+      colIdx <= selectionRange.endColIdx
+    );
+  }, [selectionRange]);
+
+  const buildTsvFromSelection = useCallback((): string | null => {
+    if (!selectionRange) return null;
+    const { startRow, endRow, startColIdx, endColIdx, keys } = selectionRange;
+    const currentRows = rowsRef.current;
+
+    const lines: string[] = [];
+    for (let r = startRow; r <= endRow; r++) {
+      const row = currentRows[r];
+      if (!row) continue;
+      const vals: string[] = [];
+      for (let c = startColIdx; c <= endColIdx; c++) {
+        const key = keys[c];
+        const v = (row as any)[key];
+        vals.push(v == null ? '' : String(v));
+      }
+      lines.push(vals.join('\t'));
+    }
+    return lines.join('\n');
+  }, [selectionRange]);
+
+  const applyPasteTsv = useCallback(async (tsv: string) => {
+    let currentRows = rowsRef.current;
+
+    const start = activeCell || (selection?.anchor ?? null);
+    if (!start) return;
+
+    const gridCols = [SelectColumn, ...COLUMNS] as unknown as readonly Column<FireDoorRow>[];
+    const keys = getSelectableColumns(gridCols);
+    const idx = new Map<string, number>();
+    keys.forEach((k, i) => idx.set(k, i));
+
+    const startColIdx = idx.get(start.colKey);
+    if (startColIdx == null) return;
+
+    const rowsText = tsv.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    // ignore trailing empty line from many clipboards
+    while (rowsText.length > 0 && rowsText[rowsText.length - 1] === '') rowsText.pop();
+    if (rowsText.length === 0) return;
+
+    // Auto-create missing line items when pasting extends beyond current row count.
+    const requiredRowCount = start.rowIdx + rowsText.length;
+    if (requiredRowCount > currentRows.length) {
+      try {
+        setMutatingRows(true);
+        await ensureRowCount(requiredRowCount);
+        currentRows = rowsRef.current;
       } catch (err: any) {
-        setError(err.message || "Failed to load import");
+        console.error('[fire-door-grid] Failed to create rows for paste:', err);
+        setError(err?.message || 'Failed to create new rows for paste');
+        return;
       } finally {
-        setLoading(false);
+        setMutatingRows(false);
+      }
+    }
+
+    const nextRows = currentRows.map((r) => ({ ...r }));
+    const updates: Array<{ id: string; changes: Record<string, any> }> = [];
+    const changedById = new Map<string, Record<string, any>>();
+
+    let willTouchCalculated = false;
+
+    for (let rOff = 0; rOff < rowsText.length; rOff++) {
+      const targetRowIdx = start.rowIdx + rOff;
+      if (targetRowIdx < 0 || targetRowIdx >= nextRows.length) break;
+      const targetRow = nextRows[targetRowIdx];
+      const prevRow = currentRows[targetRowIdx];
+      const cells = rowsText[rOff].split('\t');
+
+      for (let cOff = 0; cOff < cells.length; cOff++) {
+        const targetColIdx = startColIdx + cOff;
+        if (targetColIdx < 0 || targetColIdx >= keys.length) break;
+        const key = keys[targetColIdx];
+
+        const cfg = gridConfig[key];
+        const isCalculated = !!cfg?.formula || cfg?.inputType === 'formula';
+        const allowOverride = !!cfg?.allowFormulaOverride;
+
+        // Never paste into calculated fields unless overwrite is enabled
+        if (isCalculated && !allowOverride) continue;
+
+        if (!editableKeySet.has(key)) continue;
+
+        const rawVal = cells[cOff];
+        const nextVal = maybeParseNumber(rawVal);
+        if (Object.is((prevRow as any)[key], nextVal)) continue;
+        (targetRow as any)[key] = nextVal === '' ? null : nextVal;
+
+        if (isCalculated && allowOverride) willTouchCalculated = true;
+
+        if (isCalculated && allowOverride) {
+          if ((targetRow as any)[key] == null || (targetRow as any)[key] === '') {
+            setFormulaOverrideFlag(targetRow as any, key, null);
+          } else {
+            setFormulaOverrideFlag(targetRow as any, key, true);
+          }
+        }
+
+        const patch = changedById.get(targetRow.id) || {};
+        patch[key] = (targetRow as any)[key];
+
+        if (isCalculated && allowOverride) {
+          patch[`__override:${key}`] = getFormulaOverrideFlag(targetRow as any, key) ? true : null;
+        }
+        changedById.set(targetRow.id, patch);
+      }
+    }
+
+    if (willTouchCalculated) {
+      const ok = window.confirm(
+        'This paste includes calculated (formula) fields. Do you want to overwrite the formulas for the pasted cells?'
+      );
+      if (!ok) {
+        // Drop calculated-field changes; keep the rest.
+        for (const [id, patch] of changedById.entries()) {
+          for (const k of Object.keys({ ...patch })) {
+            const cfg = gridConfig[k];
+            const isCalculated = !!cfg?.formula || cfg?.inputType === 'formula';
+            const allowOverride = !!cfg?.allowFormulaOverride;
+            if (isCalculated && allowOverride) {
+              delete (patch as any)[k];
+              delete (patch as any)[`__override:${k}`];
+            }
+          }
+          if (Object.keys(patch).length === 0) changedById.delete(id);
+        }
+      }
+    }
+
+    for (const [id, changes] of changedById.entries()) {
+      updates.push({ id, changes });
+    }
+
+    if (updates.length === 0) return;
+    setRows(nextRows);
+    rowsRef.current = nextRows;
+
+    await bulkPersist(updates);
+  }, [activeCell, selection, bulkPersist, getSelectableColumns, editableKeySet, gridConfig, ensureRowCount]);
+
+  const handleRowsChange = useCallback((newRows: FireDoorRow[]) => {
+    const oldRows = rowsRef.current;
+    const oldById = new Map<string, FireDoorRow>();
+    for (const r of oldRows) oldById.set(r.id, r);
+
+    setRows(newRows);
+
+    // Debounced persistence: only send the changed keys for each changed row.
+    const persistRowPatch = async (rowId: string, patch: Record<string, any>) => {
+      try {
+        await apiFetch(`/fire-doors/line-items/${encodeURIComponent(rowId)}`, {
+          method: "PATCH",
+          json: { changes: patch },
+        });
+      } catch (err: any) {
+        console.error("[fire-door-grid] Failed to save row:", err);
+        setError(err?.message || "Failed to save changes");
       }
     };
 
-    loadImport();
-  }, [importId]);
+    for (const row of newRows) {
+      const prev = oldById.get(row.id);
+      if (!prev) continue;
 
-  const handleRowsChange = useCallback((newRows: FireDoorRow[]) => {
-    setRows(newRows);
+      const patch: Record<string, any> = {};
+      for (const key of GRID_KEYS) {
+        if (key === "rowIndex" || key === "id") continue;
+        if (!Object.is((prev as any)[key], (row as any)[key])) {
+          patch[key] = (row as any)[key];
+
+          const cfg = gridConfig[key];
+          const isCalculated = !!cfg?.formula || cfg?.inputType === 'formula';
+          const allowOverride = !!cfg?.allowFormulaOverride;
+          if (isCalculated && allowOverride) {
+            const flagKey = `__override:${key}`;
+            if ((row as any)[key] == null || (row as any)[key] === '') {
+              setFormulaOverrideFlag(row as any, key, null);
+              patch[flagKey] = null;
+            } else {
+              setFormulaOverrideFlag(row as any, key, true);
+              patch[flagKey] = true;
+            }
+          }
+        }
+      }
+
+      if (Object.keys(patch).length === 0) continue;
+
+      const existingTimer = saveTimersRef.current.get(row.id);
+      if (existingTimer) clearTimeout(existingTimer);
+
+      const timer = setTimeout(() => {
+        persistRowPatch(row.id, patch);
+        saveTimersRef.current.delete(row.id);
+      }, 600);
+
+      saveTimersRef.current.set(row.id, timer);
+    }
 
     // Auto-generate BOMs for all rows
     const batchGenerateBOMs = async () => {
@@ -370,8 +998,9 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     };
 
     // Debounce BOM generation
-    const timer = setTimeout(batchGenerateBOMs, 1000);
-    return () => clearTimeout(timer);
+    if (bomTimerRef.current) clearTimeout(bomTimerRef.current);
+    bomTimerRef.current = setTimeout(batchGenerateBOMs, 1000);
+    return;
 
     // Check for component creation triggers
     newRows.forEach((newRow, index) => {
@@ -412,7 +1041,8 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   useEffect(() => {
     const loadLookupTables = async () => {
       try {
-        const tables = await apiFetch('/api/lookup-tables');
+        // Use flexible-fields lookup tables endpoint (includes `columns`)
+        const tables = await apiFetch('/flexible-fields/lookup-tables');
         if (Array.isArray(tables)) {
           setAvailableLookupTables(tables);
         }
@@ -621,18 +1251,185 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   };
 
   // Evaluate formulas
+  const lookupTablesByName = useMemo(() => {
+    const m = new Map<string, any>();
+    for (const t of availableLookupTables as any[]) {
+      const name = String(t?.tableName || t?.name || '').trim();
+      if (!name) continue;
+      m.set(name, t);
+    }
+    return m;
+  }, [availableLookupTables]);
+
+  const unquote = (s: string) => {
+    const t = String(s || '').trim();
+    if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) {
+      return t.slice(1, -1);
+    }
+    return t;
+  };
+
+  const splitTopLevelArgs = (s: string): string[] => {
+    const out: string[] = [];
+    let cur = '';
+    let depth = 0;
+    let quote: '"' | "'" | null = null;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (quote) {
+        cur += ch;
+        if (ch === quote && s[i - 1] !== '\\') quote = null;
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        quote = ch;
+        cur += ch;
+        continue;
+      }
+      if (ch === '(') {
+        depth++;
+        cur += ch;
+        continue;
+      }
+      if (ch === ')') {
+        depth = Math.max(0, depth - 1);
+        cur += ch;
+        continue;
+      }
+      if (ch === ',' && depth === 0) {
+        out.push(cur.trim());
+        cur = '';
+        continue;
+      }
+      cur += ch;
+    }
+    if (cur.trim()) out.push(cur.trim());
+    return out;
+  };
+
+  const valuesEqual = (a: any, b: any) => {
+    if (a == null && b == null) return true;
+    const as = String(a ?? '').trim();
+    const bs = String(b ?? '').trim();
+    const an = Number(as);
+    const bn = Number(bs);
+    const aNumOk = as !== '' && Number.isFinite(an);
+    const bNumOk = bs !== '' && Number.isFinite(bn);
+    if (aNumOk && bNumOk) return an === bn;
+    return as.localeCompare(bs, undefined, { sensitivity: 'accent' }) === 0;
+  };
+
+  const resolveLookup = (tableName: string, conditions: string, returnField: string, row: FireDoorRow) => {
+    const table = lookupTablesByName.get(tableName);
+    const rows = Array.isArray(table?.rows) ? (table.rows as Array<Record<string, any>>) : [];
+    if (!rows.length) return null;
+
+    const condStr = String(conditions || '').replace(/\$\{([^}]+)\}/g, (_m, keyRaw) => {
+      const key = String(keyRaw || '').trim();
+      const v = (row as any)[key];
+      return v == null ? '' : String(v);
+    });
+
+    const conds: Array<{ key: string; value: string }> = [];
+    for (const part of condStr.split('&')) {
+      const p = String(part || '').trim();
+      if (!p) continue;
+      const eq = p.indexOf('=');
+      if (eq < 0) continue;
+      const k = p.slice(0, eq).trim();
+      const v = p.slice(eq + 1).trim();
+      if (!k) continue;
+      conds.push({ key: k, value: unquote(v) });
+    }
+
+    const ret = String(returnField || '').trim();
+    if (!ret) return null;
+
+    const found = rows.find((r) => {
+      if (r && r.isActive === false) return false;
+      for (const c of conds) {
+        if (!valuesEqual((r as any)[c.key], c.value)) return false;
+      }
+      return true;
+    });
+
+    if (!found) return null;
+    const v = (found as any)[ret];
+    return v == null ? null : v;
+  };
+
+  const replaceLookupCalls = (input: string, row: FireDoorRow): string => {
+    let out = String(input || '');
+    if (!out.includes('LOOKUP(')) return out;
+
+    let guard = 0;
+    while (out.includes('LOOKUP(') && guard++ < 25) {
+      const start = out.indexOf('LOOKUP(');
+      if (start < 0) break;
+      let i = start + 'LOOKUP('.length;
+      let depth = 1;
+      let quote: '"' | "'" | null = null;
+      for (; i < out.length; i++) {
+        const ch = out[i];
+        if (quote) {
+          if (ch === quote && out[i - 1] !== '\\') quote = null;
+          continue;
+        }
+        if (ch === '"' || ch === "'") {
+          quote = ch;
+          continue;
+        }
+        if (ch === '(') depth++;
+        if (ch === ')') {
+          depth--;
+          if (depth === 0) break;
+        }
+      }
+      if (depth !== 0) break;
+
+      const call = out.slice(start, i + 1);
+      const inner = call.slice('LOOKUP('.length, -1);
+      const args = splitTopLevelArgs(inner);
+      const tableName = unquote(args[0] || '');
+      const conditions = unquote(args[1] || '');
+      const returnField = unquote(args[2] || '');
+      const resolved = resolveLookup(tableName, conditions, returnField, row);
+
+      let replacement = 'null';
+      if (typeof resolved === 'number' && Number.isFinite(resolved)) replacement = String(resolved);
+      else if (typeof resolved === 'boolean') replacement = resolved ? 'true' : 'false';
+      else if (resolved != null) replacement = JSON.stringify(String(resolved));
+
+      out = out.slice(0, start) + replacement + out.slice(i + 1);
+    }
+    return out;
+  };
+
   const evaluateFormula = (formula: string, row: FireDoorRow): any => {
     try {
-      // Simple formula evaluation - replace field names with values
-      let expression = formula;
-      Object.keys(row).forEach(key => {
-        const value = row[key];
-        if (typeof value === 'number') {
+      let expression = String(formula || '');
+
+      // Resolve LOOKUP(...) calls first, using loaded flexible lookup tables.
+      expression = replaceLookupCalls(expression, row);
+
+      // Primary syntax: ${fieldName}
+      expression = expression.replace(/\$\{([^}]+)\}/g, (_m, fieldRaw) => {
+        const key = String(fieldRaw || '').trim();
+        const value = (row as any)[key];
+        if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+        if (value == null || value === '') return '0';
+        return JSON.stringify(String(value));
+      });
+
+      // Back-compat: replace bare identifiers for numeric fields
+      for (const key of Object.keys(row)) {
+        const value = (row as any)[key];
+        if (typeof value === 'number' && Number.isFinite(value)) {
           expression = expression.replace(new RegExp(`\\b${key}\\b`, 'g'), String(value));
         }
-      });
-      
-      // Evaluate using Function constructor (safe in this context)
+      }
+
+      // eslint-disable-next-line no-new-func
       return new Function('return ' + expression)();
     } catch (err) {
       console.error('Formula evaluation error:', err);
@@ -645,61 +1442,339 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       SelectColumn,
       ...COLUMNS.map(col => {
         const fieldConfig = gridConfig[col.key];
-        const isDropdown = fieldConfig?.inputType === 'dropdown' && fieldConfig?.lookupTable;
-        const isFormula = fieldConfig?.inputType === 'formula';
+        const baseInputType = fieldConfig?.inputType || 'text';
+        const inputType = String(baseInputType).toLowerCase();
+        const isDropdown = (inputType === 'dropdown' || inputType === 'lookup') && fieldConfig?.lookupTable;
+        const isCalculated = !!fieldConfig?.formula || fieldConfig?.inputType === 'formula';
+        const allowOverride = !!fieldConfig?.allowFormulaOverride;
         
+        const resizedWidth = columnWidths[col.key];
+        const columnHasRfi = rfiColumns.has(col.key);
+
         return {
           ...col,
-          editable: isFormula ? false : col.editable,
-          headerCellClass: "cursor-pointer hover:bg-blue-50 transition-colors",
+          width: typeof resizedWidth === 'number' && Number.isFinite(resizedWidth) ? resizedWidth : col.width,
+          resizable: true,
+          editable: isCalculated ? (allowOverride ? !!col.editable : false) : col.editable,
+          headerCellClass: clsx(
+            "cursor-pointer hover:bg-blue-50 transition-colors",
+            columnHasRfi && 'bg-yellow-100'
+          ),
           renderHeaderCell: (props: any) => (
             <div 
-              className="flex items-center justify-between gap-1 h-full px-2 group"
+              className="relative flex items-center h-full px-2 group"
               onClick={(e) => {
                 e.stopPropagation();
                 setConfigModalColumn(col.key);
                 setConfigModalOpen(true);
               }}
             >
-              <span className="truncate" title={typeof col.name === 'string' ? col.name : ''}>{typeof col.name === 'string' ? col.name : 'Column'}</span>
-              <Settings className="w-3 h-3 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <span
+                className="min-w-0 flex-1 whitespace-normal break-words leading-tight line-clamp-2"
+                title={typeof col.name === 'string' ? col.name : ''}
+              >
+                {typeof col.name === 'string' ? col.name : 'Column'}
+              </span>
+              <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                <button
+                  type="button"
+                  className={clsx(
+                    'transition-opacity text-slate-500 hover:text-slate-700',
+                    columnHasRfi ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                  )}
+                  title={columnHasRfi ? 'Open RFI for this column' : 'Add RFI for this column'}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openRfiDialog(null, col.key, typeof col.name === 'string' ? col.name : undefined);
+                  }}
+                >
+                  <MessageSquare className="w-3 h-3" />
+                </button>
+                <Settings className="w-3 h-3 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
             </div>
           ),
-          renderEditCell: isDropdown ? DropdownCell : undefined,
+          renderEditCell: isDropdown
+            ? DropdownCell
+            : col.editable
+              ? (p: RenderEditCellProps<FireDoorRow>) => (
+                  <DefaultEditCell {...p} inputType={inputType} />
+                )
+              : undefined,
           renderCell: (props: any) => {
             const row = props.row;
-            let value = row[col.key];
+            const rowIdx = props.rowIdx as number;
+
+            // Display row number starting at 1 (not 0)
+            if (col.key === 'rowIndex') {
+              const inSelection = isCellInSelection(rowIdx, col.key);
+              const isActive = activeCell?.rowIdx === rowIdx && activeCell?.colKey === col.key;
+              return (
+                <div
+                  className={clsx(
+                    'px-2 text-slate-700',
+                    inSelection && 'bg-blue-50',
+                    isActive && 'ring-2 ring-blue-500 ring-inset'
+                  )}
+                >
+                  {rowIdx + 1}
+                </div>
+              );
+            }
+
+            const overrideActive = allowOverride && getFormulaOverrideFlag(row, col.key);
+            let value = overrideActive ? row[col.key] : row[col.key];
+            const inSelection = isCellInSelection(rowIdx, col.key);
+            const isActive = activeCell?.rowIdx === rowIdx && activeCell?.colKey === col.key;
+
+            const cellHasRfi =
+              (row?.id ? rfiCells.has(`${row.id}::${col.key}`) : false) || rfiColumns.has(col.key);
+            const baseClass = clsx(
+              'px-2 group relative h-full w-full',
+              cellHasRfi && 'bg-yellow-100',
+              inSelection && 'bg-blue-50',
+              isActive && 'ring-2 ring-blue-500 ring-inset',
+              // Highlight cells that are overriding a column formula
+              overrideActive && 'border border-blue-300 bg-white'
+            );
             
-            // Evaluate formula if configured
-            if (isFormula && fieldConfig?.formula) {
+            // Evaluate formula if configured and not overridden
+            if (isCalculated && fieldConfig?.formula && !overrideActive) {
               value = evaluateFormula(fieldConfig.formula, row);
             }
             
-            if (value === null || value === undefined) return <div className="px-2 text-gray-400">-</div>;
+            if (value === null || value === undefined) return <div className={clsx(baseClass, 'text-gray-400')}>-</div>;
             
             // Format currency columns
             if (['labourCost', 'materialCost', 'unitValue', 'lineTotal', 'priceEa', 'linePrice'].includes(col.key)) {
-              return <div className="px-2 font-semibold text-green-700">£{Number(value).toFixed(2)}</div>;
+              return <div className={clsx(baseClass, 'font-semibold text-green-700')}>£{Number(value).toFixed(2)}</div>;
             }
             
             // Show lookup label if configured
             if (isDropdown && fieldConfig?.lookupTable) {
               const options = lookupOptions[fieldConfig.lookupTable] || [];
               const option = options.find(opt => opt.value === value);
-              return <div className="px-2">{option?.label || value}</div>;
+
+              const hasTypedValue = value != null && String(value).trim() !== '';
+              const isInvalidDropdownValue = hasTypedValue && !option;
+
+              return (
+                <div className={clsx(baseClass, isInvalidDropdownValue && !cellHasRfi && 'bg-orange-100')}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate">{option?.label || value}</span>
+                    {isActive && (
+                      <button
+                        type="button"
+                        className="opacity-60 hover:opacity-100 text-slate-600"
+                        title={cellHasRfi ? 'Open RFI for this cell' : 'Add RFI for this cell'}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          openRfiDialog(row.id, col.key, typeof col.name === 'string' ? col.name : undefined);
+                        }}
+                      >
+                        <MessageSquare className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
             }
             
-            // Formula indicator
-            if (isFormula) {
-              return <div className="px-2 bg-blue-50 text-blue-700 font-mono text-xs">{value}</div>;
+            // Formula indicator (only when the formula is in effect)
+            if (isCalculated && !overrideActive) {
+              return <div className={clsx(baseClass, 'text-blue-700 font-mono text-xs')}>{value}</div>;
             }
-          
-            return <div className="px-2">{value}</div>;
+
+            // When a formula override is active, show a reset control to return this cell to the column formula.
+            if (isCalculated && overrideActive) {
+              return (
+                <div className={clsx(baseClass, 'flex items-center justify-between gap-2')}>
+                  <span className="truncate">{value}</span>
+                  {isActive && (
+                    <button
+                      type="button"
+                      className="text-[11px] text-slate-600 hover:text-slate-800"
+                      title={cellHasRfi ? 'Open RFI for this cell' : 'Add RFI for this cell'}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openRfiDialog(row.id, col.key, typeof col.name === 'string' ? col.name : undefined);
+                      }}
+                    >
+                      <MessageSquare className="w-3 h-3" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="text-[11px] text-blue-600 hover:text-blue-700 underline-offset-2 hover:underline"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+
+                      const nextRow: any = { ...row, [col.key]: null };
+                      setFormulaOverrideFlag(nextRow, col.key, null);
+                      props.onRowChange(nextRow, true);
+                    }}
+                    title="Return this cell to the column formula"
+                  >
+                    Reset
+                  </button>
+                </div>
+              );
+            }
+
+            return (
+              <div className={baseClass}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate">{value}</span>
+                  {isActive && (
+                    <button
+                      type="button"
+                      className="opacity-60 hover:opacity-100 text-slate-600"
+                      title={cellHasRfi ? 'Open RFI for this cell' : 'Add RFI for this cell'}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openRfiDialog(row.id, col.key, typeof col.name === 'string' ? col.name : undefined);
+                      }}
+                    >
+                      <MessageSquare className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
           },
         };
       }),
     ];
-  }, [gridConfig, lookupOptions]);
+  }, [gridConfig, lookupOptions, activeCell, isCellInSelection, columnWidths, openRfiDialog, rfiCells, rfiColumns]);
+
+  const handleColumnResize = useCallback((colOrIdx: any, widthMaybe: any) => {
+    let colKey: string | null = null;
+    let nextWidth: number | null = null;
+
+    if (typeof colOrIdx === 'number') {
+      const c = (columns as any[])?.[colOrIdx];
+      colKey = c?.key ? String(c.key) : null;
+      nextWidth = Number(widthMaybe);
+    } else {
+      colKey = colOrIdx?.key ? String(colOrIdx.key) : null;
+      nextWidth = Number(widthMaybe);
+    }
+
+    if (!colKey || colKey === 'select-row') return;
+    if (!Number.isFinite(nextWidth)) return;
+
+    const clamped = Math.max(60, Math.min(800, Math.round(nextWidth)));
+    setColumnWidths((prev) => ({ ...prev, [colKey as string]: clamped }));
+  }, [columns]);
+
+  const handleCellClick = useCallback((args: any, event: any) => {
+    try {
+      const colKey = String(args?.column?.key || '').trim();
+      if (!colKey || colKey === 'select-row') return;
+
+      // If this is a dropdown/lookup-configured column, open the editor on single click.
+      // react-data-grid only enters edit mode on double click by default.
+      const cfg = gridConfig[colKey];
+      const inputType = String(cfg?.inputType || '').toLowerCase();
+      const isDropdown = (inputType === 'dropdown' || inputType === 'lookup') && !!cfg?.lookupTable;
+      if (isDropdown && !event?.shiftKey && !event?.metaKey && !event?.ctrlKey && typeof args?.selectCell === 'function') {
+        try {
+          args.selectCell(true);
+        } catch {
+          // ignore
+        }
+      }
+
+      const rowId = String(args?.row?.id || '').trim();
+      if (!rowId) return;
+      const rowIdx = rowsRef.current.findIndex((r) => r.id === rowId);
+      if (rowIdx < 0) return;
+
+      const next = { rowIdx, colKey };
+      setActiveCell(next);
+      if (event?.shiftKey && selection?.anchor) {
+        setSelection({ anchor: selection.anchor, focus: next });
+      } else {
+        setSelection({ anchor: next, focus: next });
+      }
+
+      // Ensure copy/paste handlers can fire via container capture
+      gridContainerRef.current?.focus?.();
+    } catch {
+      // no-op
+    }
+  }, [selection, gridConfig]);
+
+  const handleCopyCapture = useCallback((e: React.ClipboardEvent) => {
+    const tsv = buildTsvFromSelection();
+    if (!tsv) return;
+    try {
+      e.clipboardData.setData('text/plain', tsv);
+      e.preventDefault();
+    } catch {
+      // ignore
+    }
+  }, [buildTsvFromSelection]);
+
+  const handlePasteCapture = useCallback((e: React.ClipboardEvent) => {
+    const text = e.clipboardData.getData('text/plain');
+    if (!text) return;
+    // Only handle multi-cell paste when we have an active cell/selection.
+    if (!activeCell && !selection) return;
+    e.preventDefault();
+    applyPasteTsv(text);
+  }, [applyPasteTsv, activeCell, selection]);
+
+  const handleKeyDownCapture = useCallback((e: React.KeyboardEvent) => {
+    // Fill-down (Ctrl/Cmd + D)
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'd' || e.key === 'D')) {
+      if (!selectionRange) return;
+      e.preventDefault();
+
+      const { startRow, endRow, startColIdx, endColIdx, keys } = selectionRange;
+      if (endRow <= startRow) return;
+
+      const currentRows = rowsRef.current;
+      const nextRows = currentRows.map((r) => ({ ...r }));
+      const changedById = new Map<string, Record<string, any>>();
+
+      // Copy values from the top row of the selection downwards within the selection.
+      const sourceRow = currentRows[startRow];
+      if (!sourceRow) return;
+
+      for (let r = startRow + 1; r <= endRow; r++) {
+        const target = nextRows[r];
+        const prev = currentRows[r];
+        if (!target || !prev) continue;
+
+        for (let c = startColIdx; c <= endColIdx; c++) {
+          const key = keys[c];
+          // only fill editable cells
+          const colDef = columns.find((cc: any) => String(cc?.key || '') === key);
+          if (!(colDef as any)?.editable) continue;
+
+          const nextVal = (sourceRow as any)[key];
+          if (Object.is((prev as any)[key], nextVal)) continue;
+          (target as any)[key] = nextVal;
+          const patch = changedById.get(target.id) || {};
+          patch[key] = nextVal;
+          changedById.set(target.id, patch);
+        }
+      }
+
+      const updates = Array.from(changedById.entries()).map(([id, changes]) => ({ id, changes }));
+      if (!updates.length) return;
+
+      setRows(nextRows);
+      rowsRef.current = nextRows;
+      bulkPersist(updates);
+    }
+  }, [selectionRange, columns, bulkPersist]);
 
   const selectedRowsSet = useMemo(() => {
     const set = new Set<string>();
@@ -767,10 +1842,6 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
 
   if (!importId) {
     return <div className="p-4 text-center text-gray-500">Select an import in the Project Overview tab to view line items.</div>;
-  }
-
-  if (rows.length === 0) {
-    return <div className="p-4 text-center text-gray-500">No doors found in this import</div>;
   }
 
   const currentColumnConfig = configModalColumn ? COLUMNS.find(c => c.key === configModalColumn) : null;
@@ -913,6 +1984,44 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
           <span className="text-sm font-semibold text-slate-700">
             {selectedRows.size} of {rows.length} doors selected
           </span>
+          <Button
+            variant="outline"
+            disabled={mutatingRows}
+            onClick={async () => {
+              try {
+                setMutatingRows(true);
+                await ensureRowCount(rowsRef.current.length + 1);
+              } catch (err: any) {
+                setError(err?.message || 'Failed to add row');
+              } finally {
+                setMutatingRows(false);
+              }
+            }}
+          >
+            {mutatingRows ? 'Working…' : 'Add Row'}
+          </Button>
+          <Button
+            variant="outline"
+            disabled={mutatingRows || selectedRows.size === 0}
+            onClick={async () => {
+              const ids = Array.from(selectedRows || []);
+              if (!ids.length) return;
+              const ok = window.confirm(`Delete ${ids.length} row${ids.length === 1 ? '' : 's'}? This cannot be undone.`);
+              if (!ok) return;
+              try {
+                setMutatingRows(true);
+                setSelectedRows(new Set());
+                await bulkDeleteRows(ids);
+                await loadImport({ selectAll: false });
+              } catch (err: any) {
+                setError(err?.message || 'Failed to delete rows');
+              } finally {
+                setMutatingRows(false);
+              }
+            }}
+          >
+            Delete Row{selectedRows.size === 1 ? '' : 's'}
+          </Button>
         </div>
         <Button
           onClick={createQuoteFromSelected}
@@ -930,7 +2039,15 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       )}
 
       {/* DataGrid with 144 columns */}
-      <div className="h-[600px] bg-white rounded-lg shadow border border-white/20">
+      <div
+        ref={gridContainerRef}
+        tabIndex={0}
+        onCopyCapture={handleCopyCapture}
+        onPasteCapture={handlePasteCapture}
+        onKeyDownCapture={handleKeyDownCapture}
+        className="h-[600px] bg-white rounded-lg shadow border border-white/20 outline-none"
+        onMouseDown={() => gridContainerRef.current?.focus()}
+      >
         <DataGrid
           columns={columns}
           rows={rows}
@@ -938,13 +2055,26 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
           selectedRows={selectedRowsSet}
           onSelectedRowsChange={setSelectedRows}
           onRowsChange={handleRowsChange}
-          className="fill-grid"
+          onCellClick={handleCellClick}
+          onColumnResize={handleColumnResize as any}
+          className="rdg-light fill-grid"
           style={{ height: '100%' }}
           rowHeight={35}
-          headerRowHeight={40}
+          headerRowHeight={56}
           enableVirtualization
         />
       </div>
+
+      <RfiDialog
+        open={rfiDialogOpen}
+        onOpenChange={setRfiDialogOpen}
+        rfi={currentRfi}
+        rowId={rfiContext?.rowId ?? null}
+        columnKey={rfiContext?.columnKey ?? ''}
+        columnName={rfiContext?.columnName}
+        onSave={handleSaveRfi}
+        mode={rfiMode}
+      />
 
       {/* Summary */}
       <div className="bg-white/60 backdrop-blur-sm p-4 rounded-lg shadow border border-white/20">

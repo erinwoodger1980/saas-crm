@@ -85,6 +85,7 @@ import fieldsRouter from "./routes/fields";
 import questionsRouter from "./routes/questions";
 import standardFieldMappingsRouter from "./routes/standard-field-mappings";
 import flexibleFieldsRouter from "./routes/flexible-fields";
+import gridConfigRouter from "./routes/grid-config";
 
 /** ML proxy (→ forwards to FastAPI) */
 import mlProxyRouter from "./routes/ml";
@@ -735,6 +736,7 @@ app.use("/files", filesRouter);
 app.use("/tasks", requireAuth, tasksRouter);
 app.use("/questions", requireAuth, questionsRouter);
 app.use("/standard-field-mappings", requireAuth, standardFieldMappingsRouter);
+app.use("/grid-config", requireAuth, gridConfigRouter);
 app.use("/ai", requireAuth, aiAssistantRouter);
 app.use("/automation-rules", requireAuth, automationRulesRouter);
 app.use("/automation", requireAuth, automationFieldLinksRouter);
