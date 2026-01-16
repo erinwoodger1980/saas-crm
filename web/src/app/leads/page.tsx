@@ -18,6 +18,7 @@ interface LeadModalProps {
   onUpdated?: () => void | Promise<void>;
   initialStage?: 'client' | 'quote' | 'dates' | 'finance' | 'tasks' | 'order';
   showFollowUp?: boolean;
+  scrollToNotes?: boolean;
 }
 
 const LeadModal = dynamic<LeadModalProps>(
@@ -110,6 +111,7 @@ const AVAILABLE_LEAD_FIELDS = [
   { field: 'phone', label: 'Phone', type: 'phone' },
   { field: 'number', label: 'Lead #', type: 'text' },
   { field: 'latestTask', label: 'Latest task', type: 'custom' },
+  { field: 'latestCommunication', label: 'Latest note', type: 'custom' },
   {
     field: 'status',
     label: 'Status',
@@ -184,6 +186,7 @@ function LeadsPageContent() {
   const [open, setOpen] = useState(false);
   const [leadPreview, setLeadPreview] = useState<Lead | null>(null);
   const [leadModalInitialStage, setLeadModalInitialStage] = useState<'client' | 'quote' | 'tasks'>('tasks');
+  const [leadModalScrollToNotes, setLeadModalScrollToNotes] = useState(false);
   const [csvImportOpen, setCsvImportOpen] = useState(false);
   const { toast } = useToast();
 
@@ -258,7 +261,21 @@ function LeadsPageContent() {
                 return col;
               })
             : parsed;
-          setColumnConfig(migrated);
+          const ensureLatestCommunication = (cols: any[]) => {
+            if (cols.some((c) => c?.field === 'latestCommunication')) return cols;
+            const insertAfter = cols.findIndex((c) => c?.field === 'latestTask');
+            const next = [...cols];
+            next.splice(Math.max(0, insertAfter + 1), 0, {
+              field: 'latestCommunication',
+              label: 'Latest note',
+              visible: true,
+              frozen: false,
+              width: 360,
+              type: 'custom',
+            });
+            return next;
+          };
+          setColumnConfig(Array.isArray(migrated) ? ensureLatestCommunication(migrated) : migrated);
         } catch {
           setColumnConfig([
             { 
@@ -272,6 +289,7 @@ function LeadsPageContent() {
             { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
             { field: 'phone', label: 'Phone', visible: true, frozen: false, width: 150 },
             { field: 'latestTask', label: 'Latest task', visible: true, frozen: false, width: 320, type: 'custom' },
+            { field: 'latestCommunication', label: 'Latest note', visible: true, frozen: false, width: 360, type: 'custom' },
             { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown' },
           ]);
         }
@@ -288,6 +306,7 @@ function LeadsPageContent() {
           { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
           { field: 'phone', label: 'Phone', visible: true, frozen: false, width: 150 },
           { field: 'latestTask', label: 'Latest task', visible: true, frozen: false, width: 320, type: 'custom' },
+          { field: 'latestCommunication', label: 'Latest note', visible: true, frozen: false, width: 360, type: 'custom' },
           { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown' },
         ]);
       }
@@ -396,10 +415,10 @@ function LeadsPageContent() {
     return () => clearInterval(id);
   }, [refreshGrouped]);
 
-  function openLead(l: Lead) {
+  function openLead(l: Lead, opts?: { stage?: 'client' | 'quote' | 'tasks'; scrollToNotes?: boolean }) {
     setLeadPreview(l);
-    // If lead has a clientId or came from new lead creation, open to client tab
-    setLeadModalInitialStage(l.clientId ? 'client' : 'tasks');
+    setLeadModalScrollToNotes(Boolean(opts?.scrollToNotes));
+    setLeadModalInitialStage(opts?.stage ?? (l.clientId ? 'client' : 'tasks'));
     setOpen(true);
   }
 
@@ -613,6 +632,29 @@ function LeadsPageContent() {
               onChanged={refreshGrouped}
             />
           ),
+        };
+      }
+      if (c?.field === 'latestCommunication') {
+        return {
+          ...c,
+          type: 'custom',
+          render: (row: any) => {
+            const snippet = getLatestCommunicationNoteSnippet(row);
+            if (!snippet) return <span className="text-xs text-slate-400">-</span>;
+            return (
+              <button
+                type="button"
+                className="text-left text-xs text-slate-700 hover:underline line-clamp-2"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openLead(row, { stage: 'client', scrollToNotes: true });
+                }}
+                title={snippet}
+              >
+                {snippet}
+              </button>
+            );
+          },
         };
       }
       return c;
@@ -1138,6 +1180,7 @@ function LeadsPageContent() {
                   key={lead.id}
                   lead={lead}
                   onOpen={() => openLead(lead)}
+                  onOpenNotes={() => openLead(lead, { stage: 'client', scrollToNotes: true })}
                   onReject={() => setRejected(lead.id)}
                 />
               ))}
@@ -1299,11 +1342,15 @@ function LeadsPageContent() {
             open={open}
             onOpenChange={(v) => {
               setOpen(v);
-              if (!v) setLeadPreview(null);
+              if (!v) {
+                setLeadPreview(null);
+                setLeadModalScrollToNotes(false);
+              }
             }}
             leadPreview={leadPreview}
             onUpdated={refreshGrouped}
             initialStage={leadModalInitialStage}
+            scrollToNotes={leadModalScrollToNotes}
           />
         </ErrorBoundary>
       )}
@@ -1518,10 +1565,12 @@ function RowsSkeleton() {
 function LeadCard({
   lead,
   onOpen,
+  onOpenNotes,
   onReject,
 }: {
   lead: Lead;
   onOpen: () => void;
+  onOpenNotes: () => void;
   onReject: () => void;
 }) {
   const subject = lead.custom?.subject as string | undefined;
@@ -1537,6 +1586,7 @@ function LeadCard({
   const statusLabel = STATUS_LABELS[lead.status as LeadStatus] || "—";
   const needsManualQuote = Boolean(lead.custom?.needsManualQuote);
   const manualQuoteReason = typeof lead.custom?.manualQuoteReason === 'string' ? lead.custom.manualQuoteReason : undefined;
+  const latestNoteSnippet = getLatestCommunicationNoteSnippet(lead);
 
   return (
     <div className="group relative overflow-hidden rounded-2xl border border-sky-100/70 bg-white/85 p-4 shadow-[0_20px_45px_-36px_rgba(30,64,175,0.55)] backdrop-blur transition-transform hover:-translate-y-0.5 hover:shadow-[0_26px_60px_-32px_rgba(30,64,175,0.55)]">
@@ -1550,40 +1600,56 @@ function LeadCard({
       />
 
       <div className="relative z-10 flex items-start gap-3">
-        <button onClick={onOpen} className="flex-1 min-w-0 text-left" type="button">
-          <div className="flex items-center gap-3">
-            <span className="inline-grid h-10 w-10 place-items-center rounded-xl border border-sky-200/80 bg-white/70 text-[12px] font-semibold text-slate-700 shadow-sm">
-              {avatarText(lead.contactName)}
-            </span>
-            <div className="min-w-0">
-              <div className="truncate text-sm font-semibold text-slate-900">
-                {buildLeadDisplayName({
-                  contactName: lead.contactName,
-                  number: (lead as any).number ?? null,
-                  description: lead.description,
-                  custom: lead.custom,
-                  fallbackLabel: "Lead",
-                })}
-              </div>
-              {lead.email && <div className="truncate text-xs text-slate-500">{lead.email}</div>}
-            </div>
-          </div>
-
-          {(subject || summary || description) && (
-            <div className="mt-2 space-y-1">
-              {subject && <div className="text-xs font-semibold text-slate-700 line-clamp-1">{subject}</div>}
-              {summary && <div className="text-[12px] text-slate-600 line-clamp-2">{summary}</div>}
-              {description && (
-                <div className="text-[12px] text-slate-500/90 italic line-clamp-2">{description}</div>
-              )}
-              {needsManualQuote && (
-                <div className="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-300/70 bg-amber-50/70 px-2 py-1 text-[10px] font-medium text-amber-800" title={manualQuoteReason ? `Manual quote required: ${manualQuoteReason}` : 'Manual quote required'}>
-                  <span>⚠️ Manual quote</span>
+        <div className="flex-1 min-w-0 text-left">
+          <button onClick={onOpen} className="w-full text-left" type="button">
+            <div className="flex items-center gap-3">
+              <span className="inline-grid h-10 w-10 place-items-center rounded-xl border border-sky-200/80 bg-white/70 text-[12px] font-semibold text-slate-700 shadow-sm">
+                {avatarText(lead.contactName)}
+              </span>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-slate-900">
+                  {buildLeadDisplayName({
+                    contactName: lead.contactName,
+                    number: (lead as any).number ?? null,
+                    description: lead.description,
+                    custom: lead.custom,
+                    fallbackLabel: "Lead",
+                  })}
                 </div>
-              )}
+                {lead.email && <div className="truncate text-xs text-slate-500">{lead.email}</div>}
+              </div>
             </div>
+
+            {(subject || summary || description) && (
+              <div className="mt-2 space-y-1">
+                {subject && <div className="text-xs font-semibold text-slate-700 line-clamp-1">{subject}</div>}
+                {summary && <div className="text-[12px] text-slate-600 line-clamp-2">{summary}</div>}
+                {description && (
+                  <div className="text-[12px] text-slate-500/90 italic line-clamp-2">{description}</div>
+                )}
+                {needsManualQuote && (
+                  <div className="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-300/70 bg-amber-50/70 px-2 py-1 text-[10px] font-medium text-amber-800" title={manualQuoteReason ? `Manual quote required: ${manualQuoteReason}` : 'Manual quote required'}>
+                    <span>⚠️ Manual quote</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </button>
+
+          {latestNoteSnippet && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenNotes();
+              }}
+              className="mt-2 block w-full text-left text-[12px] text-slate-600 hover:text-slate-700 hover:underline line-clamp-1"
+              title={latestNoteSnippet}
+            >
+              “{latestNoteSnippet}”
+            </button>
           )}
-        </button>
+        </div>
 
         <div className="shrink-0 flex flex-col items-end gap-2 text-right">
           {/* Task Count Badge */}
@@ -1648,6 +1714,18 @@ function avatarText(name?: string | null) {
   const parts = name.trim().split(/\s+/);
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+function getLatestCommunicationNoteSnippet(lead: any): string | null {
+  const raw = typeof lead?.custom?.communicationNotes === "string" ? String(lead.custom.communicationNotes) : "";
+  const notes = raw.trim();
+  if (!notes) return null;
+
+  const firstEntry = notes.split(/\n\s*\n/)[0]?.trim() || "";
+  if (!firstEntry) return null;
+
+  const maxLen = 140;
+  return firstEntry.length > maxLen ? `${firstEntry.slice(0, maxLen - 1)}…` : firstEntry;
 }
 
 // Simple client-side error boundary

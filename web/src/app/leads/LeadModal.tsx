@@ -383,6 +383,7 @@ export default function LeadModal({
   onUpdated,
   initialStage = 'client',
   showFollowUp = false,
+  scrollToNotes = false,
 }: {
   open: boolean;
   onOpenChange: (_v: boolean) => void;
@@ -390,6 +391,7 @@ export default function LeadModal({
   onUpdated?: () => void | Promise<void>;
   initialStage?: Stage;
   showFollowUp?: boolean;
+  scrollToNotes?: boolean;
 }) {
   const ids = getAuthIdsFromJwt();
   const tenantId = ids?.tenantId || "";
@@ -498,6 +500,34 @@ export default function LeadModal({
   const [communicationType, setCommunicationType] = useState<'call' | 'email' | 'note'>('note');
   const [communicationNotesText, setCommunicationNotesText] = useState("");
   const [addingCommunicationNote, setAddingCommunicationNote] = useState(false);
+
+  const addNoteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const communicationNotesTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const notesSectionRef = useRef<HTMLDivElement | null>(null);
+
+  const autosizeTextarea = (el: HTMLTextAreaElement | null) => {
+    if (!el) return;
+    // Reset then expand to content height.
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  };
+
+  useEffect(() => {
+    autosizeTextarea(addNoteTextareaRef.current);
+  }, [newNote, open, currentStage]);
+
+  useEffect(() => {
+    autosizeTextarea(communicationNotesTextareaRef.current);
+  }, [communicationNotesText, open, currentStage]);
+
+  useEffect(() => {
+    if (!open || !scrollToNotes) return;
+    setCurrentStage("client");
+    const t = setTimeout(() => {
+      notesSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 120);
+    return () => clearTimeout(t);
+  }, [open, scrollToNotes]);
 
   const refreshCommunicationNotesFromServer = async () => {
     try {
@@ -2119,6 +2149,39 @@ export default function LeadModal({
             custom: { ...prevCustom, communicationNotes: updatedNotes },
           };
         });
+      }
+
+      const suggestion = resp?.followUpSuggestion;
+      if (suggestion && typeof suggestion === "object" && suggestion.dueAt && userId) {
+        try {
+          const dueLabel = new Date(String(suggestion.dueAt)).toLocaleDateString("en-GB");
+          const title = typeof suggestion.title === "string" && suggestion.title.trim() ? suggestion.title.trim() : "Follow up";
+          const shouldCreate = window.confirm(`Create a follow-up task ("${title}") due ${dueLabel}?`);
+          if (shouldCreate) {
+            await apiFetch<any>(`/tasks`, {
+              method: "POST",
+              headers: { ...authHeaders, "Content-Type": "application/json" },
+              json: {
+                title,
+                description:
+                  typeof suggestion.description === "string" && suggestion.description.trim()
+                    ? suggestion.description.trim()
+                    : newNote.trim(),
+                relatedType: "LEAD",
+                relatedId: leadId,
+                taskType: "FOLLOW_UP",
+                dueAt: String(suggestion.dueAt),
+                assignees: [{ userId, role: "OWNER" }],
+                meta: { source: "leadmodal_followup_suggestion" },
+              },
+            });
+            await reloadTasks().catch(() => null);
+            toast("Follow-up task created");
+          }
+        } catch (e) {
+          console.warn("Failed to create follow-up task:", e);
+          toast("Failed to create follow-up task");
+        }
       }
 
       setNewNote("");
@@ -4253,7 +4316,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       </label>
 
                       {/* Communication Notes */}
-                      <div className="space-y-3">
+                      <div className="space-y-3" ref={notesSectionRef}>
                         <div className="rounded-2xl border border-slate-200 bg-white/80 p-3 shadow-inner">
                           <div className="grid grid-cols-1 gap-3">
                             <label className="text-sm">
@@ -4261,7 +4324,8 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                 Add note
                               </span>
                               <textarea
-                                className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner min-h-20"
+                                ref={addNoteTextareaRef}
+                                className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner min-h-20 overflow-hidden resize-none"
                                 value={newNote}
                                 onChange={(e) => setNewNote(e.target.value)}
                                 placeholder="e.g. Called client — agreed site visit Friday 10am"
@@ -4283,7 +4347,8 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                             Notes
                           </span>
                           <textarea
-                            className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-3 min-h-32 shadow-inner"
+                            ref={communicationNotesTextareaRef}
+                            className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-3 min-h-32 shadow-inner overflow-hidden resize-none"
                             value={communicationNotesText}
                             onChange={(e) => setCommunicationNotesText(e.target.value)}
                             onBlur={() => {

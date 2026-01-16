@@ -14,6 +14,7 @@ function formatDateTime(dt: Date): string {
 
 export function formatCommunicationEntry(args: {
   completedAt: Date;
+  actorName?: string | null;
   communicationType?: string | null;
   communicationDirection?: string | null;
   communicationChannel?: string | null;
@@ -21,6 +22,7 @@ export function formatCommunicationEntry(args: {
   freeTextFallback?: string;
 }): string {
   const when = formatDateTime(args.completedAt);
+  const actorName = (args.actorName || "").toString().trim();
   const type = (args.communicationType || "OTHER").toString().toUpperCase();
   const dir = (args.communicationDirection || "OUTBOUND").toString().toUpperCase();
   const channel = (args.communicationChannel || "").toString().trim();
@@ -29,8 +31,9 @@ export function formatCommunicationEntry(args: {
   const headerBits = [dir, type];
   const header = headerBits.filter(Boolean).join(" ");
   const channelBit = channel ? ` (${channel})` : "";
+  const actorBit = actorName ? ` — ${actorName}` : "";
 
-  return `${when} — ${header}${channelBit}: ${notes}`.trim();
+  return `${when}${actorBit} — ${header}${channelBit}: ${notes}`.trim();
 }
 
 export async function prependLeadCommunicationNotes(args: {
@@ -93,6 +96,8 @@ export async function ensureCommunicationTaskLoggedToLeadNotes(args: {
       taskType: true,
       status: true,
       completedAt: true,
+      completedBy: true,
+      createdById: true,
       relatedType: true,
       relatedId: true,
       meta: true,
@@ -123,8 +128,15 @@ export async function ensureCommunicationTaskLoggedToLeadNotes(args: {
   });
   if (!leadId) return { logged: false };
 
+  const actorUserId = (task.completedBy as any) ?? (task.createdById as any) ?? null;
+  const actor = actorUserId
+    ? await prisma.user.findFirst({ where: { id: String(actorUserId) }, select: { name: true } })
+    : null;
+  const actorName = actor?.name ? String(actor.name).trim() : null;
+
   const entry = formatCommunicationEntry({
     completedAt: task.completedAt,
+    actorName,
     communicationType: (task.communicationType as any) ?? null,
     communicationDirection: (task.communicationDirection as any) ?? null,
     communicationChannel: (task.communicationChannel as any) ?? null,

@@ -48,6 +48,83 @@ function todayRange() {
   return { start, end };
 }
 
+function computeFollowUpSuggestion(text: string): { dueAt: string; title: string; description: string } | null {
+  const raw = String(text || "").trim();
+  if (!raw) return null;
+
+  const lower = raw.toLowerCase();
+  if (/\b(no\s+follow\s*up|do\s+not\s+follow\s*up|dont\s+follow\s*up|no\s+callback)\b/.test(lower)) {
+    return null;
+  }
+
+  const unitToDays = (unit: string): { unit: "days" | "weeks" | "months"; value: number } | null => {
+    const u = unit.toLowerCase();
+    if (u.startsWith("day")) return { unit: "days", value: 1 };
+    if (u.startsWith("week")) return { unit: "weeks", value: 7 };
+    if (u.startsWith("month")) return { unit: "months", value: 30 };
+    return null;
+  };
+
+  const patterns: RegExp[] = [
+    /\b(call|ring|phone|text|sms|email|message|whatsapp|follow\s*up|chase)\b[^\n]{0,80}?\b(in|after)\s+(\d{1,3})\s*(day|days|week|weeks|month|months)\b/i,
+    /\b(in|after)\s+(\d{1,3})\s*(day|days|week|weeks|month|months)\b[^\n]{0,80}?\b(call|ring|phone|text|sms|email|message|whatsapp|follow\s*up|chase)\b/i,
+    /\b(call\s+back|follow\s*up)\s+(\d{1,3})\s*(day|days|week|weeks|month|months)\b/i,
+  ];
+
+  let action: string | null = null;
+  let amount: number | null = null;
+  let unit: string | null = null;
+
+  for (const re of patterns) {
+    const m = raw.match(re);
+    if (!m) continue;
+    // Find numeric + unit positions in the match array.
+    const numberToken = m.find((x) => /^\d{1,3}$/.test(String(x)));
+    const unitToken = m.find((x) => /^(day|days|week|weeks|month|months)$/i.test(String(x)));
+    const actionToken = m.find((x) => /^(call|ring|phone|text|sms|email|message|whatsapp|follow\s*up|chase|call\s+back)$/i.test(String(x)));
+    if (numberToken && unitToken) {
+      amount = Number(numberToken);
+      unit = String(unitToken);
+      action = actionToken ? String(actionToken) : null;
+      break;
+    }
+  }
+
+  if (!amount || !unit) return null;
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 365) return null;
+
+  const now = new Date();
+  const due = new Date(now);
+  // Default to start-of-day-ish so tasks don't land at odd times.
+  due.setHours(9, 0, 0, 0);
+
+  const unitNorm = unitToDays(unit);
+  if (!unitNorm) return null;
+  if (unitNorm.unit === "months") {
+    due.setMonth(due.getMonth() + amount);
+  } else if (unitNorm.unit === "weeks") {
+    due.setDate(due.getDate() + amount * 7);
+  } else {
+    due.setDate(due.getDate() + amount);
+  }
+
+  const actionLower = (action || "").toLowerCase();
+  const title =
+    /call|ring|phone/.test(actionLower)
+      ? "Call customer"
+      : /email/.test(actionLower)
+        ? "Email customer"
+        : /text|sms|whatsapp|message/.test(actionLower)
+          ? "Message customer"
+          : "Follow up";
+
+  return {
+    dueAt: due.toISOString(),
+    title,
+    description: raw,
+  };
+}
+
 const RelatedTypeEnum = z.enum([
   "LEAD",
   "PROJECT",
@@ -931,6 +1008,16 @@ router.post("/communication/ai-log", async (req, res) => {
     const userId = resolveUserId(req);
     if (!tenantId) return res.status(400).json({ error: "Missing tenantId" });
 
+    let actorName: string | null = null;
+    if (userId) {
+      try {
+        const u = await prisma.user.findFirst({ where: { id: String(userId) }, select: { name: true } });
+        actorName = u?.name ? String(u.name).trim() : null;
+      } catch {
+        actorName = null;
+      }
+    }
+
     const schema = z.object({
       relatedType: RelatedTypeEnum,
       relatedId: z.string(),
@@ -1006,6 +1093,8 @@ router.post("/communication/ai-log", async (req, res) => {
     }
 
     if (classification.isCommunication) {
+      const followUpSuggestion = computeFollowUpSuggestion(classification.cleanedNotes || inputText);
+
       const task = await prisma.task.create({
         data: {
           tenantId,
@@ -1028,12 +1117,15 @@ router.post("/communication/ai-log", async (req, res) => {
       });
 
       const logged = await ensureCommunicationTaskLoggedToLeadNotes({ tenantId, taskId: task.id });
-      return res.json({ ok: true, classification, task, notes: logged.updatedNotes || null });
+      return res.json({ ok: true, classification, task, notes: logged.updatedNotes || null, followUpSuggestion });
     }
+
+    const followUpSuggestion = computeFollowUpSuggestion(classification.cleanedNotes || inputText);
 
     // Not a communication: prepend a plain note entry.
     const entry = formatCommunicationEntry({
       completedAt: new Date(),
+      actorName,
       communicationType: "OTHER",
       communicationDirection: "OUTBOUND",
       communicationChannel: "NOTE",
@@ -1054,7 +1146,7 @@ router.post("/communication/ai-log", async (req, res) => {
       ? await prependLeadCommunicationNotes({ tenantId, leadId, entry })
       : null;
 
-    return res.json({ ok: true, classification, task: null, notes: updated?.updatedNotes || null });
+    return res.json({ ok: true, classification, task: null, notes: updated?.updatedNotes || null, followUpSuggestion });
   } catch (e: any) {
     return res.status(400).json({ error: e.message || "Invalid request" });
   }
