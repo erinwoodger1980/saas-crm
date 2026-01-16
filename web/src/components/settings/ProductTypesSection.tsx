@@ -141,6 +141,11 @@ const INITIAL_PRODUCTS: ProductCategory[] = [
     label: "Windows",
     types: [
       {
+        type: "ely",
+        label: "Ely Window",
+        options: [{ id: "ely-window", label: "Ely Window" }],
+      },
+      {
         type: "sash-cord",
         label: "Sash (Cord)",
         options: [

@@ -40,7 +40,17 @@ const TASK_TYPE_CONFIG: Record<string, { color: string; bgColor: string; label: 
   CHECKLIST: { label: "Checklist", color: "text-indigo-600", bgColor: "bg-indigo-50" },
 };
 
-export function TaskCenter({ filterRelatedType, filterRelatedId, embedded = false }: { filterRelatedType?: Task["relatedType"]; filterRelatedId?: string; embedded?: boolean } = {}) {
+export function TaskCenter({
+  filterRelatedType,
+  filterRelatedId,
+  embedded = false,
+  onTasksChanged,
+}: {
+  filterRelatedType?: Task["relatedType"];
+  filterRelatedId?: string;
+  embedded?: boolean;
+  onTasksChanged?: () => void | Promise<void>;
+} = {}) {
   const [tenantId, setTenantId] = useState("");
   const [userId, setUserId] = useState("");
 
@@ -126,7 +136,21 @@ export function TaskCenter({ filterRelatedType, filterRelatedId, embedded = fals
   const handleSearch = () => { loadTasks(); };
   const handleNewTask = () => { setShowCreateWizard(true); };
 
-  const handleCompleteTask = async (task: Task) => { try { await apiFetch(`/tasks/${task.id}/complete`, { method: 'POST', headers: { 'x-tenant-id': tenantId } }); const stats = await apiFetch<any>(`/tasks/stats/${userId}`, { headers: { 'x-tenant-id': tenantId } }); setCelebrationTask(task); setCelebrationStats({ streak: stats.currentStreak || 0, total: stats.totalTasksCompleted || 0, points: task.priority === 'URGENT' ? 25 : task.priority === 'HIGH' ? 15 : 10 }); setShowCelebration(true); await loadTasks(); await loadStats(); } catch (e) { console.error('Failed to complete task:', e); alert('Failed to complete task. Please try again.'); } };
+  const handleCompleteTask = async (task: Task) => {
+    try {
+      await apiFetch(`/tasks/${task.id}/complete`, { method: 'POST', headers: { 'x-tenant-id': tenantId } });
+      const stats = await apiFetch<any>(`/tasks/stats/${userId}`, { headers: { 'x-tenant-id': tenantId } });
+      setCelebrationTask(task);
+      setCelebrationStats({ streak: stats.currentStreak || 0, total: stats.totalTasksCompleted || 0, points: task.priority === 'URGENT' ? 25 : task.priority === 'HIGH' ? 15 : 10 });
+      setShowCelebration(true);
+      await loadTasks();
+      await loadStats();
+      await Promise.resolve(onTasksChanged?.());
+    } catch (e) {
+      console.error('Failed to complete task:', e);
+      alert('Failed to complete task. Please try again.');
+    }
+  };
 
   const taskCounts = useMemo(() => { const counts: Record<string, number> = { all: 0, completed: 0 }; Object.keys(TASK_TYPE_CONFIG).forEach(type => { counts[type] = 0; }); tasks.forEach(task => { if (task.status === 'DONE') counts.completed++; else { counts.all++; counts[task.taskType]++; } }); return counts; }, [tasks]);
   const filteredTasks = useMemo(() => tasks.filter(task => { if (activeTab === 'completed') return task.status === 'DONE'; if (activeTab !== 'all') return task.taskType === activeTab && task.status !== 'DONE'; return task.status !== 'DONE'; }), [tasks, activeTab]);
@@ -144,11 +168,32 @@ export function TaskCenter({ filterRelatedType, filterRelatedId, embedded = fals
 
   const { overdue, urgent, highPriority, upcoming } = useMemo(() => { const now = new Date(); const overdue: Task[] = []; const urgent: Task[] = []; const highPriority: Task[] = []; const upcoming: Task[] = []; filteredTasks.forEach((task) => { const dueDate = task.dueAt ? new Date(task.dueAt) : null; const isOver = dueDate && dueDate < now; if (isOver) overdue.push(task); else if (task.priority === 'URGENT') urgent.push(task); else if (task.priority === 'HIGH') highPriority.push(task); else upcoming.push(task); }); return { overdue, urgent, highPriority, upcoming }; }, [filteredTasks]);
 
-  const handleSkipTask = async (taskId: string) => { if (!confirm('Skip this task?')) return; try { await apiFetch(`/tasks/${taskId}`, { method: 'PATCH', headers: { 'x-tenant-id': tenantId }, json: { status: 'CANCELLED' } }); await loadTasks(); alert('Task skipped'); } catch (e) { console.error('Failed to skip task:', e); alert('Failed to skip task'); } };
+  const handleSkipTask = async (taskId: string) => {
+    if (!confirm('Skip this task?')) return;
+    try {
+      await apiFetch(`/tasks/${taskId}`, { method: 'PATCH', headers: { 'x-tenant-id': tenantId }, json: { status: 'CANCELLED' } });
+      await loadTasks();
+      await Promise.resolve(onTasksChanged?.());
+      alert('Task skipped');
+    } catch (e) {
+      console.error('Failed to skip task:', e);
+      alert('Failed to skip task');
+    }
+  };
 
   const handleSendEmailPreview = async (taskId: string, action: 'accept' | 'decline') => { try { const endpoint = action === 'accept' ? 'accept-enquiry' : 'decline-enquiry'; const preview = await apiFetch<any>(`/tasks/${taskId}/actions/${endpoint}/preview`, { method: 'POST', headers: { 'x-tenant-id': tenantId } }); setEmailPreview({ isOpen: true, subject: preview.subject, body: preview.body, to: preview.to, recipientName: preview.recipientName, action, taskId }); } catch { alert('Failed to generate email preview'); } };
 
-  const handleRejectEnquiry = async (taskId: string) => { if (!confirm('Reject as not a real enquiry? This will mark the lead as rejected and provide feedback to the ML system.')) return; try { await apiFetch(`/tasks/${taskId}/actions/reject-enquiry`, { method: 'POST', headers: { 'x-tenant-id': tenantId } }); await loadTasks(); alert('Marked as not an enquiry'); } catch { alert('Failed to reject enquiry'); } };
+  const handleRejectEnquiry = async (taskId: string) => {
+    if (!confirm('Reject as not a real enquiry? This will mark the lead as rejected and provide feedback to the ML system.')) return;
+    try {
+      await apiFetch(`/tasks/${taskId}/actions/reject-enquiry`, { method: 'POST', headers: { 'x-tenant-id': tenantId } });
+      await loadTasks();
+      await Promise.resolve(onTasksChanged?.());
+      alert('Marked as not an enquiry');
+    } catch {
+      alert('Failed to reject enquiry');
+    }
+  };
 
   const toggleTaskExpansion = async (taskId: string, leadId?: string) => { const newExpanded = new Set(expandedTaskIds); if (newExpanded.has(taskId)) newExpanded.delete(taskId); else { newExpanded.add(taskId);
       const t = tasks.find(tt => tt.id === taskId); if (t && (t as any).meta?.inlineReplyDraft && !emailComposeMap[taskId]) { const draft = (t as any).meta.inlineReplyDraft; setEmailComposeMap(prev => ({ ...prev, [taskId]: { open: false, subject: draft.subject || '', body: draft.body || '' } })); }
@@ -399,9 +444,33 @@ export function TaskCenter({ filterRelatedType, filterRelatedId, embedded = fals
         )}
       </div>
 
-      <CreateTaskWizard open={showCreateWizard} onClose={() => setShowCreateWizard(false)} tenantId={tenantId} userId={userId} relatedType={filterRelatedType} relatedId={filterRelatedId} onCreated={() => loadTasks()} />
+      <CreateTaskWizard
+        open={showCreateWizard}
+        onClose={() => setShowCreateWizard(false)}
+        tenantId={tenantId}
+        userId={userId}
+        relatedType={filterRelatedType}
+        relatedId={filterRelatedId}
+        onCreated={async () => {
+          await loadTasks();
+          await Promise.resolve(onTasksChanged?.());
+        }}
+      />
 
-      <TaskModal open={showTaskModal} onClose={() => { setShowTaskModal(false); setSelectedTask(null); }} task={selectedTask} tenantId={tenantId} userId={userId} onChanged={() => { loadTasks(); }} />
+      <TaskModal
+        open={showTaskModal}
+        onClose={() => {
+          setShowTaskModal(false);
+          setSelectedTask(null);
+        }}
+        task={selectedTask}
+        tenantId={tenantId}
+        userId={userId}
+        onChanged={async () => {
+          await loadTasks();
+          await Promise.resolve(onTasksChanged?.());
+        }}
+      />
 
       {emailPreview.isOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-0 z-[60]">

@@ -1398,6 +1398,9 @@ router.get("/grouped", async (req, res) => {
           id: true,
           valueGBP: true,
           deliveryDate: true,
+          groupId: true,
+          parentOpportunityId: true,
+          group: { select: { id: true, name: true } },
           projectProcesses: {
             include: {
               processDefinition: {
@@ -1468,6 +1471,9 @@ router.get("/grouped", async (req, res) => {
       ...l,
       custom: mergedCustom,
       opportunityId: l.opportunity?.id || null,
+      opportunityGroupId: (l.opportunity as any)?.groupId ?? null,
+      opportunityGroupName: (l.opportunity as any)?.group?.name ?? null,
+      parentOpportunityId: (l.opportunity as any)?.parentOpportunityId ?? null,
       manufacturingCompletionDate: (l.opportunity as any)?.deliveryDate || null,
       orderValueGBP: (l.opportunity as any)?.valueGBP ?? null,
       taskCount: taskCountMap.get(l.id) || 0,

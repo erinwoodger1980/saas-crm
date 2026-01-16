@@ -496,6 +496,26 @@ export default function LeadModal({
   // Communication logging
   const [newNote, setNewNote] = useState("");
   const [communicationType, setCommunicationType] = useState<'call' | 'email' | 'note'>('note');
+  const [communicationNotesText, setCommunicationNotesText] = useState("");
+  const [addingCommunicationNote, setAddingCommunicationNote] = useState(false);
+
+  const refreshCommunicationNotesFromServer = async () => {
+    try {
+      const id = leadIdForApi || (await ensureResolvedLeadId());
+      if (!id) return;
+      const leadRes = await apiFetch<any>(`/leads/${encodeURIComponent(id)}`, { headers: authHeaders });
+      const row = (leadRes && typeof leadRes === "object" ? (leadRes.lead ?? leadRes) : null) as any;
+      const notes = String(row?.custom?.communicationNotes ?? "");
+
+      setCommunicationNotesText(notes);
+      setLead((prev) => {
+        if (!prev) return prev;
+        return { ...prev, custom: { ...(prev.custom || {}), communicationNotes: notes } };
+      });
+    } catch {
+      // best-effort
+    }
+  };
 
   // Task creation
   const [showTaskComposer, setShowTaskComposer] = useState(false);
@@ -704,8 +724,11 @@ export default function LeadModal({
   };
 
   // Split sub-projects (child opportunities)
-  const [subProjects, setSubProjects] = useState<Array<{ id: string; title?: string | null; stage?: string | null; valueGBP?: number | null; createdAt?: string | null }>>([]);
+  const [subProjects, setSubProjects] = useState<
+    Array<{ id: string; title?: string | null; number?: string | null; stage?: string | null; valueGBP?: number | null; createdAt?: string | null }>
+  >([]);
   const [subProjectsLoading, setSubProjectsLoading] = useState(false);
+  const [splitParentOpportunity, setSplitParentOpportunity] = useState<{ id: string; title?: string | null; number?: string | null } | null>(null);
 
   // Finance fields (stored on lead.custom.finance)
   const [depositAmountGBP, setDepositAmountGBP] = useState<string>("");
@@ -980,6 +1003,11 @@ export default function LeadModal({
       setAddressInput(normalized.address ?? "");
       setDeliveryAddressInput(normalized.deliveryAddress ?? "");
       setDescInput(previewDescription);
+      const previewCommNotes =
+        typeof (leadPreview as any)?.custom?.communicationNotes === "string"
+          ? String((leadPreview as any).custom.communicationNotes)
+          : "";
+      setCommunicationNotesText(previewCommNotes);
 
       return normalized;
     });
@@ -1124,6 +1152,11 @@ export default function LeadModal({
         setPhoneInput((row as any)?.phone || "");
         setDeliveryAddressInput((row as any)?.deliveryAddress || "");
         setDescInput(description || "");
+        const serverCommNotes =
+          row?.custom && typeof row.custom === "object" && !Array.isArray(row.custom)
+            ? (row.custom as any)?.communicationNotes
+            : null;
+        setCommunicationNotesText(typeof serverCommNotes === "string" ? serverCommNotes : "");
 
         // After fetching full lead + tasks list (critical UI data):
         setTasks(tlist?.items ?? []);
@@ -1377,15 +1410,41 @@ export default function LeadModal({
 
         // Load split sub-projects for display
         if (actualOpportunityId) {
+          const rawParentId = get(lead, "custom.splitParentOpportunityId");
+          const parentId = typeof rawParentId === "string" && rawParentId.trim() ? rawParentId.trim() : null;
+          const childrenForId = parentId || actualOpportunityId;
+
           if (!cancelled) setSubProjectsLoading(true);
+
+          // If this is a split child, fetch parent summary (so the UI can show parent+siblings)
+          if (parentId) {
+            try {
+              const p = await apiFetch<any>(`/opportunities/${encodeURIComponent(parentId)}`, { headers: authHeaders }).catch(() => null);
+              const opp = (p?.opportunity || p) as any;
+              if (!cancelled && opp?.id) {
+                setSplitParentOpportunity({
+                  id: String(opp.id),
+                  title: opp.title != null ? String(opp.title) : null,
+                  number: opp.number != null ? String(opp.number) : null,
+                });
+              }
+            } catch (err) {
+              console.error('[LeadModal] /opportunities/:id parent fetch error:', err);
+              if (!cancelled) setSplitParentOpportunity(null);
+            }
+          } else {
+            if (!cancelled) setSplitParentOpportunity(null);
+          }
+
           try {
-            const c = await apiFetch<any>(`/opportunities/${encodeURIComponent(actualOpportunityId)}/children`, { headers: authHeaders }).catch(() => null);
+            const c = await apiFetch<any>(`/opportunities/${encodeURIComponent(childrenForId)}/children`, { headers: authHeaders }).catch(() => null);
             const list = (c?.children || c?.items || c || []) as any[];
             if (!cancelled) {
               setSubProjects(
                 (Array.isArray(list) ? list : []).map((it: any) => ({
                   id: String(it.id),
                   title: it.title != null ? String(it.title) : null,
+                  number: it.number != null ? String(it.number) : null,
                   stage: it.stage != null ? String(it.stage) : null,
                   valueGBP: typeof it.valueGBP === 'number' ? it.valueGBP : (it.valueGBP != null ? Number(it.valueGBP) : null),
                   createdAt: it.createdAt != null ? String(it.createdAt) : null,
@@ -2030,33 +2089,48 @@ export default function LeadModal({
 
   async function addCommunicationNote() {
     if (!lead?.id || !newNote.trim()) return;
-    
-    const newEntry = {
-      id: Date.now().toString(),
-      type: communicationType,
-      content: newNote.trim(),
-      timestamp: new Date().toISOString()
-    };
-    
-    const currentLog = lead.communicationLog || [];
-    const updatedLog = [newEntry, ...currentLog]; // Add to top for latest first
-    
+
+    const leadId = leadIdForApi || (await ensureResolvedLeadId());
+    if (!leadId) return;
+
+    setAddingCommunicationNote(true);
     try {
-      await savePatch({ 
-        custom: { 
-          ...lead.custom, 
-          communicationLog: updatedLog 
-        } 
+      const resp = await apiFetch<any>(`/tasks/communication/ai-log`, {
+        method: "POST",
+        headers: { ...authHeaders, "Content-Type": "application/json" },
+        json: {
+          relatedType: "LEAD",
+          relatedId: leadId,
+          text: newNote.trim(),
+        },
       });
-      setLead(prev => prev ? { 
-        ...prev, 
-        communicationLog: updatedLog,
-        custom: { ...prev.custom, communicationLog: updatedLog }
-      } : prev);
-      setNewNote('');
-    } catch (e) {
-      console.error('Failed to add communication note:', e);
-      alert('Failed to save communication note');
+
+      const updatedNotes = typeof resp?.notes === "string" ? String(resp.notes) : "";
+      if (updatedNotes) {
+        setCommunicationNotesText(updatedNotes);
+        setLead((prev) => {
+          if (!prev) return prev;
+          const prevCustom =
+            prev.custom && typeof prev.custom === "object" && !Array.isArray(prev.custom)
+              ? { ...(prev.custom as Record<string, any>) }
+              : {};
+          return {
+            ...prev,
+            custom: { ...prevCustom, communicationNotes: updatedNotes },
+          };
+        });
+      }
+
+      setNewNote("");
+      if (leadIdForApi) {
+        await reloadTasks().catch(() => null);
+      }
+      toast(resp?.task ? "Communication logged" : "Note added");
+    } catch (e: any) {
+      console.error("Failed to add communication note:", e);
+      toast(e?.message ? `Failed: ${e.message}` : "Failed to add note");
+    } finally {
+      setAddingCommunicationNote(false);
     }
   }
 
@@ -4178,6 +4252,57 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         />
                       </label>
 
+                      {/* Communication Notes */}
+                      <div className="space-y-3">
+                        <div className="rounded-2xl border border-slate-200 bg-white/80 p-3 shadow-inner">
+                          <div className="grid grid-cols-1 gap-3">
+                            <label className="text-sm">
+                              <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                                Add note
+                              </span>
+                              <textarea
+                                className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner min-h-20"
+                                value={newNote}
+                                onChange={(e) => setNewNote(e.target.value)}
+                                placeholder="e.g. Called client — agreed site visit Friday 10am"
+                              />
+                            </label>
+
+                            <Button
+                              type="button"
+                              onClick={addCommunicationNote}
+                              disabled={addingCommunicationNote || !newNote.trim()}
+                            >
+                              {addingCommunicationNote ? "Adding…" : "Add"}
+                            </Button>
+                          </div>
+                        </div>
+
+                        <label className="text-sm">
+                          <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                            Notes
+                          </span>
+                          <textarea
+                            className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-3 min-h-32 shadow-inner"
+                            value={communicationNotesText}
+                            onChange={(e) => setCommunicationNotesText(e.target.value)}
+                            onBlur={() => {
+                              const next = communicationNotesText.trim();
+                              setLead((prev) => {
+                                if (!prev) return prev;
+                                const prevCustom =
+                                  prev.custom && typeof prev.custom === "object" && !Array.isArray(prev.custom)
+                                    ? { ...(prev.custom as Record<string, any>) }
+                                    : {};
+                                return { ...prev, custom: { ...prevCustom, communicationNotes: next || null } };
+                              });
+                              savePatch({ custom: { communicationNotes: next || null } });
+                            }}
+                            placeholder="Communication history, decisions, promises, next steps…"
+                          />
+                        </label>
+                      </div>
+
                       {/* Workspace fields */}
                       {workspaceFields.length > 0 && (
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -5269,6 +5394,24 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                     Sub-projects
                   </div>
 
+                  {(() => {
+                    const rawParentId = get(lead, "custom.splitParentOpportunityId");
+                    const parentId = typeof rawParentId === "string" && rawParentId.trim() ? rawParentId.trim() : null;
+                    if (!parentId) return null;
+                    const label = splitParentOpportunity
+                      ? `${splitParentOpportunity.number ? `${splitParentOpportunity.number} - ` : ""}${splitParentOpportunity.title || "Parent project"}`
+                      : `Parent project: ${parentId}`;
+                    return (
+                      <div className="mb-3 rounded-xl border border-amber-200/70 bg-amber-50/60 p-4">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-amber-700 mb-1">Parent project</div>
+                        <div className="text-sm font-semibold text-amber-950 truncate" title={label}>
+                          {label}
+                        </div>
+                        <div className="text-xs text-amber-800 mt-1">This order is a split sub-project.</div>
+                      </div>
+                    );
+                  })()}
+
                   {subProjectsLoading ? (
                     <div className="text-sm text-slate-500">Loading…</div>
                   ) : subProjects.length === 0 ? (
@@ -5280,7 +5423,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           <div className="flex items-start justify-between gap-4">
                             <div className="min-w-0">
                               <div className="text-sm font-semibold text-slate-900 truncate">
-                                {sp.title || "Sub-project"}
+                                {sp.number ? `${sp.number} - ` : ""}{sp.title || "Sub-project"}
                               </div>
                               <div className="text-xs text-slate-500">
                                 {sp.stage ? `Stage: ${sp.stage}` : ""}
@@ -5415,7 +5558,12 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
           {/* TASKS & FOLLOW-UPS STAGE - Embedded TaskCenter */}
           {currentStage === "tasks" && (
             <div className="p-4 sm:p-6">
-              <TaskCenter filterRelatedType="LEAD" filterRelatedId={lead?.id || ''} embedded />
+              <TaskCenter
+                filterRelatedType="LEAD"
+                filterRelatedId={lead?.id || ''}
+                embedded
+                onTasksChanged={refreshCommunicationNotesFromServer}
+              />
             </div>
           )}
 

@@ -5,6 +5,12 @@ import { prisma } from "../prisma";
 import { markLinkedProjectFieldFromTaskCompletion } from "../services/fire-door-link";
 import { applyFieldLinkOnTaskComplete } from "../services/field-link";
 import { logEvent, logInsight } from "../services/training";
+import {
+  ensureCommunicationTaskLoggedToLeadNotes,
+  formatCommunicationEntry,
+  prependLeadCommunicationNotes,
+} from "../services/communication-notes";
+import { send } from "../services/ai/openai";
 
 const router = Router();
 
@@ -631,11 +637,12 @@ router.post("/:id/start", async (req, res) => {
 
 // POST /tasks/:id/complete – mark done + streak update
 router.post("/:id/complete", async (req, res) => {
-  const tenantId = resolveTenantId(req);
+  const auth = getAuth(req);
+  const tenantId = auth.tenantId || resolveTenantId(req);
   if (!tenantId) return res.status(400).json({ error: "Missing tenantId" });
 
   const id = req.params.id;
-  const actorId = resolveUserId(req);
+  const actorId = auth.userId || resolveUserId(req);
 
   // Fetch the task so we know what it relates to
   const taskRow = await prisma.task.findFirst({
@@ -649,6 +656,12 @@ router.post("/:id/complete", async (req, res) => {
     data: { status: "DONE" as any, completedAt: new Date(), updatedById: actorId },
   });
 
+  try {
+    await ensureCommunicationTaskLoggedToLeadNotes({ tenantId, taskId: id });
+  } catch (e: any) {
+    console.warn("[tasks:complete] comm note logging failed:", e?.message || e);
+  }
+
   // Sync: if task links to a fire door schedule field, update the project
   try {
     await markLinkedProjectFieldFromTaskCompletion({ tenantId, taskId: id });
@@ -659,6 +672,30 @@ router.post("/:id/complete", async (req, res) => {
     await applyFieldLinkOnTaskComplete({ tenantId, taskId: id });
   } catch (e) {
     console.warn("[tasks:complete] generic field-link sync failed:", (e as any)?.message || e);
+  }
+
+  // If this is a workshop process task, mark the process as complete
+  if ((taskRow.relatedType as any) === "WORKSHOP" && taskRow.relatedId) {
+    try {
+      const processCode = (taskRow.meta as any)?.processCode;
+      if (processCode) {
+        const processDef = await prisma.workshopProcessDefinition.findFirst({
+          where: { tenantId, code: processCode },
+        });
+        if (processDef) {
+          await prisma.projectProcessAssignment.updateMany({
+            where: {
+              tenantId,
+              opportunityId: taskRow.relatedId,
+              processDefinitionId: processDef.id,
+            },
+            data: { completedAt: new Date() },
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("[tasks:complete] workshop process completion failed:", (e as any)?.message || e);
+    }
   }
 
   await prisma.activityLog.create({
@@ -730,100 +767,17 @@ router.post("/:id/complete", async (req, res) => {
               data: { userLabelIsLead: true, userLabeledAt: new Date() },
             });
 
-            const ingests = await prisma.emailIngest.findMany({
-              where: { tenantId, leadId: lead.id },
-              select: { provider: true, messageId: true },
-              take: 20,
-            });
-
-            if (ingests.length > 0) {
-              for (const g of ingests) {
-                if (!g.provider || !g.messageId) continue;
-                await logInsight({
-                  tenantId,
-                  module: "lead_classifier",
-                  inputSummary: `email:${g.provider}:${g.messageId}`,
-                  decision: "accepted",
-                  confidence: null,
-                  userFeedback: { byTask: true, taskId: task.id, kind: "review_enquiry_complete", actorId },
-                });
-              }
-            } else {
-              await logInsight({
-                tenantId,
-                module: "lead_classifier",
-                inputSummary: `lead:${lead.id}:READY_TO_QUOTE`,
-                decision: "accepted",
-                confidence: null,
-                userFeedback: { byTask: true, taskId: task.id, kind: "review_enquiry_complete", actorId },
-              });
-            }
-
-            await logEvent({
-              tenantId,
-              module: "lead_classifier",
-              kind: "FEEDBACK",
-              payload: { source: "task_complete", taskId: task.id, leadId: lead.id, decision: "accepted" },
-              actorId,
-            });
-          } catch {}
+          } catch (e: any) {
+            console.warn("[tasks:complete] email ingest label failed:", e?.message || e);
+          }
         }
       }
     }
-  } catch (e) {
-    console.warn("[tasks:complete] accept-on-review failed:", (e as any)?.message || e);
+  } catch (e: any) {
+    console.warn("[tasks:complete] lead review auto-accept failed:", e?.message || e);
   }
 
   res.json(task);
-});
-
-// POST /tasks/:id/nudge – friendly ping to assignees + activity log
-router.post("/:id/nudge", async (req, res) => {
-  try {
-    const tenantId = resolveTenantId(req);
-    const actorId = resolveUserId(req);
-    if (!tenantId || !actorId) return res.status(401).json({ error: "unauthorized" });
-
-    const id = String(req.params.id);
-    const task = await prisma.task.findFirst({
-      where: { id, tenantId },
-      include: { assignees: true },
-    });
-    if (!task) return res.status(404).json({ error: "task_not_found" });
-
-    await prisma.activityLog.create({
-      data: {
-        tenantId,
-        entity: "TASK",
-        entityId: task.id,
-        verb: "NUDGED",
-        actorId,
-        data: { title: task.title } as any,
-      },
-    });
-
-    const targetUserIds = (task.assignees || []).map((a) => a.userId);
-    if (targetUserIds.length) {
-      await prisma.notification.createMany({
-        data: targetUserIds.map((userId) => ({
-          tenantId,
-          userId,
-          type: "MENTION" as any,
-          payload: {
-            kind: "NUDGE",
-            taskId: task.id,
-            title: task.title,
-            copy: "Let’s get this one across the line.",
-          } as any,
-        })),
-      });
-    }
-
-    res.json({ ok: true });
-  } catch (e: any) {
-    console.error("[tasks:nudge] failed", e);
-    res.status(500).json({ error: e?.message || "nudge_failed" });
-  }
 });
 
 // GET /tasks/summary/owner – KPI tiles
@@ -957,9 +911,152 @@ router.post("/communication", async (req, res) => {
       },
     });
 
+    // This route creates a completed communication task; ensure it's also written into lead notes.
+    try {
+      await ensureCommunicationTaskLoggedToLeadNotes({ tenantId, taskId: task.id });
+    } catch (e: any) {
+      console.warn("[tasks/communication] failed to log to lead notes:", e?.message || e);
+    }
+
     res.json(task);
   } catch (e: any) {
     res.status(400).json({ error: e.message || "Invalid request" });
+  }
+});
+
+// POST /tasks/communication/ai-log - Add a short note; use OpenAI to decide if it's a comms log.
+router.post("/communication/ai-log", async (req, res) => {
+  try {
+    const tenantId = resolveTenantId(req);
+    const userId = resolveUserId(req);
+    if (!tenantId) return res.status(400).json({ error: "Missing tenantId" });
+
+    const schema = z.object({
+      relatedType: RelatedTypeEnum,
+      relatedId: z.string(),
+      text: z.string().min(1),
+    });
+    const body = schema.parse(req.body);
+    const inputText = String(body.text).trim();
+
+    const heuristic = (() => {
+      const t = inputText.toLowerCase();
+      const isCommunication =
+        /\b(call|called|phone|phoned|voicemail|rang|spoke|emailed|email|texted|sms|messaged|whatsapp|met|meeting)\b/.test(
+          t
+        ) || /@/.test(t);
+      const communicationType = /@|\bemail(ed)?\b/.test(t)
+        ? "EMAIL"
+        : /\b(texted|sms|whatsapp|message(d)?)\b/.test(t)
+          ? "SMS"
+          : /\b(meet(ing)?|met)\b/.test(t)
+            ? "MEETING"
+            : /\b(call|called|phone|phoned|rang|voicemail|spoke)\b/.test(t)
+              ? "PHONE"
+              : "OTHER";
+      const communicationDirection = /\b(they|client)\s+(called|emailed|texted|messaged)\b/.test(t)
+        ? "INBOUND"
+        : "OUTBOUND";
+      return {
+        isCommunication,
+        communicationType,
+        communicationDirection,
+        communicationChannel: undefined as string | undefined,
+        cleanedNotes: inputText,
+      };
+    })();
+
+    let classification = heuristic;
+
+    if (process.env.OPENAI_API_KEY) {
+      try {
+        const messages = [
+          {
+            role: "system" as const,
+            content:
+              "Classify a short CRM note. Return ONLY valid JSON with keys: isCommunication(boolean), communicationType(one of EMAIL|PHONE|MEETING|SMS|OTHER), communicationDirection(INBOUND|OUTBOUND), communicationChannel(optional string), cleanedNotes(string).",
+          },
+          { role: "user" as const, content: `Note: ${inputText}` },
+        ];
+        const r = await send(process.env.OPENAI_MODEL_FAST || process.env.OPENAI_MODEL || "gpt-4o-mini", messages, {
+          temperature: 0.1,
+          max_tokens: 250,
+        });
+        const raw = r.text || "";
+        const start = raw.indexOf("{");
+        const end = raw.lastIndexOf("}");
+        const jsonStr = start >= 0 && end > start ? raw.slice(start, end + 1) : raw;
+        const parsed = JSON.parse(jsonStr);
+        const parsedSchema = z.object({
+          isCommunication: z.boolean(),
+          communicationType: CommunicationTypeEnum,
+          communicationDirection: CommunicationDirectionEnum,
+          communicationChannel: z.string().optional().nullable(),
+          cleanedNotes: z.string(),
+        });
+        const safe = parsedSchema.parse(parsed);
+        classification = {
+          ...classification,
+          ...safe,
+          communicationChannel: safe.communicationChannel ?? undefined,
+        };
+      } catch (e: any) {
+        console.warn("[tasks/communication/ai-log] OpenAI classify failed, using heuristic:", e?.message || e);
+      }
+    }
+
+    if (classification.isCommunication) {
+      const task = await prisma.task.create({
+        data: {
+          tenantId,
+          title: `${classification.communicationType} - ${classification.communicationDirection}`,
+          description: classification.cleanedNotes,
+          taskType: "COMMUNICATION",
+          communicationType: classification.communicationType as any,
+          communicationChannel: classification.communicationChannel || null,
+          communicationDirection: classification.communicationDirection as any,
+          communicationNotes: classification.cleanedNotes,
+          relatedType: body.relatedType as any,
+          relatedId: body.relatedId,
+          status: "DONE",
+          completedAt: new Date(),
+          autoCompleted: false,
+          completedBy: userId,
+          createdById: userId,
+          meta: { source: "leadmodal_add_note" } as any,
+        },
+      });
+
+      const logged = await ensureCommunicationTaskLoggedToLeadNotes({ tenantId, taskId: task.id });
+      return res.json({ ok: true, classification, task, notes: logged.updatedNotes || null });
+    }
+
+    // Not a communication: prepend a plain note entry.
+    const entry = formatCommunicationEntry({
+      completedAt: new Date(),
+      communicationType: "OTHER",
+      communicationDirection: "OUTBOUND",
+      communicationChannel: "NOTE",
+      freeTextFallback: classification.cleanedNotes,
+    });
+
+    let leadId: string | null = null;
+    if (body.relatedType === "LEAD") leadId = body.relatedId;
+    if (body.relatedType === "PROJECT") {
+      const opp = await prisma.opportunity.findFirst({
+        where: { tenantId, id: body.relatedId },
+        select: { leadId: true },
+      });
+      leadId = opp?.leadId ? String(opp.leadId) : null;
+    }
+
+    const updated = leadId
+      ? await prependLeadCommunicationNotes({ tenantId, leadId, entry })
+      : null;
+
+    return res.json({ ok: true, classification, task: null, notes: updated?.updatedNotes || null });
+  } catch (e: any) {
+    return res.status(400).json({ error: e.message || "Invalid request" });
   }
 });
 
@@ -1323,88 +1420,6 @@ router.post("/forms", async (req, res) => {
     res.json(form);
   } catch (e: any) {
     res.status(400).json({ error: e.message || "Invalid request" });
-  }
-});
-
-/**
- * POST /tasks/:id/complete
- * Mark a task as complete with celebration tracking
- */
-router.post("/:id/complete", async (req: any, res) => {
-  const { tenantId } = getAuth(req);
-  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
-
-  const taskId = req.params.id;
-
-  try {
-    // Get the task
-    const task = await prisma.task.findFirst({
-      where: { id: taskId, tenantId },
-    });
-
-    if (!task) {
-      return res.status(404).json({ error: "task_not_found" });
-    }
-
-    // Mark as complete
-    const updated = await prisma.task.update({
-      where: { id: taskId },
-      data: {
-        status: "DONE",
-        completedAt: new Date(),
-      },
-    });
-
-    // Sync: if task links to a fire door schedule field, update the project
-    try {
-      await markLinkedProjectFieldFromTaskCompletion({ tenantId, taskId });
-    } catch (e) {
-      console.warn("[tasks:complete] fire-door sync failed:", (e as any)?.message || e);
-    }
-    // Generic Field ↔ Task link write-back
-    try {
-      await applyFieldLinkOnTaskComplete({ tenantId, taskId });
-    } catch (e) {
-      console.warn("[tasks:complete] generic field-link sync failed:", (e as any)?.message || e);
-    }
-
-    // If this is a workshop task, mark the process as complete
-    if (task.relatedType === "WORKSHOP" && task.relatedId) {
-      const processCode = (task.meta as any)?.processCode;
-      if (processCode) {
-        const processDef = await prisma.workshopProcessDefinition.findFirst({
-          where: { tenantId, code: processCode },
-        });
-
-        if (processDef) {
-          await prisma.projectProcessAssignment.updateMany({
-            where: {
-              tenantId,
-              opportunityId: task.relatedId,
-              processDefinitionId: processDef.id,
-            },
-            data: { completedAt: new Date() },
-          });
-        }
-      }
-    }
-
-    // Log activity
-    await prisma.activityLog.create({
-      data: {
-        tenantId,
-        entity: "TASK",
-        entityId: taskId,
-        verb: "COMPLETED",
-        actorId: req.auth?.userId,
-        data: { completedAt: updated.completedAt } as any,
-      },
-    });
-
-    res.json({ ok: true, task: updated });
-  } catch (e: any) {
-    console.error("Failed to complete task:", e);
-    res.status(500).json({ error: e.message || "Failed to complete task" });
   }
 });
 

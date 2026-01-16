@@ -1,5 +1,6 @@
 // Service to initialize new tenants with seed template data from Demo Tenant
 import { prisma } from '../prisma';
+import { ensureElyWindowForTenant } from './ensure-ely-window';
 const TEMPLATE_SLUG = 'demo-tenant'; // Use Demo Tenant as the template (contains questionnaire from acme.test)
 
 export async function initializeTenantWithSeedData(tenantId: string) {
@@ -138,6 +139,14 @@ export async function initializeTenantWithSeedData(tenantId: string) {
     }
     if (processesCreated > 0) {
       console.log(`✅ Seeded ${processesCreated} workshop processes`);
+    }
+
+    // Ensure Ely Window exists for this tenant (product type + components)
+    try {
+      await ensureElyWindowForTenant(tenantId);
+      console.log('✅ Ensured Ely Window product + components');
+    } catch (e: any) {
+      console.warn('⚠️  Failed to ensure Ely Window product + components:', e?.message || e);
     }
 
     console.log(`✅ Successfully initialized tenant ${tenantId} with ${copiedItems} items from Demo Tenant`);

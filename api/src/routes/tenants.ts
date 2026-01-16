@@ -105,6 +105,11 @@ router.post("/tenant/product-types/restore", async (req: any, res) => {
       label: "Windows",
       types: [
         {
+          type: "ely",
+          label: "Ely Window",
+          options: [{ id: "ely-window", label: "Ely Window" }],
+        },
+        {
           type: "sash-cord",
           label: "Sash (Cord)",
           options: [

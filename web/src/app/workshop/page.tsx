@@ -1,6 +1,6 @@
 
 "use client";
-import { useRef, useState as useReactState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import MaterialLinkDialog from "@/components/workshop/MaterialLinkDialog";
 import MaterialReceivedDialog from "@/components/workshop/MaterialReceivedDialog";
 import MaterialOrderDialog from "@/components/workshop/MaterialOrderDialog";
@@ -143,7 +143,6 @@ function QuickLogModal({ users, projects, processes, onSave, onClose }: QuickLog
   );
 }
 
-import { useEffect, useState } from "react";
 import { apiFetch, ensureDemoAuth, API_BASE } from "@/lib/api";
 
 import { useCurrentUser } from "@/lib/use-current-user";
@@ -204,7 +203,12 @@ type Project = {
   id: string;
   name: string;
   number?: string | null;
+  groupId?: string | null;
+  groupName?: string | null;
+  parentOpportunityId?: string | null;
+  groupMembers?: Project[]; // Only populated for grouped schedule display items
   valueGBP?: string | number | null;
+  contractValue?: string | number | null;
   wonAt?: string | null;
   startDate?: string | null;
   deliveryDate?: string | null;
@@ -268,6 +272,86 @@ function getProjectDisplayName(proj: Project): string {
     return `${proj.number} - ${proj.name}`;
   }
   return proj.name;
+}
+
+function parseNumberish(value: unknown): number {
+  if (value == null) return 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  const n = Number(String(value).replace(/,/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function collapseGroupedScheduleProjects(raw: Project[]): Project[] {
+  const byGroup: Record<string, Project[]> = {};
+  const ungrouped: Project[] = [];
+
+  for (const p of raw) {
+    const gid = typeof p.groupId === "string" && p.groupId.trim() ? p.groupId.trim() : null;
+    if (!gid) {
+      ungrouped.push(p);
+      continue;
+    }
+    (byGroup[gid] ||= []).push(p);
+  }
+
+  const grouped: Project[] = Object.entries(byGroup).map(([groupId, members]) => {
+    const groupName =
+      members.map((m) => (typeof m.groupName === "string" ? m.groupName.trim() : "")).find((n) => n) ||
+      "Group";
+
+    const numbers = members
+      .map((m) => (typeof m.number === "string" ? m.number.trim() : ""))
+      .filter(Boolean);
+    const first = numbers[0] || null;
+    const moreCount = Math.max(0, numbers.length - 1);
+    const numberLabel = first ? (moreCount > 0 ? `${first} +${moreCount}` : first) : null;
+
+    const toDate = (iso?: string | null) => {
+      if (!iso) return null;
+      const d = new Date(iso);
+      return Number.isNaN(d.getTime()) ? null : d;
+    };
+    const toIso = (d: Date | null) => (d ? d.toISOString() : null);
+
+    const starts = members.map((m) => toDate(m.startDate)).filter(Boolean) as Date[];
+    const ends = members.map((m) => toDate(m.deliveryDate)).filter(Boolean) as Date[];
+    const instStarts = members.map((m) => toDate(m.installationStartDate)).filter(Boolean) as Date[];
+    const instEnds = members.map((m) => toDate(m.installationEndDate)).filter(Boolean) as Date[];
+
+    const minDate = (arr: Date[]) => (arr.length ? new Date(Math.min(...arr.map((d) => d.getTime()))) : null);
+    const maxDate = (arr: Date[]) => (arr.length ? new Date(Math.max(...arr.map((d) => d.getTime()))) : null);
+
+    const startDate = toIso(minDate(starts));
+    const deliveryDate = toIso(maxDate(ends));
+    const installationStartDate = toIso(minDate(instStarts));
+    const installationEndDate = toIso(maxDate(instEnds));
+
+    const processAssignments = members.flatMap((m) => m.processAssignments || []);
+    const processPlans = members.flatMap((m) => m.processPlans || []);
+
+    return {
+      id: `group:${groupId}`,
+      name: groupName,
+      number: numberLabel,
+      groupId,
+      groupName,
+      groupMembers: members,
+      valueGBP: members.reduce((s, m) => s + parseNumberish(m.valueGBP), 0),
+      contractValue: members.reduce((s, m) => s + parseNumberish(m.contractValue), 0),
+      wonAt: members.map((m) => m.wonAt).filter(Boolean)[0] || null,
+      startDate,
+      deliveryDate,
+      installationStartDate,
+      installationEndDate,
+      weeks: members[0]?.weeks ?? 4,
+      processPlans,
+      processAssignments,
+      totalHoursByProcess: {},
+      totalProjectHours: members.reduce((s, m) => s + parseNumberish(m.totalProjectHours), 0),
+    };
+  });
+
+  return [...ungrouped, ...grouped];
 }
 
 // Calculate project rows for stacking (to avoid overlaps in calendar view)
@@ -418,6 +502,8 @@ export default function WorkshopPage() {
     endDate: '',
     reason: ''
   });
+
+  const scheduleProjects = useMemo(() => collapseGroupedScheduleProjects(projects), [projects]);
   const [showProjectDetails, setShowProjectDetails] = useState<string | null>(null);
   const [showProjectSwap, setShowProjectSwap] = useState(false);
   const [swapForm, setSwapForm] = useState({ projectId: '', process: '', notes: '', search: '' });
@@ -1547,7 +1633,7 @@ export default function WorkshopPage() {
             <TabsContent value="week" className="mt-4">
               <CalendarWeekView
                 currentWeek={currentWeek}
-                projects={projects}
+                projects={scheduleProjects}
                 users={users}
                 holidays={holidays}
                 showValues={showValues}
@@ -1556,7 +1642,11 @@ export default function WorkshopPage() {
                 onNextWeek={nextWeek}
                 onToday={goToToday}
                 onProjectClick={setShowProjectDetails}
-                onDragStart={handleDragStart}
+                onDragStart={(projectId) => {
+                  const p = scheduleProjects.find(x => x.id === projectId);
+                  if (p?.groupMembers && p.groupMembers.length > 0) return;
+                  handleDragStart(projectId);
+                }}
                 onProjectDrop={(projectId, date) => {
                   // Reuse existing drop logic
                   if (draggingProject) handleDrop(date);
@@ -1613,7 +1703,7 @@ export default function WorkshopPage() {
               const validDays = daysArray.filter(d => d !== null) as Date[];
               const monthStart = validDays.length > 0 ? validDays[0] : new Date();
               const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
-              const projectRows = calculateProjectRows(projects, monthStart, monthEnd);
+              const projectRows = calculateProjectRows(scheduleProjects, monthStart, monthEnd);
               
               // Calculate weeks in month
               const weeksInMonth = Math.ceil(daysArray.length / 7);
@@ -1676,7 +1766,7 @@ export default function WorkshopPage() {
                   const firstDayOffset = daysArray.findIndex(d => d !== null);
                   
                   // Group projects by row to avoid overlaps
-                  const projectRows = calculateProjectRows(projects, monthStart, monthEnd);
+                  const projectRows = calculateProjectRows(scheduleProjects, monthStart, monthEnd);
                   const maxStacks = Math.max(1, projectRows.length);
                   const rowHeight = Math.max(128, headerOffset + maxStacks * stackBlockHeight + 8);
                   
@@ -1743,8 +1833,12 @@ export default function WorkshopPage() {
                                   left: `${(segment.col / 7) * 100}%`,
                                   width: `${(segment.span / 7) * 100}%`,
                                 }}
-                                draggable
-                                onDragStart={() => handleDragStart(proj.id)}
+                                draggable={!(proj.groupMembers && proj.groupMembers.length > 0)}
+                                onDragStart={() => {
+                                  if (!(proj.groupMembers && proj.groupMembers.length > 0)) {
+                                    handleDragStart(proj.id);
+                                  }
+                                }}
                                 onClick={() => setShowProjectDetails(proj.id)}
                                 title={`${getProjectDisplayName(proj)} (${progress}% complete)${usersSummary}`}
                               >
@@ -1855,7 +1949,7 @@ export default function WorkshopPage() {
             <TabsContent value="year" className="mt-4">
               <CalendarYearView
                 currentYear={currentYear}
-                projects={projects}
+                projects={scheduleProjects}
                 users={users}
                 holidays={holidays}
                 showValues={showValues}
@@ -1910,7 +2004,7 @@ export default function WorkshopPage() {
           </div>
 
           <WorkshopSwimlaneTimeline
-            projects={projects as any}
+            projects={scheduleProjects as any}
             users={users as any}
             visibleWeeks={visibleWeeks}
             onProjectClick={(id: string) => setShowProjectDetails(id)}
@@ -2389,8 +2483,54 @@ export default function WorkshopPage() {
       
       {/* Project Details Modal */}
       {showProjectDetails && (() => {
-        const project = projects.find(p => p.id === showProjectDetails);
+        const project = scheduleProjects.find(p => p.id === showProjectDetails) || projects.find(p => p.id === showProjectDetails);
         if (!project) return null;
+
+        const isGroup = Array.isArray(project.groupMembers) && project.groupMembers.length > 0;
+        if (isGroup) {
+          const members = project.groupMembers || [];
+          return (
+            <div
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50"
+              onClick={() => setShowProjectDetails(null)}
+            >
+              <Card
+                className="p-6 max-w-2xl w-full m-4 bg-white shadow-2xl border max-h-[80vh] overflow-y-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h2 className="text-xl font-semibold mb-2">{getProjectDisplayName(project)}</h2>
+                <div className="text-sm text-gray-600 mb-4">
+                  {members.length} order{members.length === 1 ? "" : "s"} in this group
+                </div>
+
+                <div className="space-y-2">
+                  {members.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      className="w-full text-left rounded border px-3 py-2 hover:bg-slate-50"
+                      onClick={() => setShowProjectDetails(m.id)}
+                      title={getProjectDisplayName(m)}
+                    >
+                      <div className="text-sm font-semibold text-slate-900 truncate">{getProjectDisplayName(m)}</div>
+                      <div className="text-xs text-slate-500">
+                        Mfg: {m.startDate ? new Date(m.startDate).toLocaleDateString("en-GB") : "Not set"}
+                        {" "}→{" "}
+                        {m.deliveryDate ? new Date(m.deliveryDate).toLocaleDateString("en-GB") : "Not set"}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="pt-4">
+                  <Button variant="ghost" onClick={() => setShowProjectDetails(null)}>
+                    Close
+                  </Button>
+                </div>
+              </Card>
+            </div>
+          );
+        }
         
         const progress = getProjectProgress(project);
         const totalEstimated = (project.processAssignments || [])
@@ -2406,7 +2546,7 @@ export default function WorkshopPage() {
               className="p-6 max-w-2xl w-full m-4 bg-white shadow-2xl border max-h-[80vh] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
-              <h2 className="text-xl font-semibold mb-4">{project.name}</h2>
+              <h2 className="text-xl font-semibold mb-4">{getProjectDisplayName(project)}</h2>
               
               <div className="space-y-4">
                 {/* Project Overview */}

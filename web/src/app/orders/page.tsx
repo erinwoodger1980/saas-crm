@@ -68,6 +68,9 @@ type Order = {
   nextActionAt?: string | null;
   custom?: Record<string, any>;
   opportunityId?: string | null;
+  opportunityGroupId?: string | null;
+  opportunityGroupName?: string | null;
+  parentOpportunityId?: string | null;
   processPercentages?: Record<string, number>;
   manufacturingCompletionDate?: string | null;
   orderValueGBP?: number | string | null;
@@ -268,6 +271,27 @@ export default function OrdersPage() {
       bucket.push(o);
       byMonth.set(label, bucket);
     }
+
+    const groupKey = (o: Order) => (o.opportunityGroupName || o.opportunityGroupId || "").toLowerCase();
+    const nameKey = (o: Order) => (o.displayName || o.contactName || "").toLowerCase();
+
+    noDate.sort((a, b) => {
+      const ga = groupKey(a);
+      const gb = groupKey(b);
+      if (ga !== gb) return ga.localeCompare(gb);
+      return nameKey(a).localeCompare(nameKey(b));
+    });
+
+    for (const [k, bucket] of byMonth.entries()) {
+      bucket.sort((a, b) => {
+        const ga = groupKey(a);
+        const gb = groupKey(b);
+        if (ga !== gb) return ga.localeCompare(gb);
+        return nameKey(a).localeCompare(nameKey(b));
+      });
+      byMonth.set(k, bucket);
+    }
+
     return { noDate, byMonth };
   }, [sortedRows]);
 
@@ -650,6 +674,13 @@ function CardRow({
             {order.custom?.source ? `Source: ${order.custom.source}` : "Source: —"}
             {order.nextAction ? ` · Next: ${order.nextAction}` : ""}
           </div>
+          {(order.opportunityGroupName || order.opportunityGroupId) && (
+            <div className="mt-1">
+              <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">
+                Group: {order.opportunityGroupName || order.opportunityGroupId}
+              </span>
+            </div>
+          )}
           {order.processPercentages && Object.keys(order.processPercentages).length > 0 && (
             <div className="mt-1 flex flex-wrap gap-1">
               {Object.entries(order.processPercentages).map(([code, percent]) => (

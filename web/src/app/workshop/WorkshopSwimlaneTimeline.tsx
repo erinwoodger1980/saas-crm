@@ -57,6 +57,8 @@ export type Project = {
   description?: string | null;
   startDate?: string | null; // ISO
   deliveryDate?: string | null; // ISO
+  installationStartDate?: string | null; // ISO
+  installationEndDate?: string | null; // ISO
   valueGBP?: number | string | null;
   processPlans: Plan[];
   processAssignments?: ProcessAssignment[];
@@ -174,7 +176,7 @@ export default function WorkshopSwimlaneTimeline({ projects, users, visibleWeeks
                         const number = typeof proj.number === "string" ? proj.number.trim() : "";
                         const description = typeof proj.description === "string" ? proj.description.trim() : "";
                         const base = name || description || "Project";
-                        const withNumber = number ? `${base} - ${number}` : base;
+                        const withNumber = number ? `${number} - ${base}` : base;
                         const showDescription = Boolean(name) && Boolean(description) && description !== name;
                         const label = showDescription ? `${withNumber} · ${description}` : withNumber;
                         return (

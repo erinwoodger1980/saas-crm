@@ -781,6 +781,7 @@ router.get("/:id/children", async (req: any, res: any) => {
     select: {
       id: true,
       title: true,
+      number: true,
       stage: true,
       valueGBP: true,
       createdAt: true,
