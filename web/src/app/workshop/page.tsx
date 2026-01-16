@@ -1566,7 +1566,10 @@ export default function WorkshopPage() {
         </div>
         <WorkshopTimer
           ref={timerRef}
-          projects={projects.map(p => ({ id: p.id, title: p.name }))}
+          projects={projects.map(p => ({
+            id: p.id,
+            title: (p.groupId && p.groupName) ? p.groupName : p.name,
+          }))}
           processes={processDefs.map(p => ({ code: p.code, name: p.name, isGeneric: p.isGeneric }))}
           onTimerChange={loadAll}
           currentUser={user}
