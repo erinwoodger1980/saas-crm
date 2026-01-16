@@ -3683,7 +3683,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         />
 
         {/* Header */}
-        <div className="relative flex flex-wrap items-center gap-3 border-b border-sky-100/60 bg-gradient-to-r from-sky-100 via-white to-rose-100 px-4 sm:px-6 py-4">
+        <div className="relative shrink-0 flex flex-wrap items-center gap-3 border-b border-sky-100/60 bg-gradient-to-r from-sky-100 via-white to-rose-100 px-4 sm:px-6 py-4">
           <div className="inline-grid place-items-center h-11 w-11 rounded-2xl bg-white/80 text-[12px] font-semibold text-slate-700 border border-sky-200 shadow-sm">
             {avatarText(lead.contactName)}
           </div>
@@ -3734,7 +3734,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         </div>
 
         {/* Stage Navigation */}
-        <div className="flex gap-1 rounded-xl bg-slate-100/80 p-1 mx-6 mt-4">
+        <div className="shrink-0 flex gap-1 rounded-xl bg-slate-100/80 p-1 mx-6 mt-4">
           {stages.map((stage) => (
             <button
               key={stage.id}
@@ -3755,7 +3755,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         </div>
 
         {/* Global Actions */}
-        <div className="flex flex-wrap items-center gap-2 px-4 sm:px-6 py-3 border-b border-sky-100/60 bg-gradient-to-r from-sky-50 via-indigo-50 to-amber-50 text-slate-700">
+        <div className="shrink-0 flex flex-wrap items-center gap-2 px-4 sm:px-6 py-3 border-b border-sky-100/60 bg-gradient-to-r from-sky-50 via-indigo-50 to-amber-50 text-slate-700">
           <Button
             variant="outline"
             onClick={sendQuestionnaire}
@@ -3843,10 +3843,10 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto">
           {/* CLIENT STAGE */}
           {currentStage === "client" && (
-            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 min-h-[60vh]">
+            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 min-h-0">
               <div className="max-w-4xl mx-auto space-y-6">
                 {/* Original Email - shown for enquiries */}
                 {(emailSubject || emailSnippet || fromEmail) && (
