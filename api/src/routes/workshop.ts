@@ -756,49 +756,55 @@ router.patch("/process-assignments/assign", async (req: any, res) => {
 
 // GET /workshop/schedule?weeks=4 - Legacy week-based view
 router.get("/schedule", async (req: any, res) => {
-  const tenantId = req.auth.tenantId as string;
+  const tenantId = req.auth?.tenantId as string;
   const weeks = Math.max(1, Math.min(Number(req.query.weeks ?? 4), 8));
 
   // Projects = WON opportunities (may include historical duplicates for same lead)
-  const rawProjects = await (prisma as any).opportunity.findMany({
-    where: { tenantId, stage: "WON" },
-    select: ({ 
-      id: true, 
-      title: true,
-      number: true,
-      valueGBP: true, 
-      contractValue: true,
-      wonAt: true, 
-      startDate: true, 
-      deliveryDate: true,
-      installationStartDate: true,
-      installationEndDate: true,
-      groupId: true,
-      parentOpportunityId: true,
-      group: { select: { id: true, name: true } },
-      leadId: true,
-      createdAt: true,
-      lead: { select: { id: true, status: true, custom: true } },
-      // Material tracking
-      timberOrderedAt: true,
-      timberExpectedAt: true,
-      timberReceivedAt: true,
-      timberNotApplicable: true,
-      glassOrderedAt: true,
-      glassExpectedAt: true,
-      glassReceivedAt: true,
-      glassNotApplicable: true,
-      ironmongeryOrderedAt: true,
-      ironmongeryExpectedAt: true,
-      ironmongeryReceivedAt: true,
-      ironmongeryNotApplicable: true,
-      paintOrderedAt: true,
-      paintExpectedAt: true,
-      paintReceivedAt: true,
-      paintNotApplicable: true,
-    } as any),
-    orderBy: [{ wonAt: "desc" }, { title: "asc" }],
-  });
+  let rawProjects: any[] = [];
+  try {
+    rawProjects = await (prisma as any).opportunity.findMany({
+      where: { tenantId, stage: "WON" },
+      select: ({
+        id: true,
+        title: true,
+        number: true,
+        valueGBP: true,
+        contractValue: true,
+        wonAt: true,
+        startDate: true,
+        deliveryDate: true,
+        installationStartDate: true,
+        installationEndDate: true,
+        groupId: true,
+        parentOpportunityId: true,
+        group: { select: { id: true, name: true } },
+        leadId: true,
+        createdAt: true,
+        lead: { select: { id: true, status: true, custom: true } },
+        // Material tracking
+        timberOrderedAt: true,
+        timberExpectedAt: true,
+        timberReceivedAt: true,
+        timberNotApplicable: true,
+        glassOrderedAt: true,
+        glassExpectedAt: true,
+        glassReceivedAt: true,
+        glassNotApplicable: true,
+        ironmongeryOrderedAt: true,
+        ironmongeryExpectedAt: true,
+        ironmongeryReceivedAt: true,
+        ironmongeryNotApplicable: true,
+        paintOrderedAt: true,
+        paintExpectedAt: true,
+        paintReceivedAt: true,
+        paintNotApplicable: true,
+      } as any),
+      orderBy: [{ wonAt: "desc" }, { title: "asc" }],
+    });
+  } catch (e: any) {
+    console.error("[workshop/schedule] Failed to load projects:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
 
   // Order Desk uses Lead.custom.uiStatus ("COMPLETED") as the source of truth for completed orders.
   // Keep the schedule aligned by excluding leads marked as completed.
@@ -834,25 +840,43 @@ router.get("/schedule", async (req: any, res) => {
     return res.json({ ok: true, weeks, projects: [] });
   }
 
-  // Fetch new process assignments (with user assignments)
-  const processAssignments = await (prisma as any).projectProcessAssignment.findMany({
-    where: { tenantId, opportunityId: { in: projectIds } },
-    include: {
-      processDefinition: true,
-      assignedUser: { select: { id: true, name: true, email: true } },
-    },
-  });
+  // Fetch new process assignments (with user assignments) — best effort
+  let processAssignments: any[] = [];
+  try {
+    processAssignments = await (prisma as any).projectProcessAssignment.findMany({
+      where: { tenantId, opportunityId: { in: projectIds } },
+      include: {
+        processDefinition: true,
+        assignedUser: { select: { id: true, name: true, email: true } },
+      },
+    });
+  } catch (e: any) {
+    console.warn("[workshop/schedule] Failed to load process assignments:", e?.message || e);
+    processAssignments = [];
+  }
 
-  const plans = await (prisma as any).processPlan.findMany({
-    where: { tenantId, projectId: { in: projectIds } },
-    include: { assignee: { select: { id: true, name: true } } },
-  });
+  let plans: any[] = [];
+  try {
+    plans = await (prisma as any).processPlan.findMany({
+      where: { tenantId, projectId: { in: projectIds } },
+      include: { assignee: { select: { id: true, name: true } } },
+    });
+  } catch (e: any) {
+    console.warn("[workshop/schedule] Failed to load plans:", e?.message || e);
+    plans = [];
+  }
 
-  const totals = await (prisma as any).timeEntry.groupBy({
-    by: ["projectId", "process"],
-    where: { tenantId, projectId: { in: projectIds } },
-    _sum: { hours: true },
-  });
+  let totals: any[] = [];
+  try {
+    totals = await (prisma as any).timeEntry.groupBy({
+      by: ["projectId", "process"],
+      where: { tenantId, projectId: { in: projectIds } },
+      _sum: { hours: true },
+    });
+  } catch (e: any) {
+    console.warn("[workshop/schedule] Failed to load time totals:", e?.message || e);
+    totals = [];
+  }
 
   const totalsByProject: Record<string, { byProcess: Record<string, number>; total: number }> = {};
   for (const row of totals) {

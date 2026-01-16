@@ -5,14 +5,20 @@ const router = Router();
 
 // GET /workshop-processes - Get all process definitions for tenant
 router.get("/", async (req: any, res) => {
-  const tenantId = req.auth.tenantId as string;
-  
-  const processes = await prisma.workshopProcessDefinition.findMany({
-    where: { tenantId },
-    orderBy: { sortOrder: "asc" },
-  });
-  // Return array directly to match web client expectations
-  res.json(processes);
+  const tenantId = req.auth?.tenantId as string;
+
+  try {
+    const processes = await prisma.workshopProcessDefinition.findMany({
+      where: { tenantId },
+      orderBy: { sortOrder: "asc" },
+    });
+    // Return array directly to match web client expectations
+    res.json(processes);
+  } catch (e: any) {
+    console.error("[workshop-processes] Failed to load process definitions:", e?.message || e);
+    // Keep Workshop usable even if process tables are missing/migrating.
+    res.json([]);
+  }
 });
 
 // POST /workshop-processes - Create a new process definition
