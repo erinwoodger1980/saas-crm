@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
 import { API_BASE } from '@/lib/api-base';
-import { nanoid } from 'nanoid';
 
 /**
  * POST /api/public/estimate-submit
  * 
  * Receives public estimator submission and:
- * 1. Creates a Lead
- * 2. Creates a Quote with LineItems
- * 3. Triggers AI analysis of photos/dimensions (background job)
- * 4. Sends confirmation email via tenant's email provider
+ * Creates a NEW_ENQUIRY lead via the backend public intake route.
+ * 
+ * Note: The web workspace no longer ships with Prisma access; this route must
+ * forward to the API service.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -19,7 +17,28 @@ export async function POST(request: NextRequest) {
       clientInfo,
       projectInfo,
       lineItems,
+      tenantSlug: rawTenantSlug,
     } = body;
+
+    const tenantSlug = String(
+      rawTenantSlug ||
+        request.headers.get('x-tenant-slug') ||
+        process.env.PUBLIC_ESTIMATOR_TENANT_SLUG ||
+        process.env.NEXT_PUBLIC_PUBLIC_ESTIMATOR_TENANT_SLUG ||
+        ''
+    )
+      .trim()
+      .toLowerCase();
+
+    if (!tenantSlug) {
+      return NextResponse.json(
+        {
+          message:
+            'Estimate intake is not configured (missing tenantSlug / PUBLIC_ESTIMATOR_TENANT_SLUG).',
+        },
+        { status: 500 }
+      );
+    }
 
     // Validate required fields
     if (!clientInfo?.email || !clientInfo?.name) {
@@ -36,209 +55,78 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create or find tenant (public submissions default to demo tenant)
-    // In production, you'd want to determine this based on the domain/referrer
-    const demoTenant = await prisma.tenant.findFirst({
-      where: { name: { contains: 'demo' } },
-    });
+    const safe = (v: any) => String(v ?? '').trim().slice(0, 5000);
+    const itemsSummary = Array.isArray(lineItems)
+      ? lineItems
+          .slice(0, 10)
+          .map((it: any, idx: number) => {
+            const qty = Number(it?.quantity) || 1;
+            const desc = safe(it?.description) || `Item ${idx + 1}`;
+            const w = it?.widthMm ? `${it.widthMm}mm` : '';
+            const h = it?.heightMm ? `${it.heightMm}mm` : '';
+            const dims = [w, h].filter(Boolean).join(' x ');
+            return `- ${qty} × ${desc}${dims ? ` (${dims})` : ''}`;
+          })
+          .join('\n')
+      : '';
 
-    if (!demoTenant) {
+    const message = [
+      'Public estimator submission',
+      projectInfo?.projectType ? `Project type: ${safe(projectInfo.projectType)}` : '',
+      projectInfo?.propertyType ? `Property type: ${safe(projectInfo.propertyType)}` : '',
+      projectInfo?.location ? `Location: ${safe(projectInfo.location)}` : '',
+      projectInfo?.targetDate ? `Target date: ${safe(projectInfo.targetDate)}` : '',
+      projectInfo?.urgency ? `Urgency: ${safe(projectInfo.urgency)}` : '',
+      projectInfo?.projectDescription ? `Description: ${safe(projectInfo.projectDescription)}` : '',
+      itemsSummary ? `\nItems:\n${itemsSummary}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const createLeadResponse = await fetch(
+      `${API_BASE}/public/tenant/${encodeURIComponent(tenantSlug)}/leads`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source: 'public_estimator',
+          name: safe(clientInfo.name),
+          email: safe(clientInfo.email),
+          phone: safe(clientInfo.phone),
+          postcode: safe(clientInfo.postcode),
+          projectType: safe(projectInfo?.projectType),
+          propertyType: safe(projectInfo?.propertyType),
+          message,
+        }),
+      }
+    );
+
+    if (!createLeadResponse.ok) {
+      const errorText = await createLeadResponse.text();
+      console.error('[estimate-submit] Lead intake failed', {
+        status: createLeadResponse.status,
+        body: errorText?.slice(0, 500),
+      });
       return NextResponse.json(
-        { message: 'Unable to process estimate at this time' },
-        { status: 500 }
+        { message: 'Failed to submit estimate' },
+        { status: 502 }
       );
     }
 
-    // Create Lead
-    const lead = await prisma.lead.create({
-      data: {
-        tenantId: demoTenant.id,
-        firstName: clientInfo.name.split(' ')[0],
-        lastName: clientInfo.name.split(' ').slice(1).join(' '),
-        email: clientInfo.email,
-        phone: clientInfo.phone,
-        company: clientInfo.company,
-        address: clientInfo.address,
-        city: clientInfo.city,
-        postCode: clientInfo.postcode,
-        propertyType: projectInfo.propertyType,
-        status: 'new',
-        source: 'public_estimator',
-        notes: [
-          `Public Estimator Submission`,
-          `Project Type: ${projectInfo.projectType}`,
-          `Location: ${projectInfo.location}`,
-          projectInfo.projectDescription ? `Description: ${projectInfo.projectDescription}` : '',
-          projectInfo.targetDate ? `Target Date: ${projectInfo.targetDate}` : '',
-          projectInfo.urgency ? `Urgency: ${projectInfo.urgency}` : '',
-        ]
-          .filter(Boolean)
-          .join('\n'),
-      },
-    });
-
-    // Create Quote with LineItems
-    const quote = await prisma.quote.create({
-      data: {
-        leadId: lead.id,
-        tenantId: demoTenant.id,
-        status: 'draft',
-        quoteNumber: `EST-${Date.now()}`,
-        lineItems: {
-          create: lineItems.map((item: any, idx: number) => ({
-            sequenceNumber: idx + 1,
-            description: item.description,
-            quantity: Math.max(1, item.quantity || 1),
-            widthMm: item.widthMm,
-            heightMm: item.heightMm,
-            // Store product selection and photo data in lineStandard JSON
-            lineStandard: {
-              productType: item.productType,
-              timber: item.timber,
-              ironmongery: item.ironmongery,
-              glazing: item.glazing,
-              // Store base64 photo for AI analysis
-              ...(item.photoUrl && {
-                photoDataUri: item.photoUrl,
-                photoAnalysisStatus: 'pending', // To be updated after AI analysis
-              }),
-            },
-          })),
-        },
-      },
-      include: {
-        lineItems: true,
-      },
-    });
-
-    // Perform AI photo dimension extraction synchronously for instant results
-    // Calls POST /public/vision/analyze-photo for each photo
-    const itemsWithPhotos = lineItems.filter((item: any) => item.photoUrl);
-    if (itemsWithPhotos.length > 0) {
-      try {
-        console.log('[estimate-submit] Analyzing photos for', itemsWithPhotos.length, 'items');
-        
-        // Update each quote line item with AI-extracted dimensions
-        for (let i = 0; i < quote.lineItems.length; i++) {
-          const lineItem = quote.lineItems[i];
-          const origItem = lineItems[i];
-          
-          if (origItem.photoUrl && origItem.photoUrl.startsWith('data:image')) {
-            try {
-              // Extract base64 from data URL
-              const base64Match = origItem.photoUrl.match(/base64,(.+)$/);
-              const imageBase64 = base64Match ? base64Match[1] : origItem.photoUrl;
-              
-              // Call the vision analysis endpoint synchronously
-              const visionResponse = await fetch(`${API_BASE}/public/vision/analyze-photo`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  imageBase64,
-                  fileName: `line-item-${i + 1}.jpg`,
-                  openingType: origItem.productType || 'opening',
-                  aspectRatio: origItem.aspectRatio,
-                }),
-              });
-              
-              if (visionResponse.ok) {
-                const visionResult = await visionResponse.json();
-                
-                // Update line item with extracted dimensions and analysis
-                await prisma.quoteLine.update({
-                  where: { id: lineItem.id },
-                  data: {
-                    widthMm: visionResult.width_mm || origItem.widthMm,
-                    heightMm: visionResult.height_mm || origItem.heightMm,
-                    lineStandard: {
-                      ...lineItem.lineStandard,
-                      photoDataUri: origItem.photoUrl,
-                      photoAnalysisStatus: 'completed',
-                      visionAnalysis: {
-                        description: visionResult.description,
-                        width_mm: visionResult.width_mm,
-                        height_mm: visionResult.height_mm,
-                        confidence: visionResult.confidence,
-                      },
-                    },
-                  },
-                });
-                
-                console.log(`[estimate-submit] Photo analysis completed for line item ${i + 1}`);
-              } else {
-                console.warn(`[estimate-submit] Vision analysis failed for line item ${i + 1}:`, visionResponse.status);
-                // Store photo but mark as failed analysis
-                await prisma.quoteLine.update({
-                  where: { id: lineItem.id },
-                  data: {
-                    lineStandard: {
-                      ...lineItem.lineStandard,
-                      photoDataUri: origItem.photoUrl,
-                      photoAnalysisStatus: 'failed',
-                    },
-                  },
-                });
-              }
-            } catch (itemError) {
-              console.warn(`[estimate-submit] Error processing photo for line item ${i + 1}:`, itemError);
-              // Mark as failed but don't break the flow
-              await prisma.quoteLine.update({
-                where: { id: lineItem.id },
-                data: {
-                  lineStandard: {
-                    ...lineItem.lineStandard,
-                    photoDataUri: origItem.photoUrl,
-                    photoAnalysisStatus: 'failed',
-                  },
-                },
-              });
-            }
-          }
-        }
-      } catch (analysisError) {
-        console.warn('[estimate-submit] Failed to process photo analysis:', analysisError);
-        // Don't fail the main request if analysis fails
-      }
-    }
-
-    // Send confirmation email via tenant's email provider
-    // Uses the sendEmailViaTenant service (stubbed in dev; replace with real provider in production)
-    try {
-      const { sendEmailViaTenant } = await import('@/lib/backend-only/email-sender');
-      
-      const emailHtml = buildEstimateConfirmationEmail({
-        clientName: clientInfo.name,
-        quoteNumber: quote.quoteNumber,
-        itemCount: lineItems.length,
-      });
-
-      await sendEmailViaTenant(demoTenant.id, {
-        to: clientInfo.email,
-        subject: `Your Estimate Request - ${quote.quoteNumber}`,
-        body: `Thank you for your estimate request. Quote number: ${quote.quoteNumber}`,
-        html: emailHtml,
-        fromName: demoTenant.name || 'Custom Joinery',
-      });
-
-      console.log('[estimate-submit] Confirmation email sent to', clientInfo.email);
-    } catch (emailError) {
-      console.error('[estimate-submit] Email send error:', emailError);
-      // Don't fail the request if email fails - user has already submitted
-    }
+    const leadResult = await createLeadResponse.json().catch(() => null);
+    const leadId = leadResult?.id || leadResult?.leadId || null;
 
     console.log('[estimate-submit] Success:', {
-      leadId: lead.id,
-      quoteId: quote.id,
-      itemCount: lineItems.length,
-      photosForAnalysis: itemsWithPhotos.length,
+      tenantSlug,
+      leadId,
+      itemCount: Array.isArray(lineItems) ? lineItems.length : 0,
     });
 
     return NextResponse.json({
       success: true,
-      leadId: lead.id,
-      quoteId: quote.id,
-      quoteNumber: quote.quoteNumber,
-      message: 'Estimate submission received. Photos analyzed using AI vision. Your detailed estimate will be prepared shortly.',
+      leadId,
+      message:
+        'Estimate submission received. We will review your details and be in touch shortly.',
     });
   } catch (error) {
     console.error('[estimate-submit] Error:', error);
@@ -253,45 +141,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
-/**
- * Build HTML email confirming estimate submission
- */
-function buildEstimateConfirmationEmail({
-  clientName,
-  quoteNumber,
-  itemCount,
-}: {
-  clientName: string;
-  quoteNumber: string;
-  itemCount: number;
-}): string {
-  return `
-    <html>
-      <body style="font-family: sans-serif; color: #333;">
-        <h2>Estimate Request Received</h2>
-        <p>Hi ${clientName},</p>
         
-        <p>Thank you for submitting your estimate request. We've received your information for <strong>${itemCount} item(s)</strong>.</p>
-        
-        <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin: 20px 0;">
-          <p><strong>Quote Number:</strong> ${quoteNumber}</p>
-          <p><strong>Status:</strong> Under Review</p>
-          <p><strong>Next Steps:</strong> Our team will analyze your photos and measurements, then send you a detailed estimate within 24 hours.</p>
-        </div>
-        
-        <h3>What We're Analyzing:</h3>
-        <ul>
-          <li>Your opening dimensions from photos using AI vision analysis</li>
-          <li>Component specifications and materials</li>
-          <li>Customization options and alternatives</li>
-          <li>Detailed pricing breakdown</li>
-        </ul>
-        
-        <p>If you have any questions in the meantime, please don't hesitate to contact us.</p>
-        
-        <p>Best regards,<br/>Custom Joinery Team</p>
-      </body>
-    </html>
-  `;
-}

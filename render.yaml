@@ -44,6 +44,8 @@ services:
         value: https://api.joineryai.app
       - key: NEXT_PUBLIC_WEB_ORIGIN
         value: https://www.joineryai.app
+      - key: PUBLIC_ESTIMATOR_TENANT_SLUG
+        value: tenant-cmgt7e
       - key: OPENAI_API_KEY
         sync: false  # Set this in Render dashboard
       - key: NEXT_PUBLIC_FOUNDERS_PROMO_CODE
@@ -108,6 +110,8 @@ services:
         value: https://joineryai-api-staging.onrender.com
       - key: NEXT_PUBLIC_WEB_ORIGIN
         value: https://joineryai-web-staging.onrender.com
+      - key: PUBLIC_ESTIMATOR_TENANT_SLUG
+        value: tenant-cmgt7e
       - key: OPENAI_API_KEY
         sync: false  # Set this in Render dashboard
   - type: web
