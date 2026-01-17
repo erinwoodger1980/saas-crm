@@ -32,6 +32,9 @@ const PROTECTED_PREFIXES = [
   "/setup",
 ];
 
+const MARKETING_HOSTS = new Set(["lignumwindows.com", "www.lignumwindows.com"]);
+const MARKETING_BASE_PATH = "/wealden-joinery";
+
 function isPublicPath(pathname: string) {
   if (PUBLIC_EXACT.has(pathname)) return true;
   return PUBLIC_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
@@ -43,6 +46,42 @@ function requiresAuth(pathname: string) {
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const hostHeader = (req.headers.get("x-forwarded-host") || req.headers.get("host") || "").toLowerCase();
+  const hostname = hostHeader.split(":")[0];
+
+  // Option A: Serve the Wealden/Lignum marketing site at the root domain.
+  // This keeps the source routes under /wealden-joinery while making lignumwindows.com/* render them.
+  if (hostname && MARKETING_HOSTS.has(hostname)) {
+    const bypassPrefixes = ["/_next", "/api", "/public", "/assets", "/q", "/policy"];
+    const bypassExact = new Set([
+      "/favicon.ico",
+      "/robots.txt",
+      "/sitemap.xml",
+      "/manifest.json",
+      "/login",
+      "/signin",
+      "/signup",
+      "/accept-invite",
+      "/forgot-password",
+      "/reset-password",
+      "/thank-you",
+    ]);
+    const bypassProtected = PROTECTED_PREFIXES;
+
+    const shouldBypass =
+      bypassExact.has(pathname) ||
+      bypassPrefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`)) ||
+      bypassProtected.some((p) => pathname === p || pathname.startsWith(`${p}/`)) ||
+      pathname === MARKETING_BASE_PATH ||
+      pathname.startsWith(`${MARKETING_BASE_PATH}/`);
+
+    if (!shouldBypass) {
+      const url = req.nextUrl.clone();
+      url.pathname = pathname === "/" ? MARKETING_BASE_PATH : `${MARKETING_BASE_PATH}${pathname}`;
+      return NextResponse.rewrite(url);
+    }
+  }
+
   const authToken = AUTH_COOKIE_NAMES.map((n) => req.cookies.get(n)?.value).find(Boolean);
 
   // Guard against accidental relative navigations creating nested paths like /login/dashboard.
