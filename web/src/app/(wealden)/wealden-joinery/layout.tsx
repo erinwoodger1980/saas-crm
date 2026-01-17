@@ -7,6 +7,7 @@ import { TrackingScripts } from "./_components/tracking";
 
 // Layout shell for all Wealden Joinery marketing pages.
 export const metadata: Metadata = {
+  metadataBase: new URL("https://lignumwindows.com"),
   title: "Wealden Joinery | Timber Windows & Doors crafted in Sussex",
   description:
     "Premium timber windows and doors designed, manufactured, and installed by Wealden Joinery. Heritage expertise, high performance, and attentive aftercare.",
@@ -14,7 +15,7 @@ export const metadata: Metadata = {
     title: "Wealden Joinery | Timber Windows & Doors crafted in Sussex",
     description:
       "Beautiful, high-performance timber windows and doors from Sussex joinery specialists. Explore sash, casement, doors, and alu-clad options.",
-    url: "https://joineryai.app/wealden-joinery",
+    url: "https://lignumwindows.com",
     siteName: "Wealden Joinery",
     type: "website",
   },
@@ -25,7 +26,7 @@ const localBusinessSchema = {
   '@type': 'LocalBusiness',
   name: 'Wealden Joinery',
   description: 'Sussex-based specialists in timber windows, doors, and alu-clad systems with heritage expertise.',
-  url: 'https://joineryai.app/wealden-joinery',
+  url: 'https://lignumwindows.com',
   telephone: '+44 0 0000 0000', // TODO: replace with real contact number
   email: 'martin@wealdenjoinery.com',
   address: {

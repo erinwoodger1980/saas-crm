@@ -52,6 +52,14 @@ export function middleware(req: NextRequest) {
   // Option A: Serve the Wealden/Lignum marketing site at the root domain.
   // This keeps the source routes under /wealden-joinery while making lignumwindows.com/* render them.
   if (hostname && MARKETING_HOSTS.has(hostname)) {
+    // If someone hits the internal source path directly, normalize to the clean marketing URL.
+    // Example: /wealden-joinery/windows -> /windows (content still served via rewrite below).
+    if (pathname === MARKETING_BASE_PATH || pathname.startsWith(`${MARKETING_BASE_PATH}/`)) {
+      const url = req.nextUrl.clone();
+      url.pathname = pathname === MARKETING_BASE_PATH ? "/" : pathname.slice(MARKETING_BASE_PATH.length);
+      return NextResponse.redirect(url);
+    }
+
     const bypassPrefixes = ["/_next", "/api", "/public", "/assets", "/q", "/policy"];
     const bypassExact = new Set([
       "/favicon.ico",
@@ -72,8 +80,7 @@ export function middleware(req: NextRequest) {
       bypassExact.has(pathname) ||
       bypassPrefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`)) ||
       bypassProtected.some((p) => pathname === p || pathname.startsWith(`${p}/`)) ||
-      pathname === MARKETING_BASE_PATH ||
-      pathname.startsWith(`${MARKETING_BASE_PATH}/`);
+      false;
 
     if (!shouldBypass) {
       const url = req.nextUrl.clone();
