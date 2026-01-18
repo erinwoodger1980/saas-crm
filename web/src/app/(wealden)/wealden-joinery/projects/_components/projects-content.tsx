@@ -126,6 +126,25 @@ const projects: Project[] = [
       region: "Sussex"
     },
     imageIndex: 5
+  },
+  {
+    location: "Holiday-let development, Kent",
+    type: "Holiday let window replacement",
+    products: "Accoya® timber windows & doors — RAL 1013",
+    description:
+      "A tight early-December programme to replace windows across multiple units while keeping changeovers running and downtime to a minimum.",
+    bullets: [
+      "Replacement windows and a new doorway formation",
+      "Area-by-area ironmongery schedules (multiple styles)",
+      "Access-control fixed screen replacing French doors",
+      "Delivered on time despite poor weather"
+    ],
+    tags: {
+      product: ["Casement", "Doors"],
+      property: ["Contemporary"],
+      region: "Kent"
+    },
+    imageIndex: 6
   }
 ];
 
