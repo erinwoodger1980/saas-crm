@@ -1,6 +1,37 @@
 import { MetadataRoute } from 'next';
+import { headers } from 'next/headers';
+
+const MARKETING_HOSTS = new Set(['lignumwindows.com', 'www.lignumwindows.com']);
+const MARKETING_PATHS = [
+  '/',
+  '/about',
+  '/windows',
+  '/doors',
+  '/alu-clad',
+  '/choices',
+  '/projects',
+  '/showrooms',
+  '/contact',
+  '/estimate',
+];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const hdrs = await headers();
+  const hostHeader = (hdrs.get('x-forwarded-host') || hdrs.get('host') || '').toLowerCase();
+  const hostname = hostHeader.split(':')[0];
+
+  // Marketing domain sitemap: ONLY the Lignum/Wealden marketing pages, with lignumwindows.com URLs.
+  if (hostname && MARKETING_HOSTS.has(hostname)) {
+    const baseUrl = 'https://lignumwindows.com';
+    const now = new Date();
+    return MARKETING_PATHS.map((path) => ({
+      url: path === '/' ? baseUrl : `${baseUrl}${path}`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: path === '/' ? 1.0 : 0.8,
+    }));
+  }
+
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://joineryai.app';
   
   try {
