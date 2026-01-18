@@ -25,6 +25,33 @@ const sizeClasses = {
 
 type ProcessingState = "idle" | "optimizing" | "success" | "error";
 
+function getSizesForContext(imageContext: ImageSlotProps["imageContext"], size: ImageSlotProps["size"]) {
+  switch (imageContext) {
+    case "thumbnail":
+      return "(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 20vw";
+    case "card":
+      return "(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw";
+    case "hero":
+      // Most hero placements are full width on mobile, and either full/half width on desktop.
+      return size === "xl" ? "100vw" : "(max-width: 1024px) 100vw, 50vw";
+    default:
+      return "(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw";
+  }
+}
+
+function getQualityForContext(imageContext: ImageSlotProps["imageContext"]) {
+  switch (imageContext) {
+    case "thumbnail":
+      return 55;
+    case "card":
+      return 65;
+    case "hero":
+      return 75;
+    default:
+      return 65;
+  }
+}
+
 export function ImageSlot({
   slotId,
   label,
@@ -39,6 +66,9 @@ export function ImageSlot({
   const [processingState, setProcessingState] = useState<ProcessingState>("idle");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlRef = useRef<string | null>(null);
+
+  const sizes = getSizesForContext(imageContext, size);
+  const quality = getQualityForContext(imageContext);
 
   // Load from server on mount
   useEffect(() => {
@@ -257,7 +287,11 @@ export function ImageSlot({
               alt={label}
               fill
               className="object-cover transition-transform duration-300 group-hover:scale-105"
-              unoptimized
+              // Optimize local/public images for faster loads; keep unoptimized for remote URLs
+              unoptimized={!imageUrl.startsWith("/")}
+              sizes={sizes}
+              quality={quality}
+              priority={imageContext === "hero" && /hero/i.test(slotId)}
             />
           )}
           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
