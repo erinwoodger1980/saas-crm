@@ -4,7 +4,7 @@
 // TODO: Replace GTM_ID and META_PIXEL_ID with live identifiers before launch.
 
 import Script from "next/script";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 const GTM_ID = "TODO_GTM_ID";
@@ -45,7 +45,6 @@ function fbTrack(event: string, payload?: TrackingPayload) {
 
 export function TrackingScripts() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const [hostname, setHostname] = useState<string | null>(null);
 
   useEffect(() => {
@@ -66,11 +65,10 @@ export function TrackingScripts() {
     const gtag = (window as typeof window & { gtag?: (...args: unknown[]) => void }).gtag;
     if (!gtag) return;
 
-    const qs = searchParams?.toString();
-    const page_path = qs ? `${pathname}?${qs}` : pathname;
+    const page_path = `${window.location.pathname}${window.location.search ?? ""}`;
 
     gtag("config", GA4_MEASUREMENT_ID, { page_path });
-  }, [pathname, searchParams, shouldLoadOnThisHost]);
+  }, [pathname, shouldLoadOnThisHost]);
 
   return (
     <>
