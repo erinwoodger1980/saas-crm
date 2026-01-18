@@ -10,7 +10,8 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     
     // Forward to API server
-    const apiUrl = `${apiBase()}/api/wealden/images/upload`;
+    // NOTE: API_BASE already includes the /api suffix.
+    const apiUrl = `${apiBase()}/wealden/images/upload`;
     console.log("[Wealden Web] Proxying upload to:", apiUrl);
     
     const response = await fetch(apiUrl, {
@@ -39,7 +40,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Forward to API server
-    const apiUrl = `${apiBase()}/api/wealden/images/${slotId}`;
+    // NOTE: API_BASE already includes the /api suffix.
+    const apiUrl = `${apiBase()}/wealden/images/${slotId}`;
     const response = await fetch(apiUrl);
     const data = await response.json();
     

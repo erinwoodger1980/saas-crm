@@ -171,7 +171,7 @@ export default function WealdenHomePage() {
           <h2 className={designSystem.typography.h2}>Recent projects</h2>
         </div>
         <div className={`${designSystem.grid.three} ${designSystem.spacing.cardGap}`}>
-          {["Victorian Villa, Kent", "Georgian Townhouse, Sussex", "Country Home, Kent"].map((title, idx) => (
+          {["Victorian Villa, Kent", "Georgian Townhouse, Sussex", "Holiday Let Window Replacement, Kent"].map((title, idx) => (
             <div key={title} className={designSystem.cards.elevated}>
               <ImageSlot
                 slotId={`home-case-study-${idx}`}
@@ -182,7 +182,10 @@ export default function WealdenHomePage() {
               />
               <div className="p-6 space-y-2">
                 <h3 className={designSystem.typography.h4}>{title}</h3>
-                <Link href="/wealden-joinery/projects" className="text-sm font-medium text-slate-900 hover:underline inline-flex items-center gap-1">
+                <Link
+                  href="/wealden-joinery/projects"
+                  className="text-sm font-medium text-slate-900 hover:underline inline-flex items-center gap-1"
+                >
                   View project
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
