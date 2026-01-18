@@ -6,7 +6,7 @@
 // Safe to ignore - does not break functionality.
 
 import "./globals.css";
-import { ReactNode, useEffect } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Toaster } from "@/components/ui/toaster";
 import AppShell from "./components/AppShell";
@@ -14,6 +14,9 @@ import FeedbackWidget from "@/components/FeedbackWidget";
 import { setJwt, apiFetch } from "@/lib/api";
 import { useCurrentUser } from "@/lib/use-current-user";
 import Script from "next/script";
+
+const JOINERY_GA4_MEASUREMENT_ID = "G-LL7W6BJ0C2";
+const JOINERY_ALLOWED_HOSTNAMES = new Set(["joineryai.app", "www.joineryai.app"]);
 
 function GlobalNumericSelectAll() {
   useEffect(() => {
@@ -70,6 +73,17 @@ function DevAuth() {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const [hostname, setHostname] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setHostname(window.location.hostname);
+  }, []);
+
+  const isJoineryHost = useMemo(() => {
+    if (!hostname) return false;
+    return JOINERY_ALLOWED_HOSTNAMES.has(hostname);
+  }, [hostname]);
 
   const isAuthRoute = pathname?.startsWith("/login");
   const isPublicQuestionnaire = pathname?.startsWith("/q/");
@@ -144,11 +158,50 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     isEarlyAccessRoute
   );
 
+  // GA4 SPA pageview tracking for joineryai.app only.
+  useEffect(() => {
+    if (!shouldLoadAnalytics || !isJoineryHost) return;
+    if (typeof window === "undefined") return;
+    const gtag = (window as typeof window & { gtag?: (...args: unknown[]) => void }).gtag;
+    if (!gtag) return;
+    const page_path = `${window.location.pathname}${window.location.search ?? ""}`;
+    gtag("config", JOINERY_GA4_MEASUREMENT_ID, { page_path });
+  }, [pathname, shouldLoadAnalytics, isJoineryHost]);
+
   return (
     <html lang="en" className="h-full">
       <head>
         {shouldLoadAnalytics && (
           <>
+            {/* GA4 for joineryai.app only */}
+            <Script id="joinery-ga4-loader" strategy="afterInteractive">
+              {`
+                (function() {
+                  try {
+                    var host = window.location && window.location.hostname;
+                    if (host !== 'joineryai.app' && host !== 'www.joineryai.app') return;
+
+                    var id = '${JOINERY_GA4_MEASUREMENT_ID}';
+                    var existing = document.querySelector('script[src*="googletagmanager.com/gtag/js?id=' + id + '"]');
+                    if (!existing) {
+                      var s = document.createElement('script');
+                      s.async = true;
+                      s.src = 'https://www.googletagmanager.com/gtag/js?id=' + id;
+                      document.head.appendChild(s);
+                    }
+
+                    window.dataLayer = window.dataLayer || [];
+                    function gtag(){window.dataLayer.push(arguments);}
+                    window.gtag = window.gtag || gtag;
+                    window.gtag('js', new Date());
+                    window.gtag('config', id);
+                  } catch (e) {
+                    // noop
+                  }
+                })();
+              `}
+            </Script>
+
             <Script id="google-ads-gtag-loader" strategy="afterInteractive">
               {`
                 (function() {
