@@ -4,12 +4,18 @@
 // TODO: Replace GTM_ID and META_PIXEL_ID with live identifiers before launch.
 
 import Script from "next/script";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 
 const GTM_ID = "TODO_GTM_ID";
 const META_PIXEL_ID = "TODO_META_PIXEL_ID";
+const GA4_MEASUREMENT_ID = "G-PCBG93RTMY";
+
+const ALLOWED_HOSTNAMES = new Set(["lignumwindows.com", "www.lignumwindows.com"]);
 
 const shouldLoadGtm = GTM_ID !== "TODO_GTM_ID";
 const shouldLoadMetaPixel = META_PIXEL_ID !== "TODO_META_PIXEL_ID";
+const shouldLoadGa4 = GA4_MEASUREMENT_ID !== "TODO_GA4_MEASUREMENT_ID";
 
 export type TrackingPayload = {
   value?: number;
@@ -38,8 +44,54 @@ function fbTrack(event: string, payload?: TrackingPayload) {
 }
 
 export function TrackingScripts() {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [hostname, setHostname] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setHostname(window.location.hostname);
+  }, []);
+
+  const shouldLoadOnThisHost = useMemo(() => {
+    if (!hostname) return false;
+    return ALLOWED_HOSTNAMES.has(hostname);
+  }, [hostname]);
+
+  // Fire GA4 page_view on client-side navigation (Next.js App Router).
+  useEffect(() => {
+    if (!shouldLoadGa4 || !shouldLoadOnThisHost) return;
+    if (typeof window === "undefined") return;
+
+    const gtag = (window as typeof window & { gtag?: (...args: unknown[]) => void }).gtag;
+    if (!gtag) return;
+
+    const qs = searchParams?.toString();
+    const page_path = qs ? `${pathname}?${qs}` : pathname;
+
+    gtag("config", GA4_MEASUREMENT_ID, { page_path });
+  }, [pathname, searchParams, shouldLoadOnThisHost]);
+
   return (
     <>
+      {shouldLoadGa4 && shouldLoadOnThisHost && (
+        <>
+          <Script
+            src={`https://www.googletagmanager.com/gtag/js?id=${GA4_MEASUREMENT_ID}`}
+            strategy="afterInteractive"
+          />
+          <Script id="wealden-ga4" strategy="afterInteractive">
+            {`
+              window.dataLayer = window.dataLayer || [];
+              function gtag(){dataLayer.push(arguments);}
+              window.gtag = gtag;
+              gtag('js', new Date());
+              gtag('config', '${GA4_MEASUREMENT_ID}');
+            `}
+          </Script>
+        </>
+      )}
+
       {shouldLoadGtm && (
         <Script id="wealden-gtm" strategy="afterInteractive">
           {`
