@@ -321,7 +321,7 @@ export function ProjectsContent({ projectImages, lifestyleImages }: ProjectsCont
                   </div>
 
                   <Link
-                    href="/wealden-joinery/contact"
+                    href="../contact"
                     className="inline-flex items-center text-sm font-medium text-slate-900 hover:text-slate-600"
                   >
                     Start your project →
@@ -378,13 +378,13 @@ export function ProjectsContent({ projectImages, lifestyleImages }: ProjectsCont
           </div>
           <div className="flex flex-wrap justify-center gap-4">
             <Link
-              href="/wealden-joinery/contact"
+              href="../contact"
               className="border-2 border-white px-10 py-4 text-sm font-medium uppercase tracking-[0.15em] text-white transition hover:bg-white hover:text-slate-900"
             >
               Book Consultation
             </Link>
             <Link
-              href="/wealden-joinery/estimate"
+              href="../estimate"
               className="border border-white/20 px-10 py-4 text-sm font-medium uppercase tracking-[0.15em] text-white/70 transition hover:border-white/40 hover:text-white"
             >
               Request Estimate
