@@ -682,6 +682,26 @@ async function upsertClientSourceForLead(opts: {
   const trimmed = String(source || "").trim();
   if (!trimmed) return null;
 
+  // Keep LeadSourceConfig in sync so sources show up in dropdowns immediately.
+  try {
+    const existingCfg = await prisma.leadSourceConfig.findFirst({
+      where: { tenantId, source: { equals: trimmed, mode: "insensitive" } },
+      select: { id: true },
+    });
+    if (existingCfg) {
+      await prisma.leadSourceConfig.update({
+        where: { id: existingCfg.id },
+        data: { source: trimmed },
+      });
+    } else {
+      await prisma.leadSourceConfig.create({
+        data: { tenantId, source: trimmed, scalable: true },
+      });
+    }
+  } catch (e) {
+    console.warn("[leads] leadSourceConfig upsert failed:", (e as any)?.message || e);
+  }
+
   if (clientId) {
     const updated = await prisma.client.update({
       where: { id: clientId },

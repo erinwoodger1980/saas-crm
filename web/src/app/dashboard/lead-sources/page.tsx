@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import SourceCosts from "@/app/settings/SourceCosts";
+import LeadSourcesManager from "@/app/settings/LeadSourcesManager";
 import { Button } from "@/components/ui/button";
 
 export default function LeadSourcesCostsPage() {
@@ -19,6 +20,7 @@ export default function LeadSourcesCostsPage() {
         </div>
       </div>
 
+      <LeadSourcesManager />
       <SourceCosts />
     </div>
   );

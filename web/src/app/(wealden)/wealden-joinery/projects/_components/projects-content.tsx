@@ -145,6 +145,25 @@ const projects: Project[] = [
       region: "Kent"
     },
     imageIndex: 6
+  },
+  {
+    location: "East Sussex",
+    type: "Accoya back door replacement",
+    products: "Accoya timber door with Dark Knight stain",
+    description:
+      "Complete door and frame replacement for a poorly-converted rear entrance, addressing structural deficiencies from 1990s conversion work.",
+    bullets: [
+      "Accoya timber door and full replacement frame",
+      "Dark Knight stain finish for modern appearance",
+      "Multi-point locking system for enhanced security",
+      "Stonebridge lever handles for premium finish"
+    ],
+    tags: {
+      product: ["Doors"],
+      property: ["Contemporary"],
+      region: "Sussex"
+    },
+    imageIndex: 7
   }
 ];
 

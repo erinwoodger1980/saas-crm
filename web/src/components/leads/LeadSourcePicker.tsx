@@ -10,12 +10,19 @@ import { BarChart3 } from "lucide-react";
 
 type SourceInfo = {
   source: string;
-  month: string;  // ISO
-  spend: number;
-  leads: number;
-  conversions: number;
-  cpl: number | null;
-  cps: number | null;
+  month?: string | null;  // ISO
+  spend?: number;
+  leads?: number;
+  conversions?: number;
+  cpl?: number | null;
+  cps?: number | null;
+  scalable?: boolean;
+};
+
+type LeadSourceRow = {
+  id: string;
+  source: string;
+  scalable: boolean;
 };
 
 const CUSTOM = "__custom__";
@@ -44,9 +51,31 @@ export default function LeadSourcePicker({
   useEffect(() => {
     (async () => {
       try {
-        const rows = await apiFetch<SourceInfo[]>("/source-costs/sources");
+        const [configured, metrics] = await Promise.all([
+          apiFetch<LeadSourceRow[]>("/lead-sources"),
+          apiFetch<SourceInfo[]>("/source-costs/sources").catch(() => [] as SourceInfo[]),
+        ]);
+
+        const byName = new Map(
+          (metrics || []).map((m) => [m.source.trim().toLowerCase(), m])
+        );
+
+        const merged: SourceInfo[] = (configured || []).map((c) => {
+          const m = byName.get(c.source.trim().toLowerCase());
+          return {
+            source: c.source,
+            scalable: c.scalable,
+            month: m?.month ?? null,
+            spend: m?.spend ?? undefined,
+            leads: m?.leads ?? undefined,
+            conversions: m?.conversions ?? undefined,
+            cpl: m?.cpl ?? null,
+            cps: m?.cps ?? null,
+          };
+        });
+
         // sort alpha by name for nicer UX
-        setSources([...rows].sort((a, b) => a.source.localeCompare(b.source)));
+        setSources([...merged].sort((a, b) => a.source.localeCompare(b.source)));
       } catch (e: any) {
         toast({
           title: "Couldn’t load sources",
@@ -186,14 +215,20 @@ export default function LeadSourcePicker({
       {/* Inline metrics for the selected/typed source (if we have cost data) */}
       {selectedInfo ? (
         <div className="mt-1 text-xs text-slate-600">
-          Latest: <strong>{new Date(selectedInfo.month).toLocaleDateString()}</strong>
-          {" · "}Budget £{selectedInfo.spend.toFixed(0)}
-          {" · "}Leads {selectedInfo.leads}
-          {" · "}Won {selectedInfo.conversions}
+          {selectedInfo.month ? (
+            <>
+              Latest: <strong>{new Date(selectedInfo.month).toLocaleDateString()}</strong>
+              {" · "}Budget £{Number(selectedInfo.spend || 0).toFixed(0)}
+              {" · "}Leads {Number(selectedInfo.leads || 0)}
+              {" · "}Won {Number(selectedInfo.conversions || 0)}
+            </>
+          ) : (
+            <>No cost data yet.</>
+          )}
           {" · "}Conversion{" "}
-          {selectedInfo.leads ? `${Math.round((selectedInfo.conversions / Math.max(selectedInfo.leads, 1)) * 100)}%` : "–"}
-          {" · "}Cost/lead {selectedInfo.cpl != null ? `£${selectedInfo.cpl.toFixed(0)}` : "–"}
-          {" · "}COA {selectedInfo.cps != null ? `£${selectedInfo.cps.toFixed(0)}` : "–"}
+          {selectedInfo.leads ? `${Math.round(((Number(selectedInfo.conversions || 0)) / Math.max(Number(selectedInfo.leads || 0), 1)) * 100)}%` : "–"}
+          {" · "}Cost/lead {selectedInfo.cpl != null ? `£${Number(selectedInfo.cpl).toFixed(0)}` : "–"}
+          {" · "}COA {selectedInfo.cps != null ? `£${Number(selectedInfo.cps).toFixed(0)}` : "–"}
         </div>
       ) : selectVal !== NONE && (selectVal === CUSTOM ? customVal.trim() : selectVal) ? (
         <div className="mt-1 text-xs text-slate-500">
