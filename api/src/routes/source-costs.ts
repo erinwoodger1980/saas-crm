@@ -71,6 +71,13 @@ router.get("/sources", async (req: AuthedReq, res: Response) => {
     const { tenantId } = getAuth(req);
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
+    const configs = await prisma.leadSourceConfig.findMany({
+      where: { tenantId },
+      select: { source: true, scalable: true },
+    });
+    const scalableBySource = new Map<string, boolean>();
+    for (const c of configs) scalableBySource.set(String(c.source || "").trim().toLowerCase(), !!c.scalable);
+
     // Ordered so first occurrence per source is the latest
     const rows = await prisma.leadSourceCost.findMany({
       where: { tenantId },
@@ -92,6 +99,7 @@ router.get("/sources", async (req: AuthedReq, res: Response) => {
         conversions,
         cpl: leads ? spend / leads : null,
         cps: conversions ? spend / conversions : null,
+        scalable: scalableBySource.get(String(r.source || "").trim().toLowerCase()) ?? !!r.scalable,
       };
     });
 
@@ -109,6 +117,13 @@ router.get("/", async (req: AuthedReq, res: Response) => {
   try {
     const { tenantId } = getAuth(req);
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const configs = await prisma.leadSourceConfig.findMany({
+      where: { tenantId },
+      select: { source: true, scalable: true },
+    });
+    const scalableBySource = new Map<string, boolean>();
+    for (const c of configs) scalableBySource.set(String(c.source || "").trim().toLowerCase(), !!c.scalable);
 
     const parsed = listRangeSchema.safeParse(req.query);
     if (!parsed.success) return res.status(400).json({ error: "invalid_query" });
@@ -131,6 +146,7 @@ if (from || to) {
     res.json(
       rows.map((r) => ({
         ...r,
+        scalable: scalableBySource.get(String(r.source || "").trim().toLowerCase()) ?? !!r.scalable,
         month: r.month.toISOString(),
       }))
     );
@@ -162,14 +178,29 @@ router.post("/", async (req: AuthedReq, res: Response) => {
       });
     }
 
+    const source = parsed.data.source.trim();
+
+    // Single source-of-truth: ensure source exists in LeadSourceConfig and use its scalable.
+    const existingCfg = await prisma.leadSourceConfig.findFirst({
+      where: { tenantId, source: { equals: source, mode: "insensitive" } },
+      select: { id: true, scalable: true, source: true },
+    });
+
+    const cfg = existingCfg
+      ? existingCfg
+      : await prisma.leadSourceConfig.create({
+          data: { tenantId, source, scalable: parsed.data.scalable },
+          select: { id: true, scalable: true, source: true },
+        });
+
     const data = {
       tenantId,
-      source: parsed.data.source,
+      source: cfg.source,
       month: m,
       spend: parsed.data.spend,
       leads: parsed.data.leads,
       conversions: parsed.data.conversions,
-      scalable: parsed.data.scalable,
+      scalable: cfg.scalable,
     };
 
     // @@unique([tenantId, source, month]) required in Prisma schema
@@ -260,6 +291,25 @@ router.post("/recalc", async (req: AuthedReq, res: Response) => {
       byKey.set(key, v);
     }
 
+    // Ensure every discovered source exists in LeadSourceConfig so there's only one source list.
+    const uniqueSources = Array.from(new Set(Array.from(byKey.values()).map((v) => v.source.trim()).filter(Boolean)));
+    for (const src of uniqueSources) {
+      const existing = await prisma.leadSourceConfig.findFirst({
+        where: { tenantId, source: { equals: src, mode: "insensitive" } },
+        select: { id: true },
+      });
+      if (!existing) {
+        await prisma.leadSourceConfig.create({ data: { tenantId, source: src, scalable: true } });
+      }
+    }
+
+    const cfgs = await prisma.leadSourceConfig.findMany({
+      where: { tenantId },
+      select: { source: true, scalable: true },
+    });
+    const scalableBySource = new Map<string, boolean>();
+    for (const c of cfgs) scalableBySource.set(String(c.source || "").trim().toLowerCase(), !!c.scalable);
+
     // Batch upserts
     await prisma.$transaction(
       Array.from(byKey.values()).map((v) =>
@@ -271,7 +321,7 @@ router.post("/recalc", async (req: AuthedReq, res: Response) => {
             source: v.source,
             month: v.month,
             spend: 0,
-            scalable: true,
+            scalable: scalableBySource.get(String(v.source || "").trim().toLowerCase()) ?? true,
             leads: v.leads,
             conversions: v.conversions,
           },

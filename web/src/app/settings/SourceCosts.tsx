@@ -5,6 +5,13 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+type LeadSourceRow = {
+  id: string;
+  source: string;
+  scalable: boolean;
+};
 
 type CostRow = {
   id: string;
@@ -38,15 +45,25 @@ const emptyForm: FormState = {
 export default function SourceCosts() {
   const { toast } = useToast();
   const [rows, setRows] = useState<CostRow[]>([]);
+  const [leadSources, setLeadSources] = useState<LeadSourceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
 
+  const leadSourceByName = useMemo(() => {
+    const m = new Map<string, LeadSourceRow>();
+    for (const s of leadSources) m.set(s.source.trim().toLowerCase(), s);
+    return m;
+  }, [leadSources]);
+
   async function load() {
     setLoading(true);
     try {
-      const data = await apiFetch<CostRow[]>("/source-costs");
+      const [data, sources] = await Promise.all([
+        apiFetch<CostRow[]>("/source-costs"),
+        apiFetch<LeadSourceRow[]>("/lead-sources"),
+      ]);
       // Sort newest month first, then by source
       data.sort((a, b) => {
         const ma = +new Date(a.month);
@@ -55,6 +72,7 @@ export default function SourceCosts() {
         return a.source.localeCompare(b.source);
       });
       setRows(data);
+      setLeadSources((sources || []).slice().sort((a, b) => a.source.localeCompare(b.source)));
     } finally {
       setLoading(false);
     }
@@ -74,6 +92,8 @@ export default function SourceCosts() {
   }
 
   async function save() {
+    const cfg = leadSourceByName.get(form.source.trim().toLowerCase());
+
     // basic validation & coercion
     const payload = {
       source: form.source.trim(),
@@ -81,7 +101,8 @@ export default function SourceCosts() {
       spend: Number(form.spend || 0),
       leads: Number(form.leads || 0),
       conversions: Number(form.conversions || 0),
-      scalable: !!form.scalable,
+      // Scalable is managed in Lead Source List (single source of truth)
+      scalable: cfg?.scalable ?? true,
     };
 
     if (!payload.source) {
@@ -150,12 +171,29 @@ export default function SourceCosts() {
           <div className="grid grid-cols-1 gap-2 md:grid-cols-[1.2fr_0.9fr_0.8fr_0.7fr_0.7fr_auto] items-end">
             <label className="text-xs text-slate-600">
               Source
-              <input
-                className="mt-1 w-full rounded-md border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
-                placeholder="e.g. Google Ads"
-                value={form.source}
-                onChange={(e) => setForm({ ...form, source: e.target.value })}
-              />
+              <div className="mt-1">
+                <Select
+                  value={form.source}
+                  onValueChange={(v) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      source: v,
+                      scalable: leadSourceByName.get(v.trim().toLowerCase())?.scalable ?? prev.scalable,
+                    }))
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={leadSources.length ? "Select source" : "Add sources above"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {leadSources.map((s) => (
+                      <SelectItem key={s.id} value={s.source}>
+                        {s.source}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </label>
             <label className="text-xs text-slate-600">
               Month
@@ -194,19 +232,13 @@ export default function SourceCosts() {
               />
             </label>
             <div className="flex items-center justify-between gap-3">
-              <label className="inline-flex items-center gap-2 text-xs text-slate-700">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4"
-                  checked={form.scalable}
-                  onChange={(e) => setForm({ ...form, scalable: e.target.checked })}
-                />
-                Scalable
-              </label>
               <Button onClick={save} disabled={saving}>
                 {saving ? "Saving…" : "Save"}
               </Button>
             </div>
+          </div>
+          <div className="mt-2 text-xs text-slate-500">
+            Sources are managed in <b>Lead Source List</b> above.
           </div>
         </div>
       )}
@@ -260,13 +292,18 @@ export default function SourceCosts() {
                     <Td className="text-right">£{fmt0(cps)}</Td>
                     <Td className="text-right">{fmt0(convPct)}%</Td>
                     <Td className="text-center">
-                      {r.scalable ? (
+                      {(leadSourceByName.get(r.source.trim().toLowerCase())?.scalable ?? r.scalable) ? (
                         <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700 border border-emerald-200">
                           Scalable
                         </span>
                       ) : (
                         <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600 border border-slate-200">
                           Fixed
+                        </span>
+                      )}
+                      {!leadSourceByName.has(r.source.trim().toLowerCase()) && (
+                        <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800 border border-amber-200">
+                          Unconfigured
                         </span>
                       )}
                     </Td>
