@@ -183,7 +183,7 @@ export default function WealdenHomePage() {
               <div className="p-6 space-y-2">
                 <h3 className={designSystem.typography.h4}>{title}</h3>
                 <Link
-                  href="projects"
+                  href="/wealden-joinery/projects"
                   className="text-sm font-medium text-slate-900 hover:underline inline-flex items-center gap-1"
                 >
                   View project
