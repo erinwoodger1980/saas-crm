@@ -78,7 +78,7 @@ export function TemplatePickerDialog({
   const supplierProfileOptions = useMemo(() => profiles.filter((profile) => profile.type === selectedType), [profiles, selectedType]);
   const currentTemplate = useMemo(() => templates.find((tpl) => tpl.supplierProfileId === selectedProfile), [templates, selectedProfile]);
 
-  const firstFile = supplierFiles?.[0];
+  const firstFile = (supplierFiles || []).find((f: any) => f?.kind === "SUPPLIER_QUOTE") || supplierFiles?.[0];
   const trainerHref = selectedProfile
     ? `/pdf-trainer?quoteId=${encodeURIComponent(quoteId)}&profileId=${encodeURIComponent(selectedProfile)}${firstFile ? `&fileId=${encodeURIComponent(firstFile.id)}` : ""}`
     : null;

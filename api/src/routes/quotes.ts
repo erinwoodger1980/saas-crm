@@ -1953,6 +1953,15 @@ router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: an
   const q = await prisma.quote.findFirst({ where: { id, tenantId } });
   if (!q) return res.status(404).json({ error: "not_found" });
 
+  // Optional upload kind override. Defaults to SUPPLIER_QUOTE for backward compatibility.
+  // Used for non-supplier documents such as purchase orders and delivery notes.
+  const requestedKindRaw = req.query?.kind;
+  const requestedKind = typeof requestedKindRaw === "string" ? requestedKindRaw.trim() : "";
+  const allowedKinds: FileKind[] = ["SUPPLIER_QUOTE", "CLIENT_QUOTE", "OTHER"];
+  const uploadKind: FileKind = (allowedKinds as any).includes(requestedKind as any)
+    ? (requestedKind as FileKind)
+    : "SUPPLIER_QUOTE";
+
   // Auto-detect quote source from first PDF
   let detectedSourceType: string | undefined;
   let detectedProfileId: string | undefined;
@@ -1998,7 +2007,7 @@ router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: an
       }
 
       // Auto-detect quote source from first PDF (only attempt once, first PDF)
-      if (!detectedSourceType && isPdf && fileBuffer) {
+      if (!detectedSourceType && uploadKind === "SUPPLIER_QUOTE" && isPdf && fileBuffer) {
         try {
           const { extractFirstPageText } = await import("../lib/pdfMetadata");
           const { autoDetectQuoteSourceProfile } = await import("../lib/quoteSourceProfiles");
@@ -2032,7 +2041,7 @@ router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: an
         data: {
           tenantId,
           quoteId: id,
-          kind: "SUPPLIER_QUOTE",
+          kind: uploadKind,
           name: (typeof f.originalname === 'string' && f.originalname.trim()) ? f.originalname.trim() : 'attachment',
           path: path.relative(process.cwd(), f.path),
           content: contentToStore ? Uint8Array.from(contentToStore) : undefined,
@@ -2048,7 +2057,7 @@ router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: an
   }
 
   // Update quote with detected source type and profile (if detected)
-  if (detectedSourceType && detectedProfileId) {
+  if (uploadKind === "SUPPLIER_QUOTE" && detectedSourceType && detectedProfileId) {
     const dbSourceType = toDbQuoteSourceType(detectedSourceType);
     await prisma.quote.update({
       where: { id },
@@ -2419,6 +2428,7 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
       const parsedLinesForDb: Prisma.ParsedSupplierLineCreateManyInput[] = [];
 
       const filesToParse = [...quote.supplierFiles]
+        .filter((x: any) => x?.kind === "SUPPLIER_QUOTE")
         .filter((x) => /pdf$/i.test(x.mimeType || "") || /\.pdf$/i.test(x.name || ""))
         .sort((a: any, b: any) => new Date(b.uploadedAt || b.createdAt || 0).getTime() - new Date(a.uploadedAt || a.createdAt || 0).getTime())
         .slice(0, 3);
@@ -5330,6 +5340,7 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
     })();
 
     const pdfFiles = (quote.supplierFiles || [])
+      .filter((f: any) => f?.kind === "SUPPLIER_QUOTE")
       .filter((f: any) => /pdf$/i.test(f.mimeType || "") || /\.pdf$/i.test(f.name || ""))
       .sort((a: any, b: any) => {
         const at = a?.uploadedAt ? new Date(a.uploadedAt).getTime() : 0;

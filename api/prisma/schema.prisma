@@ -146,6 +146,9 @@ model Tenant {
   monthlyWageBills           MonthlyWageBill[]           @relation("MonthlyWageBills")
   monthlyProjectMetrics      MonthlyProjectMetrics[]     @relation("MonthlyProjectMetrics")
   fireDoorRFIs               FireDoorRFI[]               @relation("TenantFireDoorRFIs")
+  timberDeliveries           TimberDelivery[]            @relation("TenantTimberDeliveries")
+  timberDeliveryLines        TimberDeliveryLine[]        @relation("TenantTimberDeliveryLines")
+  timberUsageLogs            TimberUsageLog[]            @relation("TenantTimberUsageLogs")
 }
 
 model LippingLookup {
@@ -817,6 +820,7 @@ model User {
   fireDoorQRScans            FireDoorQRScan[]            @relation("FireDoorQRScans")
   fireDoorMaintenanceRecords FireDoorMaintenanceRecord[] @relation("FireDoorMaintenanceRecords")
   devTimeEntries             DevTimeEntry[]
+  timberUsageLogs            TimberUsageLog[]            @relation("TimberUsageUser")
   supplier                   Supplier?                   @relation(fields: [supplierId], references: [id])
   tenant                     Tenant                      @relation(fields: [tenantId], references: [id])
   clients                    Client[]
@@ -1027,6 +1031,7 @@ model Opportunity {
   workshopTimers           WorkshopTimer[]
   project                  Project?                   @relation("ProjectOpportunity")
   monthlyProjectMetrics    MonthlyProjectMetrics[]
+  timberUsageLogs          TimberUsageLog[]            @relation("OpportunityTimberUsage")
 
   @@index([tenantId, stage])
   @@index([clientId])
@@ -2528,6 +2533,7 @@ model Supplier {
   componentVariants     ComponentVariant[]     @relation("SupplierVariants")
   bomVariantLineItems   BOMVariantLineItem[]   @relation("SupplierVariantBOM")
   lookupTableRows       LookupTableRow[]       @relation("LookupRowSupplier")
+  timberDeliveries       TimberDelivery[]       @relation("TimberDeliverySupplier")
 
   @@index([tenantId])
   @@index([email])
@@ -2824,6 +2830,8 @@ model Material {
   updatedAt      DateTime         @updatedAt
   tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   componentsUsingThis ComponentLookup[] @relation("ComponentMaterial")
+  timberDeliveryLines TimberDeliveryLine[] @relation("TimberDeliveryLineMaterial")
+  timberUsageLogs     TimberUsageLog[]     @relation("TimberUsageMaterial")
 
   @@unique([tenantId, code])
   @@index([tenantId, category, isActive])
@@ -3260,6 +3268,79 @@ model PurchaseOrderLine {
 
   @@index([purchaseOrderId])
   @@index([materialItemId])
+}
+
+// ============================================================================
+// Workshop Timber Tracking (running metres, deliveries, and usage logs)
+// Notes:
+// - Timber sections are represented by Material rows (category TIMBER_*, with width/thickness set)
+// - Workshop projects currently use Opportunity.id as the project identifier
+// ============================================================================
+
+model TimberDelivery {
+  id          String   @id @default(cuid())
+  tenantId    String
+  supplierId  String?
+  reference   String?
+  deliveredAt DateTime @default(now())
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant   Tenant    @relation("TenantTimberDeliveries", fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier Supplier? @relation("TimberDeliverySupplier", fields: [supplierId], references: [id], onDelete: SetNull)
+  lines    TimberDeliveryLine[]
+
+  @@index([tenantId])
+  @@index([tenantId, deliveredAt])
+  @@index([supplierId])
+}
+
+model TimberDeliveryLine {
+  id               String   @id @default(cuid())
+  tenantId         String
+  deliveryId       String
+  materialId       String
+  lengthMmTotal    Int      // Total delivered length across pieces (mm)
+  totalCost        Decimal  @default(0)
+  currency         String   @default("GBP")
+  unitCostPerMeter Decimal  @default(0) // Convenience for costing usage; can be derived from totals
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tenant   Tenant         @relation("TenantTimberDeliveryLines", fields: [tenantId], references: [id], onDelete: Cascade)
+  delivery TimberDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  material Material       @relation("TimberDeliveryLineMaterial", fields: [materialId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([deliveryId])
+  @@index([materialId])
+  @@index([tenantId, materialId, createdAt])
+}
+
+model TimberUsageLog {
+  id            String   @id @default(cuid())
+  tenantId      String
+  opportunityId String
+  materialId    String
+  userId        String?
+  lengthMm      Int
+  quantity      Int      @default(1)
+  usedAt        DateTime @default(now())
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant      Tenant       @relation("TenantTimberUsageLogs", fields: [tenantId], references: [id], onDelete: Cascade)
+  opportunity Opportunity  @relation("OpportunityTimberUsage", fields: [opportunityId], references: [id], onDelete: Cascade)
+  material    Material     @relation("TimberUsageMaterial", fields: [materialId], references: [id], onDelete: Restrict)
+  user        User?        @relation("TimberUsageUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, opportunityId])
+  @@index([tenantId, materialId])
+  @@index([tenantId, usedAt])
 }
 
 model FireDoorImport {

@@ -376,6 +376,20 @@ function isoToDateInput(value: any): string {
 
 type Stage = 'client' | 'quote' | 'dates' | 'finance' | 'tasks' | 'order';
 
+type TimberTotals = {
+  totalMeters: number;
+  totalCost: number;
+  currency: string;
+};
+
+type QuoteFileLite = {
+  id: string;
+  name?: string;
+  kind?: string;
+  uploadedAt?: string;
+  path?: string;
+};
+
 export default function LeadModal({
   open,
   onOpenChange,
@@ -694,6 +708,16 @@ export default function LeadModal({
 
   // Quote lines state
   const [quoteLines, setQuoteLines] = useState<any[]>([]);
+
+  // Finance: workshop timber totals (per opportunity)
+  const [timberTotals, setTimberTotals] = useState<TimberTotals | null>(null);
+  const [timberTotalsLoading, setTimberTotalsLoading] = useState(false);
+  const [timberTotalsError, setTimberTotalsError] = useState<string | null>(null);
+
+  // Finance: quote-linked documents (stored as UploadedFile rows)
+  const [financeQuoteFiles, setFinanceQuoteFiles] = useState<QuoteFileLite[]>([]);
+  const [financeQuoteFilesLoading, setFinanceQuoteFilesLoading] = useState(false);
+  const [financeQuoteFilesError, setFinanceQuoteFilesError] = useState<string | null>(null);
   const addQuoteLineInFlightRef = useRef(false);
 
   // Material tracking state
@@ -2892,6 +2916,139 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     input.click();
   }
 
+  async function loadFinanceQuoteFiles(quoteId: string) {
+    if (!quoteId) {
+      setFinanceQuoteFiles([]);
+      setFinanceQuoteFilesError(null);
+      setFinanceQuoteFilesLoading(false);
+      return;
+    }
+    setFinanceQuoteFilesLoading(true);
+    setFinanceQuoteFilesError(null);
+    try {
+      const q = await apiFetch<any>(`/quotes/${encodeURIComponent(quoteId)}`, { headers: authHeaders });
+      const files = Array.isArray(q?.supplierFiles) ? (q.supplierFiles as QuoteFileLite[]) : [];
+      setFinanceQuoteFiles(files);
+    } catch (e: any) {
+      setFinanceQuoteFiles([]);
+      setFinanceQuoteFilesError(e?.message || 'Failed to load quote files');
+    } finally {
+      setFinanceQuoteFilesLoading(false);
+    }
+  }
+
+  async function openQuoteFile(quoteId: string, fileId: string) {
+    if (!quoteId || !fileId) return;
+    try {
+      const signed = await apiFetch<any>(
+        `/quotes/${encodeURIComponent(quoteId)}/files/${encodeURIComponent(fileId)}/signed`,
+        { headers: authHeaders }
+      );
+      const url: string | undefined = signed?.url;
+      if (url) window.open(url, '_blank');
+    } catch (e) {
+      alert('Failed to open file');
+    }
+  }
+
+  const formatShortDate = (iso?: string) => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (!Number.isFinite(d.getTime())) return null;
+    return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  };
+
+  async function uploadFinanceDoc(opts: { label: 'PO' | 'Delivery note'; filenamePrefix: string }) {
+    if (!lead?.id) return;
+
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/pdf,image/*';
+    input.multiple = true;
+    input.onchange = async () => {
+      const files = Array.from(input.files || []);
+      if (!files.length) return;
+      setSaving(true);
+      try {
+        // Ensure a draft quote exists
+        let quoteId: string | null = lead.quoteId || null;
+        if (!quoteId) {
+          const quote = await apiFetch<any>("/quotes", {
+            method: "POST",
+            headers: { ...authHeaders, "Content-Type": "application/json" },
+            json: {
+              leadId: lead.id,
+              title: `Estimate for ${lead.contactName || lead.email || "Lead"}`,
+            },
+          });
+          quoteId = quote?.id || null;
+        }
+        if (!quoteId) throw new Error('no_quote');
+
+        const fd = new FormData();
+        for (const f of files) {
+          fd.append('files', f, `${opts.filenamePrefix}${f.name}`);
+        }
+
+        await fetch(`${API_BASE}/quotes/${encodeURIComponent(quoteId)}/files?kind=OTHER`, {
+          method: 'POST',
+          headers: authHeaders as any,
+          body: fd,
+          credentials: 'include',
+        });
+
+        await loadFinanceQuoteFiles(quoteId);
+        toast(`${opts.label} uploaded`);
+      } catch (e) {
+        console.error(e);
+        alert(`Failed to upload ${opts.label}`);
+      } finally {
+        setSaving(false);
+      }
+    };
+    input.click();
+  }
+
+  useEffect(() => {
+    const qid = lead?.quoteId || null;
+    if (!qid) {
+      setFinanceQuoteFiles([]);
+      return;
+    }
+    loadFinanceQuoteFiles(qid);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead?.quoteId]);
+
+  useEffect(() => {
+    const oid = opportunityId || null;
+    if (!oid) {
+      setTimberTotals(null);
+      setTimberTotalsError(null);
+      setTimberTotalsLoading(false);
+      return;
+    }
+    setTimberTotalsLoading(true);
+    setTimberTotalsError(null);
+    apiFetch<any>(`/workshop/timber/usage?opportunityId=${encodeURIComponent(oid)}`, { headers: authHeaders })
+      .then((r) => {
+        if (!r?.ok || !r?.totals) {
+          setTimberTotals(null);
+          return;
+        }
+        setTimberTotals({
+          totalMeters: Number(r.totals.totalMeters || 0),
+          totalCost: Number(r.totals.totalCost || 0),
+          currency: String(r.totals.currency || 'GBP'),
+        });
+      })
+      .catch((e: any) => {
+        setTimberTotals(null);
+        setTimberTotalsError(e?.message || 'Failed to load timber totals');
+      })
+      .finally(() => setTimberTotalsLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opportunityId]);
+
   // -------------------- Supplier PDF parse tester --------------------
   const [parseTesterOpen, setParseTesterOpen] = useState(false);
   const [_parseTesterBusy, setParseTesterBusy] = useState(false);
@@ -2925,8 +3082,12 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
 
       // Load current files; if none, prompt user to pick a PDF and upload it, then continue
       let q = await apiFetch<any>(`/quotes/${encodeURIComponent(qid)}`);
-      let files: Array<{ id: string; name?: string; uploadedAt?: string; createdAt?: string }>= Array.isArray(q?.supplierFiles) ? q.supplierFiles : [];
-      if (!files.length) {
+      let files: Array<{ id: string; name?: string; uploadedAt?: string; createdAt?: string; kind?: string; mimeType?: string }>= Array.isArray(q?.supplierFiles) ? q.supplierFiles : [];
+      let supplierPdfFiles = files
+        .filter((f) => f?.kind === "SUPPLIER_QUOTE")
+        .filter((f) => /pdf$/i.test(f?.mimeType || "") || /\.pdf$/i.test(f?.name || ""));
+
+      if (!supplierPdfFiles.length) {
         // Prompt selection
         const input = document.createElement("input");
         input.type = "file";
@@ -2956,10 +3117,13 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         // Re-fetch quote with files
         q = await apiFetch<any>(`/quotes/${encodeURIComponent(qid)}`);
         files = Array.isArray(q?.supplierFiles) ? q.supplierFiles : [];
+        supplierPdfFiles = (files as any[])
+          .filter((f) => f?.kind === "SUPPLIER_QUOTE")
+          .filter((f) => /pdf$/i.test(f?.mimeType || "") || /\.pdf$/i.test(f?.name || ""));
       }
 
       // Pick the most recent supplier file
-      const latest = [...files].sort((a, b) => new Date(b.uploadedAt || b.createdAt || 0).getTime() - new Date(a.uploadedAt || a.createdAt || 0).getTime())[0];
+      const latest = [...supplierPdfFiles].sort((a, b) => new Date(b.uploadedAt || b.createdAt || 0).getTime() - new Date(a.uploadedAt || a.createdAt || 0).getTime())[0];
       const signed = await apiFetch<any>(`/quotes/${encodeURIComponent(qid)}/files/${encodeURIComponent(latest.id)}/signed`);
       const url: string | undefined = signed?.url;
       if (!url) {
@@ -5612,6 +5776,119 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                             }}
                           />
                         </label>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
+                    <span aria-hidden="true">🪵</span>
+                    Workshop timber
+                  </div>
+
+                  {!opportunityId ? (
+                    <div className="text-sm text-slate-500">No project linked yet.</div>
+                  ) : timberTotalsLoading ? (
+                    <div className="text-sm text-slate-500">Loading…</div>
+                  ) : timberTotalsError ? (
+                    <div className="text-sm text-slate-500">{timberTotalsError}</div>
+                  ) : timberTotals ? (
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="rounded-xl border border-slate-200/70 bg-white/70 p-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">Total metres</div>
+                        <div className="text-sm font-semibold text-slate-900">{Number(timberTotals.totalMeters || 0).toFixed(2)}m</div>
+                      </div>
+                      <div className="rounded-xl border border-slate-200/70 bg-white/70 p-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">Total cost</div>
+                        <div className="text-sm font-semibold text-slate-900">
+                          {timberTotals.currency === 'GBP'
+                            ? `£${Number(timberTotals.totalCost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : `${Number(timberTotals.totalCost || 0).toFixed(2)} ${timberTotals.currency}`}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-slate-500">No timber usage logged yet.</div>
+                  )}
+                </section>
+
+                <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
+                    <span aria-hidden="true">📎</span>
+                    Purchase order & delivery note
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="rounded-xl border border-slate-200/70 bg-white/70 p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Purchase order</div>
+                        <Button type="button" variant="outline" size="sm" onClick={() => uploadFinanceDoc({ label: 'PO', filenamePrefix: 'PO - ' })}>
+                          Upload
+                        </Button>
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        {financeQuoteFilesLoading ? (
+                          <div className="text-sm text-slate-500">Loading…</div>
+                        ) : financeQuoteFilesError ? (
+                          <div className="text-sm text-slate-500">{financeQuoteFilesError}</div>
+                        ) : (
+                          (financeQuoteFiles || [])
+                            .filter((f) => String(f?.name || '').toLowerCase().startsWith('po - '))
+                            .map((f) => (
+                              <div key={f.id} className="space-y-0.5">
+                                <button
+                                  type="button"
+                                  className="w-full text-left text-sm text-slate-700 hover:underline"
+                                  onClick={() => lead?.quoteId && openQuoteFile(lead.quoteId, f.id)}
+                                >
+                                  {f.name || 'PO'}
+                                </button>
+                                {formatShortDate(f.uploadedAt) && (
+                                  <div className="text-xs text-slate-500">Uploaded {formatShortDate(f.uploadedAt)}</div>
+                                )}
+                              </div>
+                            ))
+                        )}
+                        {(!financeQuoteFilesLoading && !financeQuoteFilesError && (financeQuoteFiles || []).filter((f) => String(f?.name || '').toLowerCase().startsWith('po - ')).length === 0) && (
+                          <div className="text-sm text-slate-500">No PO uploaded</div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200/70 bg-white/70 p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Delivery note</div>
+                        <Button type="button" variant="outline" size="sm" onClick={() => uploadFinanceDoc({ label: 'Delivery note', filenamePrefix: 'Delivery note - ' })}>
+                          Upload
+                        </Button>
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        {financeQuoteFilesLoading ? (
+                          <div className="text-sm text-slate-500">Loading…</div>
+                        ) : financeQuoteFilesError ? (
+                          <div className="text-sm text-slate-500">{financeQuoteFilesError}</div>
+                        ) : (
+                          (financeQuoteFiles || [])
+                            .filter((f) => String(f?.name || '').toLowerCase().startsWith('delivery note - '))
+                            .map((f) => (
+                              <div key={f.id} className="space-y-0.5">
+                                <button
+                                  type="button"
+                                  className="w-full text-left text-sm text-slate-700 hover:underline"
+                                  onClick={() => lead?.quoteId && openQuoteFile(lead.quoteId, f.id)}
+                                >
+                                  {f.name || 'Delivery note'}
+                                </button>
+                                {formatShortDate(f.uploadedAt) && (
+                                  <div className="text-xs text-slate-500">Uploaded {formatShortDate(f.uploadedAt)}</div>
+                                )}
+                              </div>
+                            ))
+                        )}
+                        {(!financeQuoteFilesLoading && !financeQuoteFilesError && (financeQuoteFiles || []).filter((f) => String(f?.name || '').toLowerCase().startsWith('delivery note - ')).length === 0) && (
+                          <div className="text-sm text-slate-500">No delivery note uploaded</div>
+                        )}
                       </div>
                     </div>
                   </div>

@@ -588,6 +588,7 @@ export default function QuoteBuilderPage() {
         // Keep user on this tab so they can preview + review parsed lines.
         // Default preview to the most recently uploaded file.
         const latest = (quote?.supplierFiles ?? [])
+          .filter((f: any) => f?.kind === "SUPPLIER_QUOTE")
           .slice()
           .sort((a, b) => new Date(b.uploadedAt || 0).getTime() - new Date(a.uploadedAt || 0).getTime())[0];
         if (latest?.id) {

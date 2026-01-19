@@ -36,23 +36,83 @@ type UserLite = {
   workshopColor?: string | null;
 };
 
+type SupplierLite = {
+  id: string;
+  name: string;
+};
+
+type TimberMaterial = {
+  id: string;
+  code: string;
+  name: string;
+  category: string;
+  thickness?: any;
+  width?: any;
+  unitCost?: any;
+  currency?: string;
+  unit?: string;
+};
+
+type TimberUsageTotals = {
+  totalMillimeters: number;
+  totalMeters: number;
+  totalCost: number;
+  currency: string;
+};
+
+type TimberUsageResponse = {
+  ok: boolean;
+  totals?: TimberUsageTotals;
+};
+
 export default function MobileWorkshopPage() {
   const { user } = useCurrentUser();
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<Project[]>([]);
   const [processes, setProcesses] = useState<ProcessDef[]>([]);
   const [users, setUsers] = useState<UserLite[]>([]);
+  const [timberMaterials, setTimberMaterials] = useState<TimberMaterial[]>([]);
+  const [suppliers, setSuppliers] = useState<SupplierLite[]>([]);
+  const [timberTotalsLoading, setTimberTotalsLoading] = useState(false);
+  const [timberTotalsError, setTimberTotalsError] = useState<string | null>(null);
+  const [timberTotals, setTimberTotals] = useState<TimberUsageTotals | null>(null);
+  const [timberProjectId, setTimberProjectId] = useState<string>('');
   const [calendarViewMode, setCalendarViewMode] = useState<'week' | 'month' | 'year'>('month');
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
   const [currentWeek, setCurrentWeek] = useState(() => new Date());
   const [currentYear, setCurrentYear] = useState(() => new Date().getFullYear());
   const [showQuickLog, setShowQuickLog] = useState(false);
+  const [showTimberLog, setShowTimberLog] = useState(false);
+  const [showTimberDeliveryLog, setShowTimberDeliveryLog] = useState(false);
   const [quickLogForm, setQuickLogForm] = useState({
     projectId: '',
     process: '',
     hours: '',
     date: new Date().toISOString().split('T')[0],
     notes: ''
+  });
+
+  const [timberLogForm, setTimberLogForm] = useState({
+    opportunityId: '',
+    materialId: '',
+    lengthMm: '',
+    quantity: '1',
+    date: new Date().toISOString().split('T')[0],
+    notes: ''
+  });
+
+  const [timberDeliveryForm, setTimberDeliveryForm] = useState({
+    supplierId: '__none__',
+    reference: '',
+    date: new Date().toISOString().split('T')[0],
+    notes: '',
+    lines: [
+      {
+        materialId: '',
+        lengthMmTotal: '',
+        totalCost: '',
+      },
+    ],
   });
 
   async function loadAll() {
@@ -65,10 +125,12 @@ export default function MobileWorkshopPage() {
         }
       }
 
-      const [schedR, procsR, usersR] = await Promise.allSettled([
+      const [schedR, procsR, usersR, timberR, suppliersR] = await Promise.allSettled([
         apiFetch<{ ok: boolean; projects: Project[] }>("/workshop/schedule?weeks=4"),
         apiFetch<ProcessDef[]>("/workshop-processes"),
         apiFetch<{ ok: boolean; items: UserLite[] }>("/workshop/users"),
+        apiFetch<{ ok: boolean; items: TimberMaterial[] }>("/workshop/timber/materials"),
+        apiFetch<{ ok?: boolean; items?: SupplierLite[] } | SupplierLite[]>('/suppliers'),
       ]);
 
       if (schedR.status === 'fulfilled' && schedR.value?.ok) {
@@ -85,6 +147,18 @@ export default function MobileWorkshopPage() {
       if (usersR.status === 'fulfilled' && usersR.value?.ok) {
         setUsers(usersR.value.items);
       }
+
+      if (timberR.status === 'fulfilled' && timberR.value?.ok) {
+        setTimberMaterials((timberR.value.items || []).filter((m) => m));
+      }
+
+      if (suppliersR.status === 'fulfilled') {
+        const v: any = suppliersR.value;
+        const items = Array.isArray(v) ? v : (v?.items ?? []);
+        if (Array.isArray(items)) {
+          setSuppliers(items.filter((s) => s && s.id && s.name));
+        }
+      }
     } catch (e) {
       console.error("Failed to load workshop:", e);
     } finally {
@@ -95,6 +169,48 @@ export default function MobileWorkshopPage() {
   useEffect(() => {
     loadAll();
   }, []);
+
+  const refreshTimberTotals = async (opportunityId: string) => {
+    if (!opportunityId) return;
+    setTimberTotalsLoading(true);
+    setTimberTotalsError(null);
+    try {
+      const r = await apiFetch<TimberUsageResponse>(
+        `/workshop/timber/usage?opportunityId=${encodeURIComponent(opportunityId)}`
+      );
+      if (!r?.ok) {
+        setTimberTotals(null);
+        setTimberTotalsError('Failed to load timber totals');
+        return;
+      }
+      setTimberTotals(r.totals ?? null);
+    } catch (e: any) {
+      setTimberTotals(null);
+      setTimberTotalsError(e?.message || 'Failed to load timber totals');
+    } finally {
+      setTimberTotalsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const opportunityId = timberProjectId;
+    if (!opportunityId) {
+      setTimberTotals(null);
+      setTimberTotalsError(null);
+      setTimberTotalsLoading(false);
+      return;
+    }
+
+    refreshTimberTotals(opportunityId).catch(() => {});
+  }, [timberProjectId]);
+
+  const formatCurrency = (value: number, currency: string) => {
+    try {
+      return new Intl.NumberFormat('en-GB', { style: 'currency', currency }).format(value);
+    } catch {
+      return `£${(Number.isFinite(value) ? value : 0).toFixed(2)}`;
+    }
+  };
 
   async function handleQuickLog() {
     if (!quickLogForm.projectId || !quickLogForm.process || !quickLogForm.hours) return;
@@ -122,6 +238,95 @@ export default function MobileWorkshopPage() {
       await loadAll();
     } catch (e: any) {
       alert('Failed to log hours: ' + (e?.message || 'Unknown error'));
+    }
+  }
+
+  async function handleTimberLog() {
+    const opportunityId = timberProjectId || timberLogForm.opportunityId;
+    if (!opportunityId || !timberLogForm.materialId || !timberLogForm.lengthMm) return;
+    const lengthMm = Number(timberLogForm.lengthMm);
+    const quantity = Number(timberLogForm.quantity || '1');
+    if (!Number.isFinite(lengthMm) || lengthMm <= 0) return;
+    if (!Number.isFinite(quantity) || quantity <= 0) return;
+
+    try {
+      await apiFetch('/workshop/timber/usage', {
+        method: 'POST',
+        json: {
+          opportunityId,
+          materialId: timberLogForm.materialId,
+          lengthMm,
+          quantity,
+          usedAt: timberLogForm.date ? new Date(`${timberLogForm.date}T12:00:00.000Z`).toISOString() : undefined,
+          notes: timberLogForm.notes || undefined,
+        },
+      });
+
+      await refreshTimberTotals(opportunityId);
+      setTimberLogForm({
+        opportunityId,
+        materialId: timberLogForm.materialId,
+        lengthMm: '',
+        quantity: '1',
+        date: new Date().toISOString().split('T')[0],
+        notes: ''
+      });
+      await loadAll();
+    } catch (e: any) {
+      alert('Failed to log timber: ' + (e?.message || 'Unknown error'));
+    }
+  }
+
+  async function handleTimberDeliveryLog() {
+    const lines = timberDeliveryForm.lines
+      .map((l) => ({
+        materialId: l.materialId,
+        lengthMmTotal: Number(l.lengthMmTotal),
+        totalCost: Number(l.totalCost),
+      }))
+      .filter((l) => l.materialId && Number.isFinite(l.lengthMmTotal) && l.lengthMmTotal > 0);
+
+    if (lines.length < 1) return;
+    for (const l of lines) {
+      if (!Number.isFinite(l.totalCost) || l.totalCost < 0) return;
+    }
+
+    try {
+      await apiFetch('/workshop/timber/deliveries', {
+        method: 'POST',
+        json: {
+          supplierId: timberDeliveryForm.supplierId === '__none__' ? undefined : timberDeliveryForm.supplierId,
+          reference: timberDeliveryForm.reference || undefined,
+          deliveredAt: timberDeliveryForm.date ? new Date(`${timberDeliveryForm.date}T12:00:00.000Z`).toISOString() : undefined,
+          notes: timberDeliveryForm.notes || undefined,
+          lines: lines.map((l) => ({
+            materialId: l.materialId,
+            lengthMmTotal: l.lengthMmTotal,
+            totalCost: l.totalCost,
+            currency: 'GBP',
+          })),
+        },
+      });
+
+      if (timberProjectId) {
+        await refreshTimberTotals(timberProjectId);
+      }
+
+      setTimberDeliveryForm({
+        supplierId: timberDeliveryForm.supplierId,
+        reference: '',
+        date: new Date().toISOString().split('T')[0],
+        notes: '',
+        lines: [
+          {
+            materialId: '',
+            lengthMmTotal: '',
+            totalCost: '',
+          },
+        ],
+      });
+    } catch (e: any) {
+      alert('Failed to log delivery: ' + (e?.message || 'Unknown error'));
     }
   }
 
@@ -195,6 +400,54 @@ export default function MobileWorkshopPage() {
 
       {/* Main content */}
       <div className="p-4 max-w-2xl mx-auto space-y-4">
+        {/* Timber totals (always visible) */}
+        <Card className="p-4 space-y-3">
+          <div className="font-semibold">Timber totals</div>
+          <div>
+            <label className="text-sm font-medium mb-1 block">Project</label>
+            <Select
+              value={timberProjectId}
+              onValueChange={(v) => {
+                setTimberProjectId(v);
+                setTimberLogForm((f) => ({ ...f, opportunityId: v }));
+              }}
+            >
+              <SelectTrigger className="h-12">
+                <SelectValue placeholder="Select project" />
+              </SelectTrigger>
+              <SelectContent>
+                {projects.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {!timberProjectId ? (
+            <div className="text-sm text-muted-foreground">Select a project to view totals</div>
+          ) : timberTotalsLoading ? (
+            <div className="text-sm text-muted-foreground">Loading…</div>
+          ) : timberTotalsError ? (
+            <div className="text-sm text-muted-foreground">{timberTotalsError}</div>
+          ) : timberTotals ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="text-xs text-muted-foreground">Total metres</div>
+                <div className="text-sm font-semibold">{Number(timberTotals.totalMeters || 0).toFixed(2)}m</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Total cost</div>
+                <div className="text-sm font-semibold">
+                  {formatCurrency(Number(timberTotals.totalCost || 0), timberTotals.currency || 'GBP')}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">No usage yet</div>
+          )}
+        </Card>
         {/* View tabs */}
         <Tabs value={calendarViewMode} onValueChange={(v) => setCalendarViewMode(v as 'week' | 'month' | 'year')}>
           <TabsList className="grid w-full grid-cols-3">
@@ -300,6 +553,26 @@ export default function MobileWorkshopPage() {
           {showQuickLog ? 'Cancel' : 'Log Hours Manually'}
         </Button>
 
+        {/* Quick log timber button */}
+        <Button
+          onClick={() => setShowTimberLog(!showTimberLog)}
+          variant="outline"
+          className="w-full"
+          size="lg"
+        >
+          {showTimberLog ? 'Cancel' : 'Log Timber Used'}
+        </Button>
+
+        {/* Quick log timber delivery button */}
+        <Button
+          onClick={() => setShowTimberDeliveryLog(!showTimberDeliveryLog)}
+          variant="outline"
+          className="w-full"
+          size="lg"
+        >
+          {showTimberDeliveryLog ? 'Cancel' : 'Log Timber Delivery'}
+        </Button>
+
         {/* Quick log form */}
         {showQuickLog && (
           <Card className="p-4 space-y-4">
@@ -373,6 +646,274 @@ export default function MobileWorkshopPage() {
               size="lg"
             >
               Log Hours
+            </Button>
+          </Card>
+        )}
+
+        {/* Timber log form */}
+        {showTimberLog && (
+          <Card className="p-4 space-y-4">
+            <h3 className="font-semibold">Log Timber Used</h3>
+
+            <div>
+              <label className="text-sm font-medium mb-1 block">Project</label>
+              <Select
+                value={timberProjectId}
+                onValueChange={(v) => {
+                  setTimberProjectId(v);
+                  setTimberLogForm((f) => ({ ...f, opportunityId: v }));
+                }}
+              >
+                <SelectTrigger className="h-12">
+                  <SelectValue placeholder="Select project" />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-1 block">Timber section</label>
+              <Select value={timberLogForm.materialId} onValueChange={(v) => setTimberLogForm(f => ({ ...f, materialId: v }))}>
+                <SelectTrigger className="h-12">
+                  <SelectValue placeholder="Select timber" />
+                </SelectTrigger>
+                <SelectContent>
+                  {timberMaterials.map((m) => {
+                    const t = m.thickness != null ? Number(m.thickness) : null;
+                    const w = m.width != null ? Number(m.width) : null;
+                    const dims = Number.isFinite(t as any) && Number.isFinite(w as any) ? ` (${t}x${w}mm)` : '';
+                    return (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.name}{dims}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium mb-1 block">Length (mm)</label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={timberLogForm.lengthMm}
+                  onChange={(e) => setTimberLogForm(f => ({ ...f, lengthMm: e.target.value }))}
+                  placeholder="e.g. 2400"
+                  className="h-12"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1 block">Qty</label>
+                <Input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={timberLogForm.quantity}
+                  onChange={(e) => setTimberLogForm(f => ({ ...f, quantity: e.target.value }))}
+                  className="h-12"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-1 block">Date</label>
+              <Input
+                type="date"
+                value={timberLogForm.date}
+                onChange={(e) => setTimberLogForm(f => ({ ...f, date: e.target.value }))}
+                className="h-12"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-1 block">Notes (optional)</label>
+              <Input
+                value={timberLogForm.notes}
+                onChange={(e) => setTimberLogForm(f => ({ ...f, notes: e.target.value }))}
+                placeholder="Add a note..."
+                className="h-12"
+              />
+            </div>
+
+            <Button
+              onClick={handleTimberLog}
+              disabled={!timberProjectId || !timberLogForm.materialId || !timberLogForm.lengthMm}
+              className="w-full"
+              size="lg"
+            >
+              Log Timber
+            </Button>
+          </Card>
+        )}
+
+        {/* Timber delivery log form */}
+        {showTimberDeliveryLog && (
+          <Card className="p-4 space-y-4">
+            <h3 className="font-semibold">Log Timber Delivery</h3>
+
+            <div>
+              <label className="text-sm font-medium mb-1 block">Supplier (optional)</label>
+              <Select value={timberDeliveryForm.supplierId} onValueChange={(v) => setTimberDeliveryForm((f) => ({ ...f, supplierId: v }))}>
+                <SelectTrigger className="h-12">
+                  <SelectValue placeholder="Select supplier" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">No supplier</SelectItem>
+                  {suppliers.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium mb-1 block">Date</label>
+                <Input
+                  type="date"
+                  value={timberDeliveryForm.date}
+                  onChange={(e) => setTimberDeliveryForm((f) => ({ ...f, date: e.target.value }))}
+                  className="h-12"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1 block">Reference (optional)</label>
+                <Input
+                  value={timberDeliveryForm.reference}
+                  onChange={(e) => setTimberDeliveryForm((f) => ({ ...f, reference: e.target.value }))}
+                  placeholder="e.g. invoice #"
+                  className="h-12"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-1 block">Notes (optional)</label>
+              <Input
+                value={timberDeliveryForm.notes}
+                onChange={(e) => setTimberDeliveryForm((f) => ({ ...f, notes: e.target.value }))}
+                placeholder="Add a note..."
+                className="h-12"
+              />
+            </div>
+
+            <div className="space-y-3">
+              <div className="text-sm font-medium">Lines</div>
+              {timberDeliveryForm.lines.map((line, idx) => (
+                <div key={idx} className="rounded-md border bg-white p-3 space-y-3">
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Timber section</label>
+                    <Select
+                      value={line.materialId}
+                      onValueChange={(v) =>
+                        setTimberDeliveryForm((f) => ({
+                          ...f,
+                          lines: f.lines.map((l, i) => (i === idx ? { ...l, materialId: v } : l)),
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="h-12">
+                        <SelectValue placeholder="Select timber" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {timberMaterials.map((m) => {
+                          const t = m.thickness != null ? Number(m.thickness) : null;
+                          const w = m.width != null ? Number(m.width) : null;
+                          const dims = Number.isFinite(t as any) && Number.isFinite(w as any) ? ` (${t}x${w}mm)` : '';
+                          return (
+                            <SelectItem key={m.id} value={m.id}>
+                              {m.name}{dims}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">Total length (mm)</label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={line.lengthMmTotal}
+                        onChange={(e) =>
+                          setTimberDeliveryForm((f) => ({
+                            ...f,
+                            lines: f.lines.map((l, i) => (i === idx ? { ...l, lengthMmTotal: e.target.value } : l)),
+                          }))
+                        }
+                        placeholder="e.g. 24000"
+                        className="h-12"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">Total cost (£)</label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={line.totalCost}
+                        onChange={(e) =>
+                          setTimberDeliveryForm((f) => ({
+                            ...f,
+                            lines: f.lines.map((l, i) => (i === idx ? { ...l, totalCost: e.target.value } : l)),
+                          }))
+                        }
+                        placeholder="e.g. 125.00"
+                        className="h-12"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() =>
+                        setTimberDeliveryForm((f) => ({
+                          ...f,
+                          lines: [...f.lines, { materialId: '', lengthMmTotal: '', totalCost: '' }],
+                        }))
+                      }
+                    >
+                      Add line
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex-1"
+                      disabled={timberDeliveryForm.lines.length <= 1}
+                      onClick={() =>
+                        setTimberDeliveryForm((f) => ({
+                          ...f,
+                          lines: f.lines.filter((_, i) => i !== idx),
+                        }))
+                      }
+                    >
+                      Remove line
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <Button
+              onClick={handleTimberDeliveryLog}
+              disabled={timberDeliveryForm.lines.every((l) => !l.materialId || !l.lengthMmTotal)}
+              className="w-full"
+              size="lg"
+            >
+              Log Delivery
             </Button>
           </Card>
         )}

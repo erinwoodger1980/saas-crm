@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../prisma";
 import { Prisma } from "@prisma/client";
 import { logOrderFlow } from "../lib/order-flow-log";
+import { z } from "zod";
 
 const router = Router();
 
@@ -2326,6 +2327,266 @@ router.get("/holiday-balance", async (req: any, res) => {
     console.error("[holiday-balance] Error:", e);
     return res.status(500).json({ error: "Failed to calculate holiday balance", message: e.message });
   }
+});
+
+// ============================================================================
+// Timber tracking (running metres, deliveries, usage logs)
+// ============================================================================
+
+const timberCategoryEnumValues = ["TIMBER_HARDWOOD", "TIMBER_SOFTWOOD"] as const;
+
+router.get("/timber/materials", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+
+  const includeInactive = String(req.query.includeInactive || "").toLowerCase() === "true";
+
+  const items = await prisma.material.findMany({
+    where: {
+      tenantId,
+      category: { in: timberCategoryEnumValues as any },
+      ...(includeInactive ? {} : { isActive: true }),
+    },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      category: true,
+      unitCost: true,
+      currency: true,
+      unit: true,
+      thickness: true,
+      width: true,
+      length: true,
+      species: true,
+      grade: true,
+      finish: true,
+      isActive: true,
+      notes: true,
+    },
+    orderBy: [{ isActive: "desc" }, { name: "asc" }],
+  });
+
+  res.json({ ok: true, items });
+});
+
+router.get("/timber/usage", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const opportunityId = String(req.query.opportunityId || "");
+  if (!opportunityId) return res.status(400).json({ error: "missing_opportunityId" });
+
+  const project = await (prisma as any).opportunity.findUnique({
+    where: { id: opportunityId },
+    select: { id: true, tenantId: true, title: true },
+  });
+  if (!project || project.tenantId !== tenantId) return res.status(404).json({ error: "project_not_found" });
+
+  const logs = await (prisma as any).timberUsageLog.findMany({
+    where: { tenantId, opportunityId },
+    include: {
+      material: { select: { id: true, name: true, code: true, unitCost: true, currency: true, unit: true, thickness: true, width: true } },
+      user: { select: { id: true, name: true, email: true } },
+    },
+    orderBy: [{ usedAt: "desc" }, { createdAt: "desc" }],
+  });
+
+  // Determine cost per metre per material: latest delivery line wins, fallback to material.unitCost
+  const materialIds = Array.from(new Set(logs.map((l: any) => l.materialId)));
+  const latestDeliveryLines = await (prisma as any).timberDeliveryLine.findMany({
+    where: { tenantId, materialId: { in: materialIds } },
+    orderBy: [{ createdAt: "desc" }],
+  });
+  const latestByMaterial = new Map<string, any>();
+  for (const line of latestDeliveryLines) {
+    if (!latestByMaterial.has(line.materialId)) latestByMaterial.set(line.materialId, line);
+  }
+
+  let totalMm = 0;
+  let totalCost = 0;
+  for (const l of logs) {
+    const qty = Number(l.quantity || 0);
+    const mm = Number(l.lengthMm || 0) * qty;
+    totalMm += mm;
+
+    const deliveryLine = latestByMaterial.get(l.materialId);
+    const unitCostPerMeter = Number(deliveryLine?.unitCostPerMeter ?? l.material?.unitCost ?? 0);
+    totalCost += (mm / 1000) * unitCostPerMeter;
+  }
+
+  res.json({
+    ok: true,
+    project: { id: project.id, title: project.title },
+    logs,
+    totals: {
+      totalMillimeters: totalMm,
+      totalMeters: totalMm / 1000,
+      totalCost,
+      currency: "GBP",
+    },
+  });
+});
+
+router.post("/timber/usage", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const userId = (req.auth.userId as string) || null;
+
+  const bodySchema = z.object({
+    opportunityId: z.string().min(1),
+    materialId: z.string().min(1),
+    lengthMm: z.number().int().positive(),
+    quantity: z.number().int().positive().default(1),
+    usedAt: z.string().datetime().optional(),
+    notes: z.string().max(1000).optional(),
+  });
+
+  const parsed = bodySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "invalid_body", issues: parsed.error.issues });
+
+  const { opportunityId, materialId, lengthMm, quantity, usedAt, notes } = parsed.data;
+
+  const project = await (prisma as any).opportunity.findUnique({
+    where: { id: opportunityId },
+    select: { id: true, tenantId: true },
+  });
+  if (!project || project.tenantId !== tenantId) return res.status(404).json({ error: "project_not_found" });
+
+  const material = await prisma.material.findUnique({
+    where: { id: materialId },
+    select: { id: true, tenantId: true, category: true },
+  });
+  if (!material || material.tenantId !== tenantId) return res.status(404).json({ error: "material_not_found" });
+  if (!timberCategoryEnumValues.includes(String(material.category) as any)) {
+    return res.status(400).json({ error: "material_not_timber" });
+  }
+
+  const created = await (prisma as any).timberUsageLog.create({
+    data: {
+      tenantId,
+      opportunityId,
+      materialId,
+      userId,
+      lengthMm,
+      quantity,
+      usedAt: usedAt ? new Date(usedAt) : new Date(),
+      notes: notes ?? null,
+    },
+  });
+
+  res.json({ ok: true, item: created });
+});
+
+router.delete("/timber/usage/:id", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const id = req.params.id;
+
+  const existing = await (prisma as any).timberUsageLog.findUnique({
+    where: { id },
+    select: { id: true, tenantId: true },
+  });
+  if (!existing || existing.tenantId !== tenantId) return res.status(404).json({ error: "not_found" });
+
+  await (prisma as any).timberUsageLog.delete({ where: { id } });
+  res.json({ ok: true });
+});
+
+router.get("/timber/deliveries", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const take = Math.min(Math.max(Number(req.query.take || 50), 1), 200);
+
+  const deliveries = await (prisma as any).timberDelivery.findMany({
+    where: { tenantId },
+    include: {
+      supplier: { select: { id: true, name: true } },
+      lines: {
+        include: { material: { select: { id: true, name: true, code: true, thickness: true, width: true } } },
+        orderBy: [{ createdAt: "desc" }],
+      },
+    },
+    orderBy: [{ deliveredAt: "desc" }, { createdAt: "desc" }],
+    take,
+  });
+
+  res.json({ ok: true, items: deliveries });
+});
+
+router.post("/timber/deliveries", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+
+  const lineSchema = z.object({
+    materialId: z.string().min(1),
+    lengthMmTotal: z.number().int().positive(),
+    totalCost: z.number().nonnegative().default(0),
+    currency: z.string().min(1).default("GBP"),
+    unitCostPerMeter: z.number().nonnegative().optional(),
+    notes: z.string().max(1000).optional(),
+  });
+  const bodySchema = z.object({
+    supplierId: z.string().optional(),
+    reference: z.string().max(200).optional(),
+    deliveredAt: z.string().datetime().optional(),
+    notes: z.string().max(2000).optional(),
+    lines: z.array(lineSchema).min(1),
+  });
+
+  const parsed = bodySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "invalid_body", issues: parsed.error.issues });
+  const { supplierId, reference, deliveredAt, notes, lines } = parsed.data;
+
+  // Verify materials belong to tenant and are timber
+  const materialIds = Array.from(new Set(lines.map((l) => l.materialId)));
+  const materials = await prisma.material.findMany({
+    where: { tenantId, id: { in: materialIds } },
+    select: { id: true, category: true },
+  });
+  const materialById = new Map(materials.map((m) => [m.id, m]));
+  for (const l of lines) {
+    const m = materialById.get(l.materialId);
+    if (!m) return res.status(400).json({ error: "material_not_found", materialId: l.materialId });
+    if (!timberCategoryEnumValues.includes(String(m.category) as any)) {
+      return res.status(400).json({ error: "material_not_timber", materialId: l.materialId });
+    }
+  }
+
+  const created = await (prisma as any).timberDelivery.create({
+    data: {
+      tenantId,
+      supplierId: supplierId ?? null,
+      reference: reference ?? null,
+      deliveredAt: deliveredAt ? new Date(deliveredAt) : new Date(),
+      notes: notes ?? null,
+      lines: {
+        create: lines.map((l) => {
+          const meters = l.lengthMmTotal / 1000;
+          const unitCost = l.unitCostPerMeter ?? (meters > 0 ? l.totalCost / meters : 0);
+          return {
+            tenantId,
+            materialId: l.materialId,
+            lengthMmTotal: l.lengthMmTotal,
+            totalCost: new Prisma.Decimal(l.totalCost),
+            currency: l.currency,
+            unitCostPerMeter: new Prisma.Decimal(unitCost),
+            notes: l.notes ?? null,
+          };
+        }),
+      },
+    },
+    include: { lines: true },
+  });
+
+  // Update material.unitCost (best-effort) using latest delivery line unit cost per meter
+  try {
+    await Promise.all(
+      created.lines.map((line: any) =>
+        prisma.material.update({
+          where: { id: line.materialId },
+          data: { unitCost: line.unitCostPerMeter },
+        })
+      )
+    );
+  } catch (e) {
+    // ignore; delivery still recorded
+  }
+
+  res.json({ ok: true, item: created });
 });
 
 export default router;
