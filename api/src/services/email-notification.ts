@@ -8,6 +8,7 @@ interface EmailOptions {
   subject: string;
   html: string;
   text?: string;
+  from?: string;
 }
 
 /**
@@ -22,7 +23,7 @@ export async function sendAdminEmail(options: EmailOptions): Promise<void> {
   if (resendKey) {
     try {
       const resend = new Resend(resendKey);
-      const from = process.env.EMAIL_FROM || "JoineryAI Notifications <noreply@joineryai.app>";
+      const from = options.from || process.env.EMAIL_FROM || "JoineryAI Notifications <noreply@joineryai.app>";
       console.log("[email-notification] Sending via Resend from:", from);
       const result = await resend.emails.send({
         from,
@@ -65,7 +66,7 @@ export async function sendAdminEmail(options: EmailOptions): Promise<void> {
   
   try {
     await transporter.sendMail({
-      from: `"JoineryAI Notifications" <${smtpFromAddress}>`,
+      from: options.from || `"JoineryAI Notifications" <${smtpFromAddress}>`,
       to: options.to,
       subject: options.subject,
       html: options.html,

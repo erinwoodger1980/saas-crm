@@ -25,24 +25,22 @@ router.post("/", async (req, res) => {
       where: { email: normalizedEmail },
     });
 
-    if (existing) {
-      return res.json({
-        success: true,
-        message: "You're already on the waitlist!",
+    const alreadyRegistered = !!existing;
+
+    // Create interest registration (first time only)
+    if (!alreadyRegistered) {
+      await prisma.interestRegistration.create({
+        data: {
+          email: normalizedEmail,
+          name: name || null,
+          company: company || null,
+          message: message || null,
+        },
       });
+      console.log(`📧 New interest registration: ${normalizedEmail}`);
+    } else {
+      console.log(`📧 Repeat interest submission (already registered): ${normalizedEmail}`);
     }
-
-    // Create interest registration
-    await prisma.interestRegistration.create({
-      data: {
-        email: normalizedEmail,
-        name: name || null,
-        company: company || null,
-        message: message || null,
-      },
-    });
-
-    console.log(`📧 New interest registration: ${normalizedEmail}`);
 
     // Find Erin Woodger tenant
     const erinTenant = await prisma.tenant.findFirst({
@@ -110,6 +108,8 @@ router.post("/", async (req, res) => {
 
     // Send email notifications regardless of lead creation
     try {
+      const calendlyUrl = process.env.CALENDLY_URL || process.env.NEXT_PUBLIC_CALENDLY_URL || "";
+
       const emailHtml = `
         <!DOCTYPE html>
         <html>
@@ -182,12 +182,14 @@ router.post("/", async (req, res) => {
       }
       
       // Send confirmation email to the user
-      try {
-        emailPromises.push(
-          sendAdminEmail({
-            to: normalizedEmail,
-            subject: "Thank you for your interest in JoineryAI",
-            html: `
+      if (!alreadyRegistered) {
+        try {
+          emailPromises.push(
+            sendAdminEmail({
+              to: normalizedEmail,
+              from: "JoineryAI <hello@joineryai.app>",
+              subject: "Thank you for your interest in JoineryAI",
+              html: `
               <!DOCTYPE html>
               <html>
               <head>
@@ -212,10 +214,17 @@ router.post("/", async (req, res) => {
                     
                     <p><strong>What's next?</strong></p>
                     <ul>
-                      <li>We'll be in touch within the next few days with details about our March launch</li>
+                      <li>We'll be in touch with details about our March launch</li>
                       <li>You'll get special early-bird pricing as a member of this cohort</li>
                       <li>We'll arrange a time to walk you through how JoineryAI works for your business</li>
                     </ul>
+
+                    ${calendlyUrl ? `
+                      <p style="margin-top: 20px;">If you'd like to get your onboarding session booked in now, you can choose a time here:</p>
+                      <p>
+                        <a class="cta" href="${calendlyUrl}" target="_blank" rel="noopener noreferrer">Book onboarding session</a>
+                      </p>
+                    ` : ''}
                     
                     <p>In the meantime, feel free to explore:</p>
                     <ul>
@@ -238,11 +247,14 @@ router.post("/", async (req, res) => {
               </body>
               </html>
             `,
-          })
-        );
-        console.log("[interest] Queued confirmation email to", normalizedEmail);
-      } catch (err: any) {
-        console.error("[interest] Failed to queue confirmation email:", err.message);
+            })
+          );
+          console.log("[interest] Queued confirmation email to", normalizedEmail);
+        } catch (err: any) {
+          console.error("[interest] Failed to queue confirmation email:", err.message);
+        }
+      } else {
+        console.log("[interest] Skipping confirmation email (already registered):", normalizedEmail);
       }
 
       // Wait for all emails
@@ -267,7 +279,7 @@ router.post("/", async (req, res) => {
 
     res.json({
       success: true,
-      message: "Thanks for your interest! We'll be in touch soon.",
+      message: alreadyRegistered ? "You're already on the waitlist!" : "Thanks for your interest! We'll be in touch soon.",
       email: normalizedEmail,
     });
   } catch (error: any) {

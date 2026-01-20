@@ -382,6 +382,14 @@ type TimberTotals = {
   currency: string;
 };
 
+type TimberByMaterialRow = {
+  materialId: string;
+  material?: { id: string; name: string; code?: string };
+  totalMeters: number;
+  totalCost: number;
+  currency: string;
+};
+
 type QuoteFileLite = {
   id: string;
   name?: string;
@@ -713,6 +721,7 @@ export default function LeadModal({
   const [timberTotals, setTimberTotals] = useState<TimberTotals | null>(null);
   const [timberTotalsLoading, setTimberTotalsLoading] = useState(false);
   const [timberTotalsError, setTimberTotalsError] = useState<string | null>(null);
+  const [timberByMaterial, setTimberByMaterial] = useState<TimberByMaterialRow[]>([]);
 
   // Finance: quote-linked documents (stored as UploadedFile rows)
   const [financeQuoteFiles, setFinanceQuoteFiles] = useState<QuoteFileLite[]>([]);
@@ -2257,7 +2266,7 @@ export default function LeadModal({
     const payload: any = {
       questionnaire: { [field.key]: value },
     };
-    if (["estimatedValue", "quotedValue", "dateQuoteSent", "startDate", "deliveryDate"].includes(field.key)) {
+    if (["estimatedValue", "quotedValue", "dateQuoteSent", "dateOrderPlaced", "orderValueGBP", "startDate", "deliveryDate"].includes(field.key)) {
       payload[field.key] = value;
     }
 
@@ -3025,6 +3034,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       setTimberTotals(null);
       setTimberTotalsError(null);
       setTimberTotalsLoading(false);
+      setTimberByMaterial([]);
       return;
     }
     setTimberTotalsLoading(true);
@@ -3033,6 +3043,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       .then((r) => {
         if (!r?.ok || !r?.totals) {
           setTimberTotals(null);
+          setTimberByMaterial([]);
           return;
         }
         setTimberTotals({
@@ -3040,9 +3051,11 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
           totalCost: Number(r.totals.totalCost || 0),
           currency: String(r.totals.currency || 'GBP'),
         });
+        setTimberByMaterial(Array.isArray(r.byMaterial) ? r.byMaterial : []);
       })
       .catch((e: any) => {
         setTimberTotals(null);
+        setTimberByMaterial([]);
         setTimberTotalsError(e?.message || 'Failed to load timber totals');
       })
       .finally(() => setTimberTotalsLoading(false));
@@ -3460,11 +3473,20 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
   
   // Extract selected product types from quote lines (currently unavailable; placeholder to avoid runtime errors)
   const selectedProductTypes: string[] = [];
+
+  const ALWAYS_SHOW_SYSTEM_FIELDS = new Set([
+    "enquiryDate",
+    "dateQuoteSent",
+    "quotedValue",
+    "dateOrderPlaced",
+    "orderValueGBP",
+  ]);
   
   const baseWorkspaceFields = useMemo(
     () =>
       questionnaireFields.filter((field) => {
-        if (!field.showOnLead) return false;
+        const key = field.key;
+        if (!field.showOnLead && !(key && ALWAYS_SHOW_SYSTEM_FIELDS.has(key))) return false;
         if (field.visibleAfterOrder) {
           return uiStatus === "WON" || uiStatus === "COMPLETED";
         }
@@ -3512,9 +3534,54 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         type: "date",
         options: [],
         askInQuestionnaire: false,
-        showOnLead: false,
+        showOnLead: true,
         internalOnly: true,
         sortOrder: Number.MAX_SAFE_INTEGER,
+      });
+    }
+
+    if (!existingKeys.has("quotedValue")) {
+      extras.push({
+        id: "__quotedValue",
+        key: "quotedValue",
+        label: "Quote Value",
+        required: false,
+        type: "number",
+        options: [],
+        askInQuestionnaire: false,
+        showOnLead: true,
+        internalOnly: true,
+        sortOrder: Number.MAX_SAFE_INTEGER - 4,
+      });
+    }
+
+    if (!existingKeys.has("dateOrderPlaced")) {
+      extras.push({
+        id: "__dateOrderPlaced",
+        key: "dateOrderPlaced",
+        label: "Date Order Placed",
+        required: false,
+        type: "date",
+        options: [],
+        askInQuestionnaire: false,
+        showOnLead: true,
+        internalOnly: true,
+        sortOrder: Number.MAX_SAFE_INTEGER - 3,
+      });
+    }
+
+    if (!existingKeys.has("orderValueGBP")) {
+      extras.push({
+        id: "__orderValueGBP",
+        key: "orderValueGBP",
+        label: "Order Value",
+        required: false,
+        type: "number",
+        options: [],
+        askInQuestionnaire: false,
+        showOnLead: true,
+        internalOnly: true,
+        sortOrder: Number.MAX_SAFE_INTEGER - 2,
       });
     }
     if (!existingKeys.has("startDate")) {
@@ -3583,9 +3650,32 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     if (lead?.capturedAt && !result.enquiryDate) {
       result.enquiryDate = lead.capturedAt;
     }
+
+    // Include canonical system fields from Lead
+    if (lead?.dateQuoteSent && !result.dateQuoteSent) {
+      result.dateQuoteSent = lead.dateQuoteSent;
+    }
+    if (lead?.quotedValue != null && result.quotedValue == null) {
+      result.quotedValue = lead.quotedValue;
+    }
+    if (lead?.estimatedValue != null && result.estimatedValue == null) {
+      result.estimatedValue = lead.estimatedValue;
+    }
+
+    // Include canonical order fields derived from Opportunity state (when available)
+    if (opportunityWonAt && !result.dateOrderPlaced) {
+      result.dateOrderPlaced = opportunityWonAt;
+    }
+    if (projectValueGBP && result.orderValueGBP == null) {
+      const cleaned = String(projectValueGBP).trim().replace(/£/g, "").replace(/,/g, "");
+      const parsed = cleaned ? Number(cleaned) : null;
+      if (parsed != null && !Number.isNaN(parsed)) {
+        result.orderValueGBP = parsed;
+      }
+    }
     
     return result;
-  }, [lead?.custom, lead?.computed, lead?.capturedAt]);
+  }, [lead?.custom, lead?.computed, lead?.capturedAt, lead?.dateQuoteSent, lead?.quotedValue, lead?.estimatedValue, opportunityWonAt, projectValueGBP]);
   useEffect(() => {
     if (!lead?.id) {
       setCustomDraft({});
@@ -5437,7 +5527,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       </div>
                       <div className="space-y-2 text-sm">
                         <div className="flex items-center justify-between gap-4">
-                          <span className="text-slate-600">Created</span>
+                            <span className="text-slate-600">Enquiry date</span>
                           <input
                             type="datetime-local"
                             className="w-[220px] max-w-[55%] rounded-md border px-2 py-1 text-sm"
@@ -5467,25 +5557,11 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
 
                     <div className="rounded-xl border border-slate-200/70 bg-white/70 p-4">
                       <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
-                        Opportunity / Order
+                        Order
                       </div>
                       <div className="space-y-2 text-sm">
                         <div className="flex items-center justify-between gap-4">
-                          <span className="text-slate-600">Opportunity created</span>
-                          <input
-                            type="datetime-local"
-                            className="w-[220px] max-w-[55%] rounded-md border px-2 py-1 text-sm"
-                            value={opportunityCreatedAtInput}
-                            onChange={(e) => setOpportunityCreatedAtInput(e.target.value)}
-                            onBlur={() => {
-                              const iso = dateTimeLocalToIsoOrNull(opportunityCreatedAtInput);
-                              saveOpportunityField("createdAt", iso);
-                              setOpportunityCreatedAt(iso);
-                            }}
-                          />
-                        </div>
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="text-slate-600">Order placed (Won)</span>
+                          <span className="text-slate-600">Order placed</span>
                           <input
                             type="datetime-local"
                             className="w-[220px] max-w-[55%] rounded-md border px-2 py-1 text-sm"
@@ -5495,6 +5571,20 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                               const iso = dateTimeLocalToIsoOrNull(opportunityWonAtInput);
                               saveOpportunityField("wonAt", iso);
                               setOpportunityWonAt(iso);
+                            }}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-slate-600">Order created</span>
+                          <input
+                            type="datetime-local"
+                            className="w-[220px] max-w-[55%] rounded-md border px-2 py-1 text-sm"
+                            value={opportunityCreatedAtInput}
+                            onChange={(e) => setOpportunityCreatedAtInput(e.target.value)}
+                            onBlur={() => {
+                              const iso = dateTimeLocalToIsoOrNull(opportunityCreatedAtInput);
+                              saveOpportunityField("createdAt", iso);
+                              setOpportunityCreatedAt(iso);
                             }}
                           />
                         </div>
@@ -5596,6 +5686,51 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         <div className="flex items-center justify-between gap-4">
                           <span className="text-slate-600">Timber received</span>
                           <span className="font-medium text-slate-800">{materialDates.timberReceivedAt || "—"}</span>
+                        </div>
+
+                        <div className="mt-3 pt-3 border-t border-slate-200/70 space-y-2">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Timber logged</div>
+                          {!opportunityId ? (
+                            <div className="text-sm text-slate-500">No project linked yet.</div>
+                          ) : timberTotalsLoading ? (
+                            <div className="text-sm text-slate-500">Loading…</div>
+                          ) : timberTotalsError ? (
+                            <div className="text-sm text-slate-500">{timberTotalsError}</div>
+                          ) : timberTotals ? (
+                            <>
+                              <div className="flex items-center justify-between gap-4">
+                                <span className="text-slate-600">Total metres</span>
+                                <span className="font-medium text-slate-800">{Number(timberTotals.totalMeters || 0).toFixed(2)}m</span>
+                              </div>
+                              <div className="flex items-center justify-between gap-4">
+                                <span className="text-slate-600">Total cost</span>
+                                <span className="font-medium text-slate-800">
+                                  {timberTotals.currency === 'GBP'
+                                    ? `£${Number(timberTotals.totalCost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                    : `${Number(timberTotals.totalCost || 0).toFixed(2)} ${timberTotals.currency}`}
+                                </span>
+                              </div>
+
+                              {Array.isArray(timberByMaterial) && timberByMaterial.length > 0 && (
+                                <div className="mt-2 space-y-2">
+                                  {timberByMaterial.map((row) => (
+                                    <div key={row.materialId} className="flex items-center justify-between gap-4">
+                                      <span className="text-slate-600 truncate">
+                                        {row.material?.name || 'Material'}
+                                      </span>
+                                      <span className="font-medium text-slate-800 shrink-0">
+                                        {Number(row.totalMeters || 0).toFixed(2)}m • {row.currency === 'GBP'
+                                          ? `£${Number(row.totalCost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                          : `${Number(row.totalCost || 0).toFixed(2)} ${row.currency}`}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <div className="text-sm text-slate-500">No timber usage logged yet.</div>
+                          )}
                         </div>
 
                         <div className="mt-3 pt-3 border-t border-slate-200/70 space-y-2">

@@ -133,7 +133,7 @@ export default function WealdenHomePage() {
       </section>
 
       {/* Single Lifestyle Image */}
-      <section className={`${designSystem.spacing.sectionCompact} ${designSystem.layout.maxWideWide} ${designSystem.spacing.containerPadding}`}>
+      <section className={`${designSystem.spacing.sectionCompact} ${designSystem.layout.maxWidthWide} ${designSystem.spacing.containerPadding}`}>
         <ImageSlot
           slotId="home-lifestyle"
           label="Lifestyle Context"

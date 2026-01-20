@@ -451,6 +451,15 @@ export default function WorkshopPage() {
 
   type TimberMaterialLite = { id: string; name: string; code?: string; category?: string; unit?: string; unitCost?: any; currency?: string; thickness?: any; width?: any; length?: any };
   type TimberUsageTotalsLite = { totalMillimeters: number; totalMeters: number; totalCost: number; currency: string };
+  type TimberUsageByMaterialLite = {
+    materialId: string;
+    material?: { id: string; name: string; code?: string; thickness?: any; width?: any; length?: any };
+    totalMillimeters: number;
+    totalMeters: number;
+    totalCost: number;
+    currency: string;
+    unitCostPerMeter: number;
+  };
   type TimberUsageLogLite = {
     id: string;
     materialId: string;
@@ -458,7 +467,7 @@ export default function WorkshopPage() {
     quantity: number;
     usedAt: string;
     notes?: string | null;
-    material?: { id: string; name: string; code?: string };
+    material?: { id: string; name: string; code?: string; thickness?: any; width?: any; length?: any };
     user?: { id: string; name: string | null; email: string };
   };
 
@@ -468,6 +477,7 @@ export default function WorkshopPage() {
   const [timberViewProjectId, setTimberViewProjectId] = useState<string>('');
   const [timberViewTotals, setTimberViewTotals] = useState<TimberUsageTotalsLite | null>(null);
   const [timberViewLogs, setTimberViewLogs] = useState<TimberUsageLogLite[]>([]);
+  const [timberViewByMaterial, setTimberViewByMaterial] = useState<TimberUsageByMaterialLite[]>([]);
   const [timberViewLoading, setTimberViewLoading] = useState(false);
   const [timberViewError, setTimberViewError] = useState<string | null>(null);
   const [timberUsageForm, setTimberUsageForm] = useState({
@@ -477,6 +487,17 @@ export default function WorkshopPage() {
     date: new Date().toISOString().split('T')[0],
     notes: '',
   });
+
+  const [timberLogDialogOpen, setTimberLogDialogOpen] = useState(false);
+  const [timberLogDialogProjectId, setTimberLogDialogProjectId] = useState<string>('');
+  const openTimberLogDialog = async (projectId?: string) => {
+    await ensureTimberMaterialsLoaded();
+    const pid = projectId || timberViewProjectId;
+    if (pid) {
+      setTimberLogDialogProjectId(pid);
+    }
+    setTimberLogDialogOpen(true);
+  };
 
   const formatMm = (value: any): string | null => {
     if (value == null || value === '') return null;
@@ -521,14 +542,17 @@ export default function WorkshopPage() {
       if (!r?.ok) {
         setTimberViewTotals(null);
         setTimberViewLogs([]);
+        setTimberViewByMaterial([]);
         setTimberViewError('Failed to load timber usage');
         return;
       }
       setTimberViewTotals(r.totals ?? null);
       setTimberViewLogs(Array.isArray(r.logs) ? r.logs : []);
+      setTimberViewByMaterial(Array.isArray(r.byMaterial) ? r.byMaterial : []);
     } catch (e: any) {
       setTimberViewTotals(null);
       setTimberViewLogs([]);
+      setTimberViewByMaterial([]);
       setTimberViewError(e?.message || 'Failed to load timber usage');
     } finally {
       setTimberViewLoading(false);
@@ -539,14 +563,7 @@ export default function WorkshopPage() {
   const [projectTimberError, setProjectTimberError] = useState<string | null>(null);
   const [projectTimberTotals, setProjectTimberTotals] = useState<TimberUsageTotalsLite | null>(null);
   const [projectTimberLogs, setProjectTimberLogs] = useState<TimberUsageLogLite[]>([]);
-  const [projectTimberFormOpen, setProjectTimberFormOpen] = useState(false);
-  const [projectTimberForm, setProjectTimberForm] = useState({
-    materialId: '',
-    meters: '',
-    quantity: '1',
-    date: new Date().toISOString().split('T')[0],
-    notes: '',
-  });
+  const [projectTimberByMaterial, setProjectTimberByMaterial] = useState<TimberUsageByMaterialLite[]>([]);
 
   const refreshProjectTimberUsage = async (opportunityId: string) => {
     if (!opportunityId) return;
@@ -557,14 +574,17 @@ export default function WorkshopPage() {
       if (!r?.ok) {
         setProjectTimberTotals(null);
         setProjectTimberLogs([]);
+        setProjectTimberByMaterial([]);
         setProjectTimberError('Failed to load timber usage');
         return;
       }
       setProjectTimberTotals(r.totals ?? null);
       setProjectTimberLogs(Array.isArray(r.logs) ? r.logs : []);
+      setProjectTimberByMaterial(Array.isArray(r.byMaterial) ? r.byMaterial : []);
     } catch (e: any) {
       setProjectTimberTotals(null);
       setProjectTimberLogs([]);
+      setProjectTimberByMaterial([]);
       setProjectTimberError(e?.message || 'Failed to load timber usage');
     } finally {
       setProjectTimberLoading(false);
@@ -2311,88 +2331,13 @@ export default function WorkshopPage() {
               ) : (
                 <div className="text-sm text-muted-foreground">Select a project to view totals and log usage.</div>
               )}
-            </div>
-          </Card>
 
-          <Card className="p-4">
-            <div className="space-y-3">
-              <div className="font-semibold">Log timber used</div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <div>
-                  <label className="text-sm font-medium mb-1 block">Material</label>
-                  <Select value={timberUsageForm.materialId} onValueChange={(v) => setTimberUsageForm((prev) => ({ ...prev, materialId: v }))}>
-                    <SelectTrigger>
-                      <SelectValue placeholder={timberMaterialsLoading ? 'Loading…' : 'Select material'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {timberMaterials.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>
-                          {formatTimberMaterialLabel(m)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="text-sm font-medium mb-1 block">Meters used</label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder="e.g. 4.2"
-                    value={timberUsageForm.meters}
-                    onChange={(e) => setTimberUsageForm((prev) => ({ ...prev, meters: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium mb-1 block">Quantity</label>
-                  <Input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={timberUsageForm.quantity}
-                    onChange={(e) => setTimberUsageForm((prev) => ({ ...prev, quantity: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium mb-1 block">Date</label>
-                  <Input
-                    type="date"
-                    value={timberUsageForm.date}
-                    onChange={(e) => setTimberUsageForm((prev) => ({ ...prev, date: e.target.value }))}
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-1 block">Notes (optional)</label>
-                <Textarea
-                  placeholder="Optional notes"
-                  value={timberUsageForm.notes}
-                  onChange={(e) => setTimberUsageForm((prev) => ({ ...prev, notes: e.target.value }))}
-                />
-              </div>
               <div className="flex gap-2">
                 <Button
-                  disabled={!timberViewProjectId || !timberUsageForm.materialId || !timberUsageForm.meters}
+                  disabled={!timberViewProjectId}
                   onClick={async () => {
-                    const meters = Number(timberUsageForm.meters);
-                    const quantity = Number(timberUsageForm.quantity || '1');
                     if (!timberViewProjectId) return;
-                    if (!Number.isFinite(meters) || meters <= 0) return;
-                    if (!Number.isFinite(quantity) || quantity <= 0) return;
-                    await apiFetch('/workshop/timber/usage', {
-                      method: 'POST',
-                      json: {
-                        opportunityId: timberViewProjectId,
-                        materialId: timberUsageForm.materialId,
-                        lengthMm: Math.round(meters * 1000),
-                        quantity,
-                        usedAt: timberUsageForm.date ? new Date(`${timberUsageForm.date}T12:00:00.000Z`).toISOString() : undefined,
-                        notes: timberUsageForm.notes || undefined,
-                      },
-                    });
-                    setTimberUsageForm((prev) => ({ ...prev, meters: '', quantity: '1', notes: '' }));
-                    await refreshTimberUsageForProject(timberViewProjectId);
+                    await openTimberLogDialog(timberViewProjectId);
                   }}
                 >
                   Log timber
@@ -2410,6 +2355,206 @@ export default function WorkshopPage() {
               </div>
             </div>
           </Card>
+
+          <Card className="p-4">
+            <div className="space-y-4">
+              <div className="font-semibold">Materials logged</div>
+
+              {timberViewProjectId && timberViewLoading ? (
+                <div className="text-sm text-muted-foreground">Loading…</div>
+              ) : timberViewProjectId && timberViewError ? (
+                <div className="text-sm text-red-600">{timberViewError}</div>
+              ) : timberViewProjectId && Array.isArray(timberViewByMaterial) && timberViewByMaterial.length > 0 ? (
+                <div className="space-y-2">
+                  {timberViewByMaterial.map((row) => (
+                    <div key={row.materialId} className="flex items-center justify-between gap-4 text-sm">
+                      <div className="min-w-0 truncate text-muted-foreground">
+                        <span className="text-foreground font-medium">
+                          {row.material?.name || 'Material'}
+                        </span>
+                        {row.material && (row.material.thickness || row.material.width || row.material.length) ? (
+                          <span>
+                            {' '}
+                            — {[formatMm(row.material.thickness), formatMm(row.material.width), formatMm(row.material.length)].filter(Boolean).join('×')}mm
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="text-foreground">{Number(row.totalMeters || 0).toFixed(2)} m</div>
+                        <div className="text-muted-foreground">{formatCurrency(Number(row.totalCost || 0))}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : timberViewProjectId ? (
+                <div className="text-sm text-muted-foreground">No timber usage logged yet.</div>
+              ) : (
+                <div className="text-sm text-muted-foreground">Select a project to view logged materials.</div>
+              )}
+
+              <div className="border-t pt-4">
+                <div className="font-semibold">Entries</div>
+                {timberViewProjectId && Array.isArray(timberViewLogs) && timberViewLogs.length > 0 ? (
+                  <div className="mt-2 space-y-1">
+                    {timberViewLogs.slice(0, 20).map((l: any) => (
+                      <div key={l.id} className="flex items-center justify-between gap-3 text-sm">
+                        <div className="min-w-0 truncate text-muted-foreground">
+                          <span className="text-foreground font-medium">{l.material?.name || 'Material'}</span>
+                          {' '}— {((Number(l.lengthMm || 0) * Number(l.quantity || 0)) / 1000).toFixed(2)} m
+                          {' '}({new Date(l.usedAt || l.createdAt || Date.now()).toLocaleDateString('en-GB')})
+                          {l.notes ? <span className="text-muted-foreground"> — {String(l.notes)}</span> : null}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 px-2"
+                          onClick={async () => {
+                            if (!timberViewProjectId) return;
+                            await apiFetch(`/workshop/timber/usage/${encodeURIComponent(l.id)}`, { method: 'DELETE' });
+                            await refreshTimberUsageForProject(timberViewProjectId);
+                          }}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : timberViewProjectId ? (
+                  <div className="mt-2 text-sm text-muted-foreground">No entries yet.</div>
+                ) : null}
+              </div>
+            </div>
+          </Card>
+
+          <Dialog open={timberLogDialogOpen} onOpenChange={setTimberLogDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Log timber</DialogTitle>
+                <DialogDescription>Record timber usage against a project.</DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Project</label>
+                  <Select
+                    value={timberLogDialogProjectId}
+                    onValueChange={async (v) => {
+                      setTimberLogDialogProjectId(v);
+                      if (v) await refreshTimberUsageForProject(v);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select project" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {scheduleProjects.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {getProjectDisplayName(p)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Material</label>
+                  <Select value={timberUsageForm.materialId} onValueChange={(v) => setTimberUsageForm((prev) => ({ ...prev, materialId: v }))}>
+                    <SelectTrigger>
+                      <SelectValue placeholder={timberMaterialsLoading ? 'Loading…' : 'Select material'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {timberMaterials.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>
+                          {formatTimberMaterialLabel(m)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Meters used</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="e.g. 4.2"
+                      value={timberUsageForm.meters}
+                      onChange={(e) => setTimberUsageForm((prev) => ({ ...prev, meters: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Quantity</label>
+                    <Input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={timberUsageForm.quantity}
+                      onChange={(e) => setTimberUsageForm((prev) => ({ ...prev, quantity: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Date</label>
+                    <Input
+                      type="date"
+                      value={timberUsageForm.date}
+                      onChange={(e) => setTimberUsageForm((prev) => ({ ...prev, date: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Notes (optional)</label>
+                  <Textarea
+                    placeholder="Optional notes"
+                    value={timberUsageForm.notes}
+                    onChange={(e) => setTimberUsageForm((prev) => ({ ...prev, notes: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setTimberLogDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  disabled={!timberLogDialogProjectId || !timberUsageForm.materialId || !timberUsageForm.meters}
+                  onClick={async () => {
+                    const meters = Number(timberUsageForm.meters);
+                    const quantity = Number(timberUsageForm.quantity || '1');
+                    if (!timberLogDialogProjectId) return;
+                    if (!Number.isFinite(meters) || meters <= 0) return;
+                    if (!Number.isFinite(quantity) || quantity <= 0) return;
+                    await apiFetch('/workshop/timber/usage', {
+                      method: 'POST',
+                      json: {
+                        opportunityId: timberLogDialogProjectId,
+                        materialId: timberUsageForm.materialId,
+                        lengthMm: Math.round(meters * 1000),
+                        quantity,
+                        usedAt: timberUsageForm.date ? new Date(`${timberUsageForm.date}T12:00:00.000Z`).toISOString() : undefined,
+                        notes: timberUsageForm.notes || undefined,
+                      },
+                    });
+                    setTimberUsageForm((prev) => ({ ...prev, meters: '', quantity: '1', notes: '' }));
+
+                    if (timberViewProjectId === timberLogDialogProjectId) {
+                      await refreshTimberUsageForProject(timberLogDialogProjectId);
+                    }
+                    await refreshProjectTimberUsage(timberLogDialogProjectId);
+
+                    setTimberLogDialogOpen(false);
+                  }}
+                >
+                  Save
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       )}
 
@@ -2926,15 +3071,29 @@ export default function WorkshopPage() {
                   <div className="grid grid-cols-2 gap-3">
                     {/* Timber */}
                     <div className="p-3 border rounded">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="flex flex-col items-center">
-                          <div className="text-[10px] font-bold leading-none mb-0.5">T</div>
-                          <div 
-                            className="w-3 h-3 rounded-full" 
-                            style={{ backgroundColor: getMaterialColor(getMaterialStatus(project.timberOrderedAt, project.timberReceivedAt, project.timberNotApplicable)) }}
-                          />
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="flex flex-col items-center">
+                            <div className="text-[10px] font-bold leading-none mb-0.5">T</div>
+                            <div 
+                              className="w-3 h-3 rounded-full" 
+                              style={{ backgroundColor: getMaterialColor(getMaterialStatus(project.timberOrderedAt, project.timberReceivedAt, project.timberNotApplicable)) }}
+                            />
+                          </div>
+                          <span className="font-medium">Timber</span>
                         </div>
-                        <span className="font-medium">Timber</span>
+                        {canLogTimber && !project.timberNotApplicable && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={async () => {
+                              await openTimberLogDialog(project.id);
+                              await refreshProjectTimberUsage(project.id);
+                            }}
+                          >
+                            Log timber
+                          </Button>
+                        )}
                       </div>
                       <div className="space-y-1 text-xs text-gray-600">
                         {project.timberNotApplicable ? (
@@ -2957,12 +3116,11 @@ export default function WorkshopPage() {
                                       size="sm"
                                       variant="outline"
                                       onClick={async () => {
-                                        setProjectTimberFormOpen((v) => !v);
-                                        await ensureTimberMaterialsLoaded();
+                                        await openTimberLogDialog(project.id);
                                         await refreshProjectTimberUsage(project.id);
                                       }}
                                     >
-                                      {projectTimberFormOpen ? 'Hide' : 'Log timber'}
+                                      Log timber
                                     </Button>
                                     <Button
                                       size="sm"
@@ -2987,95 +3145,17 @@ export default function WorkshopPage() {
                                   </div>
                                 ) : null}
 
-                                {projectTimberFormOpen && (
-                                  <div className="space-y-2">
-                                    <div className="grid gap-2">
-                                      <div>
-                                        <label className="text-xs font-medium mb-1 block">Material</label>
-                                        <Select value={projectTimberForm.materialId} onValueChange={(v) => setProjectTimberForm((prev) => ({ ...prev, materialId: v }))}>
-                                          <SelectTrigger className="h-8">
-                                            <SelectValue placeholder={timberMaterialsLoading ? 'Loading…' : 'Select material'} />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            {timberMaterials.map((m) => (
-                                              <SelectItem key={m.id} value={m.id}>
-                                                {formatTimberMaterialLabel(m)}
-                                              </SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
-                                      <div className="grid grid-cols-2 gap-2">
-                                        <div>
-                                          <label className="text-xs font-medium mb-1 block">Meters</label>
-                                          <Input
-                                            className="h-8"
-                                            type="number"
-                                            min="0"
-                                            step="0.01"
-                                            placeholder="e.g. 2.5"
-                                            value={projectTimberForm.meters}
-                                            onChange={(e) => setProjectTimberForm((prev) => ({ ...prev, meters: e.target.value }))}
-                                          />
+                                {Array.isArray(projectTimberByMaterial) && projectTimberByMaterial.length > 0 && (
+                                  <div className="space-y-1">
+                                    <div className="text-[11px] text-gray-500">Materials logged</div>
+                                    {projectTimberByMaterial.slice(0, 5).map((row: any) => (
+                                      <div key={row.materialId} className="flex items-center justify-between text-[11px] text-gray-600">
+                                        <div className="truncate pr-2">
+                                          {(row.material?.name || 'Material')} — {Number(row.totalMeters || 0).toFixed(2)} m
                                         </div>
-                                        <div>
-                                          <label className="text-xs font-medium mb-1 block">Qty</label>
-                                          <Input
-                                            className="h-8"
-                                            type="number"
-                                            min="1"
-                                            step="1"
-                                            value={projectTimberForm.quantity}
-                                            onChange={(e) => setProjectTimberForm((prev) => ({ ...prev, quantity: e.target.value }))}
-                                          />
-                                        </div>
+                                        <div className="shrink-0">{formatCurrency(Number(row.totalCost || 0))}</div>
                                       </div>
-                                      <div>
-                                        <label className="text-xs font-medium mb-1 block">Date</label>
-                                        <Input
-                                          className="h-8"
-                                          type="date"
-                                          value={projectTimberForm.date}
-                                          onChange={(e) => setProjectTimberForm((prev) => ({ ...prev, date: e.target.value }))}
-                                        />
-                                      </div>
-                                      <div>
-                                        <label className="text-xs font-medium mb-1 block">Notes</label>
-                                        <Input
-                                          className="h-8"
-                                          placeholder="Optional"
-                                          value={projectTimberForm.notes}
-                                          onChange={(e) => setProjectTimberForm((prev) => ({ ...prev, notes: e.target.value }))}
-                                        />
-                                      </div>
-                                    </div>
-                                    <div className="flex gap-2">
-                                      <Button
-                                        size="sm"
-                                        disabled={!projectTimberForm.materialId || !projectTimberForm.meters}
-                                        onClick={async () => {
-                                          const meters = Number(projectTimberForm.meters);
-                                          const quantity = Number(projectTimberForm.quantity || '1');
-                                          if (!Number.isFinite(meters) || meters <= 0) return;
-                                          if (!Number.isFinite(quantity) || quantity <= 0) return;
-                                          await apiFetch('/workshop/timber/usage', {
-                                            method: 'POST',
-                                            json: {
-                                              opportunityId: project.id,
-                                              materialId: projectTimberForm.materialId,
-                                              lengthMm: Math.round(meters * 1000),
-                                              quantity,
-                                              usedAt: projectTimberForm.date ? new Date(`${projectTimberForm.date}T12:00:00.000Z`).toISOString() : undefined,
-                                              notes: projectTimberForm.notes || undefined,
-                                            },
-                                          });
-                                          setProjectTimberForm((prev) => ({ ...prev, meters: '', quantity: '1', notes: '' }));
-                                          await refreshProjectTimberUsage(project.id);
-                                        }}
-                                      >
-                                        Save
-                                      </Button>
-                                    </div>
+                                    ))}
                                   </div>
                                 )}
 

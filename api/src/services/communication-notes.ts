@@ -23,17 +23,11 @@ export function formatCommunicationEntry(args: {
 }): string {
   const when = formatDateTime(args.completedAt);
   const actorName = (args.actorName || "").toString().trim();
-  const type = (args.communicationType || "OTHER").toString().toUpperCase();
-  const dir = (args.communicationDirection || "OUTBOUND").toString().toUpperCase();
-  const channel = (args.communicationChannel || "").toString().trim();
   const notes = (args.communicationNotes || args.freeTextFallback || "").toString().trim();
-
-  const headerBits = [dir, type];
-  const header = headerBits.filter(Boolean).join(" ");
-  const channelBit = channel ? ` (${channel})` : "";
   const actorBit = actorName ? ` — ${actorName}` : "";
 
-  return `${when}${actorBit} — ${header}${channelBit}: ${notes}`.trim();
+  // Keep this intentionally compact for readability in the lead modal.
+  return `${when}${actorBit}: ${notes}`.trim();
 }
 
 export async function prependLeadCommunicationNotes(args: {

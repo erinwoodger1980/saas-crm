@@ -2383,7 +2383,19 @@ router.get("/timber/usage", async (req: any, res) => {
   const logs = await (prisma as any).timberUsageLog.findMany({
     where: { tenantId, opportunityId },
     include: {
-      material: { select: { id: true, name: true, code: true, unitCost: true, currency: true, unit: true, thickness: true, width: true } },
+      material: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          unitCost: true,
+          currency: true,
+          unit: true,
+          thickness: true,
+          width: true,
+          length: true,
+        },
+      },
       user: { select: { id: true, name: true, email: true } },
     },
     orderBy: [{ usedAt: "desc" }, { createdAt: "desc" }],
@@ -2402,6 +2414,7 @@ router.get("/timber/usage", async (req: any, res) => {
 
   let totalMm = 0;
   let totalCost = 0;
+  const byMaterialMap = new Map<string, { materialId: string; material: any | null; totalMillimeters: number; totalMeters: number; totalCost: number; unitCostPerMeter: number }>();
   for (const l of logs) {
     const qty = Number(l.quantity || 0);
     const mm = Number(l.lengthMm || 0) * qty;
@@ -2410,12 +2423,38 @@ router.get("/timber/usage", async (req: any, res) => {
     const deliveryLine = latestByMaterial.get(l.materialId);
     const unitCostPerMeter = Number(deliveryLine?.unitCostPerMeter ?? l.material?.unitCost ?? 0);
     totalCost += (mm / 1000) * unitCostPerMeter;
+
+    const key = String(l.materialId);
+    const existing = byMaterialMap.get(key);
+    const addCost = (mm / 1000) * unitCostPerMeter;
+    if (existing) {
+      existing.totalMillimeters += mm;
+      existing.totalMeters += mm / 1000;
+      existing.totalCost += addCost;
+      // Keep the first-seen (latest) unitCostPerMeter for display
+    } else {
+      byMaterialMap.set(key, {
+        materialId: key,
+        material: l.material ?? null,
+        totalMillimeters: mm,
+        totalMeters: mm / 1000,
+        totalCost: addCost,
+        unitCostPerMeter,
+      });
+    }
   }
+
+  const byMaterial = Array.from(byMaterialMap.values()).sort((a, b) => {
+    const an = String(a.material?.name || '');
+    const bn = String(b.material?.name || '');
+    return an.localeCompare(bn);
+  });
 
   res.json({
     ok: true,
     project: { id: project.id, title: project.title },
     logs,
+    byMaterial,
     totals: {
       totalMillimeters: totalMm,
       totalMeters: totalMm / 1000,

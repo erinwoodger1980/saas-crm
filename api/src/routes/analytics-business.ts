@@ -1,5 +1,6 @@
 // api/src/routes/analytics-business.ts
 import { Router } from "express";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 
 const router = Router();
@@ -79,6 +80,45 @@ router.get("/business-metrics", async (req, res) => {
     const { tenantId } = getAuth(req);
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
+    const inRange = (d: Date | null | undefined, start: Date, end: Date) => {
+      if (!d) return false;
+      const t = d.getTime();
+      if (!Number.isFinite(t)) return false;
+      return t >= start.getTime() && t <= end.getTime();
+    };
+
+    const parseCustomDate = (raw: any): Date | null => {
+      if (!raw) return null;
+      const d = new Date(String(raw));
+      return Number.isFinite(d.getTime()) ? d : null;
+    };
+
+    const getEffectiveQuoteSentAt = (lead: { dateQuoteSent: Date | null; custom: any }) => {
+      if (lead.dateQuoteSent) return lead.dateQuoteSent;
+      const custom = lead.custom as any;
+      return parseCustomDate(custom?.dateQuoteSent);
+    };
+
+    const getEffectiveQuoteValue = (lead: { quotedValue: any; custom: any }) => {
+      const direct = Number((lead as any).quotedValue ?? 0);
+      if (Number.isFinite(direct) && direct !== 0) return direct;
+      const custom = lead.custom as any;
+      const fromCustom = Number(custom?.quotedValue ?? custom?.quoteValue ?? 0);
+      return Number.isFinite(fromCustom) ? fromCustom : 0;
+    };
+
+    const getEffectiveOrderPlacedAt = (lead: { custom: any }) => {
+      const custom = lead.custom as any;
+      return parseCustomDate(custom?.dateOrderPlaced);
+    };
+
+    const getEffectiveOrderValue = (lead: { quotedValue: any; custom: any }) => {
+      const custom = lead.custom as any;
+      const fromCustomOrder = Number(custom?.orderValueGBP ?? 0);
+      if (Number.isFinite(fromCustomOrder) && fromCustomOrder !== 0) return fromCustomOrder;
+      return getEffectiveQuoteValue(lead);
+    };
+
     // Get tenant's financial year end setting
     const tenant = await prisma.tenant.findUnique({
       where: { id: tenantId },
@@ -92,6 +132,47 @@ router.get("/business-metrics", async (req, res) => {
     // Get current and previous financial year boundaries
     const currentFY = getFinancialYearBoundaries(financialYearEnd, currentFinancialYear);
     const previousFY = getFinancialYearBoundaries(financialYearEnd, currentFinancialYear - 1);
+
+    // Legacy support: older tenants may have stored dateQuoteSent in Lead.custom.
+    // Prefetch once (per request) and bucket by range in JS. Restrict to a
+    // reasonable window to avoid scanning all historical leads.
+    const now = new Date();
+    const earliestMonthStart = new Date(now.getFullYear(), now.getMonth() - 23, 1);
+    const earliestRelevant = previousFY.start < earliestMonthStart ? previousFY.start : earliestMonthStart;
+
+    const legacyQuoteSentLeads = await prisma.lead.findMany({
+      where: {
+        tenantId,
+        dateQuoteSent: null,
+        capturedAt: { gte: earliestRelevant },
+        custom: {
+          path: ["dateQuoteSent"],
+          not: Prisma.JsonNull,
+        },
+      },
+      select: {
+        quotedValue: true,
+        custom: true,
+      },
+    });
+
+    const legacyOrderPlacedLeads = await prisma.lead.findMany({
+      where: {
+        tenantId,
+        status: "WON",
+        capturedAt: { gte: earliestRelevant },
+        // Only treat as legacy if there isn't an Opportunity row to drive wonAt/valueGBP
+        opportunity: { is: null },
+        custom: {
+          path: ["dateOrderPlaced"],
+          not: Prisma.JsonNull,
+        },
+      },
+      select: {
+        quotedValue: true,
+        custom: true,
+      },
+    });
 
     // Get last 24 months of data (current + previous year for comparison)
     const monthlyData = [];
@@ -119,30 +200,23 @@ router.get("/business-metrics", async (req, res) => {
         select: { 
           dateQuoteSent: true,
           quotedValue: true,
-          custom: true
+          custom: true,
         }
       });
 
       // Filter and aggregate quotes
-      const validQuotes = leadsWithQuotes.filter(lead => {
+      const validQuotes = leadsWithQuotes;
+
+      const legacyValidQuotes = legacyQuoteSentLeads.filter((lead) => {
         const custom = lead.custom as any;
-        const dateQuoteSent = lead.dateQuoteSent;
-        if (dateQuoteSent) {
-          return dateQuoteSent >= start && dateQuoteSent <= end;
-        }
-        // Fallback: check custom.dateQuoteSent if database field is null
-        if (custom?.dateQuoteSent) {
-          const customDate = new Date(custom.dateQuoteSent);
-          return customDate >= start && customDate <= end;
-        }
-        return false;
+        const d = parseCustomDate(custom?.dateQuoteSent);
+        return inRange(d, start, end);
       });
 
-      const quotesCount = validQuotes.length;
-      const quotesValue = validQuotes.reduce((sum, lead) => {
-        const value = Number(lead.quotedValue || 0);
-        return sum + value;
-      }, 0);
+      const quotesCount = validQuotes.length + legacyValidQuotes.length;
+      const quotesValue =
+        validQuotes.reduce((sum, lead) => sum + getEffectiveQuoteValue(lead), 0) +
+        legacyValidQuotes.reduce((sum, lead) => sum + getEffectiveQuoteValue(lead), 0);
 
       // Sales (won opportunities) - use wonAt from schema
       const salesOpps = await prisma.opportunity.findMany({
@@ -152,8 +226,11 @@ router.get("/business-metrics", async (req, res) => {
         },
         select: { valueGBP: true }
       });
-      const salesCount = salesOpps.length;
-      const salesValue = salesOpps.reduce((sum, s) => sum + Number(s.valueGBP || 0), 0);
+      const legacySales = legacyOrderPlacedLeads.filter((lead) => inRange(getEffectiveOrderPlacedAt(lead), start, end));
+      const salesCount = salesOpps.length + legacySales.length;
+      const salesValue =
+        salesOpps.reduce((sum, s) => sum + Number(s.valueGBP || 0), 0) +
+        legacySales.reduce((sum, lead) => sum + getEffectiveOrderValue(lead), 0);
 
       // Conversion rates by source for this month
       const filteredLeads = await prisma.lead.findMany({
@@ -219,24 +296,21 @@ router.get("/business-metrics", async (req, res) => {
       select: { 
         dateQuoteSent: true,
         quotedValue: true,
-        custom: true
+        custom: true,
       }
     });
 
-    const ytdValidQuotes = ytdLeadsWithQuotes.filter(lead => {
+    const ytdValidQuotes = ytdLeadsWithQuotes;
+    const ytdLegacyValidQuotes = legacyQuoteSentLeads.filter((lead) => {
       const custom = lead.custom as any;
-      if (lead.dateQuoteSent) {
-        return lead.dateQuoteSent >= fyStart && lead.dateQuoteSent <= fyEnd;
-      }
-      if (custom?.dateQuoteSent) {
-        const customDate = new Date(custom.dateQuoteSent);
-        return customDate >= fyStart && customDate <= fyEnd;
-      }
-      return false;
+      const d = parseCustomDate(custom?.dateQuoteSent);
+      return inRange(d, fyStart, fyEnd);
     });
 
-    const ytdQuotesCount = ytdValidQuotes.length;
-    const ytdQuotesValue = ytdValidQuotes.reduce((sum, lead) => sum + Number(lead.quotedValue || 0), 0);
+    const ytdQuotesCount = ytdValidQuotes.length + ytdLegacyValidQuotes.length;
+    const ytdQuotesValue =
+      ytdValidQuotes.reduce((sum, lead) => sum + getEffectiveQuoteValue(lead), 0) +
+      ytdLegacyValidQuotes.reduce((sum, lead) => sum + getEffectiveQuoteValue(lead), 0);
 
     const ytdSalesOpps = await prisma.opportunity.findMany({
       where: { 
@@ -245,8 +319,11 @@ router.get("/business-metrics", async (req, res) => {
       },
       select: { valueGBP: true }
     });
-    const ytdSalesCount = ytdSalesOpps.length;
-    const ytdSalesValue = ytdSalesOpps.reduce((sum, s) => sum + Number(s.valueGBP || 0), 0);
+    const ytdLegacySales = legacyOrderPlacedLeads.filter((lead) => inRange(getEffectiveOrderPlacedAt(lead), fyStart, fyEnd));
+    const ytdSalesCount = ytdSalesOpps.length + ytdLegacySales.length;
+    const ytdSalesValue =
+      ytdSalesOpps.reduce((sum, s) => sum + Number(s.valueGBP || 0), 0) +
+      ytdLegacySales.reduce((sum, lead) => sum + getEffectiveOrderValue(lead), 0);
 
     // Get or create targets for current financial year
     let targets = await prisma.target.findUnique({
@@ -321,20 +398,15 @@ router.get("/business-metrics", async (req, res) => {
       select: { 
         dateQuoteSent: true,
         quotedValue: true,
-        custom: true
+        custom: true,
       }
     });
 
-    const previousYearValidQuotes = previousYearLeadsWithQuotes.filter(lead => {
+    const previousYearValidQuotes = previousYearLeadsWithQuotes;
+    const previousYearLegacyValidQuotes = legacyQuoteSentLeads.filter((lead) => {
       const custom = lead.custom as any;
-      if (lead.dateQuoteSent) {
-        return lead.dateQuoteSent >= previousFY.start && lead.dateQuoteSent <= previousFY.end;
-      }
-      if (custom?.dateQuoteSent) {
-        const customDate = new Date(custom.dateQuoteSent);
-        return customDate >= previousFY.start && customDate <= previousFY.end;
-      }
-      return false;
+      const d = parseCustomDate(custom?.dateQuoteSent);
+      return inRange(d, previousFY.start, previousFY.end);
     });
 
     const previousYearSales = await prisma.opportunity.findMany({
@@ -345,13 +417,21 @@ router.get("/business-metrics", async (req, res) => {
       select: { valueGBP: true }
     });
 
+    const previousYearLegacySales = legacyOrderPlacedLeads.filter((lead) =>
+      inRange(getEffectiveOrderPlacedAt(lead), previousFY.start, previousFY.end)
+    );
+
     const previousYear = {
       enquiries: previousYearEnquiries,
-      quotesCount: previousYearValidQuotes.length,
-      quotesValue: previousYearValidQuotes.reduce((sum, lead) => sum + Number(lead.quotedValue || 0), 0),
-      salesCount: previousYearSales.length,
-      salesValue: previousYearSales.reduce((sum, s) => sum + Number(s.valueGBP || 0), 0),
-      conversionRate: previousYearEnquiries > 0 ? previousYearSales.length / previousYearEnquiries : 0
+      quotesCount: previousYearValidQuotes.length + previousYearLegacyValidQuotes.length,
+      quotesValue:
+        previousYearValidQuotes.reduce((sum, lead) => sum + getEffectiveQuoteValue(lead), 0) +
+        previousYearLegacyValidQuotes.reduce((sum, lead) => sum + getEffectiveQuoteValue(lead), 0),
+      salesCount: previousYearSales.length + previousYearLegacySales.length,
+      salesValue:
+        previousYearSales.reduce((sum, s) => sum + Number(s.valueGBP || 0), 0) +
+        previousYearLegacySales.reduce((sum, lead) => sum + getEffectiveOrderValue(lead), 0),
+      conversionRate: previousYearEnquiries > 0 ? (previousYearSales.length + previousYearLegacySales.length) / previousYearEnquiries : 0
     };
 
     // Calculate year-over-year changes

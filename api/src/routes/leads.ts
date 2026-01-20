@@ -1726,6 +1726,10 @@ router.patch("/:id", async (req, res) => {
     dateQuoteSent?: string | Date | null;
     startDate?: string | Date | null;
     deliveryDate?: string | Date | null;
+
+    // Order lifecycle fields (stored on Opportunity but editable from Lead)
+    dateOrderPlaced?: string | Date | null;
+    orderValueGBP?: number | string | null;
     estimatedWidthMm?: number | string | null;
     estimatedHeightMm?: number | string | null;
     measurementSource?: MeasurementSource | string | null;
@@ -1754,6 +1758,19 @@ router.patch("/:id", async (req, res) => {
       return d;
     }
     return undefined as any;
+  };
+
+  const parseMoneyOrNull = (raw: any): number | null => {
+    if (raw === undefined) return undefined as any;
+    if (raw === null || raw === "") return null;
+    if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
+    if (typeof raw === "string") {
+      const trimmed = raw.trim();
+      if (!trimmed) return null;
+      const parsed = toNumberGBP(trimmed);
+      return parsed != null ? parsed : null;
+    }
+    return null;
   };
 
   const applyCanonical = (key: string, raw: any) => {
@@ -1840,6 +1857,60 @@ router.patch("/:id", async (req, res) => {
   if (body.dateQuoteSent !== undefined) applyCanonical("dateQuoteSent", body.dateQuoteSent);
   if (body.startDate !== undefined) applyCanonical("startDate", body.startDate);
   if (body.deliveryDate !== undefined) applyCanonical("deliveryDate", body.deliveryDate);
+
+  const requestedOrderPlacedAt = body.dateOrderPlaced !== undefined ? parseDateTimeOrNull(body.dateOrderPlaced) : undefined;
+  if (requestedOrderPlacedAt === undefined && body.dateOrderPlaced !== undefined) {
+    return res.status(400).json({ error: "invalid dateOrderPlaced" });
+  }
+  const requestedOrderValueGBP = body.orderValueGBP !== undefined ? parseMoneyOrNull(body.orderValueGBP) : undefined;
+
+  const hasRequestedQuoteProgress =
+    body.dateQuoteSent !== undefined ||
+    body.quotedValue !== undefined;
+  const hasRequestedOrderProgress =
+    body.dateOrderPlaced !== undefined ||
+    body.orderValueGBP !== undefined;
+
+  // Bidirectional status syncing: setting quote fields promotes status to QUOTE_SENT (unless already later/terminal)
+  if (hasRequestedQuoteProgress && nextUi !== "WON" && nextUi !== "LOST" && nextUi !== "DISQUALIFIED") {
+    if (nextUi !== "QUOTE_SENT") {
+      nextUi = "QUOTE_SENT";
+      data.status = uiToDb(nextUi);
+      nextCustom.uiStatus = nextUi;
+    }
+
+    // If we promoted to QUOTE_SENT and dateQuoteSent is missing, seed it.
+    if (!canonicalUpdates.dateQuoteSent && !existing.dateQuoteSent) {
+      const now = new Date();
+      canonicalUpdates.dateQuoteSent = now;
+      data.dateQuoteSent = now;
+      nextCustom.dateQuoteSent = now.toISOString().split("T")[0];
+    }
+  }
+
+  // Bidirectional status syncing: setting order fields promotes status to WON
+  if (hasRequestedOrderProgress) {
+    if (nextUi !== "WON") {
+      nextUi = "WON";
+      data.status = uiToDb(nextUi);
+      nextCustom.uiStatus = nextUi;
+    }
+
+    const effectiveOrderPlacedAt =
+      requestedOrderPlacedAt && requestedOrderPlacedAt !== null
+        ? requestedOrderPlacedAt
+        : prevUi !== "WON"
+          ? new Date()
+          : null;
+
+    if (effectiveOrderPlacedAt) {
+      nextCustom.dateOrderPlaced = effectiveOrderPlacedAt.toISOString().split("T")[0];
+    }
+
+    if (body.orderValueGBP !== undefined) {
+      nextCustom.orderValueGBP = requestedOrderValueGBP ?? null;
+    }
+  }
 
   if (body.estimatedWidthMm !== undefined) {
     data.estimatedWidthMm = normalizeMeasurement(body.estimatedWidthMm);
@@ -2144,19 +2215,34 @@ router.patch("/:id", async (req, res) => {
           select: { title: true, totalGBP: true },
         });
         const title = latestQuote?.title || updated.contactName || "Project";
+
+        const existingOpp = await tx.opportunity.findFirst({
+          where: { leadId: id },
+          select: { id: true, valueGBP: true },
+        });
         
         // Get startDate and deliveryDate from the updated lead's custom data
         const startDate = (updated.custom as any)?.startDate || null;
         const deliveryDate = (updated.custom as any)?.deliveryDate || null;
         
-        // Use quote totalGBP if available, otherwise fall back to lead's quotedValue
-        const valueGBP = (latestQuote as any)?.totalGBP ?? updated.quotedValue ?? undefined;
+        // Use explicit orderValueGBP if provided, otherwise preserve existing Opp value, otherwise fall back to quote totalGBP, otherwise lead.quotedValue
+        const explicitOrderValueGBP = body.orderValueGBP !== undefined ? requestedOrderValueGBP : undefined;
+        const valueGBP =
+          explicitOrderValueGBP !== undefined
+            ? explicitOrderValueGBP
+            : existingOpp?.valueGBP ?? (latestQuote as any)?.totalGBP ?? updated.quotedValue ?? undefined;
+
+        const shouldSetWonAt = body.dateOrderPlaced !== undefined || (prevUi !== "WON" && nextUi === "WON");
+        const wonAt =
+          body.dateOrderPlaced !== undefined
+            ? (requestedOrderPlacedAt && requestedOrderPlacedAt !== null ? requestedOrderPlacedAt : undefined)
+            : new Date();
         
         const opportunity = await tx.opportunity.upsert({
           where: { leadId: id },
           update: {
             stage: "WON" as any,
-            wonAt: new Date(),
+            wonAt: shouldSetWonAt ? (wonAt ?? undefined) : undefined,
             title,
             valueGBP,
             startDate: startDate ? new Date(startDate) : undefined,
@@ -2167,7 +2253,7 @@ router.patch("/:id", async (req, res) => {
             leadId: id,
             title,
             stage: "WON" as any,
-            wonAt: new Date(),
+            wonAt: wonAt ?? new Date(),
             valueGBP,
             startDate: startDate ? new Date(startDate) : null,
             deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
