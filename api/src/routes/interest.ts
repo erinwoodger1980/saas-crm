@@ -12,7 +12,7 @@ const router = Router();
  */
 router.post("/", async (req, res) => {
   try {
-    const { email, name, company, message } = req.body;
+    const { email, name, company, phone, message } = req.body;
 
     if (!email || typeof email !== "string") {
       return res.status(400).json({ error: "Email is required" });
@@ -27,6 +27,14 @@ router.post("/", async (req, res) => {
 
     const alreadyRegistered = !!existing;
 
+    const messageWithPhone = (() => {
+      const parts = [
+        typeof message === "string" && message.trim() ? message.trim() : null,
+        typeof phone === "string" && phone.trim() ? `Phone: ${phone.trim()}` : null,
+      ].filter(Boolean) as string[];
+      return parts.length ? parts.join("\n") : null;
+    })();
+
     // Create interest registration (first time only)
     if (!alreadyRegistered) {
       await prisma.interestRegistration.create({
@@ -34,7 +42,7 @@ router.post("/", async (req, res) => {
           email: normalizedEmail,
           name: name || null,
           company: company || null,
-          message: message || null,
+          message: messageWithPhone,
         },
       });
       console.log(`📧 New interest registration: ${normalizedEmail}`);
@@ -88,12 +96,16 @@ router.post("/", async (req, res) => {
               createdById: systemUser.id,
               contactName: name || normalizedEmail,
               email: normalizedEmail,
-              phone: null,
+              phone: typeof phone === "string" && phone.trim() ? phone.trim() : null,
               status: "NEW",
               description: company 
                 ? `[Website Interest] ${company} - ${message || 'Registered interest for March cohort'}`
                 : `[Website Interest] ${message || 'Registered interest for March cohort'}`,
-              custom: company ? { company, source: "JoineryAI Website Interest Form" } : { source: "JoineryAI Website Interest Form" },
+              custom: {
+                ...(company ? { company } : {}),
+                ...(typeof phone === "string" && phone.trim() ? { phone: phone.trim() } : {}),
+                source: "JoineryAI Website Interest Form",
+              },
             },
           });
 
@@ -120,8 +132,6 @@ router.post("/", async (req, res) => {
 
     // Send email notifications regardless of lead creation
     try {
-      const calendlyUrl = process.env.CALENDLY_URL || process.env.NEXT_PUBLIC_CALENDLY_URL || "";
-
       const emailHtml = `
         <!DOCTYPE html>
         <html>
@@ -150,6 +160,8 @@ router.post("/", async (req, res) => {
               ${name ? `<div class="detail"><span class="label">Name:</span> ${name}</div>` : ''}
               
               ${company ? `<div class="detail"><span class="label">Company:</span> ${company}</div>` : ''}
+
+              ${typeof phone === "string" && phone.trim() ? `<div class="detail"><span class="label">Phone:</span> ${phone.trim()}</div>` : ''}
               
               ${message ? `<div class="detail"><span class="label">Message:</span> ${message}</div>` : ''}
               
@@ -210,8 +222,6 @@ router.post("/", async (req, res) => {
                   .container { max-width: 600px; margin: 0 auto; padding: 20px; }
                   .header { background: linear-gradient(135deg, #10b981 0%, #06b6d4 100%); color: white; padding: 30px; border-radius: 8px 8px 0 0; text-align: center; }
                   .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
-                  .cta { display: inline-block; background: #059669; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 20px; }
-                  .cta:hover { background: #047857; }
                 </style>
               </head>
               <body>
@@ -222,33 +232,17 @@ router.post("/", async (req, res) => {
                   <div class="content">
                     <p>Hi ${name || 'there'},</p>
                     
-                    <p>Thank you for registering your interest in JoineryAI! We're excited that you want to join our March cohort.</p>
+                    <p>Thank you for registering your interest in JoineryAI. We're excited to have you on the March cohort list.</p>
                     
                     <p><strong>What's next?</strong></p>
                     <ul>
-                      <li>We'll be in touch with details about our March launch</li>
-                      <li>You'll get special early-bird pricing as a member of this cohort</li>
-                      <li>We'll arrange a time to walk you through how JoineryAI works for your business</li>
-                    </ul>
-
-                    ${calendlyUrl ? `
-                      <p style="margin-top: 20px;">If you'd like to get your onboarding session booked in now, you can choose a time here:</p>
-                      <p>
-                        <a class="cta" href="${calendlyUrl}" target="_blank" rel="noopener noreferrer">Book onboarding session</a>
-                      </p>
-                    ` : ''}
-                    
-                    <p>In the meantime, feel free to explore:</p>
-                    <ul>
-                      <li><strong>How we quote:</strong> Automated quotes from supplier PDFs in minutes</li>
-                      <li><strong>How we track leads:</strong> Email integration captures every inquiry automatically</li>
-                      <li><strong>Real job costing:</strong> See exactly what you actually made on each job</li>
-                      <li><strong>Workshop visibility:</strong> From timesheets to job board to live visibility</li>
+                      <li>Someone from the team will be in touch to confirm the next steps</li>
+                      <li>We'll share timelines and any onboarding details you need</li>
                     </ul>
                     
                     <p>Questions? Just reply to this email and we'll help.</p>
                     
-                    <p>Excited to work with you!</p>
+                    <p>Thanks again,</p>
                     <p><strong>The JoineryAI Team</strong></p>
                     
                     <p style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #999;">

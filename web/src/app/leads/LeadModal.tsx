@@ -219,6 +219,49 @@ function pickFirst<T>(...vals: Array<T | null | undefined>): T | undefined {
   }
   return undefined;
 }
+
+function normalizeDateToYmd(raw: any): string | null {
+  if (raw == null) return null;
+  if (raw instanceof Date) {
+    if (!Number.isFinite(raw.getTime())) return null;
+    return raw.toISOString().slice(0, 10);
+  }
+  const s = String(raw).trim();
+  if (!s) return null;
+
+  // Already ISO/ymd
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+
+  // Common legacy formats: DD/MM/YYYY or DD-MM-YYYY
+  const m1 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (m1) {
+    const dd = String(m1[1]).padStart(2, "0");
+    const mm = String(m1[2]).padStart(2, "0");
+    const yyyy = String(m1[3]);
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  // YYYY/MM/DD
+  const m2 = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+  if (m2) {
+    const yyyy = String(m2[1]);
+    const mm = String(m2[2]).padStart(2, "0");
+    const dd = String(m2[3]).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  // Fallback: try Date parsing
+  const d = new Date(s);
+  if (!Number.isFinite(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+function normalizeFieldLabel(label: string): string {
+  return String(label || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
 function avatarText(name?: string | null) {
   if (!name) return "?";
   const p = name.trim().split(/\s+/);
@@ -768,6 +811,7 @@ export default function LeadModal({
   // Key Dates (editable inputs)
   const [leadCreatedAtInput, setLeadCreatedAtInput] = useState<string>("");
   const [leadQuoteSentAtInput, setLeadQuoteSentAtInput] = useState<string>("");
+  const [leadQuotedValueInput, setLeadQuotedValueInput] = useState<string>("");
   const [opportunityCreatedAtInput, setOpportunityCreatedAtInput] = useState<string>("");
   const [opportunityWonAtInput, setOpportunityWonAtInput] = useState<string>("");
   const [opportunityLostAtInput, setOpportunityLostAtInput] = useState<string>("");
@@ -775,9 +819,16 @@ export default function LeadModal({
   const pad2 = (n: number) => String(n).padStart(2, "0");
   const isoToDateTimeLocalInput = (iso: string | null | undefined): string => {
     if (!iso) return "";
+    // Prefer normal Date parsing for ISO timestamps
     const d = new Date(iso);
-    if (!Number.isFinite(d.getTime())) return "";
-    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+    if (Number.isFinite(d.getTime())) {
+      return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+    }
+
+    // Fallback for legacy date strings like DD/MM/YYYY
+    const ymd = normalizeDateToYmd(iso);
+    if (ymd) return `${ymd}T00:00`;
+    return "";
   };
   const dateTimeLocalToIsoOrNull = (local: string): string | null => {
     if (!local) return null;
@@ -1191,6 +1242,7 @@ export default function LeadModal({
         // Seed Key Dates inputs (editable) from lead fields
         setLeadCreatedAtInput(isoToDateTimeLocalInput((normalized.capturedAt || normalized.createdAt) ?? null));
         setLeadQuoteSentAtInput(isoToDateTimeLocalInput(normalized.dateQuoteSent ?? null));
+        setLeadQuotedValueInput(normalized.quotedValue != null ? String(normalized.quotedValue) : "");
 
         // Hydrate finance fields once per lead id
         if (financeHydratedLeadIdRef.current !== actualLeadId) {
@@ -1585,22 +1637,23 @@ export default function LeadModal({
 
           // Seed Key Dates inputs (editable) from opportunity fields
           setOpportunityCreatedAtInput(isoToDateTimeLocalInput(opp.createdAt ? String(opp.createdAt) : null));
-          setOpportunityWonAtInput(isoToDateTimeLocalInput(opp.wonAt ? String(opp.wonAt) : null));
+          const legacyOrderPlacedRaw = (() => {
+            const c = lead?.custom;
+            if (c && typeof c === "object" && !Array.isArray(c)) {
+              return (c as any)?.dateOrderPlaced ?? (c as any)?.date_order_placed ?? (c as any)?.orderDate;
+            }
+            return null;
+          })();
+          setOpportunityWonAtInput(
+            isoToDateTimeLocalInput(opp.wonAt ? String(opp.wonAt) : legacyOrderPlacedRaw ? String(legacyOrderPlacedRaw) : null)
+          );
           setOpportunityLostAtInput(isoToDateTimeLocalInput(opp.lostAt ? String(opp.lostAt) : null));
           // Store opportunity stage for conditional labeling
           if (opp.stage) {
             setOpportunityStage(opp.stage);
           }
           // Format dates for date input (YYYY-MM-DD)
-          const formatDateForInput = (dateStr: any) => {
-            if (!dateStr) return null;
-            try {
-              const date = new Date(dateStr);
-              return date.toISOString().split('T')[0];
-            } catch {
-              return null;
-            }
-          };
+          const formatDateForInput = (dateStr: any) => normalizeDateToYmd(dateStr);
           setMaterialDates({
             timberOrderedAt: formatDateForInput(opp.timberOrderedAt),
             timberExpectedAt: formatDateForInput(opp.timberExpectedAt),
@@ -1623,7 +1676,14 @@ export default function LeadModal({
           setProjectDeliveryDate(formatDateForInput(opp.deliveryDate) || "");
           setProjectInstallationStartDate(formatDateForInput(opp.installationStartDate) || "");
           setProjectInstallationEndDate(formatDateForInput(opp.installationEndDate) || "");
-          setProjectValueGBP(opp.valueGBP ? String(opp.valueGBP) : "");
+          const legacyOrderValueRaw = (() => {
+            const c = lead?.custom;
+            if (c && typeof c === "object" && !Array.isArray(c)) {
+              return (c as any)?.orderValueGBP ?? (c as any)?.order_value_gbp ?? (c as any)?.orderValue;
+            }
+            return null;
+          })();
+          setProjectValueGBP(opp.valueGBP ? String(opp.valueGBP) : legacyOrderValueRaw != null ? String(legacyOrderValueRaw) : "");
         }
       } catch (err) {
         console.error('[LeadModal] workshop loader error:', err);
@@ -3642,6 +3702,96 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     }
     return [...baseWorkspaceFields, ...extras];
   }, [baseWorkspaceFields]);
+
+  // Client details workspace fields: de-dupe legacy lifecycle fields and ensure the layout order
+  // (Quote date + Quote value first, then Order date + Order value).
+  const clientWorkspaceFields = useMemo(() => {
+    const CANONICAL_KEYS = {
+      dateQuoteSent: "dateQuoteSent",
+      quotedValue: "quotedValue",
+      dateOrderPlaced: "dateOrderPlaced",
+      orderValueGBP: "orderValueGBP",
+    } as const;
+
+    const labelGroupFor = (label: string) => {
+      const nl = normalizeFieldLabel(label);
+      if (["date quote sent", "quote sent", "quote date"].some((k) => nl.includes(k))) return CANONICAL_KEYS.dateQuoteSent;
+      if (["quote value", "quoted value"].some((k) => nl.includes(k))) return CANONICAL_KEYS.quotedValue;
+      if (["date order placed", "order placed", "order date"].some((k) => nl.includes(k))) return CANONICAL_KEYS.dateOrderPlaced;
+      if (["order value"].some((k) => nl.includes(k))) return CANONICAL_KEYS.orderValueGBP;
+      if (["what date did you receive this enquiry", "enquiry date", "date enquiry", "date received"].some((k) => nl.includes(k))) return "__enquiry";
+      return null;
+    };
+
+    const filtered = workspaceFields
+      .filter((field) => {
+        const key = (field.key || "").toLowerCase();
+        const labelLc = (field.label || "").toLowerCase();
+
+        // Keep existing exclusions
+        const customOnly = [
+          "clienttype",
+          "what type of client",
+          "jms",
+          "site visit",
+          "follow up",
+          "quoted by",
+          "manufactured",
+          "estimated value",
+          "quoted value",
+        ].some((needle) => key.includes(needle) || labelLc.includes(needle));
+        if (customOnly) return false;
+
+        if (
+          key.includes("address") ||
+          key.includes("street") ||
+          key.includes("city") ||
+          key.includes("town") ||
+          key.includes("postcode") ||
+          key.includes("zipcode") ||
+          key.includes("location") ||
+          key === "source" ||
+          key === "notes" ||
+          key === "startdate" ||
+          key === "deliverydate" ||
+          key === "installationstartdate" ||
+          key === "installationenddate"
+        ) {
+          return false;
+        }
+
+        // Do not show enquiry date in client details; it's edited in the Dates tab.
+        const g = labelGroupFor(field.label || field.key);
+        if (g === "__enquiry") return false;
+        if ((field.key || "") === "enquiryDate") return false;
+
+        // Remove legacy lifecycle duplicates by label group; we always show canonical keys.
+        if (g && g !== "__enquiry" && field.key !== g) return false;
+
+        return true;
+      })
+      .filter((field) => {
+        // Hide enquiryDate and dateQuoteSent was previously done because they were auto-set.
+        // We now allow editing quote and order lifecycle fields here, so don't hide them.
+        return true;
+      });
+
+    const priority = new Map<string, number>([
+      [CANONICAL_KEYS.dateQuoteSent, 0],
+      [CANONICAL_KEYS.quotedValue, 1],
+      [CANONICAL_KEYS.dateOrderPlaced, 2],
+      [CANONICAL_KEYS.orderValueGBP, 3],
+    ]);
+
+    return filtered
+      .slice()
+      .sort((a, b) => {
+        const pa = priority.has(a.key) ? (priority.get(a.key) as number) : 999;
+        const pb = priority.has(b.key) ? (priority.get(b.key) as number) : 999;
+        if (pa !== pb) return pa - pb;
+        return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+      });
+  }, [workspaceFields]);
   const customData = useMemo(() => {
     const computed = lead?.computed && typeof lead.computed === "object" ? (lead.computed as Record<string, any>) : {};
     const result = lead?.custom && typeof lead.custom === "object" ? { ...(lead.custom as Record<string, any>), ...computed } : { ...computed };
@@ -3673,6 +3823,46 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         result.orderValueGBP = parsed;
       }
     }
+
+    // Legacy key mapping (common variants) to canonical lifecycle keys
+    if (!result.dateQuoteSent) {
+      const legacy = pickFirst<any>(
+        (result as any).date_quote_sent,
+        (result as any).quoteDate,
+        (result as any).quoteSentDate,
+        (result as any).quote_sent_date,
+      );
+      const ymd = normalizeDateToYmd(legacy);
+      if (ymd) result.dateQuoteSent = ymd;
+    }
+    if (result.quotedValue == null) {
+      const legacy = pickFirst<any>(
+        (result as any).quoteValue,
+        (result as any).quoted_value,
+        (result as any).quote_value,
+        (result as any).quoteValueGBP,
+      );
+      const cleaned = legacy == null ? null : String(legacy).trim().replace(/£/g, "").replace(/,/g, "");
+      const parsed = cleaned ? Number(cleaned) : null;
+      if (parsed != null && !Number.isNaN(parsed)) result.quotedValue = parsed;
+    }
+    if (!result.dateOrderPlaced) {
+      const legacy = pickFirst<any>(
+        (result as any).orderPlacedDate,
+        (result as any).orderDate,
+        (result as any).order_placed_date,
+        (result as any).date_order_placed,
+        (result as any).wonDate,
+      );
+      const ymd = normalizeDateToYmd(legacy);
+      if (ymd) result.dateOrderPlaced = ymd;
+    }
+    if (result.orderValueGBP == null) {
+      const legacy = pickFirst<any>((result as any).orderValue, (result as any).order_value, (result as any).orderValueGbp);
+      const cleaned = legacy == null ? null : String(legacy).trim().replace(/£/g, "").replace(/,/g, "");
+      const parsed = cleaned ? Number(cleaned) : null;
+      if (parsed != null && !Number.isNaN(parsed)) result.orderValueGBP = parsed;
+    }
     
     return result;
   }, [lead?.custom, lead?.computed, lead?.capturedAt, lead?.dateQuoteSent, lead?.quotedValue, lead?.estimatedValue, opportunityWonAt, projectValueGBP]);
@@ -3701,13 +3891,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
           return;
         }
         if (field.type === "date") {
-          const iso =
-            typeof raw === "string"
-              ? raw
-              : raw instanceof Date
-              ? raw.toISOString()
-              : String(raw ?? "");
-          next[key] = iso.slice(0, 10);
+          next[key] = normalizeDateToYmd(raw) || "";
           return;
         }
         next[key] =
@@ -4625,41 +4809,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       {/* Workspace fields */}
                       {workspaceFields.length > 0 && (
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                          {workspaceFields
-                            .filter((field) => {
-                              // Filter out address fields, source, notes, and date fields that belong in Order tab
-                              const key = field.key.toLowerCase();
-                              const labelLc = (field.label || "").toLowerCase();
-                              const customOnly = [
-                                "clienttype",
-                                "what type of client",
-                                "jms",
-                                "site visit",
-                                "follow up",
-                                "quoted by",
-                                "manufactured",
-                                "estimated value",
-                                "quoted value",
-                              ].some((needle) => key.includes(needle) || labelLc.includes(needle));
-
-                              if (customOnly) return false;
-                              return !(
-                                key.includes("address") ||
-                                key.includes("street") ||
-                                key.includes("city") ||
-                                key.includes("town") ||
-                                key.includes("postcode") ||
-                                key.includes("zipcode") ||
-                                key.includes("location") ||
-                                key === "source" ||
-                                key === "notes" ||
-                                key === "startdate" ||
-                                key === "deliverydate" ||
-                                key === "installationstartdate" ||
-                                key === "installationenddate"
-                              );
-                            })
-                            .map((field) => {
+                          {clientWorkspaceFields.map((field) => {
                           const key = field.key;
                           if (!key) return null;
                           const value = customDraft[key] ?? "";
@@ -4715,10 +4865,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           }
 
                           if (field.type === "date") {
-                            // Hide enquiryDate and dateQuoteSent as they are auto-set
-                            const isAutoSet = key === "enquiryDate" || key === "dateQuoteSent";
-                            if (isAutoSet) return null;
-                            
                             return (
                               <label key={key} className="text-sm">
                                 <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
@@ -5526,8 +5672,41 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         Lead
                       </div>
                       <div className="space-y-2 text-sm">
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <label className="flex items-center justify-between gap-3">
+                            <span className="text-slate-600">Quote sent</span>
+                            <input
+                              type="datetime-local"
+                              className="w-[220px] max-w-[55%] rounded-md border px-2 py-1 text-sm"
+                              value={leadQuoteSentAtInput}
+                              onChange={(e) => setLeadQuoteSentAtInput(e.target.value)}
+                              onBlur={async () => {
+                                const iso = dateTimeLocalToIsoOrNull(leadQuoteSentAtInput);
+                                await savePatch({ dateQuoteSent: iso });
+                              }}
+                            />
+                          </label>
+                          <label className="flex items-center justify-between gap-3">
+                            <span className="text-slate-600">Quote value</span>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              className="w-[220px] max-w-[55%] rounded-md border px-2 py-1 text-sm"
+                              value={leadQuotedValueInput}
+                              onChange={(e) => setLeadQuotedValueInput(e.target.value)}
+                              onFocus={(e) => e.currentTarget.select()}
+                              onBlur={async () => {
+                                const trimmed = String(leadQuotedValueInput || "").trim().replace(/,/g, "");
+                                const num = trimmed ? Number(trimmed) : null;
+                                await savePatch({ quotedValue: Number.isFinite(Number(num)) ? num : null });
+                              }}
+                              placeholder="0.00"
+                            />
+                          </label>
+                        </div>
+
                         <div className="flex items-center justify-between gap-4">
-                            <span className="text-slate-600">Enquiry date</span>
+                          <span className="text-slate-600">Enquiry date</span>
                           <input
                             type="datetime-local"
                             className="w-[220px] max-w-[55%] rounded-md border px-2 py-1 text-sm"
@@ -5539,19 +5718,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                             }}
                           />
                         </div>
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="text-slate-600">Quote sent</span>
-                          <input
-                            type="datetime-local"
-                            className="w-[220px] max-w-[55%] rounded-md border px-2 py-1 text-sm"
-                            value={leadQuoteSentAtInput}
-                            onChange={(e) => setLeadQuoteSentAtInput(e.target.value)}
-                            onBlur={async () => {
-                              const iso = dateTimeLocalToIsoOrNull(leadQuoteSentAtInput);
-                              await savePatch({ dateQuoteSent: iso });
-                            }}
-                          />
-                        </div>
                       </div>
                     </div>
 
@@ -5560,19 +5726,38 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         Order
                       </div>
                       <div className="space-y-2 text-sm">
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="text-slate-600">Order placed</span>
-                          <input
-                            type="datetime-local"
-                            className="w-[220px] max-w-[55%] rounded-md border px-2 py-1 text-sm"
-                            value={opportunityWonAtInput}
-                            onChange={(e) => setOpportunityWonAtInput(e.target.value)}
-                            onBlur={() => {
-                              const iso = dateTimeLocalToIsoOrNull(opportunityWonAtInput);
-                              saveOpportunityField("wonAt", iso);
-                              setOpportunityWonAt(iso);
-                            }}
-                          />
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <label className="flex items-center justify-between gap-3">
+                            <span className="text-slate-600">Order placed</span>
+                            <input
+                              type="datetime-local"
+                              className="w-[220px] max-w-[55%] rounded-md border px-2 py-1 text-sm"
+                              value={opportunityWonAtInput}
+                              onChange={(e) => setOpportunityWonAtInput(e.target.value)}
+                              onBlur={() => {
+                                const iso = dateTimeLocalToIsoOrNull(opportunityWonAtInput);
+                                saveOpportunityField("wonAt", iso);
+                                setOpportunityWonAt(iso);
+                              }}
+                            />
+                          </label>
+                          <label className="flex items-center justify-between gap-3">
+                            <span className="text-slate-600">Order value</span>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              className="w-[220px] max-w-[55%] rounded-md border px-2 py-1 text-sm"
+                              value={projectValueGBP}
+                              onChange={(e) => setProjectValueGBP(e.target.value)}
+                              onFocus={(e) => e.currentTarget.select()}
+                              onBlur={() => {
+                                const trimmed = String(projectValueGBP || "").trim().replace(/,/g, "");
+                                const num = trimmed ? Number(trimmed) : null;
+                                saveOpportunityField("valueGBP", Number.isFinite(Number(num)) ? num : null);
+                              }}
+                              placeholder="0.00"
+                            />
+                          </label>
                         </div>
                         <div className="flex items-center justify-between gap-4">
                           <span className="text-slate-600">Order created</span>
