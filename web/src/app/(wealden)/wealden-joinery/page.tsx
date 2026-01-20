@@ -171,7 +171,13 @@ export default function WealdenHomePage() {
           <h2 className={designSystem.typography.h2}>Recent projects</h2>
         </div>
         <div className={`${designSystem.grid.three} ${designSystem.spacing.cardGap}`}>
-          {["Victorian Villa, Kent", "Georgian Townhouse, Sussex", "Holiday Let Window Replacement, Kent"].map((title, idx) => (
+          {(
+            [
+              { title: "Victorian Villa, Kent", slug: "victorian-villa-kent" },
+              { title: "Georgian Townhouse, Sussex", slug: "georgian-townhouse-sussex" },
+              { title: "Holiday Let Window Replacement, Kent", slug: "holiday-let-window-replacement-kent" },
+            ]
+          ).map(({ title, slug }, idx) => (
             <div key={title} className={designSystem.cards.elevated}>
               <ImageSlot
                 slotId={`home-case-study-${idx}`}
@@ -183,7 +189,7 @@ export default function WealdenHomePage() {
               <div className="p-6 space-y-2">
                 <h3 className={designSystem.typography.h4}>{title}</h3>
                 <Link
-                  href="/wealden-joinery/projects"
+                  href={`/wealden-joinery/projects/${slug}`}
                   className="text-sm font-medium text-slate-900 hover:underline inline-flex items-center gap-1"
                 >
                   View project
