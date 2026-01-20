@@ -430,7 +430,7 @@ function getMaterialColor(status: MaterialStatus): string {
 
 export default function WorkshopPage() {
   const { user } = useCurrentUser();
-  const isWorkshopOnly = user?.role === 'workshop';
+  const isWorkshopOnly = String(user?.role ?? '').toLowerCase() === 'workshop';
   const timerRef = useRef<WorkshopTimerHandle>(null);
   
   // Task notifications
@@ -447,6 +447,7 @@ export default function WorkshopPage() {
   });
   const [calendarViewMode, setCalendarViewMode] = useState<'week' | 'month' | 'year'>('month'); // New state for calendar sub-views
   const [showValues, setShowValues] = useState(false); // Toggle between workshop view (false) and management view (true)
+  const canLogTimber = isWorkshopOnly || !showValues;
 
   type TimberMaterialLite = { id: string; name: string; code?: string; category?: string; unit?: string; unitCost?: any; currency?: string; thickness?: any; width?: any };
   type TimberUsageTotalsLite = { totalMillimeters: number; totalMeters: number; totalCost: number; currency: string };
@@ -611,7 +612,7 @@ export default function WorkshopPage() {
   const [showProjectDetails, setShowProjectDetails] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isWorkshopOnly) return;
+    if (!canLogTimber) return;
     if (!showProjectDetails) return;
     const p =
       scheduleProjects.find((x) => x.id === showProjectDetails) ||
@@ -621,7 +622,7 @@ export default function WorkshopPage() {
     ensureTimberMaterialsLoaded().catch(() => {});
     refreshProjectTimberUsage(showProjectDetails).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showProjectDetails, isWorkshopOnly]);
+  }, [showProjectDetails, canLogTimber]);
 
   const [showProjectSwap, setShowProjectSwap] = useState(false);
   const [swapForm, setSwapForm] = useState({ projectId: '', process: '', notes: '', search: '' });
@@ -1684,6 +1685,19 @@ export default function WorkshopPage() {
               🪵 Timber
             </Button>
           )}
+          {!isWorkshopOnly && !showValues && (
+            <Button
+              variant={viewMode === 'timber' ? 'default' : 'outline'}
+              size="lg"
+              onClick={async () => {
+                setViewMode('timber');
+                await ensureTimberMaterialsLoaded();
+              }}
+              className="font-bold"
+            >
+              🪵 Timber
+            </Button>
+          )}
           <Button 
             variant="outline" 
             size="lg"
@@ -2243,8 +2257,8 @@ export default function WorkshopPage() {
         </div>
       )}
 
-      {/* Timber logging (Workshop users) */}
-      {viewMode === 'timber' && isWorkshopOnly && (
+      {/* Timber logging (Workshop view) */}
+      {viewMode === 'timber' && canLogTimber && (
         <div className="space-y-4">
           <Card className="p-4">
             <div className="space-y-3">
@@ -2929,7 +2943,7 @@ export default function WorkshopPage() {
                               <div className="text-blue-600 font-medium">🔗 Linked to task</div>
                             )}
 
-                            {isWorkshopOnly && (
+                            {canLogTimber && (
                               <div className="mt-3 border-t pt-3 space-y-2">
                                 <div className="flex items-center justify-between">
                                   <div className="text-xs font-semibold text-gray-700">Usage</div>
