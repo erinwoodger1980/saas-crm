@@ -793,7 +793,32 @@ function LeadsPageContent() {
 
   /* ------------------------------ Email Upload Functions ------------------------------ */
 
-  function extractEmailFilesFromDataTransfer(dt: DataTransfer): File[] {
+  function buildSyntheticEmlFromDropText(text: string): string {
+    const raw = String(text || "").replace(/\r\n/g, "\n");
+    const trimmed = raw.trim();
+
+    // If it already looks like RFC822, pass through.
+    const looksLikeRfc822 = /(^|\n)from:\s/i.test(trimmed) || /(^|\n)subject:\s/i.test(trimmed);
+    if (looksLikeRfc822 && trimmed.length > 50) return trimmed;
+
+    const now = new Date();
+    const dateHeader = now.toUTCString();
+    const subject = "Dropped email";
+
+    return (
+      `From: unknown <unknown@joineryai.local>\r\n` +
+      `To: undisclosed-recipients:;\r\n` +
+      `Subject: ${subject}\r\n` +
+      `Date: ${dateHeader}\r\n` +
+      `MIME-Version: 1.0\r\n` +
+      `Content-Type: text/plain; charset="UTF-8"\r\n` +
+      `Content-Transfer-Encoding: 7bit\r\n` +
+      `\r\n` +
+      `${trimmed || raw || "(no content)"}\r\n`
+    );
+  }
+
+  async function extractEmailFilesFromDataTransfer(dt: DataTransfer): Promise<File[]> {
     const directFiles = Array.from(dt.files || []);
     if (directFiles.length > 0) return directFiles;
 
@@ -802,21 +827,45 @@ function LeadsPageContent() {
       .filter((it) => it.kind === "file")
       .map((it) => it.getAsFile())
       .filter((f): f is File => !!f);
-
     if (itemFiles.length > 0) return itemFiles;
 
-    // Some email clients provide RFC822-ish text but no File. Best-effort fallback.
-    const text = (() => {
-      try {
-        return dt.getData("text/plain") || "";
-      } catch {
-        return "";
+    // Apple Mail (and some other apps) often provides only string payloads.
+    const stringItems = items.filter((it) => it.kind === "string");
+    const strings = await Promise.all(
+      stringItems.map(
+        (it) =>
+          new Promise<{ type: string; data: string }>((resolve) => {
+            try {
+              it.getAsString((data) => resolve({ type: it.type || "text/plain", data: String(data || "") }));
+            } catch {
+              resolve({ type: it.type || "text/plain", data: "" });
+            }
+          })
+      )
+    );
+
+    const bestString = strings
+      .map((s) => s.data)
+      .map((s) => String(s || ""))
+      .map((s) => s.trim())
+      .sort((a, b) => b.length - a.length)[0];
+
+    // As a fallback, try DataTransfer.getData for a couple common types.
+    const fallbackText = (() => {
+      const tryTypes = ["text/plain", "text/uri-list", "text/html"];
+      for (const t of tryTypes) {
+        try {
+          const v = dt.getData(t);
+          if (v && String(v).trim()) return String(v);
+        } catch {}
       }
+      return "";
     })();
 
-    const looksLikeRfc822 = /(^|\n)from:\s/i.test(text) && /(^|\n)subject:\s/i.test(text);
-    if (looksLikeRfc822 && text.trim().length > 50) {
-      return [new File([text], "dropped-email.eml", { type: "message/rfc822" })];
+    const text = bestString || fallbackText;
+    if (text && text.trim().length > 0) {
+      const eml = buildSyntheticEmlFromDropText(text);
+      return [new File([eml], "dropped-email.eml", { type: "message/rfc822" })];
     }
 
     return [];
@@ -829,7 +878,8 @@ function LeadsPageContent() {
     
     const hasFilesType = e.dataTransfer.types.includes('Files');
     const hasFileItems = Array.from(e.dataTransfer.items || []).some((it) => it.kind === 'file');
-    if (hasFilesType || hasFileItems) {
+    const hasStringItems = Array.from(e.dataTransfer.items || []).some((it) => it.kind === 'string');
+    if (hasFilesType || hasFileItems || hasStringItems) {
       console.log('🎯 Email drag operation detected');
       setIsDragging(true);
     }
@@ -852,14 +902,17 @@ function LeadsPageContent() {
     e.dataTransfer.dropEffect = 'copy';
   }
 
-  function handleEmailDrop(e: React.DragEvent) {
+  async function handleEmailDrop(e: React.DragEvent) {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
     dragCounterRef.current = 0;
 
-    const files = extractEmailFilesFromDataTransfer(e.dataTransfer);
-    console.log('📧 Email drop detected, extracted files:', files.length, 'types:', Array.from(e.dataTransfer.types || []));
+    const dt = e.dataTransfer;
+    const types = Array.from(dt.types || []);
+    const items = Array.from(dt.items || []).map((it) => ({ kind: it.kind, type: it.type }));
+    const files = await extractEmailFilesFromDataTransfer(dt);
+    console.log('📧 Email drop detected', { extractedFiles: files.length, types, items });
     if (files.length > 0) {
       console.log('📧 Processing files:', files.map(f => f.name).join(', '));
       addEmailFilesToQueue(files);
