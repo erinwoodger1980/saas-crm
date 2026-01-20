@@ -287,6 +287,9 @@ function serializeLeadRow(lead: any, extras: Record<string, any> = {}) {
   const payload: any = {
     id: lead.id,
     number: lead.number ?? null,
+    createdAt: lead.createdAt instanceof Date ? lead.createdAt.toISOString() : null,
+    updatedAt: lead.updatedAt instanceof Date ? lead.updatedAt.toISOString() : null,
+    capturedAt: lead.capturedAt instanceof Date ? lead.capturedAt.toISOString() : null,
     contactName: lead.contactName,
     email: lead.email,
     phone: lead.phone ?? null,

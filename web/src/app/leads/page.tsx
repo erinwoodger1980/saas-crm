@@ -1597,6 +1597,8 @@ function LeadCard({
   const needsManualQuote = Boolean(lead.custom?.needsManualQuote);
   const manualQuoteReason = typeof lead.custom?.manualQuoteReason === 'string' ? lead.custom.manualQuoteReason : undefined;
   const latestNoteSnippet = getLatestCommunicationNoteSnippet(lead);
+  const enquiryAt = (lead as any).capturedAt ?? (lead as any).createdAt ?? null;
+  const enquiryAtLabel = formatUiDate(enquiryAt);
 
   return (
     <div className="group relative overflow-hidden rounded-2xl border border-sky-100/70 bg-white/85 p-4 shadow-[0_20px_45px_-36px_rgba(30,64,175,0.55)] backdrop-blur transition-transform hover:-translate-y-0.5 hover:shadow-[0_26px_60px_-32px_rgba(30,64,175,0.55)]">
@@ -1627,6 +1629,7 @@ function LeadCard({
                   })}
                 </div>
                 {lead.email && <div className="truncate text-xs text-slate-500">{lead.email}</div>}
+                {enquiryAtLabel && <div className="truncate text-xs text-slate-500">Enquiry: {enquiryAtLabel}</div>}
               </div>
             </div>
 
@@ -1717,6 +1720,13 @@ function LeadCard({
       </div>
     </div>
   );
+}
+
+function formatUiDate(value: unknown): string | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
 }
 
 function avatarText(name?: string | null) {

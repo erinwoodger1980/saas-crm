@@ -3766,7 +3766,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         if ((field.key || "") === "enquiryDate") return false;
 
         // Remove legacy lifecycle duplicates by label group; we always show canonical keys.
-        if (g && g !== "__enquiry" && field.key !== g) return false;
+        if (g && field.key !== g) return false;
 
         return true;
       })
@@ -4713,6 +4713,19 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                             savePatch({ number: nextNumber || null });
                           }}
                           placeholder="Enquiry number"
+                        />
+                      </label>
+
+                      {/* Enquiry Date (read-only) */}
+                      <label className="text-sm">
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                          Enquiry Date
+                        </span>
+                        <input
+                          className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                          value={formatShortDate((lead?.capturedAt ?? (lead as any)?.createdAt) || undefined) || ""}
+                          readOnly
+                          placeholder="—"
                         />
                       </label>
 
