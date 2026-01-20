@@ -12,6 +12,24 @@ function formatDateTime(dt: Date): string {
   )}`;
 }
 
+function normalizeActorName(raw: string | null | undefined): string {
+  if (!raw) return "";
+
+  let name = String(raw);
+
+  // Remove dev access marker(s) appended to impersonation users.
+  name = name.replace(/\s*\(Dev Access\)\s*/gi, " ");
+
+  // Collapse whitespace after removals.
+  name = name.replace(/\s+/g, " ").trim();
+
+  // Drop trailing role labels if they were appended to the name.
+  // Keep this conservative: only remove a single known token at the end.
+  name = name.replace(/\s+(admin|owner|developer)\b$/i, "").trim();
+
+  return name;
+}
+
 export function formatCommunicationEntry(args: {
   completedAt: Date;
   actorName?: string | null;
@@ -22,7 +40,7 @@ export function formatCommunicationEntry(args: {
   freeTextFallback?: string;
 }): string {
   const when = formatDateTime(args.completedAt);
-  const actorName = (args.actorName || "").toString().trim();
+  const actorName = normalizeActorName(args.actorName);
   const notes = (args.communicationNotes || args.freeTextFallback || "").toString().trim();
   const actorBit = actorName ? ` — ${actorName}` : "";
 
