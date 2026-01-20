@@ -148,58 +148,17 @@ type EmailUpload = {
   id: string;
   file: File;
   status: 'pending' | 'uploading' | 'completed' | 'error';
-  function extractMessageRefFromText(input: string): string | null {
-    const raw = String(input || "").trim();
-    if (!raw) return null;
-
-    // Apple Mail often provides message:%3C...%3E. Decode if it looks encoded.
-    const decoded = (() => {
-      try {
-        return decodeURIComponent(raw);
-      } catch {
-        return raw;
-      }
-    })();
-
-    const s = decoded.trim();
-    if (/^message:/i.test(s)) return s;
-    return null;
-  }
-
-  async function extractEmailRefFromDataTransfer(dt: DataTransfer): Promise<string | null> {
-    const items = dt.items ? Array.from(dt.items) : [];
-    const stringItems = items.filter((it) => it.kind === "string");
-    const strings = await Promise.all(
-      stringItems.map(
-        (it) =>
-          new Promise<{ type: string; data: string }>((resolve) => {
-            try {
-              it.getAsString((data) => resolve({ type: it.type || "text/plain", data: String(data || "") }));
-            } catch {
-              resolve({ type: it.type || "text/plain", data: "" });
-            }
-          })
-      )
-    );
-
-    for (const s of strings) {
-      const ref = extractMessageRefFromText(s.data);
-      if (ref) return ref;
-    }
-
-    const tryTypes = ["text/plain", "text/uri-list", "text/html"];
-    for (const t of tryTypes) {
-      try {
-        const v = dt.getData(t);
-        const ref = extractMessageRefFromText(v);
-        if (ref) return ref;
-      } catch {}
-    }
-
-    return null;
-  }
-
-  async function extractEmailFilesFromDataTransfer(dt: DataTransfer): Promise<File[]> {
+  progress?: number;
+  result?: {
+    leadId: string;
+    contactName: string;
+    email: string;
+    subject: string;
+    confidence: number;
+    bodyText?: string;
+  };
+  error?: string;
+};
   // dropdown customization state
   const [customColors, setCustomColors] = useState<Record<string, { bg: string; text: string }>>(() => {
     if (typeof window !== 'undefined') {
@@ -791,57 +750,56 @@ type EmailUpload = {
 
   /* ------------------------------ Email Upload Functions ------------------------------ */
 
-  function scoreDropText(text: string): { score: number; reason: string } {
-    const t = String(text || "").replace(/\r\n/g, "\n").trim();
-    if (!t) return { score: -999, reason: "empty" };
+  function extractMessageRefFromText(input: string): string | null {
+    const raw = String(input || "").trim();
+    if (!raw) return null;
 
-    const looksLikeMessageLink = /^(message:|message:\/\/|mailto:|outlook:|http:\/\/|https:\/\/|file:\/\/)/i.test(t);
-    const looksUrlish = /\S+:\/\//.test(t) && !/\s/.test(t);
-    if (looksLikeMessageLink || looksUrlish) return { score: -50, reason: "link" };
+    // Apple Mail often provides message:%3C...%3E
+    const decoded = (() => {
+      try {
+        return decodeURIComponent(raw);
+      } catch {
+        return raw;
+      }
+    })();
 
-    // Strong signal: RFC822-ish headers
-    const hasFrom = /(^|\n)from:\s/i.test(t);
-    const hasSubject = /(^|\n)subject:\s/i.test(t);
-    const hasTo = /(^|\n)to:\s/i.test(t);
-    const hasDate = /(^|\n)date:\s/i.test(t);
-    const newlineCount = (t.match(/\n/g) || []).length;
-
-    if ((hasFrom && hasSubject) || (hasSubject && hasTo) || (hasFrom && hasDate)) {
-      return { score: 100 + Math.min(20, Math.floor(t.length / 500)), reason: "rfc822" };
-    }
-
-    // Medium signal: typical forwarded/plain text email blocks
-    let score = 0;
-    if (newlineCount >= 6) score += 15;
-    if (/\bsubject\b/i.test(t)) score += 10;
-    if (/\bfrom\b/i.test(t)) score += 10;
-    if (/\bto\b/i.test(t)) score += 5;
-    if (/\b(sent|date)\b/i.test(t)) score += 5;
-    if (/@/.test(t)) score += 5;
-    if (t.length >= 120) score += 5;
-    if (!/\s/.test(t)) score -= 20;
-
-    return { score, reason: "text" };
+    const s = decoded.trim();
+    if (/^message:/i.test(s)) return s;
+    return null;
   }
 
-  function buildSyntheticEmlFromDropText(text: string): string {
-    const raw = String(text || "").replace(/\r\n/g, "\n");
-    const trimmed = raw.trim();
-    const now = new Date();
-    const dateHeader = now.toUTCString();
-    const subject = "Dropped email";
+  async function extractEmailRefFromDataTransfer(dt: DataTransfer): Promise<string | null> {
+    const items = dt.items ? Array.from(dt.items) : [];
 
-    return (
-      `From: unknown <unknown@joineryai.local>\r\n` +
-      `To: undisclosed-recipients:;\r\n` +
-      `Subject: ${subject}\r\n` +
-      `Date: ${dateHeader}\r\n` +
-      `MIME-Version: 1.0\r\n` +
-      `Content-Type: text/plain; charset="UTF-8"\r\n` +
-      `Content-Transfer-Encoding: 7bit\r\n` +
-      `\r\n` +
-      `${trimmed || raw || "(no content)"}\r\n`
+    const stringItems = items.filter((it) => it.kind === "string");
+    const strings = await Promise.all(
+      stringItems.map(
+        (it) =>
+          new Promise<string>((resolve) => {
+            try {
+              it.getAsString((data) => resolve(String(data || "")));
+            } catch {
+              resolve("");
+            }
+          })
+      )
     );
+
+    for (const s of strings) {
+      const ref = extractMessageRefFromText(s);
+      if (ref) return ref;
+    }
+
+    const tryTypes = ["text/plain", "text/uri-list", "text/html"];
+    for (const t of tryTypes) {
+      try {
+        const v = dt.getData(t);
+        const ref = extractMessageRefFromText(v);
+        if (ref) return ref;
+      } catch {}
+    }
+
+    return null;
   }
 
   async function extractEmailFilesFromDataTransfer(dt: DataTransfer): Promise<File[]> {
