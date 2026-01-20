@@ -46,6 +46,8 @@ interface Material {
   currency: string;
   unit: string;
   thickness?: number;
+  width?: number;
+  length?: number;
   species?: string;
   grade?: string;
   finish?: string;
@@ -99,6 +101,24 @@ export function MaterialLibrarySection() {
         const normalized = data.map(m => ({
           ...m,
           unitCost: typeof m.unitCost === 'number' ? m.unitCost : parseFloat(m.unitCost) || 0,
+          thickness:
+            typeof m.thickness === 'number'
+              ? m.thickness
+              : m.thickness != null
+                ? parseFloat(m.thickness) || undefined
+                : undefined,
+          width:
+            typeof m.width === 'number'
+              ? m.width
+              : m.width != null
+                ? parseFloat(m.width) || undefined
+                : undefined,
+          length:
+            typeof m.length === 'number'
+              ? m.length
+              : m.length != null
+                ? parseFloat(m.length) || undefined
+                : undefined,
         }));
         setMaterials(normalized);
       } else {
@@ -514,11 +534,53 @@ function MaterialDialog({ open, onOpenChange, material, suppliers, onSave }: Mat
               />
             </div>
             <div>
+              <Label>Grade</Label>
+              <Input
+                value={formData.grade || ''}
+                onChange={e => setFormData({ ...formData, grade: e.target.value })}
+                placeholder="Prime"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div>
               <Label>Thickness (mm)</Label>
               <Input
                 type="number"
                 value={formData.thickness || ''}
-                onChange={e => setFormData({ ...formData, thickness: parseFloat(e.target.value) })}
+                onChange={e =>
+                  setFormData({
+                    ...formData,
+                    thickness: e.target.value === '' ? undefined : parseFloat(e.target.value),
+                  })
+                }
+              />
+            </div>
+            <div>
+              <Label>Width (mm)</Label>
+              <Input
+                type="number"
+                value={formData.width || ''}
+                onChange={e =>
+                  setFormData({
+                    ...formData,
+                    width: e.target.value === '' ? undefined : parseFloat(e.target.value),
+                  })
+                }
+              />
+            </div>
+            <div>
+              <Label>Length (mm)</Label>
+              <Input
+                type="number"
+                value={formData.length || ''}
+                onChange={e =>
+                  setFormData({
+                    ...formData,
+                    length: e.target.value === '' ? undefined : parseFloat(e.target.value),
+                  })
+                }
               />
             </div>
           </div>

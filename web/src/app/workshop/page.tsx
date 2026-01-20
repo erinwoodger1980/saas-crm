@@ -449,7 +449,7 @@ export default function WorkshopPage() {
   const [showValues, setShowValues] = useState(false); // Toggle between workshop view (false) and management view (true)
   const canLogTimber = isWorkshopOnly || !showValues;
 
-  type TimberMaterialLite = { id: string; name: string; code?: string; category?: string; unit?: string; unitCost?: any; currency?: string; thickness?: any; width?: any };
+  type TimberMaterialLite = { id: string; name: string; code?: string; category?: string; unit?: string; unitCost?: any; currency?: string; thickness?: any; width?: any; length?: any };
   type TimberUsageTotalsLite = { totalMillimeters: number; totalMeters: number; totalCost: number; currency: string };
   type TimberUsageLogLite = {
     id: string;
@@ -477,6 +477,24 @@ export default function WorkshopPage() {
     date: new Date().toISOString().split('T')[0],
     notes: '',
   });
+
+  const formatMm = (value: any): string | null => {
+    if (value == null || value === '') return null;
+    const n = Number(value);
+    if (!Number.isFinite(n)) return null;
+    const rounded = Math.round(n);
+    if (Math.abs(n - rounded) < 1e-6) return String(rounded);
+    return String(parseFloat(n.toFixed(2)));
+  };
+
+  const formatTimberMaterialLabel = (m: TimberMaterialLite): string => {
+    const t = formatMm(m.thickness);
+    const w = formatMm(m.width);
+    const l = formatMm(m.length);
+    const dims = [t, w, l].filter(Boolean) as string[];
+    const dimsSuffix = dims.length > 0 ? ` — ${dims.join('×')}mm` : '';
+    return `${m.code ? `${m.code} — ` : ''}${m.name}${dimsSuffix}`;
+  };
 
   const ensureTimberMaterialsLoaded = async () => {
     if (timberMaterialsLoading) return;
@@ -2309,7 +2327,7 @@ export default function WorkshopPage() {
                     <SelectContent>
                       {timberMaterials.map((m) => (
                         <SelectItem key={m.id} value={m.id}>
-                          {m.code ? `${m.code} — ` : ''}{m.name}
+                          {formatTimberMaterialLabel(m)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -2981,7 +2999,7 @@ export default function WorkshopPage() {
                                           <SelectContent>
                                             {timberMaterials.map((m) => (
                                               <SelectItem key={m.id} value={m.id}>
-                                                {m.code ? `${m.code} — ` : ''}{m.name}
+                                                {formatTimberMaterialLabel(m)}
                                               </SelectItem>
                                             ))}
                                           </SelectContent>
