@@ -1672,20 +1672,7 @@ export default function WorkshopPage() {
           >
             📊 My Timesheet
           </Button>
-          {isWorkshopOnly && (
-            <Button
-              variant={viewMode === 'timber' ? 'default' : 'outline'}
-              size="lg"
-              onClick={async () => {
-                setViewMode('timber');
-                await ensureTimberMaterialsLoaded();
-              }}
-              className="font-bold"
-            >
-              🪵 Timber
-            </Button>
-          )}
-          {!isWorkshopOnly && !showValues && (
+          {canLogTimber && (
             <Button
               variant={viewMode === 'timber' ? 'default' : 'outline'}
               size="lg"
