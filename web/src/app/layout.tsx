@@ -17,6 +17,20 @@ import Script from "next/script";
 
 const JOINERY_GA4_MEASUREMENT_ID = "G-LL7W6BJ0C2";
 const JOINERY_ALLOWED_HOSTNAMES = new Set(["joineryai.app", "www.joineryai.app"]);
+const WEALDEN_MARKETING_HOSTNAMES = new Set(["lignumwindows.com", "www.lignumwindows.com"]);
+const WEALDEN_MARKETING_CLEAN_PATHS = new Set([
+  "/",
+  "/windows",
+  "/doors",
+  "/alu-clad",
+  "/projects",
+  "/choices",
+  "/showrooms",
+  "/about",
+  "/contact",
+  "/estimate",
+  "/privacy",
+]);
 
 function GlobalNumericSelectAll() {
   useEffect(() => {
@@ -85,6 +99,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     return JOINERY_ALLOWED_HOSTNAMES.has(hostname);
   }, [hostname]);
 
+  const isWealdenMarketingHost = useMemo(() => {
+    if (!hostname) return false;
+    return WEALDEN_MARKETING_HOSTNAMES.has(hostname);
+  }, [hostname]);
+
   const isAuthRoute = pathname?.startsWith("/login");
   const isPublicQuestionnaire = pathname?.startsWith("/q/");
   const isPublicThankYou =
@@ -93,7 +112,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     pathname === "/" ||
     pathname?.startsWith("/policy") ||
     pathname?.startsWith("/wealden-landing") ||
-    pathname?.startsWith("/wealden-joinery");
+    pathname?.startsWith("/wealden-joinery") ||
+    (isWealdenMarketingHost && WEALDEN_MARKETING_CLEAN_PATHS.has(pathname || ""));
   const isPublicEstimatorRoute =
     pathname === "/estimate" ||
     pathname?.startsWith("/estimate-demo") ||
