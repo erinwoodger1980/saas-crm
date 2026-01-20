@@ -155,12 +155,53 @@ type EmailUpload = {
     email: string;
     subject: string;
     confidence: number;
-    bodyText?: string;
   };
   error?: string;
 };
 
+/* -------------------------------- Page -------------------------------- */
+
 function LeadsPageContent() {
+  const empty: Grouped = {
+    NEW_ENQUIRY: [],
+    INFO_REQUESTED: [],
+    DISQUALIFIED: [],
+    REJECTED: [],
+    READY_TO_QUOTE: [],
+    QUOTE_SENT: [],
+    WON: [],
+    LOST: [],
+  };
+
+  const { shortName } = useTenantBrand();
+  const searchParams = useSearchParams();
+
+  const [grouped, setGrouped] = useState<Grouped>(empty);
+  const [tab, setTab] = useState<LeadStatus>("NEW_ENQUIRY");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  // Removed: manual quotes filter toggle (unused)
+
+  // modal
+  const [open, setOpen] = useState(false);
+  const [leadPreview, setLeadPreview] = useState<Lead | null>(null);
+  const [leadModalInitialStage, setLeadModalInitialStage] = useState<'client' | 'quote' | 'tasks'>('tasks');
+  const [leadModalScrollToNotes, setLeadModalScrollToNotes] = useState(false);
+  const [csvImportOpen, setCsvImportOpen] = useState(false);
+  const { toast } = useToast();
+
+  // view toggle state
+  const [viewMode, setViewMode] = useState<'cards' | 'grid'>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('leads-view-mode') as 'cards' | 'grid') || 'cards';
+    }
+    return 'cards';
+  });
+
+  // column configuration state
+  const [showColumnConfig, setShowColumnConfig] = useState(false);
+  const [columnConfig, setColumnConfig] = useState<any[]>([]);
+
   // dropdown customization state
   const [customColors, setCustomColors] = useState<Record<string, { bg: string; text: string }>>(() => {
     if (typeof window !== 'undefined') {
@@ -752,11 +793,63 @@ function LeadsPageContent() {
 
   /* ------------------------------ Email Upload Functions ------------------------------ */
 
+  function scoreDropText(text: string): { score: number; reason: string } {
+    const t = String(text || "").replace(/\r\n/g, "\n").trim();
+    if (!t) return { score: -999, reason: "empty" };
+
+    const looksLikeMessageLink = /^(message:|message:\/\/|mailto:|outlook:|http:\/\/|https:\/\/|file:\/\/)/i.test(t);
+    const looksUrlish = /\S+:\/\//.test(t) && !/\s/.test(t);
+    if (looksLikeMessageLink || looksUrlish) return { score: -50, reason: "link" };
+
+    // Strong signal: RFC822-ish headers
+    const hasFrom = /(^|\n)from:\s/i.test(t);
+    const hasSubject = /(^|\n)subject:\s/i.test(t);
+    const hasTo = /(^|\n)to:\s/i.test(t);
+    const hasDate = /(^|\n)date:\s/i.test(t);
+    const newlineCount = (t.match(/\n/g) || []).length;
+
+    if ((hasFrom && hasSubject) || (hasSubject && hasTo) || (hasFrom && hasDate)) {
+      return { score: 100 + Math.min(20, Math.floor(t.length / 500)), reason: "rfc822" };
+    }
+
+    // Medium signal: typical forwarded/plain text email blocks
+    let score = 0;
+    if (newlineCount >= 6) score += 15;
+    if (/\bsubject\b/i.test(t)) score += 10;
+    if (/\bfrom\b/i.test(t)) score += 10;
+    if (/\bto\b/i.test(t)) score += 5;
+    if (/\b(sent|date)\b/i.test(t)) score += 5;
+    if (/@/.test(t)) score += 5;
+    if (t.length >= 120) score += 5;
+    if (!/\s/.test(t)) score -= 20;
+
+    return { score, reason: "text" };
+  }
+
+  function buildSyntheticEmlFromDropText(text: string): string {
+    const raw = String(text || "").replace(/\r\n/g, "\n");
+    const trimmed = raw.trim();
+    const now = new Date();
+    const dateHeader = now.toUTCString();
+    const subject = "Dropped email";
+
+    return (
+      `From: unknown <unknown@joineryai.local>\r\n` +
+      `To: undisclosed-recipients:;\r\n` +
+      `Subject: ${subject}\r\n` +
+      `Date: ${dateHeader}\r\n` +
+      `MIME-Version: 1.0\r\n` +
+      `Content-Type: text/plain; charset="UTF-8"\r\n` +
+      `Content-Transfer-Encoding: 7bit\r\n` +
+      `\r\n` +
+      `${trimmed || raw || "(no content)"}\r\n`
+    );
+  }
+
   function extractMessageRefFromText(input: string): string | null {
     const raw = String(input || "").trim();
     if (!raw) return null;
 
-    // Apple Mail often provides message:%3C...%3E
     const decoded = (() => {
       try {
         return decodeURIComponent(raw);
@@ -815,6 +908,62 @@ function LeadsPageContent() {
       .filter((f): f is File => !!f);
     if (itemFiles.length > 0) return itemFiles;
 
+    // Apple Mail (and some other apps) often provides only string payloads.
+    const stringItems = items.filter((it) => it.kind === "string");
+    const strings = await Promise.all(
+      stringItems.map(
+        (it) =>
+          new Promise<{ type: string; data: string }>((resolve) => {
+            try {
+              it.getAsString((data) => resolve({ type: it.type || "text/plain", data: String(data || "") }));
+            } catch {
+              resolve({ type: it.type || "text/plain", data: "" });
+            }
+          })
+      )
+    );
+
+    const candidates = strings
+      .map((s) => ({ type: s.type, data: String(s.data || "") }))
+      .map((s) => ({ ...s, trimmed: s.data.trim() }))
+      .filter((s) => !!s.trimmed);
+
+    const bestString = (() => {
+      let best: { type: string; data: string; trimmed: string; score: number; reason: string } | null = null;
+      for (const c of candidates) {
+        const scored = scoreDropText(c.trimmed);
+        const next = { ...c, score: scored.score, reason: scored.reason };
+        if (!best || next.score > best.score || (next.score === best.score && next.trimmed.length > best.trimmed.length)) {
+          best = next;
+        }
+      }
+      return best;
+    })();
+
+    // As a fallback, try DataTransfer.getData for a couple common types.
+    const fallbackText = (() => {
+      const tryTypes = ["text/plain", "text/uri-list", "text/html"];
+      for (const t of tryTypes) {
+        try {
+          const v = dt.getData(t);
+          if (v && String(v).trim()) return String(v);
+        } catch {}
+      }
+      return "";
+    })();
+
+    const chosenText = bestString?.trimmed || fallbackText;
+    const chosenScore = bestString ? bestString.score : scoreDropText(chosenText).score;
+
+    // Don't synthesize .eml for Apple Mail's message:<id> references.
+    // We'll resolve those via the server (connected mailbox fetch).
+    // Only synthesize if it's actual email-like content.
+    const isMessageRef = !!extractMessageRefFromText(chosenText);
+    if (!isMessageRef && chosenText && chosenText.trim().length > 0 && chosenScore >= 40) {
+      const eml = buildSyntheticEmlFromDropText(chosenText);
+      return [new File([eml], "dropped-email.eml", { type: "message/rfc822" })];
+    }
+
     return [];
   }
 
@@ -866,7 +1015,6 @@ function LeadsPageContent() {
       return;
     }
 
-    // Apple Mail sometimes drops only a message: reference. Resolve it via the server using the user's connected mailbox.
     const ref = await extractEmailRefFromDataTransfer(dt);
     if (ref) {
       try {
