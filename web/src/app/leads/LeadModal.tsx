@@ -2053,7 +2053,14 @@ export default function LeadModal({
             if (typeof val === "string") return val;
             return String(val);
           };
-          return coerce(row.dateQuoteSent) ?? coerce(row.computed?.dateQuoteSent) ?? base.dateQuoteSent ?? null;
+
+          // If server explicitly returns dateQuoteSent (even null), don't fall back.
+          // Otherwise clearing the field can "flip back" from legacy/computed values.
+          if (Object.prototype.hasOwnProperty.call(row, "dateQuoteSent")) {
+            return coerce(row.dateQuoteSent);
+          }
+
+          return coerce(row.computed?.dateQuoteSent) ?? base.dateQuoteSent ?? null;
         })(),
         capturedAt: (() => {
           const coerce = (val: any): string | null => {
@@ -2095,10 +2102,15 @@ export default function LeadModal({
 
     setSaving(true);
     try {
+      const patch: any = { status: nextServer };
+      if (nextServer === "QUOTE_SENT" && !lead.dateQuoteSent) {
+        patch.dateQuoteSent = new Date().toISOString();
+      }
+
       const response = await apiFetch<{ lead?: any }>(`/leads/${leadIdForApi}`, {
         method: "PATCH",
         headers: { ...authHeaders, "Content-Type": "application/json" },
-        json: { status: nextServer },
+        json: patch,
       });
 
       const updatedRow = response?.lead ?? null;
@@ -2106,7 +2118,11 @@ export default function LeadModal({
       lastSavedServerStatusRef.current = serverStatus;
 
       const resolvedUi = serverToUiStatus(serverStatus);
-      setLead((current) => (current ? { ...current, status: resolvedUi } : current));
+      if (updatedRow) {
+        applyServerLead(updatedRow);
+      } else {
+        setLead((current) => (current ? { ...current, status: resolvedUi } : current));
+      }
       setUiStatus(resolvedUi);
 
       if (prevUiStatus !== resolvedUi) {
@@ -2330,7 +2346,19 @@ export default function LeadModal({
       payload[field.key] = value;
     }
 
+    const shouldOfferQuoteSentStatus =
+      field.key === "dateQuoteSent" &&
+      value &&
+      (lead?.status ?? uiStatus) !== "QUOTE_SENT";
+
     await savePatch(payload);
+
+    if (shouldOfferQuoteSentStatus) {
+      const ok = window.confirm('Move status to "Quote sent"?');
+      if (ok) {
+        await saveStatus("QUOTE_SENT");
+      }
+    }
     customDraftDirtyKeysRef.current.delete(field.key);
   }
 
