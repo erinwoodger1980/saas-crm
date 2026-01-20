@@ -4,6 +4,7 @@ import { prisma } from "../prisma";
 import { MeasurementSource } from "@prisma/client";
 import { gmailSend, getAccessTokenForTenant, gmailFetchAttachment } from "../services/gmail";
 import { appendJoineryAiFooterText } from "../services/email-branding";
+import { getGmailTokenForUser, getMs365TokenForUser } from "../services/user-email";
 import { logInsight, logEvent } from "../services/training";
 import { UiStatus, loadTaskPlaybook, ensureTaskFromRecipe, TaskPlaybook } from "../task-playbook";
 import jwt from "jsonwebtoken";
@@ -2861,6 +2862,358 @@ router.post("/seed-demo", async (req, res) => {
 /* Manual Email Upload and Parsing                                     */
 /* ------------------------------------------------------------------ */
 
+function extractInternetMessageIdFromRef(ref: string): string | null {
+  const raw = String(ref || "").trim();
+  if (!raw) return null;
+  const decoded = (() => {
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  })().trim();
+
+  // Expected patterns:
+  // - message:<...>
+  // - message:%3C...%3E
+  // - message://<...>
+  const m = decoded.match(/^message:\/\/?(.+)$/i);
+  if (!m?.[1]) return null;
+  let id = m[1].trim();
+  // Sometimes the value is wrapped in <>
+  if (!id.startsWith("<") && id.includes("@") && !id.includes(" ")) {
+    // Might already be a message-id without angle brackets.
+    return `<${id}>`;
+  }
+  // If it's already like <...>, keep it.
+  const angle = id.match(/<[^>]+>/);
+  if (angle?.[0]) return angle[0];
+  // Otherwise, accept a bare token
+  if (id && id.length < 400) return id;
+  return null;
+}
+
+async function fetchMs365MessageIdByInternetMessageId(accessToken: string, internetMessageId: string): Promise<string | null> {
+  // Escape single quotes for OData
+  const escaped = internetMessageId.replace(/'/g, "''");
+  const url = `https://graph.microsoft.com/v1.0/me/messages?$top=1&$select=id&$filter=${encodeURIComponent(`internetMessageId eq '${escaped}'`)}`;
+  const rsp = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  const j = await rsp.json().catch(() => null);
+  if (!rsp.ok) return null;
+  const id = j?.value?.[0]?.id;
+  return typeof id === "string" && id ? id : null;
+}
+
+async function fetchMs365MessageRaw(accessToken: string, messageId: string): Promise<Buffer> {
+  const url = `https://graph.microsoft.com/v1.0/me/messages/${encodeURIComponent(messageId)}/$value`;
+  const rsp = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "message/rfc822",
+    },
+  });
+  if (!rsp.ok) {
+    const t = await rsp.text().catch(() => "");
+    throw new Error(`ms365_fetch_raw_failed:${rsp.status}:${t}`);
+  }
+  const ab = await rsp.arrayBuffer();
+  return Buffer.from(ab);
+}
+
+async function fetchGmailMessageIdByRfc822MsgId(accessToken: string, internetMessageId: string): Promise<string | null> {
+  // Gmail expects rfc822msgid:<...>
+  const q = `rfc822msgid:${internetMessageId}`;
+  const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(q)}&maxResults=1`;
+  const rsp = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  const j = await rsp.json().catch(() => null);
+  if (!rsp.ok) return null;
+  const id = j?.messages?.[0]?.id;
+  return typeof id === "string" && id ? id : null;
+}
+
+async function fetchGmailMessageRaw(accessToken: string, messageId: string): Promise<Buffer> {
+  const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}?format=raw`;
+  const rsp = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  const j = await rsp.json().catch(() => null);
+  if (!rsp.ok) {
+    const t = await rsp.text().catch(() => "");
+    throw new Error(`gmail_fetch_raw_failed:${rsp.status}:${t}`);
+  }
+  const raw = String(j?.raw || "");
+  if (!raw) throw new Error("gmail_fetch_raw_missing");
+  return Buffer.from(raw.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+}
+
+async function parseEmailBufferAndCreateLead(params: {
+  tenantId: string;
+  userId: string;
+  filename: string;
+  mimeType: string;
+  rawBuffer: Buffer;
+  provider?: string;
+}) {
+  const { tenantId, userId, filename, mimeType, rawBuffer, provider } = params;
+
+  const looksLikeMsg = (() => {
+    const lowerName = String(filename || "").toLowerCase();
+    const lowerType = String(mimeType || "").toLowerCase();
+    if (lowerName.endsWith(".msg")) return true;
+    if (lowerType === "application/vnd.ms-outlook") return true;
+    // OLE Compound File signature (typical for Outlook .msg)
+    if (rawBuffer.length >= 8) {
+      const sig = rawBuffer.subarray(0, 8).toString("hex");
+      if (sig === "d0cf11e0a1b11ae1") return true;
+    }
+    return false;
+  })();
+
+  const looksLikeEml = (() => {
+    const lowerName = String(filename || "").toLowerCase();
+    const lowerType = String(mimeType || "").toLowerCase();
+    if (lowerName.endsWith(".eml")) return true;
+    if (lowerType === "message/rfc822") return true;
+    // Lightweight heuristic: RFC822-ish headers present in first chunk
+    const head = rawBuffer.subarray(0, Math.min(rawBuffer.length, 8192)).toString("utf8");
+    return /\bMIME-Version:\s*1\.0\b/i.test(head) || /\bContent-Type:\s*multipart\//i.test(head);
+  })();
+
+  let emailData:
+    | {
+        contactName: string | null;
+        email: string | null;
+        subject: string | null;
+        bodyText: string | null;
+        summary: string | null;
+        confidence: number;
+        fromEmail: string | null;
+        attachments?: Array<{ source: "upload"; fileId: string; filename: string; mimeType?: string | null; size?: number | null }>;
+      }
+    | null = null;
+
+  if (looksLikeMsg) {
+    try {
+      const msgreaderPkg = require("msgreader");
+      const MsgReader = msgreaderPkg?.default || msgreaderPkg;
+      const arrayBuffer = rawBuffer.buffer.slice(rawBuffer.byteOffset, rawBuffer.byteOffset + rawBuffer.byteLength);
+      const reader = new MsgReader(arrayBuffer);
+      const msg = reader.getFileData();
+
+      const subjectOuter = typeof msg?.subject === "string" ? msg.subject.trim() : "";
+      const senderEmailRaw = typeof msg?.senderEmail === "string" ? msg.senderEmail.trim() : "";
+      const senderNameRaw = typeof msg?.senderName === "string" ? msg.senderName.trim() : "";
+
+      const textRaw = (() => {
+        const body = typeof msg?.body === "string" ? msg.body : "";
+        if (body && body.trim()) return body;
+        const html = typeof msg?.bodyHTML === "string" ? msg.bodyHTML : "";
+        if (!html) return "";
+        return html
+          .replace(/<\s*br\s*\/?>/gi, "\n")
+          .replace(/<\s*\/p\s*>/gi, "\n")
+          .replace(/<[^>]+>/g, " ")
+          .replace(/&nbsp;/gi, " ")
+          .replace(/&amp;/gi, "&")
+          .replace(/\r\n/g, "\n");
+      })();
+
+      const bodyTextRaw = cleanEmailBodyText(textRaw);
+      const bodyText = await cleanEmailEnquiryText(bodyTextRaw);
+      const summary = bodyText ? bodyText.slice(0, 250) + (bodyText.length > 250 ? "..." : "") : null;
+
+      const email = senderEmailRaw ? senderEmailRaw.toLowerCase() : null;
+      const contactName = senderNameRaw || (email ? deriveNameFromEmail(email) : null);
+      const fromEmailForUi = (() => {
+        if (contactName && email) return `${contactName} <${email}>`;
+        if (email) return email;
+        return null;
+      })();
+
+      let confidence = 0.6;
+      if (email && contactName && subjectOuter) confidence = 0.9;
+      else if (email && subjectOuter) confidence = 0.8;
+      else if (email || contactName) confidence = 0.6;
+      else confidence = 0.3;
+
+      emailData = {
+        contactName,
+        email,
+        subject: subjectOuter || null,
+        bodyText: bodyText || null,
+        summary,
+        confidence,
+        fromEmail: fromEmailForUi,
+      };
+    } catch (e: any) {
+      console.warn("[leads] parse-email msg parse failed; falling back:", e?.message || e);
+    }
+  }
+
+  if (!emailData && looksLikeEml) {
+    try {
+      const parsed = await simpleParser(rawBuffer);
+      const subjectOuter = typeof parsed.subject === "string" ? parsed.subject.trim() : "";
+      const outerFromText = parsed.from?.text ? String(parsed.from.text) : null;
+      const outerFromParsed = parseFromHeader(outerFromText);
+      const outerFromEmail = outerFromParsed?.email ? String(outerFromParsed.email).toLowerCase() : null;
+      const text = (() => {
+        const plain = typeof parsed.text === "string" ? parsed.text : "";
+        if (plain && plain.trim()) return plain;
+        const html = typeof (parsed as any)?.html === "string" ? String((parsed as any).html) : "";
+        if (!html) return "";
+        return html
+          .replace(/<\s*br\s*\/?>/gi, "\n")
+          .replace(/<\s*\/p\s*>/gi, "\n")
+          .replace(/<[^>]+>/g, " ")
+          .replace(/&nbsp;/gi, " ")
+          .replace(/&amp;/gi, "&")
+          .replace(/\r\n/g, "\n");
+      })();
+
+      const forwarded = extractForwardedEmailContext(text, outerFromEmail);
+      const chosenFrom = forwarded?.from || outerFromParsed;
+      const chosenSubject = (subjectOuter && /^fwd?:\s*/i.test(subjectOuter) && forwarded?.subject)
+        ? forwarded.subject
+        : (subjectOuter || forwarded?.subject || null);
+
+      const bodyTextRaw = cleanEmailBodyText(text);
+      const bodyText = await cleanEmailEnquiryText(bodyTextRaw);
+      const summary = bodyText ? bodyText.slice(0, 250) + (bodyText.length > 250 ? "..." : "") : null;
+
+      const attachments = Array.isArray(parsed.attachments) ? parsed.attachments : [];
+      const persisted = await persistEmailAttachments({ tenantId, attachments, originalFilename: filename });
+
+      const email = chosenFrom?.email ? String(chosenFrom.email).toLowerCase() : null;
+      const contactName = chosenFrom?.name || (email ? deriveNameFromEmail(email) : null);
+      const fromEmailForUi = (() => {
+        if (chosenFrom?.name && chosenFrom?.email) return `${chosenFrom.name} <${chosenFrom.email}>`;
+        if (chosenFrom?.email) return chosenFrom.email;
+        return outerFromText;
+      })();
+
+      let confidence = 0.6;
+      if (email && contactName && chosenSubject) confidence = 0.9;
+      else if (email && chosenSubject) confidence = 0.8;
+      else if (email || contactName) confidence = 0.6;
+      else confidence = 0.3;
+
+      emailData = {
+        contactName,
+        email,
+        subject: chosenSubject,
+        bodyText: bodyText || null,
+        summary,
+        confidence,
+        fromEmail: fromEmailForUi || null,
+        attachments: persisted,
+      };
+    } catch (e: any) {
+      console.warn("[leads] parse-email mailparser failed; falling back:", e?.message || e);
+    }
+  }
+
+  if (!emailData) {
+    const fileContent = rawBuffer.toString("utf-8");
+    const legacy = parseEmailContent(fileContent);
+    emailData = { ...legacy, fromEmail: null };
+  }
+
+  if (!emailData.contactName && !emailData.email) {
+    throw new Error("Could not extract contact information from email");
+  }
+
+  const lead = await prisma.lead.create({
+    data: {
+      tenantId,
+      createdById: userId,
+      contactName: emailData.contactName || "Unknown Contact",
+      email: emailData.email || null,
+      status: "NEW",
+      description: emailData.bodyText || null,
+      custom: {
+        subject: emailData.subject,
+        provider: provider || "manual",
+        bodyText: emailData.bodyText,
+        summary: emailData.summary,
+        fromEmail: emailData.fromEmail,
+        attachments: (emailData as any)?.attachments,
+        uiStatus: "NEW_ENQUIRY" as UiStatus,
+        confidence: emailData.confidence,
+        source: "manual_upload",
+        filename: filename,
+        enquiryDate: new Date().toISOString().split('T')[0],
+        dateReceived: new Date().toISOString().split('T')[0],
+      },
+    },
+  });
+
+  const playbook = await loadTaskPlaybook(tenantId);
+  await handleStatusTransition({
+    tenantId,
+    leadId: lead.id,
+    prevUi: null,
+    nextUi: "NEW_ENQUIRY",
+    actorId: userId,
+    playbook,
+  });
+
+  return {
+    leadId: lead.id,
+    contactName: lead.contactName,
+    email: lead.email,
+    subject: emailData.subject,
+    confidence: emailData.confidence,
+    bodyText: emailData.bodyText,
+  };
+}
+
+router.post("/parse-email-ref", async (req, res) => {
+  const { tenantId, userId } = getAuth(req);
+  if (!tenantId || !userId) return res.status(401).json({ error: "unauthorized" });
+
+  try {
+    const { ref, provider } = req.body || {};
+    const internetMessageId = extractInternetMessageIdFromRef(String(ref || ""));
+    if (!internetMessageId) return res.status(400).json({ error: "invalid_ref" });
+
+    // Try MS365 first (Apple Mail often uses Outlook accounts)
+    let raw: Buffer | null = null;
+    let filename = "dropped-email.eml";
+    let mimeType = "message/rfc822";
+
+    try {
+      const { accessToken } = await getMs365TokenForUser(userId);
+      const graphMessageId = await fetchMs365MessageIdByInternetMessageId(accessToken, internetMessageId);
+      if (graphMessageId) {
+        raw = await fetchMs365MessageRaw(accessToken, graphMessageId);
+      }
+    } catch (e) {
+      // ignore and try gmail
+    }
+
+    if (!raw) {
+      try {
+        const { accessToken } = await getGmailTokenForUser(userId);
+        const gmailId = await fetchGmailMessageIdByRfc822MsgId(accessToken, internetMessageId);
+        if (gmailId) {
+          raw = await fetchGmailMessageRaw(accessToken, gmailId);
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    if (!raw) {
+      return res.status(404).json({ error: "email_not_found_in_connected_mailbox" });
+    }
+
+    const result = await parseEmailBufferAndCreateLead({ tenantId, userId, filename, mimeType, rawBuffer: raw, provider });
+    return res.json(result);
+  } catch (e: any) {
+    console.error("[leads] parse-email-ref failed:", e);
+    return res.status(500).json({ error: e?.message || "parse_email_ref_failed" });
+  }
+});
+
 router.post("/parse-email", async (req, res) => {
   const { tenantId, userId } = getAuth(req);
   if (!tenantId || !userId) return res.status(401).json({ error: "unauthorized" });
@@ -2873,230 +3226,16 @@ router.post("/parse-email", async (req, res) => {
     }
 
     const rawBuffer = Buffer.from(base64, "base64");
-    const looksLikeMsg = (() => {
-      const lowerName = String(filename || "").toLowerCase();
-      const lowerType = String(mimeType || "").toLowerCase();
-      if (lowerName.endsWith(".msg")) return true;
-      if (lowerType === "application/vnd.ms-outlook") return true;
-      // OLE Compound File signature (typical for Outlook .msg)
-      if (rawBuffer.length >= 8) {
-        const sig = rawBuffer.subarray(0, 8).toString("hex");
-        if (sig === "d0cf11e0a1b11ae1") return true;
-      }
-      return false;
-    })();
-
-    const looksLikeEml = (() => {
-      const lowerName = String(filename || "").toLowerCase();
-      const lowerType = String(mimeType || "").toLowerCase();
-      if (lowerName.endsWith(".eml")) return true;
-      if (lowerType === "message/rfc822") return true;
-      // Lightweight heuristic: RFC822-ish headers present in first chunk
-      const head = rawBuffer.subarray(0, Math.min(rawBuffer.length, 8192)).toString("utf8");
-      return /\bMIME-Version:\s*1\.0\b/i.test(head) || /\bContent-Type:\s*multipart\//i.test(head);
-    })();
-
-    let emailData:
-      | {
-          contactName: string | null;
-          email: string | null;
-          subject: string | null;
-          bodyText: string | null;
-          summary: string | null;
-          confidence: number;
-          fromEmail: string | null;
-          attachments?: Array<{ source: "upload"; fileId: string; filename: string; mimeType?: string | null; size?: number | null }>;
-        }
-      | null = null;
-
-    if (looksLikeMsg) {
-      try {
-        // msgreader has no TS types; require() keeps this file buildable.
-        const msgreaderPkg = require("msgreader");
-        const MsgReader = msgreaderPkg?.default || msgreaderPkg;
-
-        const arrayBuffer = rawBuffer.buffer.slice(
-          rawBuffer.byteOffset,
-          rawBuffer.byteOffset + rawBuffer.byteLength,
-        );
-
-        const reader = new MsgReader(arrayBuffer);
-        const msg = reader.getFileData();
-
-        const subjectOuter = typeof msg?.subject === "string" ? msg.subject.trim() : "";
-        const senderEmailRaw = typeof msg?.senderEmail === "string" ? msg.senderEmail.trim() : "";
-        const senderNameRaw = typeof msg?.senderName === "string" ? msg.senderName.trim() : "";
-
-        const textRaw = (() => {
-          const body = typeof msg?.body === "string" ? msg.body : "";
-          if (body && body.trim()) return body;
-          const html = typeof msg?.bodyHTML === "string" ? msg.bodyHTML : "";
-          if (!html) return "";
-          return html
-            .replace(/<\s*br\s*\/?>/gi, "\n")
-            .replace(/<\s*\/p\s*>/gi, "\n")
-            .replace(/<[^>]+>/g, " ")
-            .replace(/&nbsp;/gi, " ")
-            .replace(/&amp;/gi, "&")
-            .replace(/\r\n/g, "\n");
-        })();
-
-        const bodyTextRaw = cleanEmailBodyText(textRaw);
-        const bodyText = await cleanEmailEnquiryText(bodyTextRaw);
-        const summary = bodyText
-          ? bodyText.slice(0, 250) + (bodyText.length > 250 ? "..." : "")
-          : null;
-
-        const email = senderEmailRaw ? senderEmailRaw.toLowerCase() : null;
-        const contactName = senderNameRaw || (email ? deriveNameFromEmail(email) : null);
-        const fromEmailForUi = (() => {
-          if (contactName && email) return `${contactName} <${email}>`;
-          if (email) return email;
-          return null;
-        })();
-
-        let confidence = 0.6;
-        if (email && contactName && subjectOuter) confidence = 0.9;
-        else if (email && subjectOuter) confidence = 0.8;
-        else if (email || contactName) confidence = 0.6;
-        else confidence = 0.3;
-
-        emailData = {
-          contactName,
-          email,
-          subject: subjectOuter || null,
-          bodyText: bodyText || null,
-          summary,
-          confidence,
-          fromEmail: fromEmailForUi,
-        };
-      } catch (e: any) {
-        console.warn("[leads] parse-email msg parse failed; falling back:", e?.message || e);
-      }
-    }
-
-    if (!emailData && looksLikeEml) {
-      try {
-        const parsed = await simpleParser(rawBuffer);
-        const subjectOuter = typeof parsed.subject === "string" ? parsed.subject.trim() : "";
-        const outerFromText = parsed.from?.text ? String(parsed.from.text) : null;
-        const outerFromParsed = parseFromHeader(outerFromText);
-        const outerFromEmail = outerFromParsed?.email ? String(outerFromParsed.email).toLowerCase() : null;
-        const text = (() => {
-          const plain = typeof parsed.text === "string" ? parsed.text : "";
-          if (plain && plain.trim()) return plain;
-          const html = typeof (parsed as any)?.html === "string" ? String((parsed as any).html) : "";
-          if (!html) return "";
-          // Best-effort HTML -> text for forwarded headers that sometimes live only in HTML.
-          return html
-            .replace(/<\s*br\s*\/?>/gi, "\n")
-            .replace(/<\s*\/p\s*>/gi, "\n")
-            .replace(/<[^>]+>/g, " ")
-            .replace(/&nbsp;/gi, " ")
-            .replace(/&amp;/gi, "&")
-            .replace(/\r\n/g, "\n");
-        })();
-
-        const forwarded = extractForwardedEmailContext(text, outerFromEmail);
-        const chosenFrom = forwarded?.from || outerFromParsed;
-        const chosenSubject = (subjectOuter && /^fwd?:\s*/i.test(subjectOuter) && forwarded?.subject)
-          ? forwarded.subject
-          : (subjectOuter || forwarded?.subject || null);
-
-        const bodyTextRaw = cleanEmailBodyText(text);
-        const bodyText = await cleanEmailEnquiryText(bodyTextRaw);
-        const summary = bodyText
-          ? bodyText.slice(0, 250) + (bodyText.length > 250 ? "..." : "")
-          : null;
-
-        const attachments = Array.isArray(parsed.attachments) ? parsed.attachments : [];
-        const persisted = await persistEmailAttachments({ tenantId, attachments, originalFilename: filename });
-
-        const email = chosenFrom?.email ? String(chosenFrom.email).toLowerCase() : null;
-        const contactName = chosenFrom?.name || (email ? deriveNameFromEmail(email) : null);
-        const fromEmailForUi = (() => {
-          if (chosenFrom?.name && chosenFrom?.email) return `${chosenFrom.name} <${chosenFrom.email}>`;
-          if (chosenFrom?.email) return chosenFrom.email;
-          return outerFromText;
-        })();
-
-        let confidence = 0.6;
-        if (email && contactName && chosenSubject) confidence = 0.9;
-        else if (email && chosenSubject) confidence = 0.8;
-        else if (email || contactName) confidence = 0.6;
-        else confidence = 0.3;
-
-        emailData = {
-          contactName,
-          email,
-          subject: chosenSubject,
-          bodyText: bodyText || null,
-          summary,
-          confidence,
-          fromEmail: fromEmailForUi || null,
-          attachments: persisted,
-        };
-      } catch (e: any) {
-        console.warn("[leads] parse-email mailparser failed; falling back:", e?.message || e);
-      }
-    }
-
-    if (!emailData) {
-      // Decode base64 content (best-effort) and fall back to legacy parsing
-      const fileContent = rawBuffer.toString("utf-8");
-      const legacy = parseEmailContent(fileContent);
-      emailData = { ...legacy, fromEmail: null };
-    }
-    
-    if (!emailData.contactName && !emailData.email) {
-      return res.status(400).json({ error: "Could not extract contact information from email" });
-    }
-
-    // Create a new lead from the parsed email
-    const lead = await prisma.lead.create({
-      data: {
-        tenantId,
-        createdById: userId,
-        contactName: emailData.contactName || "Unknown Contact",
-        email: emailData.email || null,
-        status: "NEW",
-        description: emailData.bodyText || null,
-        custom: {
-          subject: emailData.subject,
-          provider: provider || "manual",
-          bodyText: emailData.bodyText,
-          summary: emailData.summary,
-          fromEmail: emailData.fromEmail,
-          attachments: (emailData as any)?.attachments,
-          uiStatus: "NEW_ENQUIRY" as UiStatus,
-          confidence: emailData.confidence,
-          source: "manual_upload",
-          filename: filename,
-          enquiryDate: new Date().toISOString().split('T')[0],
-          dateReceived: new Date().toISOString().split('T')[0],
-        },
-      },
-    });
-
-    // Handle status transition and task creation
-    const playbook = await loadTaskPlaybook(tenantId);
-    await handleStatusTransition({
+    const result = await parseEmailBufferAndCreateLead({
       tenantId,
-      leadId: lead.id,
-      prevUi: null,
-      nextUi: "NEW_ENQUIRY",
-      actorId: userId,
-      playbook,
+      userId,
+      filename,
+      mimeType: mimeType || "text/plain",
+      rawBuffer,
+      provider,
     });
 
-    res.json({
-      leadId: lead.id,
-      contactName: lead.contactName,
-      email: lead.email,
-      subject: emailData.subject,
-      confidence: emailData.confidence,
-      bodyText: emailData.bodyText,
-    });
+    res.json(result);
 
   } catch (e: any) {
     console.error("[leads] parse-email failed:", e);

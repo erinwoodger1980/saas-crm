@@ -148,60 +148,58 @@ type EmailUpload = {
   id: string;
   file: File;
   status: 'pending' | 'uploading' | 'completed' | 'error';
-  progress?: number;
-  result?: {
-    leadId: string;
-    contactName: string;
-    email: string;
-    subject: string;
-    confidence: number;
-  };
-  error?: string;
-};
+  function extractMessageRefFromText(input: string): string | null {
+    const raw = String(input || "").trim();
+    if (!raw) return null;
 
-/* -------------------------------- Page -------------------------------- */
+    // Apple Mail often provides message:%3C...%3E. Decode if it looks encoded.
+    const decoded = (() => {
+      try {
+        return decodeURIComponent(raw);
+      } catch {
+        return raw;
+      }
+    })();
 
-function LeadsPageContent() {
-  const empty: Grouped = {
-    NEW_ENQUIRY: [],
-    INFO_REQUESTED: [],
-    DISQUALIFIED: [],
-    REJECTED: [],
-    READY_TO_QUOTE: [],
-    QUOTE_SENT: [],
-    WON: [],
-    LOST: [],
-  };
+    const s = decoded.trim();
+    if (/^message:/i.test(s)) return s;
+    return null;
+  }
 
-  const { shortName } = useTenantBrand();
-  const searchParams = useSearchParams();
+  async function extractEmailRefFromDataTransfer(dt: DataTransfer): Promise<string | null> {
+    const items = dt.items ? Array.from(dt.items) : [];
+    const stringItems = items.filter((it) => it.kind === "string");
+    const strings = await Promise.all(
+      stringItems.map(
+        (it) =>
+          new Promise<{ type: string; data: string }>((resolve) => {
+            try {
+              it.getAsString((data) => resolve({ type: it.type || "text/plain", data: String(data || "") }));
+            } catch {
+              resolve({ type: it.type || "text/plain", data: "" });
+            }
+          })
+      )
+    );
 
-  const [grouped, setGrouped] = useState<Grouped>(empty);
-  const [tab, setTab] = useState<LeadStatus>("NEW_ENQUIRY");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  // Removed: manual quotes filter toggle (unused)
-
-  // modal
-  const [open, setOpen] = useState(false);
-  const [leadPreview, setLeadPreview] = useState<Lead | null>(null);
-  const [leadModalInitialStage, setLeadModalInitialStage] = useState<'client' | 'quote' | 'tasks'>('tasks');
-  const [leadModalScrollToNotes, setLeadModalScrollToNotes] = useState(false);
-  const [csvImportOpen, setCsvImportOpen] = useState(false);
-  const { toast } = useToast();
-
-  // view toggle state
-  const [viewMode, setViewMode] = useState<'cards' | 'grid'>(() => {
-    if (typeof window !== 'undefined') {
-      return (localStorage.getItem('leads-view-mode') as 'cards' | 'grid') || 'cards';
+    for (const s of strings) {
+      const ref = extractMessageRefFromText(s.data);
+      if (ref) return ref;
     }
-    return 'cards';
-  });
 
-  // column configuration state
-  const [showColumnConfig, setShowColumnConfig] = useState(false);
-  const [columnConfig, setColumnConfig] = useState<any[]>([]);
+    const tryTypes = ["text/plain", "text/uri-list", "text/html"];
+    for (const t of tryTypes) {
+      try {
+        const v = dt.getData(t);
+        const ref = extractMessageRefFromText(v);
+        if (ref) return ref;
+      } catch {}
+    }
 
+    return null;
+  }
+
+  async function extractEmailFilesFromDataTransfer(dt: DataTransfer): Promise<File[]> {
   // dropdown customization state
   const [customColors, setCustomColors] = useState<Record<string, { bg: string; text: string }>>(() => {
     if (typeof window !== 'undefined') {
@@ -857,60 +855,6 @@ function LeadsPageContent() {
       .filter((f): f is File => !!f);
     if (itemFiles.length > 0) return itemFiles;
 
-    // Apple Mail (and some other apps) often provides only string payloads.
-    const stringItems = items.filter((it) => it.kind === "string");
-    const strings = await Promise.all(
-      stringItems.map(
-        (it) =>
-          new Promise<{ type: string; data: string }>((resolve) => {
-            try {
-              it.getAsString((data) => resolve({ type: it.type || "text/plain", data: String(data || "") }));
-            } catch {
-              resolve({ type: it.type || "text/plain", data: "" });
-            }
-          })
-      )
-    );
-
-    const candidates = strings
-      .map((s) => ({ type: s.type, data: String(s.data || "") }))
-      .map((s) => ({ ...s, trimmed: s.data.trim() }))
-      .filter((s) => !!s.trimmed);
-
-    const bestString = (() => {
-      let best: { type: string; data: string; trimmed: string; score: number; reason: string } | null = null;
-      for (const c of candidates) {
-        const scored = scoreDropText(c.trimmed);
-        const next = { ...c, score: scored.score, reason: scored.reason };
-        if (!best || next.score > best.score || (next.score === best.score && next.trimmed.length > best.trimmed.length)) {
-          best = next;
-        }
-      }
-      return best;
-    })();
-
-    // As a fallback, try DataTransfer.getData for a couple common types.
-    const fallbackText = (() => {
-      const tryTypes = ["text/plain", "text/uri-list", "text/html"];
-      for (const t of tryTypes) {
-        try {
-          const v = dt.getData(t);
-          if (v && String(v).trim()) return String(v);
-        } catch {}
-      }
-      return "";
-    })();
-
-    const chosenText = bestString?.trimmed || fallbackText;
-    const chosenScore = bestString ? bestString.score : scoreDropText(chosenText).score;
-
-    // Only synthesize an .eml if we have something that resembles an email.
-    // If we only got a message:// or message:<id> link (common on macOS), don't create a junk lead.
-    if (chosenText && chosenText.trim().length > 0 && chosenScore >= 40) {
-      const eml = buildSyntheticEmlFromDropText(chosenText);
-      return [new File([eml], "dropped-email.eml", { type: "message/rfc822" })];
-    }
-
     return [];
   }
 
@@ -960,6 +904,47 @@ function LeadsPageContent() {
       console.log('📧 Processing files:', files.map(f => f.name).join(', '));
       addEmailFilesToQueue(files);
       return;
+    }
+
+    // Apple Mail sometimes drops only a message: reference. Resolve it via the server using the user's connected mailbox.
+    const ref = await extractEmailRefFromDataTransfer(dt);
+    if (ref) {
+      try {
+        toast({
+          title: "Importing email…",
+          description: "Fetching the email from your connected mailbox",
+          duration: 3500,
+        });
+
+        const headers = buildAuthHeaders();
+        const response = await apiFetch<{
+          leadId: string;
+          contactName: string;
+          email: string;
+          subject: string;
+          confidence: number;
+          bodyText?: string;
+        }>(`/leads/parse-email-ref`, {
+          method: 'POST',
+          headers,
+          json: { ref, provider: 'manual' },
+        });
+
+        toast({
+          title: "Email processed successfully",
+          description: `Created lead for ${response.contactName} with ${(response.confidence * 100).toFixed(0)}% confidence`,
+          duration: 4000,
+        });
+        await refreshGrouped();
+        return;
+      } catch (error: any) {
+        toast({
+          title: "Email import failed",
+          description: error?.message || "We couldn't fetch the dropped email from your mailbox. Try saving it as a .eml file and uploading it.",
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     toast({
