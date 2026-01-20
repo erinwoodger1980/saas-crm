@@ -159,6 +159,8 @@ type EmailUpload = {
   };
   error?: string;
 };
+
+function LeadsPageContent() {
   // dropdown customization state
   const [customColors, setCustomColors] = useState<Record<string, { bg: string; text: string }>>(() => {
     if (typeof window !== 'undefined') {
