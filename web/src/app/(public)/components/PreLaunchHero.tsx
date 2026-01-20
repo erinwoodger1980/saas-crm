@@ -12,21 +12,24 @@ type PreLaunchHeroProps = {
 export default function PreLaunchHero({ onOpenDemo, onCtaClick }: PreLaunchHeroProps) {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [company, setCompany] = useState("");
+  const [phone, setPhone] = useState("");
+  const [showDetails, setShowDetails] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitInterest = async (payload: { email: string; name: string; company: string; phone: string }) => {
     setLoading(true);
     setError("");
 
     try {
-      const { API_BASE: apiBase } = await import("@/lib/api-base");
-      const response = await fetch(`${apiBase}/api/interest`, {
+      const { getApiBase } = await import("@/lib/api-base");
+      const apiBase = getApiBase();
+      const response = await fetch(`${apiBase}/interest`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, name }),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
@@ -36,12 +39,36 @@ export default function PreLaunchHero({ onOpenDemo, onCtaClick }: PreLaunchHeroP
       }
 
       setSubmitted(true);
+      setEmail(data.email || payload.email);
       onCtaClick?.("hero-waitlist");
     } catch (err: any) {
       setError(err.message || "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    // Ask for details via popup/modal before submitting.
+    if (!showDetails) {
+      setShowDetails(true);
+      return;
+    }
+
+    if (!name.trim() || !company.trim() || !phone.trim()) {
+      setError("Please enter your name, company name, and phone number.");
+      return;
+    }
+
+    await submitInterest({
+      email: email.trim(),
+      name: name.trim(),
+      company: company.trim(),
+      phone: phone.trim(),
+    });
   };
 
   return (
@@ -100,16 +127,83 @@ export default function PreLaunchHero({ onOpenDemo, onCtaClick }: PreLaunchHeroP
                     required
                     className="w-full rounded-lg border border-white/20 bg-white/10 px-4 py-3 text-white placeholder-white/50 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
                   />
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Your name (optional)"
-                    className="w-full rounded-lg border border-white/20 bg-white/10 px-4 py-3 text-white placeholder-white/50 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
-                  />
                 </div>
                 {error && (
                   <p className="text-sm text-red-300">{error}</p>
+                )}
+
+                {showDetails && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+                    <div className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900/95 p-5 text-white shadow-xl">
+                      <div className="text-lg font-semibold">A couple of details</div>
+                      <p className="mt-1 text-sm text-white/70">
+                        Please add your details so we can contact you with next steps.
+                      </p>
+
+                      <div className="mt-4 space-y-3">
+                        <input
+                          type="text"
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          placeholder="Your name"
+                          required
+                          disabled={loading}
+                          className="w-full rounded-lg border border-white/20 bg-white/10 px-4 py-3 text-white placeholder-white/50 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 disabled:opacity-50"
+                        />
+                        <input
+                          type="text"
+                          value={company}
+                          onChange={(e) => setCompany(e.target.value)}
+                          placeholder="Company name"
+                          required
+                          disabled={loading}
+                          className="w-full rounded-lg border border-white/20 bg-white/10 px-4 py-3 text-white placeholder-white/50 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 disabled:opacity-50"
+                        />
+                        <input
+                          type="tel"
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          placeholder="Phone number"
+                          required
+                          disabled={loading}
+                          className="w-full rounded-lg border border-white/20 bg-white/10 px-4 py-3 text-white placeholder-white/50 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 disabled:opacity-50"
+                        />
+                      </div>
+
+                      <div className="mt-5 flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowDetails(false)}
+                          disabled={loading}
+                          className="rounded-full px-4 py-2 text-sm font-semibold text-white/80 hover:bg-white/10 disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                        <Button
+                          type="button"
+                          size="lg"
+                          disabled={loading}
+                          onClick={async () => {
+                            setError("");
+                            if (!name.trim() || !company.trim() || !phone.trim()) {
+                              setError("Please enter your name, company name, and phone number.");
+                              return;
+                            }
+                            setShowDetails(false);
+                            await submitInterest({
+                              email: email.trim(),
+                              name: name.trim(),
+                              company: company.trim(),
+                              phone: phone.trim(),
+                            });
+                          }}
+                          className="gap-2"
+                        >
+                          Continue
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 )}
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
                   <Button

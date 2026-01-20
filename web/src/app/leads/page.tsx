@@ -1583,6 +1583,16 @@ function LeadCard({
         : typeof lead.custom?.bodyText === "string" && lead.custom.bodyText.trim() !== ""
           ? lead.custom.bodyText.trim()
           : undefined;
+
+  const normalizeSnippet = (s?: string) =>
+    typeof s === "string" ? s.trim().replace(/\s+/g, " ").toLowerCase() : "";
+
+  const summaryToShow = summary;
+  const descriptionToShow = (() => {
+    if (!description) return undefined;
+    if (summaryToShow && normalizeSnippet(summaryToShow) === normalizeSnippet(description)) return undefined;
+    return description;
+  })();
   const statusLabel = STATUS_LABELS[lead.status as LeadStatus] || "—";
   const needsManualQuote = Boolean(lead.custom?.needsManualQuote);
   const manualQuoteReason = typeof lead.custom?.manualQuoteReason === 'string' ? lead.custom.manualQuoteReason : undefined;
@@ -1620,12 +1630,12 @@ function LeadCard({
               </div>
             </div>
 
-            {(subject || summary || description) && (
+            {(subject || summaryToShow || descriptionToShow) && (
               <div className="mt-2 space-y-1">
                 {subject && <div className="text-xs font-semibold text-slate-700 line-clamp-1">{subject}</div>}
-                {summary && <div className="text-[12px] text-slate-600 line-clamp-2">{summary}</div>}
-                {description && (
-                  <div className="text-[12px] text-slate-500/90 italic line-clamp-2">{description}</div>
+                {summaryToShow && <div className="text-[12px] text-slate-600 line-clamp-2">{summaryToShow}</div>}
+                {descriptionToShow && (
+                  <div className="text-[12px] text-slate-500/90 italic line-clamp-2">{descriptionToShow}</div>
                 )}
                 {needsManualQuote && (
                   <div className="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-300/70 bg-amber-50/70 px-2 py-1 text-[10px] font-medium text-amber-800" title={manualQuoteReason ? `Manual quote required: ${manualQuoteReason}` : 'Manual quote required'}>
