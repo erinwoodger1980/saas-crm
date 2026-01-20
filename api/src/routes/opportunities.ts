@@ -3,6 +3,7 @@ import { Router } from "express";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { getAccessTokenForTenant, gmailSend } from "../services/gmail";
+import { appendJoineryAiFooterText } from "../services/email-branding";
 import { env } from "../env";
 import fetch from "node-fetch";
 import { FOLLOWUPS_ENABLED } from "../lib/followups-feature";
@@ -82,6 +83,8 @@ router.post("/:id/send-followup", async (req: any, res: any) => {
     };
     if (!subject || !body) return res.status(400).json({ error: "subject and body required" });
 
+    const brandedBody = appendJoineryAiFooterText(body);
+
     // 1) Find the existing Gmail thread for this lead (if any)
     const thread = await prisma.emailThread.findFirst({
       where: { tenantId, leadId: id, provider: "gmail" },
@@ -98,7 +101,7 @@ router.post("/:id/send-followup", async (req: any, res: any) => {
       `MIME-Version: 1.0\r\n` +
       `Content-Type: text/plain; charset="UTF-8"\r\n` +
       `Content-Transfer-Encoding: 7bit\r\n\r\n` +
-      `${body}\r\n`;
+      `${brandedBody}\r\n`;
 
     // NOTE: gmailSend(accessToken, rfc822) — two args in your project
     const sent = await gmailSend(accessToken, rfc822);
@@ -145,7 +148,7 @@ router.post("/:id/send-followup", async (req: any, res: any) => {
         toEmail: lead.email,
         subject,
         snippet: null,
-        bodyText: body,
+        bodyText: brandedBody,
         sentAt: new Date(),
         leadId: id,
       },
@@ -159,7 +162,7 @@ router.post("/:id/send-followup", async (req: any, res: any) => {
         toEmail: lead.email,
         subject,
         snippet: null,
-        bodyText: body,
+        bodyText: brandedBody,
         sentAt: new Date(),
         leadId: id,
       },

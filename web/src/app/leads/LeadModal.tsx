@@ -723,6 +723,15 @@ export default function LeadModal({
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
   const [quoteDeadlineDays, setQuoteDeadlineDays] = useState("7");
   const [quoteNotes, setQuoteNotes] = useState("");
+  const [supplierEmailTo, setSupplierEmailTo] = useState("");
+  const [supplierEmailSubject, setSupplierEmailSubject] = useState("");
+  const [supplierEmailBody, setSupplierEmailBody] = useState("");
+  const [supplierLocalAttachments, setSupplierLocalAttachments] = useState<File[]>([]);
+  const [supplierDraftLoading, setSupplierDraftLoading] = useState(false);
+  const [supplierUploadUrl, setSupplierUploadUrl] = useState<string | null>(null);
+  const [supplierRfqToken, setSupplierRfqToken] = useState<string | null>(null);
+  const [supplierRfqId, setSupplierRfqId] = useState<string | null>(null);
+  const supplierEmailTouchedRef = useRef<{ to: boolean; subject: boolean; body: boolean }>({ to: false, subject: false, body: false });
 
   // Email preview modal state
   const [showEmailPreviewModal, setShowEmailPreviewModal] = useState(false);
@@ -1029,8 +1038,9 @@ export default function LeadModal({
     if (!open) return;
     async function loadSuppliers() {
       try {
-        const data = await apiFetch<any[]>("/suppliers", { headers: authHeaders });
-        setSuppliers(data || []);
+        const data = await apiFetch<any>("/suppliers", { headers: authHeaders });
+        const items = Array.isArray(data) ? data : Array.isArray((data as any)?.items) ? (data as any).items : [];
+        setSuppliers(items);
       } catch (err) {
         console.error("Failed to load suppliers:", err);
       }
@@ -2820,14 +2830,207 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
+  function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || "");
+        const comma = result.indexOf(",");
+        resolve(comma >= 0 ? result.slice(comma + 1) : result);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function parseDataUri(dataUri: string): null | { mimeType: string; base64: string } {
+    const raw = String(dataUri || "");
+    const m = raw.match(/^data:([^;]+);base64,(.+)$/);
+    if (!m) return null;
+    return { mimeType: m[1], base64: m[2] };
+  }
+
+  function buildSupplierLineItemsText(): string {
+    const lines: string[] = [];
+
+    if (Array.isArray(quoteLines) && quoteLines.length > 0) {
+      lines.push("Line items:");
+      quoteLines.forEach((ln: any, idx: number) => {
+        const qty = ln?.qty ?? 1;
+        const desc = ln?.description || `Line ${idx + 1}`;
+        const w = ln?.lineStandard?.widthMm;
+        const h = ln?.lineStandard?.heightMm;
+        const size = w && h ? ` (${w}×${h}mm)` : "";
+        lines.push(`- ${qty} × ${desc}${size}`);
+      });
+      return lines.join("\n");
+    }
+
+    if (Array.isArray(questionnaireItems) && questionnaireItems.length > 0) {
+      lines.push("Line items:");
+      questionnaireItems.forEach((it: any, idx: number) => {
+        lines.push(`- Item ${idx + 1}`);
+        try {
+          Object.entries(it || {}).forEach(([k, v]) => {
+            if (k === "photos" || k === "inspiration_photos") return;
+            const val = formatAnswer(v);
+            if (val == null || val === "") return;
+            lines.push(`  - ${k}: ${val}`);
+          });
+        } catch {}
+      });
+      return lines.join("\n");
+    }
+
+    return "";
+  }
+
+  function buildSupplierEmailDraft(opts: {
+    supplierName: string;
+    uploadUrl: string;
+    deadline: Date;
+    notes: string;
+  }): { subject: string; body: string } {
+    const leadName = lead?.contactName || lead?.email || "Project";
+    const due = opts.deadline.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    const subject = `Supplier quote request: ${leadName} (due ${due})`;
+
+    const projectDescription = (typeof lead?.description === "string" && lead.description.trim()) ? lead.description.trim() : "";
+    const lineItemsText = buildSupplierLineItemsText();
+
+    const parts: string[] = [];
+    parts.push(`Hi ${opts.supplierName || ""}`.trim() + ",");
+    parts.push("");
+    parts.push("Please could you provide a quote for the following enquiry.");
+    parts.push("");
+    parts.push(`Requested deadline: ${due}`);
+    parts.push("");
+
+    if (projectDescription) {
+      parts.push("Project description:");
+      parts.push(projectDescription);
+      parts.push("");
+    }
+
+    if (opts.notes?.trim()) {
+      parts.push("Notes:");
+      parts.push(opts.notes.trim());
+      parts.push("");
+    }
+
+    if (lineItemsText) {
+      parts.push(lineItemsText);
+      parts.push("");
+    }
+
+    parts.push("Please upload your quote as a PDF using this link:");
+    parts.push(opts.uploadUrl);
+    parts.push("");
+    parts.push("Thanks,");
+
+    return { subject, body: parts.join("\n") };
+  }
+
+  async function ensureSupplierRfqLink(toEmail: string): Promise<{ token: string; rfqId: string; uploadUrl: string }> {
+    if (!leadIdForApi) throw new Error("Missing lead id");
+    const resp = await apiFetch<any>(`/leads/${encodeURIComponent(leadIdForApi)}/request-supplier-quote`, {
+      method: "POST",
+      headers: { ...authHeaders, "Content-Type": "application/json" },
+      json: { to: toEmail, sendEmail: false },
+    });
+    const token = String(resp?.token || "");
+    const rfqId = String(resp?.rfqId || "");
+    const uploadUrl = String(resp?.uploadUrl || "");
+    if (!token || !rfqId || !uploadUrl) throw new Error("Failed to generate upload link");
+    return { token, rfqId, uploadUrl };
+  }
+
   async function requestSupplierPrice() {
     if (!lead?.id) return;
     // Show the supplier selection modal
     setSelectedSupplierId("");
     setQuoteDeadlineDays("7");
     setQuoteNotes("");
+    setSupplierEmailTo("");
+    setSupplierEmailSubject("");
+    setSupplierEmailBody("");
+    setSupplierLocalAttachments([]);
+    setSupplierUploadUrl(null);
+    setSupplierRfqToken(null);
+    setSupplierRfqId(null);
+    supplierEmailTouchedRef.current = { to: false, subject: false, body: false };
     setShowSupplierModal(true);
   }
+
+  useEffect(() => {
+    if (!showSupplierModal) return;
+    const supplier = suppliers.find((s) => s && s.id === selectedSupplierId);
+    if (!supplier) return;
+
+    const to = String(supplier?.email || "").trim();
+    if (!supplierEmailTouchedRef.current.to) {
+      setSupplierEmailTo(to);
+    }
+    if (!to) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        setSupplierDraftLoading(true);
+        const draft = await ensureSupplierRfqLink(to);
+        if (cancelled) return;
+
+        setSupplierRfqToken(draft.token);
+        setSupplierRfqId(draft.rfqId);
+        setSupplierUploadUrl(draft.uploadUrl);
+
+        const days = parseInt(quoteDeadlineDays) || 7;
+        const deadline = new Date();
+        deadline.setDate(deadline.getDate() + days);
+
+        const supplierName = String(supplier?.contactPerson || supplier?.name || supplier?.companyName || "");
+        const composed = buildSupplierEmailDraft({
+          supplierName,
+          uploadUrl: draft.uploadUrl,
+          deadline,
+          notes: quoteNotes,
+        });
+
+        if (!supplierEmailTouchedRef.current.subject) setSupplierEmailSubject(composed.subject);
+        if (!supplierEmailTouchedRef.current.body) setSupplierEmailBody(composed.body);
+      } catch (e) {
+        console.error("Failed to generate supplier RFQ draft:", e);
+      } finally {
+        if (!cancelled) setSupplierDraftLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showSupplierModal, selectedSupplierId, suppliers]);
+
+  useEffect(() => {
+    if (!showSupplierModal) return;
+    const supplier = suppliers.find((s) => s && s.id === selectedSupplierId);
+    if (!supplier) return;
+    if (!supplierUploadUrl) return;
+
+    if (supplierEmailTouchedRef.current.subject && supplierEmailTouchedRef.current.body) return;
+
+    const days = parseInt(quoteDeadlineDays) || 7;
+    const deadline = new Date();
+    deadline.setDate(deadline.getDate() + days);
+    const supplierName = String(supplier?.contactPerson || supplier?.name || supplier?.companyName || "");
+    const composed = buildSupplierEmailDraft({
+      supplierName,
+      uploadUrl: supplierUploadUrl,
+      deadline,
+      notes: quoteNotes,
+    });
+    if (!supplierEmailTouchedRef.current.subject) setSupplierEmailSubject(composed.subject);
+    if (!supplierEmailTouchedRef.current.body) setSupplierEmailBody(composed.body);
+  }, [showSupplierModal, selectedSupplierId, suppliers, supplierUploadUrl, quoteDeadlineDays, quoteNotes]);
 
   async function submitSupplierQuoteRequest() {
     if (!lead?.id) return;
@@ -2838,13 +3041,26 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       return;
     }
 
+    const toFromState = supplierEmailTo.trim();
+    if (!toFromState) {
+      toast("Supplier email is required");
+      return;
+    }
+
+    const subjectToSend = (supplierEmailSubject || "").trim();
+    const bodyToSend = (supplierEmailBody || "").trim();
+    if (!subjectToSend || !bodyToSend) {
+      toast("Email subject and body are required");
+      return;
+    }
+
     setBusyTask(true);
     setShowSupplierModal(false);
     
     try {
       await ensureManualTask("supplier_followup");
 
-      const to = supplier.email || "";
+      const to = toFromState;
       const days = parseInt(quoteDeadlineDays) || 7;
       const quoteDeadline = new Date();
       quoteDeadline.setDate(quoteDeadline.getDate() + days);
@@ -2873,14 +3089,80 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         }
       } catch {}
 
-      // Prepare attachments from any questionnaire uploads (limit a few)
-      const uploads = Array.isArray((lead.custom as any)?.uploads) ? (lead.custom as any).uploads : [];
-      const attachments = uploads.slice(0, 5).map((u: any) => ({
-        source: "upload" as const,
-        filename: (u?.filename && String(u.filename)) || "attachment",
-        mimeType: (u?.mimeType && String(u.mimeType)) || "application/octet-stream",
-        base64: String(u?.base64 || ""),
-      })).filter((u: any) => u.base64);
+      // Prepare attachments: questionnaire uploads + item photos + quote line photos + user-added files
+      const attachments: Array<{ source: "upload"; filename: string; mimeType: string; base64: string }> = [];
+      const MAX_ATTACHMENTS = 25;
+
+      // Questionnaire uploads
+      for (const u of questionnaireUploads.slice(0, 10)) {
+        if (!u?.base64) continue;
+        attachments.push({
+          source: "upload" as const,
+          filename: u.filename || "attachment",
+          mimeType: u.mimeType || "application/octet-stream",
+          base64: u.base64,
+        });
+        if (attachments.length >= MAX_ATTACHMENTS) break;
+      }
+
+      // Questionnaire item photos
+      if (attachments.length < MAX_ATTACHMENTS) {
+        const pushPhoto = (p: any, fallback: string) => {
+          if (attachments.length >= MAX_ATTACHMENTS) return;
+          if (!p || !p.base64) return;
+          attachments.push({
+            source: "upload" as const,
+            filename: p?.filename || fallback,
+            mimeType: p?.mimeType || "image/jpeg",
+            base64: String(p.base64),
+          });
+        };
+        questionnaireItems.forEach((it: any, idx: number) => {
+          if (attachments.length >= MAX_ATTACHMENTS) return;
+          if (Array.isArray(it?.photos)) {
+            it.photos.forEach((p: any, pidx: number) => pushPhoto(p, `item-${idx + 1}-photo-${pidx + 1}.jpg`));
+          }
+          if (Array.isArray(it?.inspiration_photos)) {
+            it.inspiration_photos.forEach((p: any, pidx: number) => pushPhoto(p, `item-${idx + 1}-inspiration-${pidx + 1}.jpg`));
+          }
+        });
+      }
+
+      // Quote line photos (data URIs)
+      if (attachments.length < MAX_ATTACHMENTS && Array.isArray(quoteLines) && quoteLines.length > 0) {
+        quoteLines.forEach((ln: any, idx: number) => {
+          if (attachments.length >= MAX_ATTACHMENTS) return;
+          const dataUri = ln?.lineStandard?.photoDataUri;
+          if (!dataUri) return;
+          const parsed = parseDataUri(String(dataUri));
+          if (!parsed?.base64) return;
+          const ext = parsed.mimeType.includes("png") ? "png" : parsed.mimeType.includes("webp") ? "webp" : "jpg";
+          attachments.push({
+            source: "upload" as const,
+            filename: `line-${idx + 1}-photo.${ext}`,
+            mimeType: parsed.mimeType,
+            base64: parsed.base64,
+          });
+        });
+      }
+
+      // User-added local attachments
+      if (attachments.length < MAX_ATTACHMENTS && supplierLocalAttachments.length > 0) {
+        for (const f of supplierLocalAttachments) {
+          if (attachments.length >= MAX_ATTACHMENTS) break;
+          try {
+            const b64 = await fileToBase64(f);
+            attachments.push({
+              source: "upload" as const,
+              filename: f.name || "attachment",
+              mimeType: f.type || "application/octet-stream",
+              base64: b64,
+            });
+          } catch (e) {
+            console.error("Failed to read attachment", f?.name, e);
+          }
+        }
+      }
 
       // Store the quote deadline in the lead custom data
       await savePatch({ 
@@ -2927,35 +3209,48 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         console.error("Failed to create supplier quote request record:", err);
       }
 
-      // Attempt server-side send (via Gmail API). Fallback to mailto if it fails or no 'to'
+      // Attempt server-side send (via Gmail API). Fallback to mailto if it fails.
       if (to) {
         try {
           if (!leadIdForApi) throw new Error("Missing lead id");
+
+          // Ensure we have an RFQ link token to include in the email upload URL
+          let token = supplierRfqToken;
+          let rfqId = supplierRfqId;
+          if (!token || !rfqId || !supplierUploadUrl) {
+            const draft = await ensureSupplierRfqLink(to);
+            token = draft.token;
+            rfqId = draft.rfqId;
+            setSupplierRfqToken(token);
+            setSupplierRfqId(rfqId);
+            setSupplierUploadUrl(draft.uploadUrl);
+          }
+
           await apiFetch(`/leads/${encodeURIComponent(leadIdForApi)}/request-supplier-quote`, {
             method: "POST",
             headers: { ...authHeaders, "Content-Type": "application/json" },
             json: {
               to,
-              subject: `Quote request for ${lead.contactName || "lead"} - Due ${quoteDeadline.toLocaleDateString()}`,
-              text: `Please provide a price for the following enquiry by ${quoteDeadline.toLocaleDateString()}.`,
+              subject: subjectToSend,
+              text: bodyToSend,
               fields,
               attachments,
               deadline: quoteDeadline.toISOString(),
+              rfqToken: token,
+              rfqId,
             },
           });
         } catch (_err) {
           // Fallback to mailto
           openMailTo(
             to,
-            `Price request: ${lead.contactName || "Project"} - Due ${quoteDeadline.toLocaleDateString()}`,
-            `Hi,\n\nCould you price the attached items by ${quoteDeadline.toLocaleDateString()}?\n\nThanks!`
+            subjectToSend,
+            bodyToSend
           );
         }
       } else {
         // If no email provided, open a mailto for manual send
-        const subject = `Price request: ${lead.contactName || "Project"} - Due ${quoteDeadline.toLocaleDateString()}`;
-        const body = `Hi,\n\nCould you price the attached items by ${quoteDeadline.toLocaleDateString()}?\n\nThanks!`;
-        openMailTo("", subject, body);
+        openMailTo("", subjectToSend, bodyToSend);
       }
 
       await reloadTasks();
@@ -7256,7 +7551,18 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                   <select
                     className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-inner"
                     value={selectedSupplierId}
-                    onChange={(e) => setSelectedSupplierId(e.target.value)}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setSelectedSupplierId(next);
+                      setSupplierUploadUrl(null);
+                      setSupplierRfqToken(null);
+                      setSupplierRfqId(null);
+                      setSupplierEmailTo("");
+                      setSupplierEmailSubject("");
+                      setSupplierEmailBody("");
+                      setSupplierLocalAttachments([]);
+                      supplierEmailTouchedRef.current = { to: false, subject: false, body: false };
+                    }}
                     disabled={busyTask}
                   >
                     <option value="">Select a supplier…</option>
@@ -7295,6 +7601,116 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                 </label>
               </div>
 
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block text-xs font-semibold text-slate-700">
+                  To
+                  <input
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-inner"
+                    value={supplierEmailTo}
+                    onChange={(e) => {
+                      supplierEmailTouchedRef.current.to = true;
+                      setSupplierEmailTo(e.target.value);
+                    }}
+                    placeholder="supplier@example.com"
+                    disabled={busyTask}
+                  />
+                </label>
+                <label className="block text-xs font-semibold text-slate-700">
+                  Subject
+                  <input
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-inner"
+                    value={supplierEmailSubject}
+                    onChange={(e) => {
+                      supplierEmailTouchedRef.current.subject = true;
+                      setSupplierEmailSubject(e.target.value);
+                    }}
+                    placeholder="Supplier quote request"
+                    disabled={busyTask}
+                  />
+                </label>
+              </div>
+
+              <label className="block text-xs font-semibold text-slate-700">
+                Email body
+                <textarea
+                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-inner min-h-[160px]"
+                  value={supplierEmailBody}
+                  onChange={(e) => {
+                    supplierEmailTouchedRef.current.body = true;
+                    setSupplierEmailBody(e.target.value);
+                  }}
+                  placeholder="Write the email you'd like to send to the supplier"
+                  disabled={busyTask}
+                />
+              </label>
+
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-xs font-semibold text-slate-700">Attachments</div>
+                  {supplierDraftLoading ? (
+                    <div className="text-xs text-slate-500">Generating upload link…</div>
+                  ) : supplierUploadUrl ? (
+                    <a
+                      href={supplierUploadUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs font-medium text-slate-600 hover:text-slate-800"
+                    >
+                      Upload link ready
+                    </a>
+                  ) : null}
+                </div>
+
+                <div className="text-xs text-slate-500">
+                  {(() => {
+                    const itemPhotoCount = Array.isArray(questionnaireItems)
+                      ? questionnaireItems.reduce((acc: number, it: any) => {
+                          const a = Array.isArray(it?.photos) ? it.photos.length : 0;
+                          const b = Array.isArray(it?.inspiration_photos) ? it.inspiration_photos.length : 0;
+                          return acc + a + b;
+                        }, 0)
+                      : 0;
+                    const linePhotoCount = Array.isArray(quoteLines)
+                      ? quoteLines.filter((ln: any) => !!ln?.lineStandard?.photoDataUri).length
+                      : 0;
+                    const auto = (questionnaireUploads?.length || 0) + itemPhotoCount + linePhotoCount;
+                    if (auto <= 0) return "No existing attachments detected.";
+                    return `Will attach ${auto} existing file(s) (questionnaire uploads + photos) automatically.`;
+                  })()}
+                </div>
+
+                <input
+                  type="file"
+                  multiple
+                  className="block w-full text-xs"
+                  onChange={(e) => {
+                    const files = Array.from(e.currentTarget.files || []);
+                    if (!files.length) return;
+                    setSupplierLocalAttachments((prev) => [...prev, ...files]);
+                    e.currentTarget.value = "";
+                  }}
+                  disabled={busyTask}
+                />
+
+                {supplierLocalAttachments.length > 0 && (
+                  <ul className="space-y-1">
+                    {supplierLocalAttachments.map((f, idx) => (
+                      <li key={`${f.name}-${idx}`} className="flex items-center justify-between gap-2 text-xs text-slate-700">
+                        <span className="truncate">{f.name}</span>
+                        <button
+                          type="button"
+                          className="text-xs text-slate-500 hover:text-slate-700"
+                          onClick={() => setSupplierLocalAttachments((prev) => prev.filter((_, i) => i !== idx))}
+                          disabled={busyTask}
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
@@ -7308,7 +7724,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                   type="button"
                   className="rounded-full bg-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
                   onClick={submitSupplierQuoteRequest}
-                  disabled={busyTask || !selectedSupplierId}
+                  disabled={busyTask || supplierDraftLoading || !selectedSupplierId || !supplierEmailTo.trim() || !supplierEmailSubject.trim() || !supplierEmailBody.trim()}
                 >
                   {busyTask ? "Sending…" : "Send request"}
                 </button>

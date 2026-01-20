@@ -132,14 +132,14 @@ export default function SupplierUploadPage() {
       <div className="space-y-2">
         <input
           type="file"
-          accept="application/pdf,image/*"
+          accept="application/pdf"
           multiple
           onChange={(e) => setFiles(Array.from(e.currentTarget.files || []))}
         />
         {!!files.length && (
           <div className="text-xs text-slate-600">{files.length} file(s) ready</div>
         )}
-        <div className="text-xs text-slate-500">PDF or images are fine. Max 10MB each recommended.</div>
+        <div className="text-xs text-slate-500">Please upload your quote as a PDF. Max 10MB each recommended.</div>
         <div className="text-xs text-slate-500">
           Tip: If your price is based on an alternative spec, mention lead times and delivery terms so we can compare fairly.
         </div>

@@ -1,6 +1,7 @@
 // api/src/services/email-sender.ts
 import { prisma } from "../prisma";
 import { getGmailTokenForUser, getMs365TokenForUser, sendViaUserGmail, sendViaUserMs365 } from "./user-email";
+import { appendJoineryAiFooterHtml, appendJoineryAiFooterText } from "./email-branding";
 
 interface EmailAttachment {
   filename: string;
@@ -39,11 +40,17 @@ async function getUserEmailProvider(userId: string): Promise<'gmail' | 'ms365' |
  * Sends an email using the user's connected email provider (Gmail or MS365)
  */
 export async function sendEmailViaUser(userId: string, options: EmailOptions): Promise<void> {
+  const branded: EmailOptions = {
+    ...options,
+    body: appendJoineryAiFooterText(options.body),
+    html: options.html ? appendJoineryAiFooterHtml(options.html) : undefined,
+  };
+
   if (process.env.EMAIL_PROVIDER === "mock" || process.env.NODE_ENV === "test") {
     console.log("[email-sender] Mock provider enabled, email not sent:", {
-      to: options.to,
-      subject: options.subject,
-      attachmentCount: options.attachments?.length || 0,
+      to: branded.to,
+      subject: branded.subject,
+      attachmentCount: branded.attachments?.length || 0,
     });
     return;
   }
@@ -56,9 +63,9 @@ export async function sendEmailViaUser(userId: string, options: EmailOptions): P
   }
 
   if (provider === 'gmail') {
-    await sendViaGmail(userId, options);
+    await sendViaGmail(userId, branded);
   } else if (provider === 'ms365') {
-    await sendViaMs365(userId, options);
+    await sendViaMs365(userId, branded);
   }
 }
 

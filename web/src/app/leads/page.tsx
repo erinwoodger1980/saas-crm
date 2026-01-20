@@ -793,14 +793,44 @@ function LeadsPageContent() {
 
   /* ------------------------------ Email Upload Functions ------------------------------ */
 
+  function extractEmailFilesFromDataTransfer(dt: DataTransfer): File[] {
+    const directFiles = Array.from(dt.files || []);
+    if (directFiles.length > 0) return directFiles;
+
+    const items = dt.items ? Array.from(dt.items) : [];
+    const itemFiles = items
+      .filter((it) => it.kind === "file")
+      .map((it) => it.getAsFile())
+      .filter((f): f is File => !!f);
+
+    if (itemFiles.length > 0) return itemFiles;
+
+    // Some email clients provide RFC822-ish text but no File. Best-effort fallback.
+    const text = (() => {
+      try {
+        return dt.getData("text/plain") || "";
+      } catch {
+        return "";
+      }
+    })();
+
+    const looksLikeRfc822 = /(^|\n)from:\s/i.test(text) && /(^|\n)subject:\s/i.test(text);
+    if (looksLikeRfc822 && text.trim().length > 50) {
+      return [new File([text], "dropped-email.eml", { type: "message/rfc822" })];
+    }
+
+    return [];
+  }
+
   function handleEmailDragEnter(e: React.DragEvent) {
     e.preventDefault();
     e.stopPropagation();
     dragCounterRef.current += 1;
     
-    // Check if we have files being dragged
-    if (e.dataTransfer.types.includes('Files')) {
-      console.log('🎯 Email files detected in drag operation');
+    const hasFilesType = e.dataTransfer.types.includes('Files');
+    const hasFileItems = Array.from(e.dataTransfer.items || []).some((it) => it.kind === 'file');
+    if (hasFilesType || hasFileItems) {
+      console.log('🎯 Email drag operation detected');
       setIsDragging(true);
     }
   }
@@ -828,14 +858,19 @@ function LeadsPageContent() {
     setIsDragging(false);
     dragCounterRef.current = 0;
 
-    console.log('📧 Email drop detected, files:', e.dataTransfer.files.length);
-    const files = Array.from(e.dataTransfer.files);
+    const files = extractEmailFilesFromDataTransfer(e.dataTransfer);
+    console.log('📧 Email drop detected, extracted files:', files.length, 'types:', Array.from(e.dataTransfer.types || []));
     if (files.length > 0) {
       console.log('📧 Processing files:', files.map(f => f.name).join(', '));
       addEmailFilesToQueue(files);
-    } else {
-      console.log('⚠️ No files found in drop operation');
+      return;
     }
+
+    toast({
+      title: "Nothing to import",
+      description: "No email file was detected in that drag-drop. Try saving the email as a .eml file and dropping it, or use Browse Files.",
+      variant: "destructive",
+    });
   }
 
   function handleEmailFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -904,14 +939,14 @@ function LeadsPageContent() {
   }
 
   function addEmailFilesToQueue(files: File[]) {
-    // Filter for email-like files (.eml, .msg, .txt) and check MIME types
+    // Filter for email-like files (.eml, .msg, .txt, .mbox) and check MIME types
     const emailFiles = files.filter(file => {
       const name = file.name.toLowerCase();
       const type = file.type.toLowerCase();
       
       // Check file extensions
       const validExtensions = name.endsWith('.eml') || 
-                             name.endsWith('.msg') || 
+                             name.endsWith('.msg') ||
                              name.endsWith('.txt') ||
                              name.endsWith('.mbox');
       
@@ -1214,6 +1249,7 @@ function LeadsPageContent() {
                 onDragLeave={handleEmailDragLeave}
                 onDragOver={handleEmailDragOver}
                 onDrop={handleEmailDrop}
+                onClick={() => document.getElementById('email-file-input')?.click()}
               >
                 <div className="flex flex-col items-center gap-3">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
@@ -1246,7 +1282,7 @@ function LeadsPageContent() {
                   multiple
                   accept=".eml,.msg,.txt,.mbox,message/rfc822,text/plain,application/vnd.ms-outlook,application/octet-stream"
                   onChange={handleEmailFileSelect}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  className="absolute inset-0 w-full h-full opacity-0 pointer-events-none"
                 />
               </div>
 

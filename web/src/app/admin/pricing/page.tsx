@@ -154,13 +154,17 @@ export default function PricingMaterialsPage() {
 					throw new Error(message || 'Failed to save material');
 				}
 
-				const payload = await res.json();
+				const payload = await res.json().catch(() => ({ ok: res.ok }));
+				const savedItem = (payload as any)?.item ?? (payload as any)?.material ?? payload;
+				if (!savedItem || typeof (savedItem as any).id !== 'string') {
+					throw new Error('Material saved but response was unexpected');
+				}
 
 				await mutate((current) => {
 					if (!current) return current;
 					const nextItems = isEdit
-						? current.items.map((item) => (item.id === payload.item.id ? payload.item : item))
-						: [payload.item, ...current.items];
+						? current.items.map((item) => (item.id === savedItem.id ? savedItem : item))
+						: [savedItem, ...current.items];
 					return { ...current, items: nextItems };
 				}, false);
 
@@ -168,7 +172,7 @@ export default function PricingMaterialsPage() {
 
 				toast({
 					title: isEdit ? 'Material updated' : 'Material added',
-					description: `${payload.item.name} saved successfully`,
+					description: `${savedItem.name} saved successfully`,
 				});
 			} catch (err) {
 				toast({
@@ -208,14 +212,18 @@ export default function PricingMaterialsPage() {
 					throw new Error(message || 'Failed to update material');
 				}
 
-				const payload = await res.json();
+				const payload = await res.json().catch(() => ({ ok: res.ok }));
+				const savedItem = (payload as any)?.item ?? (payload as any)?.material ?? payload;
+				if (!savedItem || typeof (savedItem as any).id !== 'string') {
+					throw new Error('Update succeeded but response was unexpected');
+				}
 
 				await mutate((current) => {
 					if (!current) return current;
 					return {
 						...current,
 						items: current.items.map((row) =>
-							row.id === payload.item.id ? payload.item : row
+							row.id === savedItem.id ? savedItem : row
 						),
 					};
 				}, false);

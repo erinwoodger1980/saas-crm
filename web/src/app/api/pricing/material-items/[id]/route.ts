@@ -37,7 +37,18 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       headers: { "content-type": "application/json", ...forwardHeaders(req) },
       body,
     });
-    const data = await res.json();
+
+    // Some backends return 204 or non-JSON error bodies. Don't explode on res.json().
+    const raw = await res.text();
+    const data = (() => {
+      if (!raw) return { ok: res.ok };
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return { ok: res.ok, raw };
+      }
+    })();
+
     return NextResponse.json(data, { status: res.status });
   } catch (e) {
     console.error("Material item proxy PATCH error", e);

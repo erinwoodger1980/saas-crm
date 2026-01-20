@@ -2,6 +2,7 @@
 import nodemailer from "nodemailer";
 import { Resend } from "resend";
 import { env } from "../env";
+import { appendJoineryAiFooterHtml, appendJoineryAiFooterText } from "./email-branding";
 
 interface EmailOptions {
   to: string;
@@ -15,6 +16,9 @@ interface EmailOptions {
  * Send email via SMTP (used for admin notifications)
  */
 export async function sendAdminEmail(options: EmailOptions): Promise<void> {
+  const brandedHtml = appendJoineryAiFooterHtml(options.html);
+  const brandedText = appendJoineryAiFooterText(options.text || stripHtml(options.html));
+
   // Prefer Resend if configured
   const resendKey = process.env.RESEND_API_KEY;
   console.log("[email-notification] Attempting to send email to:", options.to);
@@ -29,8 +33,8 @@ export async function sendAdminEmail(options: EmailOptions): Promise<void> {
         from,
         to: options.to,
         subject: options.subject,
-        html: options.html,
-        text: options.text || stripHtml(options.html),
+        html: brandedHtml,
+        text: brandedText,
       });
       if (result.error) {
         console.error("[email-notification] Resend API error response:", JSON.stringify(result.error));
@@ -69,8 +73,8 @@ export async function sendAdminEmail(options: EmailOptions): Promise<void> {
       from: options.from || `"JoineryAI Notifications" <${smtpFromAddress}>`,
       to: options.to,
       subject: options.subject,
-      html: options.html,
-      text: options.text || stripHtml(options.html),
+      html: brandedHtml,
+      text: brandedText,
     });
     console.log(`[email-notification] SMTP email sent to ${options.to}: ${options.subject}`);
   } catch (error: any) {

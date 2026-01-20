@@ -1063,6 +1063,15 @@ router.post("/supplier/rfq/:token/upload", async (req, res) => {
   const files = Array.isArray(req.body?.files) ? (req.body.files as any[]) : [];
   if (!files.length) return res.status(400).json({ error: "no_files" });
 
+  for (const f of files) {
+    const filename = typeof f?.filename === "string" ? f.filename : "";
+    const mimeType = typeof f?.mimeType === "string" ? f.mimeType : "";
+    const isPdf = /^application\/pdf$/i.test(mimeType) || /\.pdf$/i.test(filename.trim());
+    if (!isPdf) {
+      return res.status(400).json({ error: "pdf_only" });
+    }
+  }
+
   const lead = await prisma.lead.findFirst({ where: { id: claims.leadId, tenantId: claims.tenantId } });
   if (!lead) return res.status(404).json({ error: "not_found" });
 

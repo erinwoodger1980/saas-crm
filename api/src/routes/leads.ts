@@ -3,6 +3,7 @@ import { Router } from "express";
 import { prisma } from "../prisma";
 import { MeasurementSource } from "@prisma/client";
 import { gmailSend, getAccessTokenForTenant, gmailFetchAttachment } from "../services/gmail";
+import { appendJoineryAiFooterText } from "../services/email-branding";
 import { logInsight, logEvent } from "../services/training";
 import { UiStatus, loadTaskPlaybook, ensureTaskFromRecipe, TaskPlaybook } from "../task-playbook";
 import jwt from "jsonwebtoken";
@@ -2511,9 +2512,11 @@ router.post("/:id/request-info", async (req, res) => {
       `Thanks,\n${fromEmail || "CRM"}`
     );
 
+    const brandedBody = appendJoineryAiFooterText(body);
+
     // If sendEmail is false, just return the preview without sending
     if (req.body?.sendEmail === false) {
-      return res.json({ ok: true, url: qUrl, token, preview: { subject, body, to: lead.email, from: fromHeader } });
+      return res.json({ ok: true, url: qUrl, token, preview: { subject, body: brandedBody, to: lead.email, from: fromHeader } });
     }
 
     const rfc822 =
@@ -2523,7 +2526,7 @@ router.post("/:id/request-info", async (req, res) => {
       `MIME-Version: 1.0\r\n` +
       `Content-Type: text/plain; charset="UTF-8"\r\n` +
       `Content-Transfer-Encoding: 7bit\r\n\r\n` +
-      `${body}\r\n`;
+      `${brandedBody}\r\n`;
 
     const accessToken = await getAccessTokenForTenant(tenantId);
     await gmailSend(accessToken, rfc822);
@@ -2672,7 +2675,7 @@ router.post("/:id/request-supplier-quote", async (req, res) => {
     const lead = await prisma.lead.findUnique({ where: { id } });
     if (!lead || lead.tenantId !== tenantId) return res.status(404).json({ error: "not found" });
 
-    const { to, subject, text, fields, attachments } = (req.body ?? {}) as {
+    const { to, subject, text, fields, attachments, sendEmail, rfqToken, rfqId: rfqIdFromBody, deadline } = (req.body ?? {}) as {
       to?: string;
       subject?: string;
       text?: string;
@@ -2681,6 +2684,10 @@ router.post("/:id/request-supplier-quote", async (req, res) => {
         | { source: "gmail"; messageId: string; attachmentId: string }
         | { source: "upload"; filename: string; mimeType: string; base64: string }
       >;
+      sendEmail?: boolean;
+      rfqToken?: string;
+      rfqId?: string;
+      deadline?: string;
     };
 
     if (!to) return res.status(400).json({ error: "to is required" });
@@ -2703,22 +2710,54 @@ router.post("/:id/request-supplier-quote", async (req, res) => {
       Object.entries(fields).forEach(([k, v]) => lines.push(`- ${k}: ${v ?? "-"}`));
     }
 
-    // Create a public supplier upload link (JWT token with limited claims)
+    // Create (or reuse) a public supplier upload link (JWT token with limited claims)
     const ts = await prisma.tenantSettings.findUnique({ where: { tenantId } });
     const slug = ts?.slug || ("tenant-" + tenantId.slice(0, 6));
-    const rfqId = randomUUID();
-    const token = jwt.sign(
-      { t: tenantId, l: id, e: to, r: rfqId },
-      env.APP_JWT_SECRET,
-      { expiresIn: "90d" }
-    );
-  const WEB_ORIGIN = pickWebOrigin();
-  const uploadUrl = `${WEB_ORIGIN}/sup/${encodeURIComponent(slug)}/${encodeURIComponent(token)}`;
+    const WEB_ORIGIN = pickWebOrigin();
+
+    let rfqId = (typeof rfqIdFromBody === "string" && rfqIdFromBody.trim()) ? rfqIdFromBody.trim() : randomUUID();
+    let token = (typeof rfqToken === "string" && rfqToken.trim()) ? rfqToken.trim() : "";
+
+    if (token) {
+      try {
+        const decoded: any = jwt.verify(token, env.APP_JWT_SECRET);
+        const t = typeof decoded?.t === "string" ? decoded.t : null;
+        const l = typeof decoded?.l === "string" ? decoded.l : null;
+        const e = typeof decoded?.e === "string" ? decoded.e : null;
+        const r = typeof decoded?.r === "string" ? decoded.r : null;
+        if (!t || !l || !e || !r) return res.status(400).json({ error: "invalid_rfq_token" });
+        if (t !== tenantId || l !== id || e !== to) return res.status(400).json({ error: "invalid_rfq_token" });
+        if (rfqId && r !== rfqId) return res.status(400).json({ error: "invalid_rfq_token" });
+        rfqId = r;
+      } catch {
+        return res.status(400).json({ error: "invalid_rfq_token" });
+      }
+    } else {
+      token = jwt.sign({ t: tenantId, l: id, e: to, r: rfqId }, env.APP_JWT_SECRET, { expiresIn: "90d" });
+    }
+
+    const uploadUrl = `${WEB_ORIGIN}/sup/${encodeURIComponent(slug)}/${encodeURIComponent(token)}`;
+
+    // Draft only (no send, no DB write)
+    if (sendEmail === false) {
+      return res.json({ ok: true, rfqId, token, uploadUrl });
+    }
 
     const sub = subject || `Quote request for ${lead.contactName || "lead"} (${lead.id.slice(0, 8)})`;
-    const bodyText =
-      `Hi,\n\nPlease provide a price for the following enquiry.\n\n` +
-      `${lines.join("\n")}\n\nUpload your quote here: ${uploadUrl}\n\nThanks,\n${fromEmail || "CRM"}`;
+    const deadlineLabel = (() => {
+      if (!deadline) return null;
+      const d = new Date(String(deadline));
+      if (!Number.isFinite(d.getTime())) return null;
+      return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    })();
+    const defaultBody =
+      `Hi,\n\nPlease provide a quote for the following enquiry.\n\n` +
+      `${lines.join("\n")}\n\n` +
+      (deadlineLabel ? `Requested deadline: ${deadlineLabel}\n\n` : "") +
+      `Please upload your quote as a PDF.\n\n` +
+      `Upload your quote here: ${uploadUrl}\n\nThanks,\n${fromEmail || "CRM"}`;
+
+    const bodyText = appendJoineryAiFooterText(text ? String(text) : defaultBody);
 
     const boundary = "mixed_" + Math.random().toString(36).slice(2);
     const fromHeader = fromEmail || "me";
@@ -2834,6 +2873,19 @@ router.post("/parse-email", async (req, res) => {
     }
 
     const rawBuffer = Buffer.from(base64, "base64");
+    const looksLikeMsg = (() => {
+      const lowerName = String(filename || "").toLowerCase();
+      const lowerType = String(mimeType || "").toLowerCase();
+      if (lowerName.endsWith(".msg")) return true;
+      if (lowerType === "application/vnd.ms-outlook") return true;
+      // OLE Compound File signature (typical for Outlook .msg)
+      if (rawBuffer.length >= 8) {
+        const sig = rawBuffer.subarray(0, 8).toString("hex");
+        if (sig === "d0cf11e0a1b11ae1") return true;
+      }
+      return false;
+    })();
+
     const looksLikeEml = (() => {
       const lowerName = String(filename || "").toLowerCase();
       const lowerType = String(mimeType || "").toLowerCase();
@@ -2857,7 +2909,73 @@ router.post("/parse-email", async (req, res) => {
         }
       | null = null;
 
-    if (looksLikeEml) {
+    if (looksLikeMsg) {
+      try {
+        // msgreader has no TS types; require() keeps this file buildable.
+        const msgreaderPkg = require("msgreader");
+        const MsgReader = msgreaderPkg?.default || msgreaderPkg;
+
+        const arrayBuffer = rawBuffer.buffer.slice(
+          rawBuffer.byteOffset,
+          rawBuffer.byteOffset + rawBuffer.byteLength,
+        );
+
+        const reader = new MsgReader(arrayBuffer);
+        const msg = reader.getFileData();
+
+        const subjectOuter = typeof msg?.subject === "string" ? msg.subject.trim() : "";
+        const senderEmailRaw = typeof msg?.senderEmail === "string" ? msg.senderEmail.trim() : "";
+        const senderNameRaw = typeof msg?.senderName === "string" ? msg.senderName.trim() : "";
+
+        const textRaw = (() => {
+          const body = typeof msg?.body === "string" ? msg.body : "";
+          if (body && body.trim()) return body;
+          const html = typeof msg?.bodyHTML === "string" ? msg.bodyHTML : "";
+          if (!html) return "";
+          return html
+            .replace(/<\s*br\s*\/?>/gi, "\n")
+            .replace(/<\s*\/p\s*>/gi, "\n")
+            .replace(/<[^>]+>/g, " ")
+            .replace(/&nbsp;/gi, " ")
+            .replace(/&amp;/gi, "&")
+            .replace(/\r\n/g, "\n");
+        })();
+
+        const bodyTextRaw = cleanEmailBodyText(textRaw);
+        const bodyText = await cleanEmailEnquiryText(bodyTextRaw);
+        const summary = bodyText
+          ? bodyText.slice(0, 250) + (bodyText.length > 250 ? "..." : "")
+          : null;
+
+        const email = senderEmailRaw ? senderEmailRaw.toLowerCase() : null;
+        const contactName = senderNameRaw || (email ? deriveNameFromEmail(email) : null);
+        const fromEmailForUi = (() => {
+          if (contactName && email) return `${contactName} <${email}>`;
+          if (email) return email;
+          return null;
+        })();
+
+        let confidence = 0.6;
+        if (email && contactName && subjectOuter) confidence = 0.9;
+        else if (email && subjectOuter) confidence = 0.8;
+        else if (email || contactName) confidence = 0.6;
+        else confidence = 0.3;
+
+        emailData = {
+          contactName,
+          email,
+          subject: subjectOuter || null,
+          bodyText: bodyText || null,
+          summary,
+          confidence,
+          fromEmail: fromEmailForUi,
+        };
+      } catch (e: any) {
+        console.warn("[leads] parse-email msg parse failed; falling back:", e?.message || e);
+      }
+    }
+
+    if (!emailData && looksLikeEml) {
       try {
         const parsed = await simpleParser(rawBuffer);
         const subjectOuter = typeof parsed.subject === "string" ? parsed.subject.trim() : "";

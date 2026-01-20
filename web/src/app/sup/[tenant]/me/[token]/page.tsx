@@ -55,7 +55,7 @@ export default function SupplierDashboardPage() {
   async function uploadFor(r: ListItem) {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = "application/pdf,image/*";
+    input.accept = "application/pdf";
     input.multiple = true;
     input.onchange = async () => {
       const files = Array.from(input.files || []);
