@@ -793,14 +793,42 @@ function LeadsPageContent() {
 
   /* ------------------------------ Email Upload Functions ------------------------------ */
 
+  function scoreDropText(text: string): { score: number; reason: string } {
+    const t = String(text || "").replace(/\r\n/g, "\n").trim();
+    if (!t) return { score: -999, reason: "empty" };
+
+    const looksLikeMessageLink = /^(message:|message:\/\/|mailto:|outlook:|http:\/\/|https:\/\/|file:\/\/)/i.test(t);
+    const looksUrlish = /\S+:\/\//.test(t) && !/\s/.test(t);
+    if (looksLikeMessageLink || looksUrlish) return { score: -50, reason: "link" };
+
+    // Strong signal: RFC822-ish headers
+    const hasFrom = /(^|\n)from:\s/i.test(t);
+    const hasSubject = /(^|\n)subject:\s/i.test(t);
+    const hasTo = /(^|\n)to:\s/i.test(t);
+    const hasDate = /(^|\n)date:\s/i.test(t);
+    const newlineCount = (t.match(/\n/g) || []).length;
+
+    if ((hasFrom && hasSubject) || (hasSubject && hasTo) || (hasFrom && hasDate)) {
+      return { score: 100 + Math.min(20, Math.floor(t.length / 500)), reason: "rfc822" };
+    }
+
+    // Medium signal: typical forwarded/plain text email blocks
+    let score = 0;
+    if (newlineCount >= 6) score += 15;
+    if (/\bsubject\b/i.test(t)) score += 10;
+    if (/\bfrom\b/i.test(t)) score += 10;
+    if (/\bto\b/i.test(t)) score += 5;
+    if (/\b(sent|date)\b/i.test(t)) score += 5;
+    if (/@/.test(t)) score += 5;
+    if (t.length >= 120) score += 5;
+    if (!/\s/.test(t)) score -= 20;
+
+    return { score, reason: "text" };
+  }
+
   function buildSyntheticEmlFromDropText(text: string): string {
     const raw = String(text || "").replace(/\r\n/g, "\n");
     const trimmed = raw.trim();
-
-    // If it already looks like RFC822, pass through.
-    const looksLikeRfc822 = /(^|\n)from:\s/i.test(trimmed) || /(^|\n)subject:\s/i.test(trimmed);
-    if (looksLikeRfc822 && trimmed.length > 50) return trimmed;
-
     const now = new Date();
     const dateHeader = now.toUTCString();
     const subject = "Dropped email";
@@ -844,11 +872,22 @@ function LeadsPageContent() {
       )
     );
 
-    const bestString = strings
-      .map((s) => s.data)
-      .map((s) => String(s || ""))
-      .map((s) => s.trim())
-      .sort((a, b) => b.length - a.length)[0];
+    const candidates = strings
+      .map((s) => ({ type: s.type, data: String(s.data || "") }))
+      .map((s) => ({ ...s, trimmed: s.data.trim() }))
+      .filter((s) => !!s.trimmed);
+
+    const bestString = (() => {
+      let best: { type: string; data: string; trimmed: string; score: number; reason: string } | null = null;
+      for (const c of candidates) {
+        const scored = scoreDropText(c.trimmed);
+        const next = { ...c, score: scored.score, reason: scored.reason };
+        if (!best || next.score > best.score || (next.score === best.score && next.trimmed.length > best.trimmed.length)) {
+          best = next;
+        }
+      }
+      return best;
+    })();
 
     // As a fallback, try DataTransfer.getData for a couple common types.
     const fallbackText = (() => {
@@ -862,9 +901,13 @@ function LeadsPageContent() {
       return "";
     })();
 
-    const text = bestString || fallbackText;
-    if (text && text.trim().length > 0) {
-      const eml = buildSyntheticEmlFromDropText(text);
+    const chosenText = bestString?.trimmed || fallbackText;
+    const chosenScore = bestString ? bestString.score : scoreDropText(chosenText).score;
+
+    // Only synthesize an .eml if we have something that resembles an email.
+    // If we only got a message:// or message:<id> link (common on macOS), don't create a junk lead.
+    if (chosenText && chosenText.trim().length > 0 && chosenScore >= 40) {
+      const eml = buildSyntheticEmlFromDropText(chosenText);
       return [new File([eml], "dropped-email.eml", { type: "message/rfc822" })];
     }
 
