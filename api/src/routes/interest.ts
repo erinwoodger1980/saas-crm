@@ -43,14 +43,26 @@ router.post("/", async (req, res) => {
     }
 
     // Find Erin Woodger tenant
-    const erinTenant = await prisma.tenant.findFirst({
-      where: {
-        OR: [
-          { name: { contains: "Erin Woodger", mode: "insensitive" } },
-          { slug: "erin-woodger" },
-        ],
-      },
+    // IMPORTANT: Prefer the exact Erin Woodger tenant (slug/name) to avoid accidentally
+    // matching "Erin Woodger Holdings" (or similar) via a fuzzy contains query.
+    const erinTenantBySlug = await prisma.tenant.findUnique({
+      where: { slug: "erin-woodger" },
     });
+
+    const erinTenantByExactName = erinTenantBySlug
+      ? null
+      : await prisma.tenant.findFirst({
+          where: { name: { equals: "Erin Woodger", mode: "insensitive" } },
+        });
+
+    const erinTenantByContains = erinTenantBySlug || erinTenantByExactName
+      ? null
+      : await prisma.tenant.findFirst({
+          where: { name: { contains: "Erin Woodger", mode: "insensitive" } },
+          orderBy: { name: "asc" },
+        });
+
+    const erinTenant = erinTenantBySlug || erinTenantByExactName || erinTenantByContains;
 
     let leadId: string | null = null;
 
