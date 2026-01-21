@@ -333,6 +333,37 @@ export default function FireDoorScheduleDetailPage() {
       }
       return out;
     };
+
+    const buildInitialHeaderMap = (expected: string[], headers: string[]) => {
+      const out: Record<string, string> = {};
+      const byNorm = new Map<string, string>();
+      const headerSet = new Set(headers);
+      for (const h of headers) {
+        const n = normalizeCsvHeader(h);
+        if (n && !byNorm.has(n)) byNorm.set(n, h);
+      }
+
+      for (const exp of expected) {
+        if (headerSet.has(exp)) {
+          out[exp] = exp;
+          continue;
+        }
+        const ne = normalizeCsvHeader(exp);
+        const directNorm = byNorm.get(ne);
+        if (directNorm) {
+          out[exp] = directNorm;
+          continue;
+        }
+        let best: { h: string; score: number } | null = null;
+        for (const h of headers) {
+          const score = similarityScore(exp, h);
+          if (!best || score > best.score) best = { h, score };
+        }
+        if (best && best.score >= 0.6) out[exp] = best.h;
+      }
+
+      return out;
+    };
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [refreshing, setRefreshing] = useState(false);
@@ -630,7 +661,10 @@ export default function FireDoorScheduleDetailPage() {
 
         if (errorPayload?.needsMapping && Array.isArray(errorPayload?.missingHeaders) && Array.isArray(errorPayload?.headers)) {
           const missing = errorPayload.missingHeaders.map((s: any) => String(s)).filter(Boolean);
-          const headers = errorPayload.headers.map((s: any) => String(s)).filter(Boolean);
+          const headers = errorPayload.headers
+            .map((s: any) => String(s))
+            .filter(Boolean)
+            .sort((a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
           const required = Array.isArray(errorPayload.requiredHeaders)
             ? errorPayload.requiredHeaders.map((s: any) => String(s)).filter(Boolean)
             : [];
@@ -643,7 +677,11 @@ export default function FireDoorScheduleDetailPage() {
           setMissingHeaders(missing);
           setRequiredHeaders(required);
           setExpectedHeaders(expected);
-          setHeaderMap(guessHeaderMap(missing, headers));
+          const expectedAll = (expected && expected.length) ? expected : required;
+          setHeaderMap({
+            ...buildInitialHeaderMap(expectedAll, headers),
+            ...guessHeaderMap(missing, headers),
+          });
           setMappingOpen(true);
           return;
         }
@@ -1561,13 +1599,35 @@ export default function FireDoorScheduleDetailPage() {
             </DialogDescription>
           </DialogHeader>
 
+          {csvHeaders.length ? (
+            <div>
+              <div className="text-sm font-medium text-slate-800">Unmatched spreadsheet columns</div>
+              <div className="text-xs text-slate-600">
+                {(() => {
+                  const expectedAll = (expectedHeaders && expectedHeaders.length) ? expectedHeaders : requiredHeaders;
+                  const expectedNorm = new Set((expectedAll || []).map((x) => normalizeCsvHeader(String(x))));
+                  const used = new Set<string>();
+                  for (const expected of expectedAll || []) {
+                    const mapped = String(headerMap[String(expected)] || "").trim();
+                    if (mapped) used.add(mapped);
+                  }
+                  const unmatched = (csvHeaders || []).filter((h) => {
+                    if (used.has(h)) return false;
+                    return !expectedNorm.has(normalizeCsvHeader(h));
+                  });
+                  return unmatched.length ? unmatched.join(", ") : "None";
+                })()}
+              </div>
+            </div>
+          ) : null}
+
           <div className="space-y-3">
             {(() => {
               const required = new Set((requiredHeaders || []).map((x) => String(x)));
               const expectedAll = (expectedHeaders && expectedHeaders.length) ? expectedHeaders : requiredHeaders;
               const optional = (expectedAll || []).filter((x) => !required.has(String(x)));
               const all = [...(requiredHeaders || []), ...optional];
-              return all;
+              return all.sort((a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: 'base' }));
             })().map((expected) => (
               <div key={expected} className="grid grid-cols-1 md:grid-cols-2 gap-2 items-center">
                 <div className="text-sm font-medium text-slate-800">
@@ -1594,7 +1654,21 @@ export default function FireDoorScheduleDetailPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={IGNORE_SENTINEL}>(Ignore)</SelectItem>
-                    {csvHeaders.map((h) => (
+                    {(() => {
+                      const expectedAll = (expectedHeaders && expectedHeaders.length) ? expectedHeaders : requiredHeaders;
+                      const expectedNorm = new Set((expectedAll || []).map((x) => normalizeCsvHeader(String(x))));
+                      const used = new Set<string>();
+                      for (const e of expectedAll || []) {
+                        const mapped = String(headerMap[String(e)] || "").trim();
+                        if (mapped) used.add(mapped);
+                      }
+
+                      const sorted = (csvHeaders || []).slice().sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+                      const unmatched = sorted.filter((h) => !used.has(h) && !expectedNorm.has(normalizeCsvHeader(h)));
+                      const unmatchedSet = new Set(unmatched);
+                      const rest = sorted.filter((h) => !unmatchedSet.has(h));
+                      return [...unmatched, ...rest];
+                    })().map((h) => (
                       <SelectItem key={h} value={h}>
                         {h}
                       </SelectItem>

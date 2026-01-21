@@ -175,6 +175,39 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
     return out;
   };
 
+  const buildInitialHeaderMap = (expected: string[], headers: string[]) => {
+    const out: Record<string, string> = {};
+    const byNorm = new Map<string, string>();
+    const headerSet = new Set(headers);
+    for (const h of headers) {
+      const n = normalize(h);
+      if (n && !byNorm.has(n)) byNorm.set(n, h);
+    }
+
+    for (const exp of expected) {
+      // Prefer exact match (same display string) when present.
+      if (headerSet.has(exp)) {
+        out[exp] = exp;
+        continue;
+      }
+      const ne = normalize(exp);
+      const directNorm = byNorm.get(ne);
+      if (directNorm) {
+        out[exp] = directNorm;
+        continue;
+      }
+
+      let best: { h: string; score: number } | null = null;
+      for (const h of headers) {
+        const score = similarityScore(exp, h);
+        if (!best || score > best.score) best = { h, score };
+      }
+      if (best && best.score >= 0.6) out[exp] = best.h;
+    }
+
+    return out;
+  };
+
   // Load previous imports on mount
   const loadPreviousImports = async () => {
     try {
@@ -252,7 +285,10 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
 
         if (errorPayload?.needsMapping && Array.isArray(errorPayload?.missingHeaders) && Array.isArray(errorPayload?.headers)) {
           const missing = errorPayload.missingHeaders.map((s: any) => String(s)).filter(Boolean);
-          const headers = errorPayload.headers.map((s: any) => String(s)).filter(Boolean);
+          const headers = errorPayload.headers
+            .map((s: any) => String(s))
+            .filter(Boolean)
+            .sort((a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
           const required = Array.isArray(errorPayload.requiredHeaders)
             ? errorPayload.requiredHeaders.map((s: any) => String(s)).filter(Boolean)
             : [];
@@ -264,7 +300,11 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
           setMissingHeaders(missing);
           setRequiredHeaders(required);
           setExpectedHeaders(expected);
-          const initial = guessHeaderMap(missing, headers);
+          const expectedAll = (expected && expected.length) ? expected : required;
+          const initial = {
+            ...buildInitialHeaderMap(expectedAll, headers),
+            ...guessHeaderMap(missing, headers),
+          };
           setHeaderMap(initial);
           setMappingOpen(true);
           return;
@@ -658,6 +698,29 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
             </DialogDescription>
           </DialogHeader>
 
+          {csvHeaders.length ? (
+            <div>
+              <div className="text-sm font-medium text-slate-800">Unmatched spreadsheet columns</div>
+              <div className="text-xs text-slate-600">
+                {(() => {
+                  const expectedAll = (expectedHeaders && expectedHeaders.length) ? expectedHeaders : requiredHeaders;
+                  const expectedNorm = new Set((expectedAll || []).map((x) => normalize(String(x))));
+                  const used = new Set<string>();
+                  for (const expected of expectedAll || []) {
+                    const mapped = String(headerMap[String(expected)] || "").trim();
+                    if (mapped) used.add(mapped);
+                  }
+                  const unmatched = (csvHeaders || []).filter((h) => {
+                    if (used.has(h)) return false;
+                    const nh = normalize(h);
+                    return !expectedNorm.has(nh);
+                  });
+                  return unmatched.length ? unmatched.join(", ") : "None";
+                })()}
+              </div>
+            </div>
+          ) : null}
+
           <div className="space-y-3">
             {(() => {
               const required = new Set((requiredHeaders || []).map((x) => String(x)));
@@ -666,7 +729,7 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
                 : requiredHeaders;
               const optional = (expectedAll || []).filter((x) => !required.has(String(x)));
               const all = [...(requiredHeaders || []), ...optional];
-              return all;
+              return all.sort((a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: 'base' }));
             })().map((expected) => (
               <div key={expected} className="grid grid-cols-1 md:grid-cols-2 gap-2 items-center">
                 <div className="text-sm font-medium text-slate-800">
@@ -693,7 +756,20 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={IGNORE_SENTINEL}>(Ignore)</SelectItem>
-                    {csvHeaders.map((h) => (
+                    {(() => {
+                      const expectedAll = (expectedHeaders && expectedHeaders.length) ? expectedHeaders : requiredHeaders;
+                      const expectedNorm = new Set((expectedAll || []).map((x) => normalize(String(x))));
+                      const used = new Set<string>();
+                      for (const e of expectedAll || []) {
+                        const mapped = String(headerMap[String(e)] || "").trim();
+                        if (mapped) used.add(mapped);
+                      }
+                      const sorted = (csvHeaders || []).slice().sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+                      const unmatched = sorted.filter((h) => !used.has(h) && !expectedNorm.has(normalize(h)));
+                      const unmatchedSet = new Set(unmatched);
+                      const rest = sorted.filter((h) => !unmatchedSet.has(h));
+                      return [...unmatched, ...rest];
+                    })().map((h) => (
                       <SelectItem key={h} value={h}>
                         {h}
                       </SelectItem>
@@ -707,28 +783,6 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
               <div className="text-sm text-slate-600">No missing required columns detected.</div>
             ) : null}
 
-            {csvHeaders.length ? (
-              <div className="pt-2">
-                <div className="text-sm font-medium text-slate-800">Unmatched spreadsheet columns</div>
-                <div className="text-xs text-slate-600">
-                  {(() => {
-                    const expectedAll = (expectedHeaders && expectedHeaders.length) ? expectedHeaders : requiredHeaders;
-                    const expectedNorm = new Set((expectedAll || []).map((x) => normalize(String(x))));
-                    const used = new Set<string>();
-                    for (const expected of expectedAll || []) {
-                      const mapped = String(headerMap[String(expected)] || "").trim();
-                      if (mapped) used.add(mapped);
-                    }
-                    const unmatched = csvHeaders.filter((h) => {
-                      if (used.has(h)) return false;
-                      const nh = normalize(h);
-                      return !expectedNorm.has(nh);
-                    });
-                    return unmatched.length ? unmatched.join(", ") : "None";
-                  })()}
-                </div>
-              </div>
-            ) : null}
           </div>
 
           <div className="flex items-center justify-end gap-2 pt-4">
