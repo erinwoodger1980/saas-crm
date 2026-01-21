@@ -15,6 +15,7 @@ export interface FireDoorColumnConfig {
   allowFormulaOverride?: boolean;
   componentLink?: string | null; // hinges, locks, glass, doorBlank
   required?: boolean;
+  defaultValue?: string | number | null;
 }
 
 interface ColumnHeaderModalProps {
@@ -48,6 +49,7 @@ export function ColumnHeaderModal({
       allowFormulaOverride: false,
       componentLink: null,
       required: false,
+      defaultValue: null,
     }
   );
   const [showAdvanced, setShowAdvanced] = useState(!!currentConfig?.componentLink);
@@ -62,6 +64,7 @@ export function ColumnHeaderModal({
       allowFormulaOverride: !!currentConfig?.allowFormulaOverride,
       componentLink: currentConfig?.componentLink || null,
       required: !!currentConfig?.required,
+      defaultValue: (currentConfig as any)?.defaultValue ?? null,
     };
 
     setFormData(normalized);
@@ -114,7 +117,9 @@ export function ColumnHeaderModal({
                       <SelectValue placeholder="Select a lookup table..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {availableLookupTables.map((table) => (
+                      {[...availableLookupTables]
+                        .sort((a, b) => String(a?.tableName || a?.name || '').localeCompare(String(b?.tableName || b?.name || ''), undefined, { sensitivity: 'base' }))
+                        .map((table) => (
                         <SelectItem key={table.id} value={table.tableName || table.name || ""}>
                           {table.tableName || table.name} {table.category ? `(${table.category})` : ''}
                         </SelectItem>
@@ -236,6 +241,25 @@ export function ColumnHeaderModal({
             ) : null}
           </div>
 
+          <div className="border-t pt-4 space-y-2">
+            <label className="block text-sm font-medium">Default Value (Optional)</label>
+            <Input
+              type={formData.inputType === 'number' ? 'number' : 'text'}
+              placeholder={formData.inputType === 'dropdown' ? 'Must match a dropdown option' : 'Default value for new rows'}
+              value={formData.defaultValue == null ? '' : String(formData.defaultValue)}
+              onChange={(e) => {
+                const raw = e.target.value;
+                setFormData((prev) => ({
+                  ...prev,
+                  defaultValue: raw === '' ? null : (prev.inputType === 'number' ? Number(raw) : raw),
+                }));
+              }}
+            />
+            <p className="text-xs text-gray-500">
+              Applied to newly created blank rows when the cell is empty.
+            </p>
+          </div>
+
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -260,6 +284,14 @@ export function ColumnHeaderModal({
                   // lookupTable only makes sense for dropdown
                   lookupTable: (formData.inputType === "dropdown") ? (formData.lookupTable || null) : null,
                   allowFormulaOverride: formulaInput ? !!formData.allowFormulaOverride : false,
+                  defaultValue:
+                    formData.defaultValue === ''
+                      ? null
+                      : (formData.inputType === 'number'
+                          ? (typeof formData.defaultValue === 'number'
+                              ? (Number.isFinite(formData.defaultValue) ? formData.defaultValue : null)
+                              : (Number.isFinite(Number(formData.defaultValue)) ? Number(formData.defaultValue) : null))
+                          : (formData.defaultValue == null ? null : String(formData.defaultValue))),
                 });
               }}
             >

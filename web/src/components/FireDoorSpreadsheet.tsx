@@ -517,16 +517,21 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   const [rfiContext, setRfiContext] = useState<{ rowId: string | null; columnKey: string; columnName?: string } | null>(null);
 
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const [columnWidthsLoaded, setColumnWidthsLoaded] = useState(false);
 
   const rowsRef = useRef<FireDoorRow[]>([]);
   const saveTimersRef = useRef<Map<string, any>>(new Map());
   const bomTimerRef = useRef<any>(null);
   const gridContainerRef = useRef<HTMLDivElement | null>(null);
 
-  const columnWidthStorageKey = useMemo(() => {
-    if (!importId) return null;
-    return `fire-door-grid:column-widths:${importId}`;
-  }, [importId]);
+  const stableStringifyObject = useCallback((obj: Record<string, any>) => {
+    const keys = Object.keys(obj || {}).sort();
+    const ordered: Record<string, any> = {};
+    for (const k of keys) ordered[k] = (obj as any)[k];
+    return JSON.stringify(ordered);
+  }, []);
+
+  const lastSavedColumnWidthsRef = useRef<string>("{}");
 
   useEffect(() => {
     rowsRef.current = rows;
@@ -568,25 +573,16 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     return items;
   }, [importId]);
 
-  const ensureRowCount = useCallback(async (minRowCount: number) => {
-    if (!importId) return;
-    const current = rowsRef.current;
-    const need = Math.max(0, Math.floor(minRowCount) - current.length);
-    if (need <= 0) return;
-
-    const created = await bulkCreateRows(need);
-    if (!created.length) return;
-
-    const hydratedNew = created.map((item) => hydrateImportRow(item, COLUMNS));
-    const merged = [...current, ...hydratedNew].sort((a: any, b: any) => {
-      const ai = Number((a as any)?.rowIndex ?? 0);
-      const bi = Number((b as any)?.rowIndex ?? 0);
-      return ai - bi;
-    });
-
-    setRows(merged);
-    rowsRef.current = merged;
-  }, [importId, bulkCreateRows]);
+  const coerceDefaultValue = useCallback((cfg: any): any => {
+    const v = (cfg && typeof cfg === 'object') ? (cfg as any).defaultValue : null;
+    if (v == null) return null;
+    const inputType = String((cfg as any)?.inputType || '').toLowerCase();
+    if (inputType === 'number') {
+      const n = typeof v === 'number' ? v : Number(v);
+      return Number.isFinite(n) ? n : null;
+    }
+    return String(v);
+  }, []);
 
   const bulkDeleteRows = useCallback(async (ids: string[]) => {
     const clean = Array.from(new Set((ids || []).map((x) => String(x || '').trim()).filter(Boolean)));
@@ -597,37 +593,48 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     });
   }, []);
 
-  // Load and persist column widths per import (Excel-like drag resize)
+  // Load and persist column widths per tenant (Excel-like drag resize)
   useEffect(() => {
-    if (!columnWidthStorageKey) return;
-    try {
-      const raw = window.localStorage.getItem(columnWidthStorageKey);
-      if (!raw) {
-        setColumnWidths({});
-        return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch<{ ok: boolean; columnWidths?: Record<string, number> }>(
+          `/fire-doors/order-grid/column-widths`
+        );
+        const widths = res?.columnWidths && typeof res.columnWidths === "object" ? res.columnWidths : {};
+        if (cancelled) return;
+        setColumnWidths(widths);
+        lastSavedColumnWidthsRef.current = stableStringifyObject(widths as any);
+      } catch {
+        // ignore (fall back to defaults)
+      } finally {
+        if (!cancelled) setColumnWidthsLoaded(true);
       }
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object') {
-        setColumnWidths(parsed);
-      } else {
-        setColumnWidths({});
-      }
-    } catch {
-      setColumnWidths({});
-    }
-  }, [columnWidthStorageKey]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [stableStringifyObject]);
 
   useEffect(() => {
-    if (!columnWidthStorageKey) return;
-    const t = window.setTimeout(() => {
+    if (!columnWidthsLoaded) return;
+    const sig = stableStringifyObject(columnWidths || {});
+    if (sig === lastSavedColumnWidthsRef.current) return;
+
+    const t = window.setTimeout(async () => {
       try {
-        window.localStorage.setItem(columnWidthStorageKey, JSON.stringify(columnWidths || {}));
+        await apiFetch(`/fire-doors/order-grid/column-widths`, {
+          method: "POST",
+          json: { columnWidths: columnWidths || {} },
+        });
+        lastSavedColumnWidthsRef.current = sig;
       } catch {
         // ignore
       }
     }, 250);
+
     return () => window.clearTimeout(t);
-  }, [columnWidthStorageKey, columnWidths]);
+  }, [columnWidths, columnWidthsLoaded, stableStringifyObject]);
 
   const loadRfis = useCallback(async () => {
     if (!importId) return;
@@ -734,6 +741,51 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       setError(err?.message || 'Failed to save changes');
     }
   }, []);
+
+  const ensureRowCount = useCallback(async (minRowCount: number) => {
+    if (!importId) return;
+    const current = rowsRef.current;
+    const need = Math.max(0, Math.floor(minRowCount) - current.length);
+    if (need <= 0) return;
+
+    const created = await bulkCreateRows(need);
+    if (!created.length) return;
+
+    const hydratedNew = created.map((item) => hydrateImportRow(item, COLUMNS));
+
+    // Apply default values to newly created rows (only where the cell is currently empty)
+    const updates: Array<{ id: string; changes: Record<string, any> }> = [];
+    const hydratedWithDefaults = hydratedNew.map((row: any) => {
+      const patch: Record<string, any> = {};
+      for (const [k, cfg] of Object.entries(gridConfig || {})) {
+        const key = String(k || '').trim();
+        if (!key) continue;
+        const isCalculated = !!(cfg as any)?.formula || String((cfg as any)?.inputType || '').toLowerCase() === 'formula';
+        if (isCalculated) continue;
+
+        const cur = row[key];
+        if (!(cur == null || cur === '')) continue;
+        const dv = coerceDefaultValue(cfg);
+        if (dv == null || dv === '') continue;
+        row[key] = dv;
+        patch[key] = dv;
+      }
+      if (Object.keys(patch).length) updates.push({ id: row.id, changes: patch });
+      return row;
+    });
+    const merged = [...current, ...hydratedWithDefaults].sort((a: any, b: any) => {
+      const ai = Number((a as any)?.rowIndex ?? 0);
+      const bi = Number((b as any)?.rowIndex ?? 0);
+      return ai - bi;
+    });
+
+    setRows(merged);
+    rowsRef.current = merged;
+
+    if (updates.length) {
+      await bulkPersist(updates);
+    }
+  }, [importId, bulkCreateRows, bulkPersist, coerceDefaultValue, gridConfig]);
 
   const selectionRange = useMemo(() => {
     if (!selection) return null;
@@ -1159,10 +1211,25 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
           
           tables.forEach((table: any) => {
             if (table.rows && Array.isArray(table.rows)) {
-              optionsMap[table.tableName] = table.rows.map((row: any) => ({
-                value: row.value || row.id || '',
-                label: row.label || row.name || row.description || row.value || ''
-              }));
+              const tableName = String(table.tableName || table.name || '').trim();
+              if (!tableName) return;
+
+              const cols = Array.isArray(table.columns) ? table.columns.map((c: any) => String(c)).filter(Boolean) : [];
+              const firstCol = cols.length ? cols[0] : null;
+
+              const opts = table.rows
+                .map((row: any) => {
+                  const raw = firstCol ? row?.[firstCol] : (row?.value ?? row?.label ?? row?.name ?? row?.description ?? row?.id);
+                  const v = raw == null ? '' : String(raw).trim();
+                  if (!v) return null;
+                  return { value: v, label: v };
+                })
+                .filter(Boolean) as Array<{ value: string; label: string }>;
+
+              // Keep options sorted for better UX
+              opts.sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+
+              optionsMap[tableName] = opts;
             }
           });
           
@@ -1205,10 +1272,13 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     const fieldConfig = gridConfig[column.key];
     const options = fieldConfig?.lookupTable ? lookupOptions[fieldConfig.lookupTable] || [] : [];
 
+    const currentValue = row[column.key];
+    const currentValueStr = currentValue == null ? '' : String(currentValue);
+
     return (
       <select
         className="w-full h-full px-2 border-0 outline-none bg-white"
-        value={row[column.key] || ''}
+        value={currentValueStr}
         onChange={(e) => {
           const newValue = e.target.value;
           onRowChange({ ...row, [column.key]: newValue }, true);
@@ -1429,8 +1499,65 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
         }
       }
 
+      const AND = (...args: any[]) => args.every((x) => !!x);
+      const OR = (...args: any[]) => args.some((x) => !!x);
+      const IF = (cond: any, truthy: any, falsy: any) => (cond ? truthy : falsy);
+      const SUM = (...args: any[]) => args.reduce((s, v) => s + (Number(v) || 0), 0);
+      const MULTIPLY = (...args: any[]) => args.reduce((p, v) => p * (Number(v) || 0), 1);
+      const DIVIDE = (a: any, b: any) => {
+        const na = Number(a);
+        const nb = Number(b);
+        if (!Number.isFinite(na) || !Number.isFinite(nb) || nb === 0) return 0;
+        return na / nb;
+      };
+      const SUBTRACT = (a: any, b: any) => (Number(a) || 0) - (Number(b) || 0);
+      const MAX = (...args: any[]) => Math.max(...args.map((v) => (Number(v) || 0)));
+      const MIN = (...args: any[]) => Math.min(...args.map((v) => (Number(v) || 0)));
+      const ROUND = (n: any, decimals: any = 0) => {
+        const nn = Number(n);
+        const d = Number(decimals);
+        if (!Number.isFinite(nn) || !Number.isFinite(d)) return 0;
+        const f = Math.pow(10, Math.max(0, Math.floor(d)));
+        return Math.round(nn * f) / f;
+      };
+      const CEIL = (n: any) => Math.ceil(Number(n) || 0);
+      const FLOOR = (n: any) => Math.floor(Number(n) || 0);
+      const CONCAT = (...args: any[]) => args.map((v) => (v == null ? '' : String(v))).join('');
+      const LENGTH = (v: any) => (v == null ? 0 : String(v).length);
+
       // eslint-disable-next-line no-new-func
-      return new Function('return ' + expression)();
+      return new Function(
+        'AND',
+        'OR',
+        'IF',
+        'SUM',
+        'MULTIPLY',
+        'DIVIDE',
+        'SUBTRACT',
+        'MAX',
+        'MIN',
+        'ROUND',
+        'CEIL',
+        'FLOOR',
+        'CONCAT',
+        'LENGTH',
+        'return ' + expression
+      )(
+        AND,
+        OR,
+        IF,
+        SUM,
+        MULTIPLY,
+        DIVIDE,
+        SUBTRACT,
+        MAX,
+        MIN,
+        ROUND,
+        CEIL,
+        FLOOR,
+        CONCAT,
+        LENGTH
+      );
     } catch (err) {
       console.error('Formula evaluation error:', err);
       return null;
@@ -1554,15 +1681,29 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
             // Show lookup label if configured
             if (isDropdown && fieldConfig?.lookupTable) {
               const options = lookupOptions[fieldConfig.lookupTable] || [];
-              const option = options.find(opt => opt.value === value);
+              const valueStr = value == null ? '' : String(value).trim();
+              const option = valueStr
+                ? (
+                    options.find((opt) => String(opt.value).trim() === valueStr) ||
+                    (() => {
+                      const asNum = Number(valueStr);
+                      if (!Number.isFinite(asNum)) return undefined;
+                      return options.find((opt) => {
+                        const optNum = Number(String(opt.value).trim());
+                        return Number.isFinite(optNum) && optNum === asNum;
+                      });
+                    })() ||
+                    options.find((opt) => String(opt.label).trim() === valueStr)
+                  )
+                : undefined;
 
-              const hasTypedValue = value != null && String(value).trim() !== '';
+              const hasTypedValue = valueStr !== '';
               const isInvalidDropdownValue = hasTypedValue && !option;
 
               return (
                 <div className={clsx(baseClass, isInvalidDropdownValue && !cellHasRfi && 'bg-orange-100')}>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="truncate">{option?.label || value}</span>
+                    <span className="truncate">{option?.label || valueStr}</span>
                     {isActive && (
                       <button
                         type="button"

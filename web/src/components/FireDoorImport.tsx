@@ -7,6 +7,21 @@
 
 import { useState } from "react";
 import { apiFetch } from "@/lib/api";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 
 interface FireDoorImportSummary {
   id: string;
@@ -48,6 +63,8 @@ interface FireDoorImportSectionProps {
 }
 
 export default function FireDoorImportSection({ onImportComplete }: FireDoorImportSectionProps) {
+  const IGNORE_SENTINEL = "__IGNORE__";
+
   const [uploading, setUploading] = useState(false);
   const [lastImport, setLastImport] = useState<FireDoorImportResponse | null>(null);
   const [previousImports, setPreviousImports] = useState<ImportListItem[]>([]);
@@ -59,6 +76,49 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
   const [customerName, setCustomerName] = useState("");
   const [jobDescription, setJobDescription] = useState("");
   const [netValue, setNetValue] = useState("");
+
+  const [mappingOpen, setMappingOpen] = useState(false);
+  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
+  const [missingHeaders, setMissingHeaders] = useState<string[]>([]);
+  const [requiredHeaders, setRequiredHeaders] = useState<string[]>([]);
+  const [expectedHeaders, setExpectedHeaders] = useState<string[]>([]);
+  const [headerMap, setHeaderMap] = useState<Record<string, string>>({});
+
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [excelSheets, setExcelSheets] = useState<string[]>([]);
+  const [selectedSheetName, setSelectedSheetName] = useState<string>("");
+
+  const normalize = (s: string) =>
+    String(s || "")
+      .toLowerCase()
+      .replace(/\u00a0/g, " ")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+
+  const guessHeaderMap = (missing: string[], headers: string[]) => {
+    const out: Record<string, string> = {};
+    const byNorm = new Map<string, string>();
+    for (const h of headers) {
+      const n = normalize(h);
+      if (n && !byNorm.has(n)) byNorm.set(n, h);
+    }
+
+    for (const expected of missing) {
+      const ne = normalize(expected);
+      const direct = byNorm.get(ne);
+      if (direct) {
+        out[expected] = direct;
+        continue;
+      }
+      // fallback: contains match
+      const candidate = headers.find((h) => {
+        const nh = normalize(h);
+        return nh === ne || nh.includes(ne) || ne.includes(nh);
+      });
+      if (candidate) out[expected] = candidate;
+    }
+    return out;
+  };
 
   // Load previous imports on mount
   const loadPreviousImports = async () => {
@@ -80,7 +140,7 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
     setError(null);
   };
 
-  const handleUploadWithDetails = async () => {
+  const handleUploadWithDetails = async (opts?: { headerMap?: Record<string, string>; sheetName?: string }) => {
     if (!selectedFile) return;
 
     if (!mjsNumber || !customerName || !jobDescription) {
@@ -100,6 +160,13 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
       if (netValue) {
         formData.append("netValue", netValue);
       }
+      if (opts?.headerMap && Object.keys(opts.headerMap).length > 0) {
+        formData.append("headerMap", JSON.stringify(opts.headerMap));
+      }
+      const sheetToSend = (opts?.sheetName || selectedSheetName || "").trim();
+      if (sheetToSend) {
+        formData.append("sheetName", sheetToSend);
+      }
 
       // Always use same-origin Next.js API route; it proxies to the backend with proper auth.
       const response = await fetch(`/api/fire-doors/import`, {
@@ -115,6 +182,35 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
         } catch {
           errorPayload = null;
         }
+
+        if (errorPayload?.needsSheetSelection && Array.isArray(errorPayload?.sheets)) {
+          const sheets = errorPayload.sheets.map((s: any) => String(s)).filter(Boolean);
+          setExcelSheets(sheets);
+          setSelectedSheetName(sheets[0] || "");
+          setSheetOpen(true);
+          return;
+        }
+
+        if (errorPayload?.needsMapping && Array.isArray(errorPayload?.missingHeaders) && Array.isArray(errorPayload?.headers)) {
+          const missing = errorPayload.missingHeaders.map((s: any) => String(s)).filter(Boolean);
+          const headers = errorPayload.headers.map((s: any) => String(s)).filter(Boolean);
+          const required = Array.isArray(errorPayload.requiredHeaders)
+            ? errorPayload.requiredHeaders.map((s: any) => String(s)).filter(Boolean)
+            : [];
+          const expected = Array.isArray(errorPayload.expectedHeaders)
+            ? errorPayload.expectedHeaders.map((s: any) => String(s)).filter(Boolean)
+            : [];
+
+          setCsvHeaders(headers);
+          setMissingHeaders(missing);
+          setRequiredHeaders(required);
+          setExpectedHeaders(expected);
+          const initial = guessHeaderMap(missing, headers);
+          setHeaderMap(initial);
+          setMappingOpen(true);
+          return;
+        }
+
         const message =
           typeof errorPayload === "string"
             ? errorPayload
@@ -141,6 +237,8 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
       setCustomerName("");
       setJobDescription("");
       setNetValue("");
+      setSelectedSheetName("");
+      setExcelSheets([]);
     } catch (err: any) {
       console.error("Import error:", err);
       setError(err.message || "Failed to import CSV file");
@@ -173,7 +271,7 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
           Import Fire Door Orders from Spreadsheet
         </h3>
         <p className="text-sm text-gray-600 mb-4">
-          Upload a CSV export of your fire door orders. Supported format: LAJ/LWG export sheets.
+          Upload a CSV or Excel export of your fire door orders. Supported format: LAJ/LWG export sheets.
         </p>
 
         <div className="space-y-4">
@@ -208,7 +306,7 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
                 <input
                   id="fire-door-csv-upload"
                   type="file"
-                  accept=".csv,text/csv,application/vnd.ms-excel"
+                  accept=".csv,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                   onChange={handleFileSelect}
                   disabled={uploading}
                   className="hidden"
@@ -303,7 +401,7 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
                   Cancel
                 </button>
                 <button
-                  onClick={handleUploadWithDetails}
+                  onClick={() => handleUploadWithDetails()}
                   disabled={uploading || !mjsNumber || !customerName || !jobDescription}
                   className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -489,6 +587,140 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
           </div>
         </div>
       </div>
+
+      <Dialog open={mappingOpen} onOpenChange={(open) => setMappingOpen(open)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Match Columns</DialogTitle>
+            <DialogDescription>
+              Your CSV headers don’t match the expected import format. Match the required columns below.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {(() => {
+              const required = new Set((requiredHeaders || []).map((x) => String(x)));
+              const expectedAll = (expectedHeaders && expectedHeaders.length)
+                ? expectedHeaders
+                : requiredHeaders;
+              const optional = (expectedAll || []).filter((x) => !required.has(String(x)));
+              const all = [...(requiredHeaders || []), ...optional];
+              return all;
+            })().map((expected) => (
+              <div key={expected} className="grid grid-cols-1 md:grid-cols-2 gap-2 items-center">
+                <div className="text-sm font-medium text-slate-800">
+                  {expected}
+                  {(requiredHeaders || []).includes(expected) ? <span className="text-red-500"> *</span> : null}
+                  {(missingHeaders || []).includes(expected) ? <span className="text-xs text-orange-600"> (missing)</span> : null}
+                </div>
+                <Select
+                  value={headerMap[expected] ?? undefined}
+                  onValueChange={(val) => {
+                    if (val === IGNORE_SENTINEL) {
+                      setHeaderMap((prev) => {
+                        const next = { ...prev };
+                        delete next[expected];
+                        return next;
+                      });
+                      return;
+                    }
+                    setHeaderMap((prev) => ({ ...prev, [expected]: val }));
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select CSV column…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={IGNORE_SENTINEL}>(Ignore)</SelectItem>
+                    {csvHeaders.map((h) => (
+                      <SelectItem key={h} value={h}>
+                        {h}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ))}
+
+            {missingHeaders.length === 0 ? (
+              <div className="text-sm text-slate-600">No missing required columns detected.</div>
+            ) : null}
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={() => setMappingOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                // Require required headers to be satisfied (either present in file or mapped)
+                for (const expected of requiredHeaders) {
+                  const hasDirect = csvHeaders.includes(expected);
+                  const mapped = String(headerMap[expected] || "").trim();
+                  if (!hasDirect && !mapped) {
+                    setError(`Please map: ${expected}`);
+                    return;
+                  }
+                }
+                setMappingOpen(false);
+                await handleUploadWithDetails({ headerMap, sheetName: selectedSheetName || undefined });
+              }}
+            >
+              Import
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={sheetOpen} onOpenChange={(open) => setSheetOpen(open)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Select Sheet</DialogTitle>
+            <DialogDescription>
+              This Excel file has multiple sheets. Choose which sheet you want to import.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="text-sm font-medium text-slate-800">Sheet</div>
+            <Select value={selectedSheetName} onValueChange={(v) => setSelectedSheetName(v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a sheet…" />
+              </SelectTrigger>
+              <SelectContent>
+                {excelSheets.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSheetOpen(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!selectedSheetName.trim()) {
+                  setError('Please select a sheet');
+                  return;
+                }
+                setSheetOpen(false);
+                await handleUploadWithDetails({ sheetName: selectedSheetName.trim() });
+              }}
+            >
+              Continue
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Save, X, Table as TableIcon, Database } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Plus, Edit2, Trash2, Save, X, Table as TableIcon, Database, Upload, Download } from 'lucide-react';
 
 interface LookupTable {
   id: string;
@@ -29,12 +29,14 @@ const emptyFormData: TableFormData = {
 };
 
 export function LookupTablesSection() {
+  const importInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [tables, setTables] = useState<LookupTable[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [formData, setFormData] = useState<TableFormData>(emptyFormData);
   const [error, setError] = useState<string | null>(null);
+  const [busyTableId, setBusyTableId] = useState<string | null>(null);
   const [expandedTableId, setExpandedTableId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -146,6 +148,72 @@ export function LookupTablesSection() {
     } catch (err: any) {
       setError(err.message);
       console.error('Error deleting table:', err);
+    }
+  };
+
+  const exportTableCsv = async (table: LookupTable) => {
+    try {
+      setBusyTableId(table.id);
+      setError(null);
+
+      const res = await fetch(`/api/flexible-fields/lookup-tables/${table.id}/csv`, {
+        credentials: 'include',
+      });
+
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || 'Failed to export CSV');
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const baseName = (table.name || 'lookup-table').replace(/[^a-z0-9\-_.]+/gi, '_');
+      a.href = url;
+      a.download = `${baseName}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setError(err.message || 'Failed to export CSV');
+    } finally {
+      setBusyTableId(null);
+    }
+  };
+
+  const importTableCsv = async (table: LookupTable, file: File) => {
+    try {
+      setBusyTableId(table.id);
+      setError(null);
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch(`/api/flexible-fields/lookup-tables/${table.id}/csv-import`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+
+      if (!res.ok) {
+        let payload: any = null;
+        try {
+          payload = await res.json();
+        } catch {
+          payload = await res.text();
+        }
+        throw new Error(payload?.message || payload?.error || payload || 'Failed to import CSV');
+      }
+
+      await fetchTables();
+    } catch (err: any) {
+      setError(err.message || 'Failed to import CSV');
+    } finally {
+      setBusyTableId(null);
+      if (importInputRefs.current[table.id]) {
+        importInputRefs.current[table.id]!.value = '';
+      }
     }
   };
 
@@ -332,6 +400,44 @@ export function LookupTablesSection() {
 
             {expandedTableId === table.id && editingId !== table.id && (
               <div className="border-t border-gray-200 p-4">
+                <div className="mb-3 flex items-center justify-end gap-2">
+                  <button
+                    onClick={() => exportTableCsv(table)}
+                    disabled={busyTableId === table.id}
+                    className="inline-flex items-center gap-2 rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    title="Export this table as CSV"
+                  >
+                    <Download className="h-4 w-4" />
+                    Export CSV
+                  </button>
+
+                  {!table.isStandard && (
+                    <>
+                      <input
+                        type="file"
+                        accept=".csv,text/csv"
+                        className="hidden"
+                        ref={(el) => {
+                          importInputRefs.current[table.id] = el;
+                        }}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (!f) return;
+                          importTableCsv(table, f);
+                        }}
+                      />
+                      <button
+                        onClick={() => importInputRefs.current[table.id]?.click()}
+                        disabled={busyTableId === table.id}
+                        className="inline-flex items-center gap-2 rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                        title="Import CSV (upserts by first column, adds new columns)"
+                      >
+                        <Upload className="h-4 w-4" />
+                        Import CSV
+                      </button>
+                    </>
+                  )}
+                </div>
                 <DataTable
                   columns={Array.isArray(table.columns) ? table.columns : []}
                   rows={Array.isArray(table.rows) ? table.rows : []}

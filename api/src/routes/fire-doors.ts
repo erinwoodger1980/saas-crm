@@ -5,17 +5,147 @@
 
 import { Router } from 'express';
 import multer from 'multer';
+import ExcelJS from 'exceljs';
 import { prisma } from '../prisma';
 import { Prisma } from '@prisma/client';
 import { 
   parseFireDoorCSV, 
   calculateTotalValue, 
   validateCSVHeaders,
+  getExpectedCsvHeaders,
   type ParsedFireDoorRow,
   type FireDoorImportResponse 
 } from '../lib/fireDoorImport';
 
 const router = Router();
+
+const FIRE_DOOR_REQUIRED_HEADERS = ['Item', 'Code', 'Door Ref', 'Location', 'Fire Rating', 'Value'] as const;
+
+function isXlsxUpload(file: Express.Multer.File): boolean {
+  const name = String(file?.originalname || '').toLowerCase();
+  const type = String((file as any)?.mimetype || '').toLowerCase();
+  if (name.endsWith('.xlsx')) return true;
+  if (type.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')) return true;
+  return false;
+}
+
+function csvEscape(value: any): string {
+  const s = value === null || value === undefined ? '' : String(value);
+  const needsQuotes = /[\n\r",]/.test(s);
+  const escaped = s.replace(/"/g, '""');
+  return needsQuotes ? `"${escaped}"` : escaped;
+}
+
+function normalizeHeaderCandidate(input: any): string {
+  return String(input ?? '')
+    .toLowerCase()
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*\/\s*/g, '/')
+    .replace(/\s*-\s*/g, '-')
+    .trim();
+}
+
+function getCellText(cell: ExcelJS.Cell): string {
+  const t = (cell as any)?.text;
+  if (typeof t === 'string') return t;
+  const v = cell?.value as any;
+  if (v === null || v === undefined) return '';
+  return String(v);
+}
+
+function rowToValues(row: ExcelJS.Row, maxColumns: number): string[] {
+  const out: string[] = [];
+  for (let col = 1; col <= maxColumns; col++) {
+    const cell = row.getCell(col);
+    out.push(getCellText(cell));
+  }
+  while (out.length > 1 && String(out[out.length - 1] ?? '').trim() === '') {
+    out.pop();
+  }
+  return out;
+}
+
+function detectHeaderRowNumber(
+  worksheet: ExcelJS.Worksheet,
+  opts: { requiredHeaders: readonly string[]; expectedHeaders: readonly string[] }
+): number {
+  const requiredSet = new Set(opts.requiredHeaders.map(normalizeHeaderCandidate));
+  const expectedSet = new Set(opts.expectedHeaders.map(normalizeHeaderCandidate));
+
+  const maxScanRows = Math.min(worksheet.actualRowCount || worksheet.rowCount || 0, 50);
+  const maxColumns = Math.max(worksheet.actualColumnCount || 0, worksheet.columnCount || 0, 1);
+
+  let bestRow = 1;
+  let bestScore = -1;
+
+  for (let i = 1; i <= maxScanRows; i++) {
+    const row = worksheet.getRow(i);
+    const values = rowToValues(row, maxColumns);
+    const normCells = new Set(values.map(normalizeHeaderCandidate).filter(Boolean));
+    if (normCells.size === 0) continue;
+
+    let requiredMatches = 0;
+    let expectedMatches = 0;
+    for (const c of normCells) {
+      if (requiredSet.has(c)) requiredMatches++;
+      if (expectedSet.has(c)) expectedMatches++;
+    }
+
+    // Strongly prefer rows that match multiple required headers.
+    const score = requiredMatches * 1000 + expectedMatches * 10 + Math.min(normCells.size, 50);
+    if (score > bestScore) {
+      bestScore = score;
+      bestRow = i;
+    }
+  }
+
+  // Guard: if we didn't match anything meaningful, default to row 1.
+  const bestRowValues = rowToValues(worksheet.getRow(bestRow), Math.max(worksheet.actualColumnCount || 0, worksheet.columnCount || 0, 1));
+  const bestNorm = new Set(bestRowValues.map(normalizeHeaderCandidate).filter(Boolean));
+  let bestRequiredMatches = 0;
+  for (const c of bestNorm) if (requiredSet.has(c)) bestRequiredMatches++;
+  if (bestRequiredMatches < 2) return 1;
+
+  return bestRow;
+}
+
+async function convertXlsxBufferToCsv(
+  buffer: Buffer | Uint8Array | ArrayBuffer,
+  opts: { requiredHeaders: readonly string[]; expectedHeaders: readonly string[]; sheetName?: string | null; sheetIndex?: number | null }
+): Promise<string> {
+  const workbook = new ExcelJS.Workbook();
+  const input = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer as any);
+  const arrayBuffer = input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength);
+  await workbook.xlsx.load(arrayBuffer as any);
+
+  const sheets = Array.isArray(workbook.worksheets) ? workbook.worksheets : [];
+  const pickByName = (opts.sheetName ? sheets.find((ws) => ws.name === opts.sheetName) : undefined);
+  const pickByIndex = (Number.isFinite(opts.sheetIndex as any) && (opts.sheetIndex as any) != null)
+    ? sheets[(opts.sheetIndex as number) - 1]
+    : undefined;
+
+  const worksheet = pickByName || pickByIndex || sheets[0];
+  if (!worksheet) {
+    throw new Error('Excel file has no worksheets');
+  }
+
+  const maxColumns = Math.max(worksheet.actualColumnCount || 0, worksheet.columnCount || 0, 1);
+  const headerRowNumber = detectHeaderRowNumber(worksheet, opts);
+  const lastRow = worksheet.actualRowCount || worksheet.rowCount || headerRowNumber;
+
+  const lines: string[] = [];
+  for (let r = headerRowNumber; r <= lastRow; r++) {
+    const row = worksheet.getRow(r);
+    const values = rowToValues(row, maxColumns);
+    // Skip completely empty rows
+    if (!values.some((v) => String(v ?? '').trim() !== '')) continue;
+    const cells = values.map((v) => csvEscape(v));
+    lines.push(cells.join(','));
+  }
+
+  return lines.join('\n');
+}
 
 const FIRE_DOOR_LINE_ITEM_MODEL = (() => {
   try {
@@ -162,6 +292,93 @@ const upload = multer({
   },
 });
 
+function getJsonObject(value: any): Record<string, any> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return value as Record<string, any>;
+}
+
+function sanitizeColumnWidths(input: any): Record<string, number> {
+  const obj = getJsonObject(input);
+  const out: Record<string, number> = {};
+  for (const [kRaw, v] of Object.entries(obj)) {
+    const k = String(kRaw || '').trim();
+    if (!k) continue;
+    const n = typeof v === 'number' ? v : Number(v);
+    if (!Number.isFinite(n)) continue;
+    // Keep within a sensible UI range
+    const clamped = Math.max(40, Math.min(1200, n));
+    out[k] = clamped;
+  }
+  return out;
+}
+
+/**
+ * GET /api/fire-doors/order-grid/column-widths
+ * Tenant-scoped UI preference for Fire Door Order Grid column widths.
+ */
+router.get('/order-grid/column-widths', async (req, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: 'Authentication required' });
+
+    const tenantSettings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { isFireDoorManufacturer: true, beta: true },
+    });
+
+    if (!tenantSettings?.isFireDoorManufacturer) {
+      return res.status(403).json({ error: 'Fire door import access required' });
+    }
+
+    const beta = getJsonObject((tenantSettings as any).beta);
+    const columnWidths = sanitizeColumnWidths((beta as any).fireDoorOrderGridColumnWidths);
+    return res.json({ ok: true, columnWidths });
+  } catch (error: any) {
+    console.error('[fire-doors] Get order grid column widths error:', error);
+    return res.status(500).json({ error: 'Failed to load column widths' });
+  }
+});
+
+/**
+ * POST /api/fire-doors/order-grid/column-widths
+ * Body: { columnWidths: Record<string, number> }
+ */
+router.post('/order-grid/column-widths', async (req, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: 'Authentication required' });
+
+    const tenantSettings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { isFireDoorManufacturer: true, beta: true },
+    });
+
+    if (!tenantSettings?.isFireDoorManufacturer) {
+      return res.status(403).json({ error: 'Fire door import access required' });
+    }
+
+    const body = (req.body && typeof req.body === 'object') ? (req.body as any) : {};
+    const columnWidths = sanitizeColumnWidths(body.columnWidths);
+    const beta = getJsonObject((tenantSettings as any).beta);
+
+    await prisma.tenantSettings.update({
+      where: { tenantId },
+      data: {
+        beta: {
+          ...(beta as any),
+          fireDoorOrderGridColumnWidths: columnWidths,
+        },
+      },
+      select: { tenantId: true },
+    });
+
+    return res.json({ ok: true, columnWidths });
+  } catch (error: any) {
+    console.error('[fire-doors] Save order grid column widths error:', error);
+    return res.status(500).json({ error: 'Failed to save column widths' });
+  }
+});
+
 /**
  * POST /api/fire-doors/import
  * Import fire door orders from CSV spreadsheet
@@ -200,27 +417,96 @@ router.post('/import', upload.single('file'), async (req, res) => {
     }
 
     const sourceName = req.file.originalname;
-    const csvContent = req.file.buffer;
+    let csvContent: string | Buffer = req.file.buffer;
 
-    // 4. Validate CSV headers
-    const headerValidation = validateCSVHeaders(csvContent);
+    if (isXlsxUpload(req.file)) {
+      const rawSheetName = (req.body as any)?.sheetName;
+      const sheetName = typeof rawSheetName === 'string' && rawSheetName.trim() ? rawSheetName.trim() : null;
+
+      const rawSheetIndex = (req.body as any)?.sheetIndex;
+      const sheetIndex = typeof rawSheetIndex === 'string' && rawSheetIndex.trim()
+        ? Number(rawSheetIndex)
+        : (typeof rawSheetIndex === 'number' ? rawSheetIndex : null);
+      const sheetIndexClean = Number.isFinite(sheetIndex as any) ? Math.floor(sheetIndex as number) : null;
+
+      try {
+        // If the workbook has multiple sheets and the user didn't specify which one,
+        // return a selection prompt so the UI can ask.
+        if (!sheetName && !sheetIndexClean) {
+          const workbook = new ExcelJS.Workbook();
+          const input = Buffer.isBuffer(req.file.buffer) ? req.file.buffer : Buffer.from(req.file.buffer as any);
+          const arrayBuffer = input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength);
+          await workbook.xlsx.load(arrayBuffer as any);
+          const sheets = Array.isArray(workbook.worksheets) ? workbook.worksheets.map((ws) => ws.name).filter(Boolean) : [];
+          if (sheets.length > 1) {
+            return res.status(422).json({
+              error: 'Select sheet',
+              message: 'Please select which sheet to import from this Excel workbook.',
+              needsSheetSelection: true,
+              sheets,
+            });
+          }
+        }
+
+        csvContent = await convertXlsxBufferToCsv(req.file.buffer, {
+          requiredHeaders: FIRE_DOOR_REQUIRED_HEADERS,
+          expectedHeaders: getExpectedCsvHeaders(),
+          sheetName,
+          sheetIndex: sheetIndexClean,
+        });
+      } catch (err: any) {
+        console.error('[fire-door-import] Excel parse error:', err);
+        return res.status(400).json({
+          error: 'Failed to parse Excel file',
+          message: err?.message || 'Invalid Excel format',
+        });
+      }
+    }
+
+    // Optional header mapping (for column matcher UI)
+    let headerMap: Record<string, string> | undefined;
+    try {
+      const raw = (req.body as any)?.headerMap;
+      if (typeof raw === 'string' && raw.trim()) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          const out: Record<string, string> = {};
+          for (const [k, v] of Object.entries(parsed as any)) {
+            const kk = String(k || '').trim();
+            const vv = String(v || '').trim();
+            if (!kk || !vv) continue;
+            out[kk] = vv;
+          }
+          headerMap = Object.keys(out).length ? out : undefined;
+        }
+      }
+    } catch {
+      headerMap = undefined;
+    }
+
+    // 4. Validate headers (CSV or Excel converted to CSV)
+    const headerValidation = validateCSVHeaders(csvContent, { headerMap });
     if (!headerValidation.valid) {
-      return res.status(400).json({
-        error: 'Invalid CSV format',
-        message: 'CSV file is missing required columns',
+      return res.status(422).json({
+        error: 'Missing columns',
+        message: 'Spreadsheet file is missing required columns. Please map your columns to continue.',
+        needsMapping: true,
         missingHeaders: headerValidation.missingHeaders,
+        requiredHeaders: headerValidation.requiredHeaders,
+        headers: headerValidation.headers,
+        expectedHeaders: getExpectedCsvHeaders(),
       });
     }
 
-    // 5. Parse CSV
+    // 5. Parse CSV (or Excel-as-CSV)
     let parsedRows: ParsedFireDoorRow[];
     try {
-      parsedRows = parseFireDoorCSV(csvContent);
+      parsedRows = parseFireDoorCSV(csvContent, { headerMap });
     } catch (err: any) {
       console.error('[fire-door-import] CSV parse error:', err);
       return res.status(400).json({
-        error: 'Failed to parse CSV file',
-        message: err.message || 'Invalid CSV format',
+        error: 'Failed to parse spreadsheet file',
+        message: err.message || 'Invalid spreadsheet format',
       });
     }
 
@@ -243,7 +529,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
     const jobDescriptionFromForm = (req.body.jobDescription as string) || null;
     const netValueFromForm = req.body.netValue ? Number(req.body.netValue) : null;
     const firstRow = parsedRows[0];
-    const mjsNumber = mjsNumberFromForm || firstRow.code || sourceName.replace('.csv', '');
+    const mjsNumber = mjsNumberFromForm || firstRow.code || sourceName.replace(/\.(csv|xlsx)$/i, '');
     const clientName = customerNameFromForm || firstRow.location || 'New Fire Door Customer';
     const jobDescription = jobDescriptionFromForm || `${clientName} - ${mjsNumber}`;
     const netValue = netValueFromForm ?? totalValue;
