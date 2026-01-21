@@ -435,24 +435,27 @@ router.get("/settings", async (req, res) => {
   }
 
     // Safe parsing of all JSON fields with fallbacks to prevent crashes
-    const normalizedPlaybook = normalizeTaskPlaybook(safeParseJson(s?.taskPlaybook, {}));
-    const normalizedQuestionnaire = normalizeQuestionnaire(safeParseJson(s?.questionnaire, []));
+    const rawPlaybook = safeParseJson(s?.taskPlaybook, {});
+    const normalizedPlaybook = normalizeTaskPlaybook(toPlainObject(rawPlaybook));
+
+    const rawQuestionnaire = safeParseJson(s?.questionnaire, []);
+    const normalizedQuestionnaire = normalizeQuestionnaire(Array.isArray(rawQuestionnaire) ? rawQuestionnaire : []);
+
     const beta = toPlainObject(safeParseJson(s?.beta, {}));
     const ownerFirstName = cleanOptionalString(beta.ownerFirstName);
     const ownerLastName = cleanOptionalString(beta.ownerLastName);
     const aiLearning = toPlainObject(beta.aiFollowupLearning || {});
     
     // Safe quote defaults parsing - critical for settings page
-    const quoteDefaults = safeParseJson(s?.quoteDefaults, {});
-    const productTypes = safeParseJson(s?.productTypes, []);
+    const quoteDefaults = toPlainObject(safeParseJson(s?.quoteDefaults, {}));
+    const rawProductTypes = safeParseJson(s?.productTypes, []);
+    const productTypes = Array.isArray(rawProductTypes) ? rawProductTypes : [];
     const notificationEmails = toPlainObject(safeParseJson((s as any)?.notificationEmails, {}));
-    
-    console.log('[GET /tenant/settings] Response data:', {
+
+    console.log('[GET /tenant/settings] OK', {
       tenantId,
-      hasProductTypes: !!s?.productTypes,
-      productTypesRaw: s?.productTypes,
-      productTypesParsed: productTypes,
-      productTypesLength: productTypes?.length
+      productTypesLength: productTypes.length,
+      hasNotificationEmails: Object.keys(notificationEmails || {}).length > 0,
     });
     
     res.json({
