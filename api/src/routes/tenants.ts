@@ -207,6 +207,15 @@ function toPlainObject(value: any): Record<string, any> {
   return {};
 }
 
+function shouldFallbackTenantSettingsQuery(err: any): boolean {
+  if (!err) return false;
+  const msg = (err?.message || String(err || "")) as string;
+  if (!msg) return false;
+  // Prisma/Postgres schema drift patterns.
+  // Examples: "column \"notificationEmails\" does not exist", "Unknown column".
+  return /does not exist|unknown column|no such column|column .* does not exist|relation .* does not exist/i.test(msg);
+}
+
 function cleanOptionalString(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -350,7 +359,21 @@ router.get("/settings", async (req, res) => {
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
   try {
-    let s = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    let s: any = null;
+    try {
+      s = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    } catch (err: any) {
+      if (!shouldFallbackTenantSettingsQuery(err)) throw err;
+      console.warn(
+        "[GET /tenant/settings] Prisma findUnique failed; falling back to raw query:",
+        err?.message || err,
+      );
+      const rows: any[] = await prisma.$queryRawUnsafe(
+        `SELECT * FROM "TenantSettings" WHERE "tenantId" = $1 LIMIT 1`,
+        tenantId,
+      );
+      s = rows?.[0] ?? null;
+    }
     if (!s) {
       // Prefer seeding from Demo Tenant template so new tenants start with the demo client's questionnaire
       let preparedQuestions: any[] | null = null;

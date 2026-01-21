@@ -61,7 +61,6 @@ import quotePricingRouter from "./routes/quote-pricing";
 import authSetupRouter from "./routes/auth-setup";
 import suppliersRouter from "./routes/suppliers";
 import softwareProfilesRouter from "./routes/software-profiles";
-import pdfTemplatesRouter from "./routes/pdf-templates";
 import developersRouter from "./routes/developers";
 import supplierQuoteRequestsRouter from "./routes/supplier-quote-requests";
 import analyticsDashboardRouter from "./routes/analytics-dashboard";
@@ -715,7 +714,6 @@ app.use("/flexible-fields", requireAuth, flexibleFieldsRouter);
 app.use("/auth/setup", authSetupRouter);
 app.use("/suppliers", requireAuth, suppliersRouter);
 app.use("/software-profiles", requireAuth, softwareProfilesRouter);
-app.use("/pdf-templates", requireAuth, pdfTemplatesRouter);
 // Developer management (list/add developer emails)
 app.use("/developers", requireAuth, developersRouter);
 app.use("/supplier-quote-requests", requireAuth, supplierQuoteRequestsRouter);
