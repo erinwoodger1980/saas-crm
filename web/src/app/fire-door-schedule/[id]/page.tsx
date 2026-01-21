@@ -238,6 +238,7 @@ export default function FireDoorScheduleDetailPage() {
   const [uploading, setUploading] = useState(false);
     const IGNORE_SENTINEL = "__IGNORE__";
     const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
+    const [pendingImportMode, setPendingImportMode] = useState<"lineItems" | "lw">("lineItems");
     const [mappingOpen, setMappingOpen] = useState(false);
     const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
     const [missingHeaders, setMissingHeaders] = useState<string[]>([]);
@@ -365,6 +366,7 @@ export default function FireDoorScheduleDetailPage() {
       return out;
     };
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const lwFileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [refreshing, setRefreshing] = useState(false);
   const [customColors, setCustomColors] = useState<Record<string, {bg: string, text: string}>>({});
@@ -708,6 +710,123 @@ export default function FireDoorScheduleDetailPage() {
     }
   }
 
+  async function handleLWImport(file: File, opts?: { headerMap?: Record<string, string>; sheetName?: string }) {
+    if (isNew || !id) {
+      toast({ title: "Error", description: "Please save the project first before importing line items", variant: "destructive" });
+      return;
+    }
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("projectId", id);
+      if (opts?.headerMap && Object.keys(opts.headerMap).length > 0) {
+        formData.append("headerMap", JSON.stringify(opts.headerMap));
+      }
+      const sheetToSend = String(opts?.sheetName || selectedSheetName || "").trim();
+      if (sheetToSend) {
+        formData.append("sheetName", sheetToSend);
+      }
+
+      const legacyJwt = (() => {
+        try {
+          return localStorage.getItem("jwt");
+        } catch {
+          return null;
+        }
+      })();
+
+      const headers: HeadersInit = {};
+      if (legacyJwt) {
+        headers.Authorization = `Bearer ${legacyJwt}`;
+      }
+
+      const response = await fetch(`/api/fire-doors/import-lw`, {
+        method: "POST",
+        headers,
+        body: formData,
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        let errorPayload: any = null;
+        try {
+          errorPayload = await response.json();
+        } catch {
+          errorPayload = null;
+        }
+
+        if (errorPayload?.needsSheetSelection && Array.isArray(errorPayload?.sheets)) {
+          const sheets = errorPayload.sheets.map((s: any) => String(s)).filter(Boolean);
+          setPendingImportMode("lw");
+          setPendingImportFile(file);
+          setExcelSheets(sheets);
+          setSelectedSheetName(sheets[0] || "");
+          setSheetOpen(true);
+          return;
+        }
+
+        if (errorPayload?.needsMapping && Array.isArray(errorPayload?.missingHeaders) && Array.isArray(errorPayload?.headers)) {
+          const missing = errorPayload.missingHeaders.map((s: any) => String(s)).filter(Boolean);
+          const headers = errorPayload.headers
+            .map((s: any) => String(s))
+            .filter(Boolean)
+            .sort((a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+          const required = Array.isArray(errorPayload.requiredHeaders)
+            ? errorPayload.requiredHeaders.map((s: any) => String(s)).filter(Boolean)
+            : [];
+          const expected = Array.isArray(errorPayload.expectedHeaders)
+            ? errorPayload.expectedHeaders.map((s: any) => String(s)).filter(Boolean)
+            : [];
+
+          setPendingImportMode("lw");
+          setPendingImportFile(file);
+          setCsvHeaders(headers);
+          setMissingHeaders(missing);
+          setRequiredHeaders(required);
+          setExpectedHeaders(expected);
+          const expectedAll = (expected && expected.length) ? expected : required;
+          setHeaderMap({
+            ...buildInitialHeaderMap(expectedAll, headers),
+            ...guessHeaderMap(missing, headers),
+          });
+          setMappingOpen(true);
+          return;
+        }
+
+        const message =
+          typeof errorPayload === "string"
+            ? errorPayload
+            : errorPayload?.message || errorPayload?.error || `Import failed (${response.status})`;
+
+        throw new Error(message);
+      }
+
+      const result = await response.json();
+      toast({ title: "Success", description: `Imported ${result.rowCount} line items successfully` });
+      await loadImportsForProject();
+    } catch (error: any) {
+      console.error("Error importing LW spreadsheet:", error);
+      toast({ title: "Error", description: error.message || "Failed to import LW spreadsheet", variant: "destructive" });
+    } finally {
+      setUploading(false);
+      if (lwFileInputRef.current) lwFileInputRef.current.value = "";
+    }
+  }
+
+  async function handlePendingImport(opts?: { headerMap?: Record<string, string>; sheetName?: string }) {
+    const f = pendingImportFile;
+    if (!f) {
+      toast({ title: "Error", description: "No pending file to import", variant: "destructive" });
+      return;
+    }
+    if (pendingImportMode === "lw") {
+      await handleLWImport(f, opts);
+    } else {
+      await handleCSVImport(f, opts);
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
@@ -765,8 +884,23 @@ export default function FireDoorScheduleDetailPage() {
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) {
+                        setPendingImportMode("lineItems");
                         setPendingImportFile(file);
                         handleCSVImport(file);
+                      }
+                    }}
+                  />
+                  <input
+                    ref={lwFileInputRef}
+                    type="file"
+                    accept=".xlsx,.xls"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setPendingImportMode("lw");
+                        setPendingImportFile(file);
+                        handleLWImport(file);
                       }
                     }}
                   />
@@ -794,6 +928,15 @@ export default function FireDoorScheduleDetailPage() {
                   >
                     <Upload className="w-4 h-4 mr-2" />
                     {uploading ? "Importing..." : "Import Line Items"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => lwFileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="border-green-200 text-green-600 hover:bg-green-50"
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    {uploading ? "Importing..." : "Import from LW"}
                   </Button>
                   <Button variant="outline" onClick={deleteProject} className="border-red-200 text-red-600 hover:bg-red-50">
                     <Trash2 className="w-4 h-4 mr-2" />
@@ -1700,13 +1843,8 @@ export default function FireDoorScheduleDetailPage() {
                     return;
                   }
                 }
-                const f = pendingImportFile;
                 setMappingOpen(false);
-                if (!f) {
-                  toast({ title: "Error", description: "No pending file to import", variant: "destructive" });
-                  return;
-                }
-                await handleCSVImport(f, { headerMap, sheetName: selectedSheetName || undefined });
+                await handlePendingImport({ headerMap, sheetName: selectedSheetName || undefined });
               }}
             >
               Import
@@ -1757,7 +1895,7 @@ export default function FireDoorScheduleDetailPage() {
                   return;
                 }
                 setSheetOpen(false);
-                await handleCSVImport(f, { sheetName: sheet });
+                await handlePendingImport({ sheetName: sheet });
               }}
             >
               Continue

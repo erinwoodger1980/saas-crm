@@ -127,7 +127,10 @@ function parseLineItemsFromTextLines(
   let supplier = supplierHint?.trim();
 
   // Only treat explicit currency amounts as "money" to avoid matching weights/dimensions.
-  const moneyRe = /[£€$]\s*\d[\d,]*\.\d{2}/g;
+  const moneyTokenRe = /[£€$]\s*\d[\d,]*\.\d{2}/;
+  const moneyTokenReGlobal = new RegExp(moneyTokenRe.source, "g");
+  const getMoneyTokens = (text: string): string[] => text.match(moneyTokenReGlobal) || [];
+  const hasMoneyToken = (text: string): boolean => moneyTokenRe.test(text);
 
   const isHeaderOrMeta = (text: string): boolean => {
     if (!text) return true;
@@ -140,6 +143,9 @@ function parseLineItemsFromTextLines(
     if (/\bthank you\b/i.test(lower)) return true;
     if (/\bvalidity\b/i.test(lower)) return true;
     if (/\bdate\s+of\s+quotation\b/i.test(lower)) return true;
+    if (/^\s*notes?\s*:/i.test(text)) return true;
+    if (/\byours\s+(sincerely|faithfully)\b/i.test(lower)) return true;
+    if (/\bkind\s+regards\b/i.test(lower)) return true;
     return false;
   };
 
@@ -159,6 +165,16 @@ function parseLineItemsFromTextLines(
     return /[A-Za-z]{4,}/.test(t);
   };
 
+  const isCandidateDescriptionLine = (text: string): boolean => {
+    const t = String(text || "").trim();
+    if (!t) return false;
+    if (isHeaderOrMeta(t)) return false;
+    if (hasMoneyToken(t)) return false;
+    if (/\bsubtotal\b|\bsub total\b|\btotal\b|\bgrand total\b/i.test(t)) return false;
+    if (/\bvat\b/i.test(t)) return false;
+    return /[A-Za-z]{3,}/.test(t);
+  };
+
   for (let i = 0; i < cleanedLines.length; i += 1) {
     const line = cleanedLines[i];
     const lower = line.toLowerCase();
@@ -171,7 +187,7 @@ function parseLineItemsFromTextLines(
     if (/\btotal\s+weight\b/i.test(lower)) continue;
     if (/\bvat\b/i.test(lower)) continue;
     if (/\bsubtotal\b|\bsub total\b|\btotal\b|\bgrand total\b/i.test(lower)) {
-      const monies = line.match(moneyRe) || [];
+      const monies = getMoneyTokens(line);
       const last = monies.length ? monies[monies.length - 1] : null;
       const value = last ? Number(last.replace(/[£€$,\s]/g, "")) : null;
       if (value != null && Number.isFinite(value)) {
@@ -181,19 +197,113 @@ function parseLineItemsFromTextLines(
       continue;
     }
 
-    const monies = line.match(moneyRe) || [];
+    const monies = getMoneyTokens(line);
     if (!monies.length) continue;
 
-    // Require some alpha characters to avoid capturing pure numeric rows.
-    if (!/[A-Za-z]/.test(line)) continue;
+    const hasAlpha = /[A-Za-z]/.test(line);
 
+    // Some PDFs split the row so the qty + money appears alone (no description), followed by the
+    // product header on the next line. Attach the priced row to a nearby description line.
+    if (!hasAlpha) {
+      // Avoid converting subtotal-like money-only lines into fake items.
+      // Common pattern: a single currency amount followed by VAT/Total sections.
+      if (monies.length === 1) {
+        const lookahead = cleanedLines
+          .slice(i + 1, Math.min(cleanedLines.length, i + 6))
+          .join(" ")
+          .toLowerCase();
+        if (/\bvat\b|\btotal\b|\bsubtotal\b|\bsub\s+total\b|\btotal\s+weight\b/.test(lookahead)) {
+          continue;
+        }
+      }
+
+      const lineTotalRaw = monies[monies.length - 1];
+      const costUnitRaw = monies.length >= 2 ? monies[monies.length - 2] : undefined;
+      const lineTotal = Number(lineTotalRaw.replace(/[£€$,\s]/g, ""));
+      const costUnit = costUnitRaw ? Number(costUnitRaw.replace(/[£€$,\s]/g, "")) : undefined;
+
+      const firstMoney = monies[0];
+      const beforeMoney = firstMoney ? line.slice(0, Math.max(0, line.indexOf(firstMoney))) : line;
+      const qtyMatches = beforeMoney.match(/\b\d+(?:\.\d+)?\b/g) || [];
+      const qtyCandidate = qtyMatches.length ? Number(qtyMatches[qtyMatches.length - 1]) : undefined;
+      const qty = qtyCandidate != null && Number.isFinite(qtyCandidate) && qtyCandidate > 0 && qtyCandidate <= 999
+        ? qtyCandidate
+        : undefined;
+
+      const window = 6;
+      let descIndex: number | null = null;
+      for (let off = 1; off <= window; off += 1) {
+        const idx = i + off;
+        if (idx >= cleanedLines.length) break;
+        const candidate = cleanedLines[idx];
+        if (isCandidateDescriptionLine(candidate)) {
+          descIndex = idx;
+          break;
+        }
+      }
+      if (descIndex == null) {
+        for (let off = 1; off <= window; off += 1) {
+          const idx = i - off;
+          if (idx < 0) break;
+          const candidate = cleanedLines[idx];
+          if (isCandidateDescriptionLine(candidate)) {
+            descIndex = idx;
+            break;
+          }
+        }
+      }
+
+      if (descIndex == null) continue;
+
+      let desc = cleanText(cleanedLines[descIndex]).replace(/\s{2,}/g, " ").trim();
+      if (!desc) continue;
+
+      const detailLines: string[] = [];
+      let j = descIndex + 1;
+      const maxDetailLines = 14;
+      while (j < cleanedLines.length && detailLines.length < maxDetailLines) {
+        const next = cleanedLines[j];
+        if (!next) {
+          j += 1;
+          continue;
+        }
+        if (isHeaderOrMeta(next)) break;
+        if (hasMoneyToken(next)) break;
+        if (/\bsubtotal\b|\bsub total\b|\btotal\b|\bgrand total\b/i.test(next.toLowerCase())) break;
+        if (/\bcarried\s+forward\b|\bbrought\s+forward\b/i.test(next)) break;
+
+        if (isLikelyDetailLine(next)) detailLines.push(next);
+        j += 1;
+      }
+
+      if (detailLines.length) {
+        desc = `${desc} — ${detailLines.join(" ")}`.replace(/\s{2,}/g, " ").trim();
+      }
+
+      const rawText = [line, cleanedLines[descIndex], ...detailLines].join("\n");
+
+      parsedLines.push({
+        description: desc,
+        ...(qty != null ? { qty } : {}),
+        ...(Number.isFinite(costUnit) ? { costUnit } : {}),
+        ...(Number.isFinite(lineTotal) ? { lineTotal } : {}),
+        ...(rawText ? { rawText } : {}),
+        meta: { sourceLine: cleanedLines[descIndex], priceLine: line, detailLines } as any,
+      });
+
+      // Skip consumed range (desc + details). We also skip any intervening lines between price and desc.
+      if (j > i) i = j - 1;
+      continue;
+    }
+
+    // Require some alpha characters to avoid capturing pure numeric rows.
     const lineTotalRaw = monies[monies.length - 1];
     const costUnitRaw = monies.length >= 2 ? monies[monies.length - 2] : undefined;
     const lineTotal = Number(lineTotalRaw.replace(/[£€$,\s]/g, ""));
     const costUnit = costUnitRaw ? Number(costUnitRaw.replace(/[£€$,\s]/g, "")) : undefined;
 
     // Qty: take the last number immediately before the first money token.
-    const firstMoney = (line.match(moneyRe) || [])[0];
+    const firstMoney = getMoneyTokens(line)[0];
     const beforeMoney = firstMoney ? line.slice(0, Math.max(0, line.indexOf(firstMoney))) : line;
     const qtyMatches = beforeMoney.match(/\b\d+(?:\.\d+)?\b/g) || [];
     const qtyCandidate = qtyMatches.length ? Number(qtyMatches[qtyMatches.length - 1]) : undefined;
@@ -211,8 +321,9 @@ function parseLineItemsFromTextLines(
         j += 1;
         continue;
       }
+      if (isHeaderOrMeta(next)) break;
       // Stop if we hit another priced row (likely next item) or totals.
-      if (moneyRe.test(next)) break;
+      if (hasMoneyToken(next)) break;
       if (/\bsubtotal\b|\bsub total\b|\btotal\b|\bgrand total\b/i.test(next.toLowerCase())) break;
       if (/\bcarried\s+forward\b|\bbrought\s+forward\b/i.test(next)) break;
 
@@ -221,7 +332,7 @@ function parseLineItemsFromTextLines(
     }
 
     // Description: strip trailing money tokens, collapse whitespace.
-    let desc = cleanText(line.replace(moneyRe, " ").replace(/\s{2,}/g, " ").trim());
+    let desc = cleanText(line.replace(moneyTokenReGlobal, " ").replace(/\s{2,}/g, " ").trim());
 
     // Drop trailing repeated qty token (common when qty is a column).
     if (qty != null) {

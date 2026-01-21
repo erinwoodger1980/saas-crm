@@ -95,6 +95,7 @@
     "stripe": "^19.1.0",
     "tesseract.js": "^7.0.0",
     "undici": "^7.16.0",
+    "xlsx": "^0.18.5",
     "zod": "^3.25.76"
   },
   "devDependencies": {

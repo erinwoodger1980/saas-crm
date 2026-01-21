@@ -6,6 +6,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import ExcelJS from 'exceljs';
+import * as XLSX from 'xlsx';
 import { prisma } from '../prisma';
 import { Prisma } from '@prisma/client';
 import { 
@@ -29,6 +30,14 @@ function isXlsxUpload(file: Express.Multer.File): boolean {
   const type = String((file as any)?.mimetype || '').toLowerCase();
   if (name.endsWith('.xlsx')) return true;
   if (type.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')) return true;
+  return false;
+}
+
+function isXlsUpload(file: Express.Multer.File): boolean {
+  const name = String(file?.originalname || '').toLowerCase();
+  const type = String((file as any)?.mimetype || '').toLowerCase();
+  if (name.endsWith('.xls')) return true;
+  if (type.includes('application/vnd.ms-excel')) return true;
   return false;
 }
 
@@ -156,6 +165,93 @@ async function convertXlsxBufferToCsv(
   }
 
   return lines.join('\n');
+}
+
+function detectHeaderRowIndexFromRows(
+  rows: any[][],
+  opts: { requiredHeaders: readonly string[]; expectedHeaders: readonly string[] }
+): number {
+  const requiredSet = new Set(opts.requiredHeaders.map(normalizeHeaderCandidate));
+  const expectedSet = new Set(opts.expectedHeaders.map(normalizeHeaderCandidate));
+  const hasRequired = requiredSet.size > 0;
+
+  const maxScanRows = Math.min(rows.length, 50);
+
+  let bestRow = 0;
+  let bestScore = -1;
+
+  for (let i = 0; i < maxScanRows; i++) {
+    const row = Array.isArray(rows[i]) ? rows[i] : [];
+    const normCells = new Set(row.map(normalizeHeaderCandidate).filter(Boolean));
+    if (normCells.size === 0) continue;
+
+    let requiredMatches = 0;
+    let expectedMatches = 0;
+    for (const c of normCells) {
+      if (requiredSet.has(c)) requiredMatches++;
+      if (expectedSet.has(c)) expectedMatches++;
+    }
+
+    const score = (hasRequired ? (requiredMatches * 1000) : 0) + expectedMatches * 10 + Math.min(normCells.size, 50);
+    if (score > bestScore) {
+      bestScore = score;
+      bestRow = i;
+    }
+  }
+
+  const best = Array.isArray(rows[bestRow]) ? rows[bestRow] : [];
+  const bestNorm = new Set(best.map(normalizeHeaderCandidate).filter(Boolean));
+  let bestRequiredMatches = 0;
+  let bestExpectedMatches = 0;
+  for (const c of bestNorm) {
+    if (requiredSet.has(c)) bestRequiredMatches++;
+    if (expectedSet.has(c)) bestExpectedMatches++;
+  }
+  if (hasRequired && bestRequiredMatches < 2) return 0;
+  if (!hasRequired && bestExpectedMatches < 2) return 0;
+  return bestRow;
+}
+
+function convertXlsBufferToCsv(
+  buffer: Buffer | Uint8Array | ArrayBuffer,
+  opts: { requiredHeaders: readonly string[]; expectedHeaders: readonly string[]; sheetName?: string | null; sheetIndex?: number | null }
+): { csv: string; sheets: string[] } {
+  const input = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer as any);
+  const workbook = XLSX.read(input, { type: 'buffer' });
+  const sheets = Array.isArray(workbook.SheetNames) ? workbook.SheetNames.filter(Boolean) : [];
+  if (!sheets.length) {
+    throw new Error('Excel file has no worksheets');
+  }
+
+  const pickByName = (opts.sheetName ? sheets.find((n) => n === opts.sheetName) : undefined);
+  const pickByIndex = (Number.isFinite(opts.sheetIndex as any) && (opts.sheetIndex as any) != null)
+    ? sheets[(opts.sheetIndex as number) - 1]
+    : undefined;
+  const sheetName = pickByName || pickByIndex || sheets[0];
+  const worksheet = workbook.Sheets[sheetName];
+  if (!worksheet) {
+    throw new Error('Excel worksheet not found');
+  }
+
+  const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, defval: '' }) as any[][];
+  const headerRowIndex = detectHeaderRowIndexFromRows(rows, opts);
+  const maxColumns = Math.max(1, ...rows.map((r) => (Array.isArray(r) ? r.length : 0)));
+
+  const lines: string[] = [];
+  for (let r = headerRowIndex; r < rows.length; r++) {
+    const row = Array.isArray(rows[r]) ? rows[r] : [];
+    const values: string[] = [];
+    for (let c = 0; c < maxColumns; c++) {
+      values.push(String(row[c] ?? ''));
+    }
+    while (values.length > 1 && String(values[values.length - 1] ?? '').trim() === '') {
+      values.pop();
+    }
+    if (!values.some((v) => String(v ?? '').trim() !== '')) continue;
+    lines.push(values.map((v) => csvEscape(v)).join(','));
+  }
+
+  return { csv: lines.join('\n'), sheets };
 }
 
 const FIRE_DOOR_LINE_ITEM_MODEL = (() => {
@@ -782,6 +878,426 @@ router.post('/import', upload.single('file'), async (req, res) => {
     return res.json(response);
   } catch (error: any) {
     console.error('[fire-door-import] Error:', error);
+    return res.status(500).json({
+      error: 'Import failed',
+      message: error.message || 'An unexpected error occurred',
+    });
+  }
+});
+
+/**
+ * POST /api/fire-doors/import-lw
+ * Import fire door orders from a Lloyd Worrall (LW) spreadsheet.
+ *
+ * Behaves like /import, but:
+ * - Supports legacy .xls files
+ * - Remembers the column mapping per-tenant (stored in TenantSettings.beta)
+ * - Extracts Quote No (row 8, columns O+P merged) and Prepared By (row 8)
+ */
+router.post('/import-lw', upload.single('file'), async (req, res) => {
+  try {
+    const userId = req.auth?.userId as string | undefined;
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!userId || !tenantId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const tenantSettings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { isFireDoorManufacturer: true, beta: true },
+    });
+
+    if (!tenantSettings?.isFireDoorManufacturer) {
+      return res.status(403).json({
+        error: 'Fire door import is only available for fire door manufacturers',
+        message: 'This feature requires fire door manufacturer access. Please contact support to enable this feature.',
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    if (!isXlsxUpload(req.file) && !isXlsUpload(req.file) && !String(req.file.originalname || '').toLowerCase().endsWith('.csv')) {
+      return res.status(400).json({
+        error: 'Unsupported file type',
+        message: 'Please upload an Excel (.xls/.xlsx) or CSV file.',
+      });
+    }
+
+    const projectId = (req.body.projectId as string) || null;
+    if (!projectId) {
+      return res.status(400).json({ error: 'projectId is required' });
+    }
+
+    const project = await prisma.fireDoorScheduleProject.findFirst({
+      where: { id: projectId, tenantId },
+      select: { id: true, laqNumber: true, scheduledBy: true },
+    });
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const sourceName = req.file.originalname;
+    let csvContent: string | Buffer = req.file.buffer;
+
+    // Optional header mapping (for column matcher UI)
+    let headerMap: Record<string, string> | undefined;
+    try {
+      const raw = (req.body as any)?.headerMap;
+      if (typeof raw === 'string' && raw.trim()) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          const out: Record<string, string> = {};
+          for (const [k, v] of Object.entries(parsed as any)) {
+            const kk = String(k || '').trim();
+            const vv = String(v || '').trim();
+            if (!kk || !vv) continue;
+            out[kk] = vv;
+          }
+          headerMap = Object.keys(out).length ? out : undefined;
+        }
+      }
+    } catch {
+      headerMap = undefined;
+    }
+
+    const rawSheetName = (req.body as any)?.sheetName;
+    const sheetName = typeof rawSheetName === 'string' && rawSheetName.trim() ? rawSheetName.trim() : null;
+
+    const rawSheetIndex = (req.body as any)?.sheetIndex;
+    const sheetIndex = typeof rawSheetIndex === 'string' && rawSheetIndex.trim()
+      ? Number(rawSheetIndex)
+      : (typeof rawSheetIndex === 'number' ? rawSheetIndex : null);
+    const sheetIndexClean = Number.isFinite(sheetIndex as any) ? Math.floor(sheetIndex as number) : null;
+
+    let quoteNumber: string | null = null;
+    let preparedBy: string | null = null;
+
+    if (!String(sourceName || '').toLowerCase().endsWith('.csv')) {
+      try {
+        const input = Buffer.isBuffer(req.file.buffer) ? req.file.buffer : Buffer.from(req.file.buffer as any);
+        const workbook = XLSX.read(input, { type: 'buffer' });
+        const sheets = Array.isArray(workbook.SheetNames) ? workbook.SheetNames.filter(Boolean) : [];
+
+        if (!sheetName && !sheetIndexClean && sheets.length > 1) {
+          return res.status(422).json({
+            error: 'Select sheet',
+            message: 'Please select which sheet to import from this Excel workbook.',
+            needsSheetSelection: true,
+            sheets,
+          });
+        }
+
+        const pickedSheetName = (sheetName ? sheets.find((n) => n === sheetName) : undefined)
+          || ((Number.isFinite(sheetIndexClean as any) && sheetIndexClean != null) ? sheets[(sheetIndexClean as number) - 1] : undefined)
+          || sheets[0];
+        const worksheet = pickedSheetName ? workbook.Sheets[pickedSheetName] : undefined;
+        if (!worksheet) {
+          throw new Error('Excel worksheet not found');
+        }
+
+        const getCell = (addr: string) => {
+          const c = (worksheet as any)?.[addr];
+          if (!c) return '';
+          return String(c.w ?? c.v ?? '').trim();
+        };
+
+        // Quote No: row 8, columns O+P (merged in this template)
+        const q = `${getCell('O8')}${getCell('P8')}`.trim();
+        quoteNumber = q || null;
+
+        // Prepared By: row 8 (template may merge into W/X)
+        const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, defval: '' }) as any[][];
+        const r8 = Array.isArray(rows[7]) ? rows[7].map((v) => String(v ?? '').trim()) : [];
+        const preparedCell = r8.find((v) => /prepared\s*by/i.test(v))
+          || getCell('X8')
+          || getCell('W8');
+
+        if (preparedCell) {
+          const m = String(preparedCell).match(/prepared\s*by\s*:\s*(.+)$/i);
+          preparedBy = (m && m[1] ? String(m[1]).trim() : String(preparedCell).trim()) || null;
+        }
+
+        const expectedHeaders = getExpectedCsvHeaders();
+        const headerRowIndex = detectHeaderRowIndexFromRows(rows, { requiredHeaders: FIRE_DOOR_REQUIRED_HEADERS, expectedHeaders });
+        const maxColumns = Math.max(1, ...rows.map((r) => (Array.isArray(r) ? r.length : 0)));
+
+        const lines: string[] = [];
+        for (let r = headerRowIndex; r < rows.length; r++) {
+          const row = Array.isArray(rows[r]) ? rows[r] : [];
+          const values: string[] = [];
+          for (let c = 0; c < maxColumns; c++) {
+            values.push(String(row[c] ?? ''));
+          }
+          while (values.length > 1 && String(values[values.length - 1] ?? '').trim() === '') {
+            values.pop();
+          }
+          if (!values.some((v) => String(v ?? '').trim() !== '')) continue;
+          lines.push(values.map((v) => csvEscape(v)).join(','));
+        }
+
+        csvContent = lines.join('\n');
+      } catch (err: any) {
+        console.error('[fire-door-import-lw] Excel parse error:', err);
+        return res.status(400).json({
+          error: 'Failed to parse Excel file',
+          message: err?.message || 'Invalid Excel format',
+        });
+      }
+    }
+
+    const beta = getJsonObject((tenantSettings as any).beta);
+    const savedMapRaw = getJsonObject((beta as any).fireDoorLWImportHeaderMap);
+    const savedMap = Object.keys(savedMapRaw).length ? (savedMapRaw as Record<string, string>) : undefined;
+
+    const effectiveHeaderMap = headerMap || savedMap;
+
+    // Validate headers (CSV or Excel converted to CSV)
+    const headers = getCsvHeaders(csvContent);
+    const expectedHeaders = getExpectedCsvHeaders();
+    const expectedHeadersForMapping = expectedHeaders.filter((csvHeader) => {
+      if (isCostOrLabourFieldLabel(csvHeader)) return false;
+      const mappedField = (COLUMN_MAPPING as any)?.[csvHeader];
+      const f = String(mappedField || '').trim().toLowerCase();
+      return !(f.endsWith('cost') || f.endsWith('labour'));
+    });
+
+    const normalize = (input: any) =>
+      String(input ?? '')
+        .toLowerCase()
+        .replace(/\u00a0/g, ' ')
+        .replace(/\s+/g, ' ')
+        .replace(/\s*\/\s*/g, '/')
+        .replace(/\s*-\s*/g, '-')
+        .trim();
+
+    const headerNormSet = new Set(headers.map(normalize).filter(Boolean));
+    const hm = effectiveHeaderMap && typeof effectiveHeaderMap === 'object' ? effectiveHeaderMap : undefined;
+    const missingExpected = expectedHeadersForMapping.filter((expected) => {
+      const ne = normalize(expected);
+      if (!ne) return false;
+      if (headerNormSet.has(ne)) return false;
+      const mapped = hm ? String((hm as any)[expected] || '').trim() : '';
+      if (mapped && headerNormSet.has(normalize(mapped))) return false;
+      return true;
+    });
+
+    // If file doesn't match and we have no saved/user mapping, prompt the mapping UI.
+    if (!hm && missingExpected.length > 0) {
+      return res.status(422).json({
+        error: 'Column mapping recommended',
+        message: 'Your spreadsheet columns don’t match the expected import format. Please map columns to continue.',
+        needsMapping: true,
+        missingHeaders: missingExpected,
+        requiredHeaders: [],
+        headers,
+        expectedHeaders: expectedHeadersForMapping,
+      });
+    }
+
+    let parsedRows: ParsedFireDoorRow[];
+    try {
+      parsedRows = parseFireDoorCSV(csvContent, { headerMap: hm });
+    } catch (err: any) {
+      console.error('[fire-door-import-lw] CSV parse error:', err);
+      return res.status(400).json({
+        error: 'Failed to parse spreadsheet file',
+        message: err.message || 'Invalid spreadsheet format',
+      });
+    }
+
+    if (parsedRows.length === 0) {
+      return res.status(400).json({
+        error: 'No valid product rows found',
+        message: 'No importable rows were found in this spreadsheet.',
+      });
+    }
+
+    const totalValue = calculateTotalValue(parsedRows);
+    const rowCount = parsedRows.length;
+    const importStartMs = Date.now();
+
+    const preparedLineItems = parsedRows.map((row, idx) => {
+      const scalarData: Record<string, any> = {};
+      for (const [k, v] of Object.entries(row as any)) {
+        if (!k || k === 'rawRowJson') continue;
+        if (LINE_ITEM_FORBIDDEN_UPDATE_FIELDS.has(k)) continue;
+        const meta = FIRE_DOOR_LINE_ITEM_SCALAR_FIELDS.get(k);
+        if (!meta) continue;
+        scalarData[k] = coerceScalarValue(v, meta);
+      }
+
+      return {
+        rawRowJson: (row as any).rawRowJson as any,
+        ...scalarData,
+        tenantId,
+        rowIndex: idx,
+      };
+    });
+
+    const result = await prisma.$transaction(
+      async (tx) => {
+        const importRecord = await tx.fireDoorImport.create({
+          data: {
+            tenantId,
+            createdById: userId,
+            sourceName,
+            status: 'PROCESSING',
+            totalValue,
+            currency: 'GBP',
+            rowCount,
+            projectId,
+          },
+        });
+
+        // Opportunistically fill project metadata from fixed LW cells.
+        const updateData: any = { lastUpdatedBy: userId, lastUpdatedAt: new Date() };
+        if (quoteNumber && !String(project.laqNumber || '').trim()) {
+          updateData.laqNumber = quoteNumber;
+        }
+        if (preparedBy && !String(project.scheduledBy || '').trim()) {
+          updateData.scheduledBy = preparedBy;
+        }
+        if (Object.keys(updateData).length > 2) {
+          await tx.fireDoorScheduleProject.update({ where: { id: projectId }, data: updateData });
+        }
+
+        return { importRecord };
+      },
+      { timeout: 120000 }
+    );
+
+    const BATCH_SIZE = 100;
+    try {
+      const total = preparedLineItems.length;
+      const batches = Math.ceil(total / BATCH_SIZE) || 1;
+      console.log('[fire-door-import-lw] Inserting line items:', {
+        tenantId,
+        importId: result.importRecord.id,
+        total,
+        batchSize: BATCH_SIZE,
+        batches,
+      });
+
+      for (let i = 0; i < preparedLineItems.length; i += BATCH_SIZE) {
+        const chunk = preparedLineItems.slice(i, i + BATCH_SIZE);
+        await prisma.fireDoorLineItem.createMany({
+          data: chunk.map((li) => ({
+            ...li,
+            fireDoorImportId: result.importRecord.id,
+          })) as any,
+        });
+      }
+
+      await prisma.fireDoorImport.update({
+        where: { id: result.importRecord.id },
+        data: { status: 'COMPLETED' },
+      });
+
+      console.log('[fire-door-import-lw] Insert complete:', {
+        tenantId,
+        importId: result.importRecord.id,
+        totalInserted: preparedLineItems.length,
+        durationMs: Date.now() - importStartMs,
+      });
+    } catch (e: any) {
+      await prisma.fireDoorImport.update({
+        where: { id: result.importRecord.id },
+        data: { status: 'FAILED' },
+      });
+      console.error('[fire-door-import-lw] Insert failed:', {
+        tenantId,
+        importId: result.importRecord.id,
+        durationMs: Date.now() - importStartMs,
+        message: e?.message || String(e),
+      });
+      throw e;
+    }
+
+    // Persist mapping template after successful LW import.
+    // - If the user supplied a mapping, save it.
+    // - Otherwise (first run), save an identity mapping for any exact header matches
+    //   so subsequent LW imports consistently bypass the mapping prompt.
+    const mapToSave = (() => {
+      if (headerMap && Object.keys(headerMap).length) return headerMap;
+      if (savedMap && Object.keys(savedMap).length) return null;
+
+      const headerByNorm = new Map<string, string>();
+      for (const h of headers) {
+        const nh = normalize(h);
+        if (nh && !headerByNorm.has(nh)) headerByNorm.set(nh, h);
+      }
+
+      const out: Record<string, string> = {};
+      for (const expected of expectedHeadersForMapping) {
+        const found = headerByNorm.get(normalize(expected));
+        if (found) out[expected] = found;
+      }
+      return Object.keys(out).length ? out : null;
+    })();
+
+    if (mapToSave) {
+      try {
+        await prisma.tenantSettings.update({
+          where: { tenantId },
+          data: {
+            beta: {
+              ...(beta as any),
+              fireDoorLWImportHeaderMap: mapToSave,
+            },
+          },
+          select: { tenantId: true },
+        });
+      } catch (e: any) {
+        console.warn('[fire-door-import-lw] Failed to save header map template:', e?.message || String(e));
+      }
+    }
+
+    const previewRows = await prisma.fireDoorLineItem.findMany({
+      where: { fireDoorImportId: result.importRecord.id },
+      orderBy: { rowIndex: 'asc' },
+      take: 10,
+      select: {
+        id: true,
+        doorRef: true,
+        location: true,
+        rating: true,
+        quantity: true,
+        lineTotal: true,
+      },
+    });
+
+    const previewItems = previewRows.map((item) => ({
+      id: item.id,
+      doorRef: item.doorRef,
+      location: item.location,
+      fireRating: item.rating,
+      quantity: item.quantity,
+      lineTotal: item.lineTotal ? Number(item.lineTotal) : null,
+    }));
+
+    const response: FireDoorImportResponse = {
+      import: {
+        id: result.importRecord.id,
+        totalValue: Number(result.importRecord.totalValue),
+        currency: result.importRecord.currency,
+        status: result.importRecord.status,
+        rowCount: result.importRecord.rowCount,
+        createdAt: result.importRecord.createdAt,
+      },
+      lineItems: previewItems,
+      totalValue: Number(totalValue),
+      rowCount,
+    };
+
+    console.log(
+      `[fire-door-import-lw] Successfully imported ${rowCount} doors for tenant ${tenantId}, total value: £${Number(totalValue).toFixed(2)}`
+    );
+
+    return res.json(response);
+  } catch (error: any) {
+    console.error('[fire-door-import-lw] Error:', error);
     return res.status(500).json({
       error: 'Import failed',
       message: error.message || 'An unexpected error occurred',
