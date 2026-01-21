@@ -14,6 +14,8 @@ import {
   validateCSVHeaders,
   getCsvHeaders,
   getExpectedCsvHeaders,
+  COLUMN_MAPPING,
+  isCostOrLabourFieldLabel,
   type ParsedFireDoorRow,
   type FireDoorImportResponse 
 } from '../lib/fireDoorImport';
@@ -496,6 +498,16 @@ router.post('/import', upload.single('file'), async (req, res) => {
     // 4. Validate headers (CSV or Excel converted to CSV)
     const headers = getCsvHeaders(csvContent);
     const expectedHeaders = getExpectedCsvHeaders();
+    const expectedHeadersForMapping = expectedHeaders.filter((csvHeader) => {
+      // Primary rule: hide by label suffix (matches the user's CSV field list).
+      if (isCostOrLabourFieldLabel(csvHeader)) return false;
+
+      // Back-compat: if the expected header happens to be a COLUMN_MAPPING key,
+      // also hide when the mapped internal field ends with cost/labour.
+      const mappedField = (COLUMN_MAPPING as any)?.[csvHeader];
+      const f = String(mappedField || '').trim().toLowerCase();
+      return !(f.endsWith('cost') || f.endsWith('labour'));
+    });
 
     const forceMapping = (() => {
       const raw = (req.body as any)?.forceMapping;
@@ -515,7 +527,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
 
     const headerNormSet = new Set(headers.map(normalize).filter(Boolean));
     const hm = headerMap && typeof headerMap === 'object' ? headerMap : undefined;
-    const missingExpected = expectedHeaders.filter((expected) => {
+    const missingExpected = expectedHeadersForMapping.filter((expected) => {
       const ne = normalize(expected);
       if (!ne) return false;
       if (headerNormSet.has(ne)) return false;
@@ -537,7 +549,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
         missingHeaders: missingExpected,
         requiredHeaders: [],
         headers,
-        expectedHeaders,
+        expectedHeaders: expectedHeadersForMapping,
       });
     }
 
@@ -651,77 +663,26 @@ router.post('/import', upload.single('file'), async (req, res) => {
       // Create line items
       const lineItems = await Promise.all(
         parsedRows.map((row, idx) =>
-          tx.fireDoorLineItem.create({
-            data: {
-              fireDoorImportId: importRecord.id,
-              tenantId,
-              rowIndex: idx,
-              itemType: row.itemType,
-              code: row.code,
-              quantity: row.quantity,
-              doorRef: row.doorRef,
-              location: row.location,
-              doorsetType: row.doorSetType,
-              rating: row.fireRating,
-              acousticRatingDb: row.acousticRatingDb,
-              internalColour: row.internalColour,
-              externalColour: row.externalColour,
-              frameFinish: row.frameFinish,
-              leafHeight: row.leafHeight,
-              masterLeafWidth: row.masterLeafWidth,
-              slaveLeafWidth: row.slaveLeafWidth,
-              leafThickness: row.leafThickness,
-              leafConfiguration: row.leafConfiguration,
-              ifSplitMasterSize: row.ifSplitMasterSize,
-              doorFinishSide1: row.doorFinishSide1,
-              doorFinishSide2: row.doorFinishSide2,
-              doorFacing: row.doorFacing,
-              lippingFinish: row.lippingFinish,
-              doorEdgeProtType: row.doorEdgeProtType,
-              doorEdgeProtPos: row.doorEdgeProtPos,
-              doorUndercut: row.doorUndercut,
-              doorUndercutMm: row.doorUndercutMm,
-              visionQtyLeaf1: row.visionQtyLeaf1,
-              vp1WidthLeaf1: row.vp1WidthLeaf1,
-              vp1HeightLeaf1: row.vp1HeightLeaf1,
-              vp2WidthLeaf1: row.vp2WidthLeaf1,
-              vp2HeightLeaf1: row.vp2HeightLeaf1,
-              visionQtyLeaf2: row.visionQtyLeaf2,
-              vp1WidthLeaf2: row.vp1WidthLeaf2,
-              vp1HeightLeaf2: row.vp1HeightLeaf2,
-              vp2WidthLeaf2: row.vp2WidthLeaf2,
-              vp2HeightLeaf2: row.vp2HeightLeaf2,
-              totalGlazedAreaMaster: row.totalGlazedAreaMaster,
-              fanlightSidelightGlz: row.fanlightSidelightGlz,
-              glazingTape: row.glazingTape,
-              ironmongeryPackRef: row.ironmongeryPackRef,
-              closerOrFloorSpring: row.closerOrFloorSpring,
-              spindleFacePrep: row.spindleFacePrep,
-              cylinderFacePrep: row.cylinderFacePrep,
-              flushBoltSupplyPrep: row.flushBoltSupplyPrep,
-              flushBoltQty: row.flushBoltQty,
-              fingerProtection: row.fingerProtection,
-              fireSignage: row.fireSignage,
-              fireSignageQty: row.fireSignageQty,
-              fireSignageFactoryFit: row.fireSignageFactoryFit,
-              fireIdDisc: row.fireIdDisc,
-              fireIdDiscQty: row.fireIdDiscQty,
-              doorViewer: row.doorViewer,
-              doorViewerPosition: row.doorViewerPosition,
-              doorViewerPrepSize: row.doorViewerPrepSize,
-              doorChain: row.doorChain,
-              doorViewersQty: row.doorViewersQty,
-              doorChainFactoryFit: row.doorChainFactoryFit,
-              doorViewersFactoryFit: row.doorViewersFactoryFit,
-              additionNote1: row.additionNote1,
-              additionNote1Qty: row.additionNote1Qty,
-              unitValue: row.unitValue,
-              labourCost: row.labourCost,
-              materialCost: row.materialCost,
-              lineTotal: row.lineTotal,
-              rawRowJson: row.rawRowJson as any,
-            },
-          })
+          (() => {
+            const scalarData: Record<string, any> = {};
+            for (const [k, v] of Object.entries(row as any)) {
+              if (!k || k === 'rawRowJson') continue;
+              if (LINE_ITEM_FORBIDDEN_UPDATE_FIELDS.has(k)) continue;
+              const meta = FIRE_DOOR_LINE_ITEM_SCALAR_FIELDS.get(k);
+              if (!meta) continue;
+              scalarData[k] = coerceScalarValue(v, meta);
+            }
+
+            return tx.fireDoorLineItem.create({
+              data: {
+                rawRowJson: (row as any).rawRowJson as any,
+                ...scalarData,
+                fireDoorImportId: importRecord.id,
+                tenantId,
+                rowIndex: idx,
+              },
+            });
+          })()
         )
       );
 

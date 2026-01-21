@@ -43,94 +43,27 @@ export interface RawCSVRow {
 }
 
 export interface ParsedFireDoorRow {
-  // Core fields
-  itemType: string | null;
-  code: string | null;
-  quantity: number | null;
+  // Known core fields (DB column names)
+  itemType?: string | null;
+  code?: string | null;
+  quantity?: number | null;
+  doorRef?: string | null;
+  location?: string | null;
+  doorsetType?: string | null;
+  rating?: string | null;
+  acousticRatingDb?: number | null;
 
-  // Door identification
-  doorRef: string | null;
-  location: string | null;
-  doorSetType: string | null;
-  fireRating: string | null;
-  acousticRatingDb: number | null;
-  handing: string | null;
-
-  // Colors & finishes
-  internalColour: string | null;
-  externalColour: string | null;
-  frameFinish: string | null;
-
-  // Leaf geometry
-  leafHeight: number | null;
-  masterLeafWidth: number | null;
-  slaveLeafWidth: number | null;
-  leafThickness: number | null;
-  leafConfiguration: string | null;
-  ifSplitMasterSize: string | null;
-
-  // Finishes & edges
-  doorFinishSide1: string | null;
-  doorFinishSide2: string | null;
-  doorFacing: string | null;
-  lippingFinish: string | null;
-  doorEdgeProtType: string | null;
-  doorEdgeProtPos: string | null;
-  doorUndercut: string | null;
-  doorUndercutMm: number | null;
-
-  // Vision panels (Leaf 1)
-  visionQtyLeaf1: number | null;
-  vp1WidthLeaf1: number | null;
-  vp1HeightLeaf1: number | null;
-  vp2WidthLeaf1: number | null;
-  vp2HeightLeaf1: number | null;
-
-  // Vision panels (Leaf 2)
-  visionQtyLeaf2: number | null;
-  vp1WidthLeaf2: number | null;
-  vp1HeightLeaf2: number | null;
-  vp2WidthLeaf2: number | null;
-  vp2HeightLeaf2: number | null;
-
-  // Total glazing
-  totalGlazedAreaMaster: number | null;
-  fanlightSidelightGlz: string | null;
-  glazingTape: string | null;
-
-  // Ironmongery
-  ironmongeryPackRef: string | null;
-  closerOrFloorSpring: string | null;
-  spindleFacePrep: string | null;
-  cylinderFacePrep: string | null;
-  flushBoltSupplyPrep: string | null;
-  flushBoltQty: number | null;
-  fingerProtection: string | null;
-  fireSignage: string | null;
-  fireSignageQty: number | null;
-  fireSignageFactoryFit: string | null;
-  fireIdDisc: string | null;
-  fireIdDiscQty: number | null;
-  doorViewer: string | null;
-  doorViewerPosition: string | null;
-  doorViewerPrepSize: string | null;
-  doorChain: string | null;
-  doorViewersQty: number | null;
-  doorChainFactoryFit: string | null;
-  doorViewersFactoryFit: string | null;
-
-  // Additional notes
-  additionNote1: string | null;
-  additionNote1Qty: number | null;
-
-  // Pricing
-  unitValue: number | null;
-  labourCost: number | null;
-  materialCost: number | null;
-  lineTotal: number | null;
+  // Pricing (stored as numbers; Prisma will persist to Decimal)
+  unitValue?: number | null;
+  labourCost?: number | null;
+  materialCost?: number | null;
+  lineTotal?: number | null;
 
   // Raw data for traceability
   rawRowJson: RawCSVRow;
+
+  // Many more optional DB fields are populated dynamically from the label catalog.
+  [key: string]: any;
 }
 
 /**

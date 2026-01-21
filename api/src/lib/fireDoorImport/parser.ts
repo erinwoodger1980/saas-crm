@@ -4,7 +4,9 @@
  */
 
 import { parse } from 'csv-parse/sync';
-import { COLUMN_MAPPING, ParsedFireDoorRow, RawCSVRow } from './types';
+import { ParsedFireDoorRow, RawCSVRow } from './types';
+import { FIRE_DOOR_FIELD_LABELS, FIRE_DOOR_MATCHABLE_FIELD_LABELS } from './fieldCatalog';
+import { resolveFireDoorDbKeyForLabel } from './labelToDbKey';
 
 export type FireDoorHeaderMap = Record<string, string>;
 
@@ -98,56 +100,83 @@ export function parseFireDoorRow(
   rowIndex: number,
   opts?: { headerMap?: FireDoorHeaderMap }
 ): ParsedFireDoorRow {
-  const parsed: Partial<ParsedFireDoorRow> = {
+  const parsed: Record<string, any> = {
     rawRowJson: rawRow,
   };
 
-  // Map text fields
-  const textFields = [
-    'itemType', 'code', 'doorRef', 'location', 'doorSetType', 'fireRating', 'handing',
-    'internalColour', 'externalColour', 'frameFinish', 'leafConfiguration', 'ifSplitMasterSize',
-    'doorFinishSide1', 'doorFinishSide2', 'doorFacing', 'lippingFinish',
-    'doorEdgeProtType', 'doorEdgeProtPos', 'doorUndercut',
-    'fanlightSidelightGlz', 'glazingTape', 'ironmongeryPackRef', 'closerOrFloorSpring',
-    'spindleFacePrep', 'cylinderFacePrep', 'flushBoltSupplyPrep', 'fingerProtection',
-    'fireSignage', 'fireSignageFactoryFit', 'fireIdDisc', 'doorViewer',
-    'doorViewerPosition', 'doorViewerPrepSize', 'doorChain',
-    'doorChainFactoryFit', 'doorViewersFactoryFit', 'additionNote1'
-  ];
+  // Keep numeric parsing for known DB scalar fields.
+  const intFields = new Set<string>([
+    'quantity',
+    'acousticRatingDb',
+    'visionQtyLeaf1',
+    'visionQtyLeaf2',
+    'flushBoltQty',
+    'fireSignageQty',
+    'fireIdDiscQty',
+    'doorViewersQty',
+    'additionNote1Qty',
+  ]);
 
-  const intFields = [
-    'quantity', 'acousticRatingDb', 'visionQtyLeaf1', 'visionQtyLeaf2',
-    'flushBoltQty', 'fireSignageQty', 'fireIdDiscQty', 'doorViewersQty', 'additionNote1Qty'
-  ];
+  const floatFields = new Set<string>([
+    'leafHeight',
+    'masterLeafWidth',
+    'slaveLeafWidth',
+    'leafThickness',
+    'doorUndercutMm',
+    'vp1WidthLeaf1',
+    'vp1HeightLeaf1',
+    'vp2WidthLeaf1',
+    'vp2HeightLeaf1',
+    'vp1WidthLeaf2',
+    'vp1HeightLeaf2',
+    'vp2WidthLeaf2',
+    'vp2HeightLeaf2',
+    'totalGlazedAreaMaster',
+  ]);
 
-  const floatFields = [
-    'leafHeight', 'masterLeafWidth', 'slaveLeafWidth', 'leafThickness', 'doorUndercutMm',
-    'vp1WidthLeaf1', 'vp1HeightLeaf1', 'vp2WidthLeaf1', 'vp2HeightLeaf1',
-    'vp1WidthLeaf2', 'vp1HeightLeaf2', 'vp2WidthLeaf2', 'vp2HeightLeaf2',
-    'totalGlazedAreaMaster'
-  ];
+  const currencyFields = new Set<string>([
+    'unitValue',
+    'labourCost',
+    'materialCost',
+    'lineTotal',
+  ]);
 
-  const currencyFields = ['unitValue', 'labourCost', 'materialCost'];
+  for (const expectedLabel of FIRE_DOOR_FIELD_LABELS) {
+    const dbKey = resolveFireDoorDbKeyForLabel(expectedLabel);
 
-  // Find the CSV column name for each field and parse it
-  for (const [csvHeader, fieldName] of Object.entries(COLUMN_MAPPING)) {
-    const rawValue = getMappedValue(rawRow, csvHeader, opts?.headerMap);
+    const rawValue = getMappedValue(rawRow, expectedLabel, opts?.headerMap);
+    if (rawValue === undefined) continue;
 
-    if (textFields.includes(fieldName)) {
-      (parsed as any)[fieldName] = cleanTextValue(rawValue);
-    } else if (intFields.includes(fieldName)) {
-      (parsed as any)[fieldName] = parseIntValue(rawValue);
-    } else if (floatFields.includes(fieldName)) {
-      (parsed as any)[fieldName] = parseFloatValue(rawValue);
-    } else if (currencyFields.includes(fieldName)) {
-      (parsed as any)[fieldName] = parseCurrencyToDecimal(rawValue);
+    if (currencyFields.has(dbKey) || dbKey.endsWith('Cost') || dbKey.endsWith('Labour')) {
+      parsed[dbKey] = parseCurrencyToDecimal(rawValue);
+      continue;
     }
+    if (intFields.has(dbKey)) {
+      parsed[dbKey] = parseIntValue(rawValue);
+      continue;
+    }
+    if (floatFields.has(dbKey)) {
+      parsed[dbKey] = parseFloatValue(rawValue);
+      continue;
+    }
+
+    parsed[dbKey] = cleanTextValue(rawValue);
   }
 
-  // Calculate line total: unitValue * quantity (default qty to 1 if missing)
-  const unitValue = parsed.unitValue || 0;
-  const quantity = parsed.quantity || 1;
-  parsed.lineTotal = unitValue * quantity;
+  // Legacy support (some exports have Item/Code columns but they are not part of the catalog list).
+  if (parsed.itemType === undefined) {
+    parsed.itemType = cleanTextValue((rawRow as any).Item);
+  }
+  if (parsed.code === undefined) {
+    parsed.code = cleanTextValue((rawRow as any).Code ?? (rawRow as any).Name);
+  }
+
+  // Calculate line total: unitValue * quantity (default qty to 1 if missing) unless a line total was supplied.
+  const unitValue = typeof parsed.unitValue === 'number' && Number.isFinite(parsed.unitValue) ? parsed.unitValue : 0;
+  const quantity = typeof parsed.quantity === 'number' && Number.isFinite(parsed.quantity) ? parsed.quantity : 1;
+  if (parsed.lineTotal == null) {
+    parsed.lineTotal = unitValue * quantity;
+  }
 
   return parsed as ParsedFireDoorRow;
 }
@@ -233,5 +262,5 @@ export function validateCSVHeaders(
 }
 
 export function getExpectedCsvHeaders(): string[] {
-  return Object.keys(COLUMN_MAPPING);
+  return [...FIRE_DOOR_MATCHABLE_FIELD_LABELS];
 }

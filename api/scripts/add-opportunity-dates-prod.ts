@@ -1,8 +1,16 @@
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 
 // NOTE: Removed explicit datasources override (not compatible with current Prisma client type)
 // If you need to target a different DB, set DATABASE_URL before running this script.
-const prisma = new PrismaClient();
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL is not set');
+}
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter, log: ['error'] });
 
 async function main() {
   console.log('Adding startDate and deliveryDate columns to Opportunity table...');
@@ -41,6 +49,7 @@ async function main() {
     console.error('❌ Error:', error);
   } finally {
     await prisma.$disconnect();
+    await pool.end();
   }
 }
 

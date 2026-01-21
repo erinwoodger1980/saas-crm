@@ -21,7 +21,11 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const { PrismaPg } = require('@prisma/adapter-pg');
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter, log: ['error'] });
 (async () => {
   try {
     const tenants = await prisma.tenant.findMany({ select: { id: true, name: true }, orderBy: { createdAt: 'asc' } });
@@ -31,5 +35,6 @@ const prisma = new PrismaClient();
     console.error('Error listing tenants', e);
   } finally {
     await prisma.$disconnect();
+    await pool.end();
   }
 })();
