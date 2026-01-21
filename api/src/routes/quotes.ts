@@ -26,13 +26,6 @@ import {
   normaliseLinePriceFeatures,
 } from "../lib/ml/linePriceOverrides";
 import { sendParserErrorAlert, sendParserFallbackAlert } from "../lib/ops/alerts";
-import {
-  parsePdfWithTemplate,
-  normaliseAnnotations,
-  type LayoutTemplateRecord,
-  type TemplateParseMeta,
-  type TemplateParseOutcome,
-} from "../lib/pdf/layoutTemplates";
 import { descriptionQualityScore } from "../lib/pdf/quality";
 import { fromDbQuoteSourceType, normalizeQuoteSourceValue, toDbQuoteSourceType } from "../lib/quoteSourceType";
 import {
@@ -683,38 +676,6 @@ async function loadQuoteFallback(
   quote.supplierProfileId = null;
   quote.__partial = true;
   return quote;
-}
-
-async function tryTemplateParsers(
-  buffer: Buffer,
-  options: {
-    templates: LayoutTemplateRecord[];
-    supplierHint?: string;
-    currencyHint?: string;
-  }
-): Promise<TemplateParseOutcome | null> {
-  if (!options.templates.length) return null;
-  let lastOutcome: TemplateParseOutcome | null = null;
-
-  for (const template of options.templates) {
-    if (!Array.isArray(template.annotations) || template.annotations.length === 0) {
-      continue;
-    }
-    try {
-      const outcome = await parsePdfWithTemplate(buffer, template, {
-        supplierHint: options.supplierHint,
-        currencyHint: options.currencyHint,
-      });
-      lastOutcome = outcome;
-      if (outcome.meta.method === "template") {
-        return outcome;
-      }
-    } catch (err: any) {
-      console.warn(`[parse] Template ${template.id} failed:`, err?.message || err);
-    }
-  }
-
-  return lastOutcome;
 }
 
 function summariseParseQuality(entries: Array<Record<string, any>>): "ok" | "poor" | null {
@@ -2369,32 +2330,6 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
 
     const questionnaireItems = questionnaireItemsFromLeadContext(questionnaireLeadContext);
 
-    const supplierTemplates = quote.supplierProfileId
-      ? await prisma.pdfLayoutTemplate.findMany({
-          where: { supplierProfileId: quote.supplierProfileId },
-          orderBy: { updatedAt: "desc" },
-          select: {
-            id: true,
-            name: true,
-            supplierProfileId: true,
-            pageCount: true,
-            annotations: {
-              orderBy: [{ page: "asc" }, { y: "asc" }, { x: "asc" }],
-            },
-          },
-        })
-      : [];
-
-    const templateRecords: LayoutTemplateRecord[] = supplierTemplates
-      .map((template) => ({
-        id: template.id,
-        name: template.name,
-        supplierProfileId: template.supplierProfileId ?? undefined,
-        annotations: normaliseAnnotations(template.annotations),
-        pageCount: template.pageCount ?? undefined,
-      }))
-      .filter((template) => template.annotations.length);
-
     const API_BASE = (
       process.env.APP_API_URL ||
       process.env.API_URL ||
@@ -2424,7 +2359,6 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
       const smartAssistantMatchMap = questionnaireItems.length
         ? new Map<string, MatchedQuoteLine>()
         : null;
-      let aggregatedTemplateMeta: TemplateParseMeta | null = null;
       const parsedLinesForDb: Prisma.ParsedSupplierLineCreateManyInput[] = [];
 
       const filesToParse = [...quote.supplierFiles]
@@ -2478,27 +2412,6 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
           (typeof req.body?.supplierHint === "string" && req.body.supplierHint) ||
           (typeof quote.title === "string" ? quote.title : undefined);
 
-        if (templateRecords.length) {
-          try {
-            const templateOutcome = await tryTemplateParsers(buffer, {
-              templates: templateRecords,
-              supplierHint: supplierHint ?? f.name ?? undefined,
-              currencyHint: quote.currency || "GBP",
-            });
-            if (templateOutcome) {
-              info.template = templateOutcome.meta;
-              if (!aggregatedTemplateMeta || aggregatedTemplateMeta.method !== "template") {
-                aggregatedTemplateMeta = templateOutcome.meta;
-              }
-              if (templateOutcome.meta.method === "template" && templateOutcome.result) {
-                parseResult = templateOutcome.result;
-              }
-            }
-          } catch (err: any) {
-            console.warn(`[parse] Template parser failed for ${f.name || f.id}:`, err?.message || err);
-          }
-        }
-
         if (!parseResult) {
           try {
             const hybrid = await parseSupplierPdf(buffer, {
@@ -2511,7 +2424,6 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
               ocrAutoWhenNoText: true,
               // Avoid LLM/template behaviour in this generic quote-upload parser.
               llmEnabled: false,
-              templateEnabled: false,
             });
             parseResult = hybrid;
             info.hybrid = { used: true, confidence: hybrid.confidence, stages: hybrid.usedStages };
@@ -2520,8 +2432,6 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
             info.hybrid = { used: false, error: err?.message || String(err) };
             warnings.add(`Hybrid parser failed for ${f.name || f.id}: ${err?.message || err}`);
           }
-        } else {
-          info.hybrid = { used: false, skipped: "template" };
         }
 
         const mlHeaders: Record<string, string> = {};
@@ -2703,15 +2613,8 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
 
         if (questionnaireItems.length) {
           try {
-            const templateForAssistant =
-              (info.template?.templateId &&
-                templateRecords.find((tpl) => tpl.id === info.template.templateId)) ||
-              templateRecords[0] ||
-              null;
-
             const parsedRows = await parsePdfToRows({
               buffer,
-              template: templateForAssistant ?? undefined,
               supplierLines: parseResult.lines,
               currency,
             });
@@ -2723,7 +2626,6 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
               questionnaireItems: questionnaireItems.length,
               parsedRowCount: parsedRows.length,
               matchCount: matchedCount,
-              templateId: templateForAssistant?.id ?? null,
               topMatches: matches
                 .filter((match) => match.match_status !== "unmatched")
                 .slice(0, 5)
@@ -2976,7 +2878,6 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
           timeoutMs: TIMEOUT_MS,
           message: fallbackUsed ? "ML could not parse the PDF. Fallback parser attempted but produced no lines." : undefined,
           quality: aggregatedQuality,
-          template: aggregatedTemplateMeta ?? undefined,
         } as const;
       }
 
@@ -3036,7 +2937,6 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
         message: fallbackUsed ? "ML could not parse some files. Fallback parser applied." : undefined,
         quality: aggregatedQuality,
         fallbackScored: sawFallbackScores ? fallbackScoreTotals : undefined,
-        template: aggregatedTemplateMeta ?? undefined,
       } as const;
     };
 

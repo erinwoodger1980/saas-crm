@@ -13,9 +13,20 @@
 
 import minimist from 'minimist';
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 import { google } from 'googleapis';
 
-const prisma = new PrismaClient();
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL is not set');
+}
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({
+  adapter,
+  log: process.env.NODE_ENV === 'production' ? ['error'] : ['warn', 'error'],
+});
 
 interface SearchConsoleQuery {
   query: string;
@@ -294,10 +305,11 @@ async function main() {
   console.log('\n✅ SEO tuning complete!\n');
 
   await prisma.$disconnect();
+  await pool.end();
 }
 
 main().catch((error) => {
   console.error('\n❌ Fatal error:', error);
-  prisma.$disconnect();
+  prisma.$disconnect().finally(() => pool.end());
   process.exit(1);
 });

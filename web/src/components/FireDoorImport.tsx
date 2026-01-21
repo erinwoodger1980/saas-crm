@@ -7,6 +7,21 @@
 
 import { useState } from "react";
 import { apiFetch } from "@/lib/api";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 
 interface FireDoorImportSummary {
   id: string;
@@ -48,6 +63,8 @@ interface FireDoorImportSectionProps {
 }
 
 export default function FireDoorImportSection({ onImportComplete }: FireDoorImportSectionProps) {
+  const IGNORE_SENTINEL = "__IGNORE__";
+
   const [uploading, setUploading] = useState(false);
   const [lastImport, setLastImport] = useState<FireDoorImportResponse | null>(null);
   const [previousImports, setPreviousImports] = useState<ImportListItem[]>([]);
@@ -59,6 +76,137 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
   const [customerName, setCustomerName] = useState("");
   const [jobDescription, setJobDescription] = useState("");
   const [netValue, setNetValue] = useState("");
+
+  const [mappingOpen, setMappingOpen] = useState(false);
+  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
+  const [missingHeaders, setMissingHeaders] = useState<string[]>([]);
+  const [requiredHeaders, setRequiredHeaders] = useState<string[]>([]);
+  const [expectedHeaders, setExpectedHeaders] = useState<string[]>([]);
+  const [headerMap, setHeaderMap] = useState<Record<string, string>>({});
+
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [excelSheets, setExcelSheets] = useState<string[]>([]);
+  const [selectedSheetName, setSelectedSheetName] = useState<string>("");
+
+  const normalize = (s: string) =>
+    String(s || "")
+      .toLowerCase()
+      .replace(/\u00a0/g, " ")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+
+  const levenshtein = (a: string, b: string) => {
+    const s = a || "";
+    const t = b || "";
+    const n = s.length;
+    const m = t.length;
+    if (n === 0) return m;
+    if (m === 0) return n;
+
+    const dp = new Array(m + 1);
+    for (let j = 0; j <= m; j++) dp[j] = j;
+    for (let i = 1; i <= n; i++) {
+      let prev = dp[0];
+      dp[0] = i;
+      for (let j = 1; j <= m; j++) {
+        const tmp = dp[j];
+        const cost = s[i - 1] === t[j - 1] ? 0 : 1;
+        dp[j] = Math.min(dp[j] + 1, dp[j - 1] + 1, prev + cost);
+        prev = tmp;
+      }
+    }
+    return dp[m];
+  };
+
+  const similarityScore = (expected: string, candidate: string) => {
+    const e = normalize(expected);
+    const c = normalize(candidate);
+    if (!e || !c) return 0;
+    if (e === c) return 1;
+    if (c.includes(e) || e.includes(c)) return 0.92;
+
+    const eTokens = new Set(e.split(" ").filter(Boolean));
+    const cTokens = new Set(c.split(" ").filter(Boolean));
+    const inter = [...eTokens].filter((x) => cTokens.has(x)).length;
+    const union = new Set([...eTokens, ...cTokens]).size || 1;
+    const jaccard = inter / union;
+
+    const dist = levenshtein(e, c);
+    const maxLen = Math.max(e.length, c.length) || 1;
+    const levSim = 1 - dist / maxLen;
+
+    return 0.55 * jaccard + 0.45 * levSim;
+  };
+
+  const guessHeaderMap = (missing: string[], headers: string[]) => {
+    const out: Record<string, string> = {};
+    const byNorm = new Map<string, string>();
+    for (const h of headers) {
+      const n = normalize(h);
+      if (n && !byNorm.has(n)) byNorm.set(n, h);
+    }
+
+    for (const expected of missing) {
+      const ne = normalize(expected);
+      const direct = byNorm.get(ne);
+      if (direct) {
+        out[expected] = direct;
+        continue;
+      }
+      // fallback: contains match
+      const candidate = headers.find((h) => {
+        const nh = normalize(h);
+        return nh === ne || nh.includes(ne) || ne.includes(nh);
+      });
+      if (candidate) out[expected] = candidate;
+
+      // fuzzy fallback
+      if (!out[expected]) {
+        let best: { h: string; score: number } | null = null;
+        for (const h of headers) {
+          const score = similarityScore(expected, h);
+          if (!best || score > best.score) best = { h, score };
+        }
+        if (best && best.score >= 0.6) {
+          out[expected] = best.h;
+        }
+      }
+    }
+    return out;
+  };
+
+  const buildInitialHeaderMap = (expected: string[], headers: string[]) => {
+    const out: Record<string, string> = {};
+    const byNorm = new Map<string, string>();
+    const headerSet = new Set(headers);
+    for (const h of headers) {
+      const n = normalize(h);
+      if (n && !byNorm.has(n)) byNorm.set(n, h);
+    }
+
+    for (const exp of expected) {
+      // Prefer exact match (same display string) when present.
+      if (headerSet.has(exp)) {
+        out[exp] = exp;
+        continue;
+      }
+      const ne = normalize(exp);
+      const directNorm = byNorm.get(ne);
+      if (directNorm) {
+        out[exp] = directNorm;
+        continue;
+      }
+
+      let best: { h: string; score: number } | null = null;
+      for (const h of headers) {
+        const score = similarityScore(exp, h);
+        if (!best || score > best.score) best = { h, score };
+      }
+      if (best && best.score >= 0.6) out[exp] = best.h;
+    }
+
+    return out;
+  };
 
   // Load previous imports on mount
   const loadPreviousImports = async () => {
@@ -80,7 +228,7 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
     setError(null);
   };
 
-  const handleUploadWithDetails = async () => {
+  const handleUploadWithDetails = async (opts?: { headerMap?: Record<string, string>; sheetName?: string }) => {
     if (!selectedFile) return;
 
     if (!mjsNumber || !customerName || !jobDescription) {
@@ -100,6 +248,17 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
       if (netValue) {
         formData.append("netValue", netValue);
       }
+      if (opts?.headerMap && Object.keys(opts.headerMap).length > 0) {
+        formData.append("headerMap", JSON.stringify(opts.headerMap));
+      } else {
+        // Ask backend to return the mapping UI payload even if headers already match.
+        // This lets the user review/adjust mappings before import.
+        formData.append("forceMapping", "1");
+      }
+      const sheetToSend = (opts?.sheetName || selectedSheetName || "").trim();
+      if (sheetToSend) {
+        formData.append("sheetName", sheetToSend);
+      }
 
       // Always use same-origin Next.js API route; it proxies to the backend with proper auth.
       const response = await fetch(`/api/fire-doors/import`, {
@@ -115,6 +274,42 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
         } catch {
           errorPayload = null;
         }
+
+        if (errorPayload?.needsSheetSelection && Array.isArray(errorPayload?.sheets)) {
+          const sheets = errorPayload.sheets.map((s: any) => String(s)).filter(Boolean);
+          setExcelSheets(sheets);
+          setSelectedSheetName(sheets[0] || "");
+          setSheetOpen(true);
+          return;
+        }
+
+        if (errorPayload?.needsMapping && Array.isArray(errorPayload?.missingHeaders) && Array.isArray(errorPayload?.headers)) {
+          const missing = errorPayload.missingHeaders.map((s: any) => String(s)).filter(Boolean);
+          const headers = errorPayload.headers
+            .map((s: any) => String(s))
+            .filter(Boolean)
+            .sort((a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+          const required = Array.isArray(errorPayload.requiredHeaders)
+            ? errorPayload.requiredHeaders.map((s: any) => String(s)).filter(Boolean)
+            : [];
+          const expected = Array.isArray(errorPayload.expectedHeaders)
+            ? errorPayload.expectedHeaders.map((s: any) => String(s)).filter(Boolean)
+            : [];
+
+          setCsvHeaders(headers);
+          setMissingHeaders(missing);
+          setRequiredHeaders(required);
+          setExpectedHeaders(expected);
+          const expectedAll = (expected && expected.length) ? expected : required;
+          const initial = {
+            ...buildInitialHeaderMap(expectedAll, headers),
+            ...guessHeaderMap(missing, headers),
+          };
+          setHeaderMap(initial);
+          setMappingOpen(true);
+          return;
+        }
+
         const message =
           typeof errorPayload === "string"
             ? errorPayload
@@ -141,6 +336,8 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
       setCustomerName("");
       setJobDescription("");
       setNetValue("");
+      setSelectedSheetName("");
+      setExcelSheets([]);
     } catch (err: any) {
       console.error("Import error:", err);
       setError(err.message || "Failed to import CSV file");
@@ -173,7 +370,7 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
           Import Fire Door Orders from Spreadsheet
         </h3>
         <p className="text-sm text-gray-600 mb-4">
-          Upload a CSV export of your fire door orders. Supported format: LAJ/LWG export sheets.
+          Upload a CSV or Excel export of your fire door orders. Supported format: LAJ/LWG export sheets.
         </p>
 
         <div className="space-y-4">
@@ -208,7 +405,7 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
                 <input
                   id="fire-door-csv-upload"
                   type="file"
-                  accept=".csv,text/csv,application/vnd.ms-excel"
+                  accept=".csv,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                   onChange={handleFileSelect}
                   disabled={uploading}
                   className="hidden"
@@ -303,7 +500,7 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
                   Cancel
                 </button>
                 <button
-                  onClick={handleUploadWithDetails}
+                  onClick={() => handleUploadWithDetails()}
                   disabled={uploading || !mjsNumber || !customerName || !jobDescription}
                   className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -489,6 +686,201 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
           </div>
         </div>
       </div>
+
+      <Dialog open={mappingOpen} onOpenChange={(open) => setMappingOpen(open)}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{missingHeaders.length ? 'Match Columns' : 'Review Column Mapping'}</DialogTitle>
+            <DialogDescription>
+              {missingHeaders.length
+                ? 'Your spreadsheet columns don’t match the expected import format. Match columns below.'
+                : 'Confirm (or adjust) how your spreadsheet columns map to the import format before importing.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {(() => {
+            const expectedAll = (expectedHeaders && expectedHeaders.length) ? expectedHeaders : requiredHeaders;
+            const systemFields = (expectedAll || [])
+              .map((x) => String(x))
+              .filter(Boolean)
+              .slice()
+              .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+            const mappedByCsv: Record<string, string> = {};
+            for (const expected of systemFields) {
+              const csv = String(headerMap[expected] || "").trim();
+              if (csv) mappedByCsv[csv] = expected;
+            }
+
+            const sortedCsv = (csvHeaders || [])
+              .map((h) => String(h))
+              .filter(Boolean)
+              .slice()
+              .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+            const unmatchedCsv = sortedCsv.filter((h) => !mappedByCsv[h]);
+            const matchedCsv = sortedCsv.filter((h) => !!mappedByCsv[h]);
+            const orderedCsv = [...unmatchedCsv, ...matchedCsv];
+
+            const missingSystemFields = (missingHeaders || [])
+              .map((x) => String(x))
+              .filter(Boolean)
+              .slice()
+              .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+            return (
+              <>
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-slate-800">
+                    Imported columns
+                    <span className="text-xs text-slate-600"> (unmatched first)</span>
+                  </div>
+                  <div className="text-xs text-slate-600">
+                    Unmatched: {unmatchedCsv.length} / {sortedCsv.length}
+                  </div>
+                  {missingSystemFields.length ? (
+                    <div className="text-xs text-slate-600">
+                      Missing system fields: {missingSystemFields.join(", ")}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="flex-1 overflow-hidden rounded-md border border-slate-200">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 px-3 py-2 text-xs font-semibold text-slate-600 bg-slate-50 sticky top-0 z-10">
+                    <div>Imported column</div>
+                    <div>System field</div>
+                  </div>
+                  <div className="max-h-[55vh] overflow-auto">
+                    {orderedCsv.map((csvHeader) => (
+                      <div key={csvHeader} className="grid grid-cols-1 md:grid-cols-2 gap-2 items-center px-3 py-2 border-t border-slate-100">
+                        <div className="text-sm font-medium text-slate-800 break-words">
+                          {csvHeader}
+                          {!mappedByCsv[csvHeader] ? <span className="text-xs text-orange-600"> (unmatched)</span> : null}
+                        </div>
+                        <Select
+                          value={mappedByCsv[csvHeader] ?? undefined}
+                          onValueChange={(val) => {
+                            if (val === IGNORE_SENTINEL) {
+                              setHeaderMap((prev) => {
+                                const next = { ...prev };
+                                for (const k of Object.keys(next)) {
+                                  if (String(next[k] || "").trim() === csvHeader) delete next[k];
+                                }
+                                return next;
+                              });
+                              return;
+                            }
+
+                            setHeaderMap((prev) => {
+                              const next = { ...prev };
+
+                              // Remove any mapping currently pointing at this imported column
+                              for (const k of Object.keys(next)) {
+                                if (String(next[k] || "").trim() === csvHeader) delete next[k];
+                              }
+
+                              // Ensure the selected system field only maps to one imported column
+                              delete next[val];
+
+                              next[val] = csvHeader;
+                              return next;
+                            });
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select system field…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={IGNORE_SENTINEL}>(Ignore)</SelectItem>
+                            {systemFields.map((field) => (
+                              <SelectItem key={field} value={field}>
+                                {field}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+
+          <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-200 mt-4">
+            <Button variant="outline" onClick={() => setMappingOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                // Require required headers to be satisfied (either present in file or mapped)
+                for (const expected of requiredHeaders) {
+                  const hasDirect = csvHeaders.includes(expected);
+                  const mapped = String(headerMap[expected] || "").trim();
+                  if (!hasDirect && !mapped) {
+                    setError(`Please map: ${expected}`);
+                    return;
+                  }
+                }
+                setMappingOpen(false);
+                await handleUploadWithDetails({ headerMap, sheetName: selectedSheetName || undefined });
+              }}
+            >
+              Import
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={sheetOpen} onOpenChange={(open) => setSheetOpen(open)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Select Sheet</DialogTitle>
+            <DialogDescription>
+              This Excel file has multiple sheets. Choose which sheet you want to import.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="text-sm font-medium text-slate-800">Sheet</div>
+            <Select value={selectedSheetName} onValueChange={(v) => setSelectedSheetName(v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a sheet…" />
+              </SelectTrigger>
+              <SelectContent>
+                {excelSheets.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSheetOpen(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!selectedSheetName.trim()) {
+                  setError('Please select a sheet');
+                  return;
+                }
+                setSheetOpen(false);
+                await handleUploadWithDetails({ sheetName: selectedSheetName.trim() });
+              }}
+            >
+              Continue
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -12,7 +12,6 @@
 
 import * as crypto from 'crypto';
 import { _is_gibberish } from 'ml/pdf_parser';
-import { loadPdfLayoutTemplate } from './pdf/layoutTemplates';
 import {
   matchRowsToQuestionnaireItems,
   parsePdfToRows,
@@ -816,10 +815,8 @@ export async function parseQuotePdf(
 
     if (smartAssistantEnabled) {
       try {
-        const template = options.profile ? await loadPdfLayoutTemplate(options.profile) : null;
         const parsedRows = await parsePdfToRows({
           buffer,
-          template,
           supplierLines: supplierResult.lines,
           currency: resolvedCurrency,
         });
@@ -831,7 +828,7 @@ export async function parseQuotePdf(
           rows: parsedRows,
           matches,
           questionnaireItemCount: questionnaireItems.length,
-          templateId: template?.id ?? null,
+          templateId: null,
         };
       } catch (assistantError: any) {
         const message = assistantError?.message || String(assistantError);

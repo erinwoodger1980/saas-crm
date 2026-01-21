@@ -26,11 +26,6 @@ import {
   saveSupplierPattern,
   type PatternCues,
 } from "./patterns";
-import {
-  loadPdfLayoutTemplate,
-  parsePdfWithTemplate,
-  type TemplateParseMeta,
-} from "../pdf/layoutTemplates";
 import { callMlWithUpload, normaliseMlPayload } from "../ml";
 
 const STRUCTURE_TOOL = {
@@ -1114,32 +1109,10 @@ export async function parseSupplierPdf(
 ): Promise<SupplierParseResult> {
   const supplierHint = options?.supplierHint;
   const currencyHint = options?.currencyHint || "GBP";
-  const supplierProfileId = options?.supplierProfileId ?? null;
   const llmEnabled = options?.llmEnabled ?? true;
-  const templateEnabled = options?.templateEnabled ?? true;
-
-  let templateMeta: TemplateParseMeta | null = null;
-
-  if (supplierProfileId && templateEnabled) {
-    try {
-      const layoutTemplate = await loadPdfLayoutTemplate(supplierProfileId);
-      if (layoutTemplate) {
-        const templateOutcome = await parsePdfWithTemplate(buffer, layoutTemplate, {
-          supplierHint,
-          currencyHint,
-        });
-        templateMeta = templateOutcome.meta;
-        if (templateOutcome.result) {
-          return templateOutcome.result;
-        }
-      }
-    } catch (err) {
-      console.warn(
-        `[parseSupplierPdf] Template parsing failed for ${supplierProfileId}:`,
-        err instanceof Error ? err.message : err,
-      );
-    }
-  }
+  // NOTE: Layout-template parsing (PdfLayoutTemplate/PdfLayoutAnnotation) has been retired.
+  // We keep the option fields for backward compatibility with existing callers,
+  // but intentionally do not load or apply templates.
 
   const pattern = await loadSupplierPattern(supplierHint);
   const stageA = runStageA(buffer, supplierHint, pattern?.supplier);
@@ -1217,13 +1190,6 @@ export async function parseSupplierPdf(
     console.warn("[parseSupplierPdf] Text enrichment failed:", err);
     collectedWarnings.add(`Text enrichment failed: ${err?.message || String(err)}`);
     workingParse = attachWarnings(workingParse, collectedWarnings);
-  }
-
-  if (templateMeta) {
-    workingParse.meta = {
-      ...(workingParse.meta || {}),
-      template: templateMeta,
-    };
   }
 
   return workingParse;

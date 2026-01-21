@@ -4,7 +4,38 @@
  */
 
 import { parse } from 'csv-parse/sync';
-import { COLUMN_MAPPING, ParsedFireDoorRow, RawCSVRow } from './types';
+import { ParsedFireDoorRow, RawCSVRow } from './types';
+import { FIRE_DOOR_FIELD_LABELS, FIRE_DOOR_MATCHABLE_FIELD_LABELS } from './fieldCatalog';
+import { resolveFireDoorDbKeyForLabel } from './labelToDbKey';
+
+export type FireDoorHeaderMap = Record<string, string>;
+
+// No required headers. Import can proceed with partial mappings.
+const REQUIRED_HEADERS = [] as const;
+
+function getHeadersFromCsv(csvContent: string | Buffer): string[] {
+  const records = parse(csvContent, {
+    columns: true,
+    skip_empty_lines: true,
+    trim: true,
+    bom: true,
+    to: 1,
+  });
+
+  if (!records.length) return [];
+  const firstRecord = records[0] as Record<string, any>;
+  return Object.keys(firstRecord);
+}
+
+export function getCsvHeaders(csvContent: string | Buffer): string[] {
+  return getHeadersFromCsv(csvContent);
+}
+
+function getMappedValue(rawRow: RawCSVRow, expectedHeader: string, headerMap?: FireDoorHeaderMap): string | undefined {
+  const mappedHeader = headerMap && typeof headerMap === 'object' ? String((headerMap as any)[expectedHeader] || '').trim() : '';
+  const key = mappedHeader || expectedHeader;
+  return (rawRow as any)[key];
+}
 
 /**
  * Parse currency string to decimal number
@@ -64,57 +95,88 @@ export function cleanTextValue(value: string | null | undefined): string | null 
 /**
  * Parse a single CSV row into structured fire door data
  */
-export function parseFireDoorRow(rawRow: RawCSVRow, rowIndex: number): ParsedFireDoorRow {
-  const parsed: Partial<ParsedFireDoorRow> = {
+export function parseFireDoorRow(
+  rawRow: RawCSVRow,
+  rowIndex: number,
+  opts?: { headerMap?: FireDoorHeaderMap }
+): ParsedFireDoorRow {
+  const parsed: Record<string, any> = {
     rawRowJson: rawRow,
   };
 
-  // Map text fields
-  const textFields = [
-    'itemType', 'code', 'doorRef', 'location', 'doorSetType', 'fireRating', 'handing',
-    'internalColour', 'externalColour', 'frameFinish', 'leafConfiguration', 'ifSplitMasterSize',
-    'doorFinishSide1', 'doorFinishSide2', 'doorFacing', 'lippingFinish',
-    'doorEdgeProtType', 'doorEdgeProtPos', 'doorUndercut',
-    'fanlightSidelightGlz', 'glazingTape', 'ironmongeryPackRef', 'closerOrFloorSpring',
-    'spindleFacePrep', 'cylinderFacePrep', 'flushBoltSupplyPrep', 'fingerProtection',
-    'fireSignage', 'fireSignageFactoryFit', 'fireIdDisc', 'doorViewer',
-    'doorViewerPosition', 'doorViewerPrepSize', 'doorChain',
-    'doorChainFactoryFit', 'doorViewersFactoryFit', 'additionNote1'
-  ];
+  // Keep numeric parsing for known DB scalar fields.
+  const intFields = new Set<string>([
+    'quantity',
+    'acousticRatingDb',
+    'visionQtyLeaf1',
+    'visionQtyLeaf2',
+    'flushBoltQty',
+    'fireSignageQty',
+    'fireIdDiscQty',
+    'doorViewersQty',
+    'additionNote1Qty',
+  ]);
 
-  const intFields = [
-    'quantity', 'acousticRatingDb', 'visionQtyLeaf1', 'visionQtyLeaf2',
-    'flushBoltQty', 'fireSignageQty', 'fireIdDiscQty', 'doorViewersQty', 'additionNote1Qty'
-  ];
+  const floatFields = new Set<string>([
+    'leafHeight',
+    'masterLeafWidth',
+    'slaveLeafWidth',
+    'leafThickness',
+    'doorUndercutMm',
+    'vp1WidthLeaf1',
+    'vp1HeightLeaf1',
+    'vp2WidthLeaf1',
+    'vp2HeightLeaf1',
+    'vp1WidthLeaf2',
+    'vp1HeightLeaf2',
+    'vp2WidthLeaf2',
+    'vp2HeightLeaf2',
+    'totalGlazedAreaMaster',
+  ]);
 
-  const floatFields = [
-    'leafHeight', 'masterLeafWidth', 'slaveLeafWidth', 'leafThickness', 'doorUndercutMm',
-    'vp1WidthLeaf1', 'vp1HeightLeaf1', 'vp2WidthLeaf1', 'vp2HeightLeaf1',
-    'vp1WidthLeaf2', 'vp1HeightLeaf2', 'vp2WidthLeaf2', 'vp2HeightLeaf2',
-    'totalGlazedAreaMaster'
-  ];
+  const currencyFields = new Set<string>([
+    'unitValue',
+    'labourCost',
+    'materialCost',
+    'lineTotal',
+  ]);
 
-  const currencyFields = ['unitValue', 'labourCost', 'materialCost'];
+  for (const expectedLabel of FIRE_DOOR_FIELD_LABELS) {
+    const dbKey = resolveFireDoorDbKeyForLabel(expectedLabel);
 
-  // Find the CSV column name for each field and parse it
-  for (const [csvHeader, fieldName] of Object.entries(COLUMN_MAPPING)) {
-    const rawValue = rawRow[csvHeader];
+    const rawValue = getMappedValue(rawRow, expectedLabel, opts?.headerMap);
+    if (rawValue === undefined) continue;
 
-    if (textFields.includes(fieldName)) {
-      (parsed as any)[fieldName] = cleanTextValue(rawValue);
-    } else if (intFields.includes(fieldName)) {
-      (parsed as any)[fieldName] = parseIntValue(rawValue);
-    } else if (floatFields.includes(fieldName)) {
-      (parsed as any)[fieldName] = parseFloatValue(rawValue);
-    } else if (currencyFields.includes(fieldName)) {
-      (parsed as any)[fieldName] = parseCurrencyToDecimal(rawValue);
+    if (currencyFields.has(dbKey) || dbKey.endsWith('Cost') || dbKey.endsWith('Labour')) {
+      parsed[dbKey] = parseCurrencyToDecimal(rawValue);
+      continue;
     }
+    if (intFields.has(dbKey)) {
+      parsed[dbKey] = parseIntValue(rawValue);
+      continue;
+    }
+    if (floatFields.has(dbKey)) {
+      parsed[dbKey] = parseFloatValue(rawValue);
+      continue;
+    }
+
+    parsed[dbKey] = cleanTextValue(rawValue);
   }
 
-  // Calculate line total: unitValue * quantity (default qty to 1 if missing)
-  const unitValue = parsed.unitValue || 0;
-  const quantity = parsed.quantity || 1;
-  parsed.lineTotal = unitValue * quantity;
+  // Legacy support (some exports have Item/Code columns but they are not part of the catalog list).
+  if (parsed.itemType === undefined) {
+    parsed.itemType = cleanTextValue((rawRow as any).Item);
+  }
+  if (parsed.code === undefined) {
+    parsed.code = cleanTextValue((rawRow as any).Code ?? (rawRow as any).Name);
+  }
+
+  // Calculate line total: unitValue * quantity (default qty to 1 if missing) unless a line total was supplied.
+  const unitValue = typeof parsed.unitValue === 'number' && Number.isFinite(parsed.unitValue) ? parsed.unitValue : 0;
+  const quantity = typeof parsed.quantity === 'number' && Number.isFinite(parsed.quantity) ? parsed.quantity : 1;
+  if (parsed.lineTotal == null) {
+    parsed.lineTotal = unitValue * quantity;
+  }
 
   return parsed as ParsedFireDoorRow;
 }
@@ -123,7 +185,7 @@ export function parseFireDoorRow(rawRow: RawCSVRow, rowIndex: number): ParsedFir
  * Parse entire CSV file into array of fire door line items
  * Only processes rows where Item === "Product"
  */
-export function parseFireDoorCSV(csvContent: string | Buffer): ParsedFireDoorRow[] {
+export function parseFireDoorCSV(csvContent: string | Buffer, opts?: { headerMap?: FireDoorHeaderMap }): ParsedFireDoorRow[] {
   // Parse CSV with headers
   const records = parse(csvContent, {
     columns: true,
@@ -135,16 +197,26 @@ export function parseFireDoorCSV(csvContent: string | Buffer): ParsedFireDoorRow
 
   const parsedRows: ParsedFireDoorRow[] = [];
 
+  // If the spreadsheet has an explicit "Item" column, we keep the historical behaviour
+  // and only import rows where Item === "Product". If not, treat every row as importable.
+  const hasItemColumn = (() => {
+    const first = (records?.[0] as any) || null;
+    if (!first || typeof first !== 'object') return false;
+    return Object.prototype.hasOwnProperty.call(first, 'Item');
+  })();
+
   for (let i = 0; i < records.length; i++) {
     const rawRow = records[i] as RawCSVRow;
     
-    // Only process rows where Item === "Product"
-    const itemType = rawRow['Item']?.trim();
-    if (itemType !== 'Product') {
-      continue;
+    if (hasItemColumn) {
+      // Only process rows where Item === "Product" (legacy format)
+      const itemType = String((rawRow as any)?.Item || '').trim();
+      if (itemType !== 'Product') {
+        continue;
+      }
     }
 
-    const parsed = parseFireDoorRow(rawRow, i + 2); // +2 because row 1 is header, array is 0-indexed
+    const parsed = parseFireDoorRow(rawRow, i + 2, opts); // +2 because row 1 is header, array is 0-indexed
     parsedRows.push(parsed);
   }
 
@@ -161,26 +233,34 @@ export function calculateTotalValue(rows: ParsedFireDoorRow[]): number {
 /**
  * Validation helper: check if CSV has expected headers
  */
-export function validateCSVHeaders(csvContent: string | Buffer): { valid: boolean; missingHeaders: string[] } {
-  const records = parse(csvContent, {
-    columns: true,
-    skip_empty_lines: true,
-    trim: true,
-    bom: true,
-    to: 1, // Only parse first data row to get headers
-  });
+export function validateCSVHeaders(
+  csvContent: string | Buffer,
+  opts?: { headerMap?: FireDoorHeaderMap }
+): { valid: boolean; missingHeaders: string[]; headers: string[]; requiredHeaders: string[] } {
+  const headers = getHeadersFromCsv(csvContent);
 
-  if (records.length === 0) {
-    return { valid: false, missingHeaders: ['No data rows found'] };
+  if (headers.length === 0) {
+    return { valid: false, missingHeaders: ['No data rows found'], headers: [], requiredHeaders: [...REQUIRED_HEADERS] };
   }
 
-  const firstRecord = records[0] as Record<string, any>;
-  const headers = Object.keys(firstRecord);
-  const requiredHeaders = ['Item', 'Code', 'Door Ref', 'Location', 'Fire Rating', 'Value'];
-  const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
+  const headerSet = new Set(headers);
+  const hm = opts?.headerMap && typeof opts.headerMap === 'object' ? opts.headerMap : undefined;
+
+  const missingHeaders = [...REQUIRED_HEADERS].filter((expected) => {
+    if (headerSet.has(expected)) return false;
+    const mapped = hm ? String((hm as any)[expected] || '').trim() : '';
+    if (mapped && headerSet.has(mapped)) return false;
+    return true;
+  });
 
   return {
     valid: missingHeaders.length === 0,
     missingHeaders,
+    headers,
+    requiredHeaders: [...REQUIRED_HEADERS],
   };
+}
+
+export function getExpectedCsvHeaders(): string[] {
+  return [...FIRE_DOOR_MATCHABLE_FIELD_LABELS];
 }

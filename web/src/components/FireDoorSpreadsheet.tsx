@@ -275,8 +275,410 @@ function setFormulaOverrideFlag(row: any, colKey: string, value: boolean | null)
   (row as any).__gridMeta = meta;
 }
 
-// Define all columns matching the exact order and names provided (223 columns total)
-const COLUMNS: Column<FireDoorRow>[] = [
+function normalizeCatalogLabel(input: string): string {
+  return String(input || '')
+    .trim()
+    .replace(/^"(.*)"$/, '$1')
+    .replace(/^'(.*)'$/, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function autoKeyFromLabel(label: string): string {
+  const cleaned = normalizeCatalogLabel(label)
+    .replace(/\u00a0/g, ' ')
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
+    .trim();
+
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'field';
+  const [first, ...rest] = parts;
+  return (
+    first.toLowerCase() +
+    rest
+      .map((p) => (p ? p[0].toUpperCase() + p.slice(1) : ''))
+      .join('')
+  );
+}
+
+function inferWidthFromLabel(label: string): number {
+  const len = normalizeCatalogLabel(label).length;
+  // Conservative sizing to keep the grid usable.
+  return Math.max(110, Math.min(320, 70 + len * 7));
+}
+
+const FIRE_DOOR_FIELD_CATALOG_RAW = [
+  'Name',
+  'Sequence',
+  'Batch / Phase',
+  'Door Ref',
+  'Location',
+  'Doorset / Leaf  / Frame',
+  'Type',
+  'Quantity',
+  'Fire Rating',
+  'Acoustic Rating',
+  'Bottom Seal Requirement',
+  'Bottom Seal Type',
+  'Bottom Seal Cost',
+  'Bottom Seal Labour',
+  'Lead Lining Code',
+  'Lead Lining Cost',
+  'Lead Lining Labour',
+  'Number of Leaves inc solid overpanel',
+  'Leaf Configuration',
+  'If split, Master leaf size',
+  'Action',
+  'Handing',
+  'Hinge Supply Type',
+  'Hinge Qty',
+  'Hinge Type',
+  'Hinge Cost',
+  'Hinge Labour',
+  'Hinge Configuration',
+  'Lock Prep',
+  'Lock Supply Type',
+  'Lock Type 1',
+  'Lock Type 1 Cost',
+  'Lock Type 1 Labour',
+  'Lock Height',
+  'Spindle face prep',
+  'Spindle face prep Labour',
+  'Cylinder Face Prep',
+  'Cylinder Face Prep Labour',
+  'Lock Type 2',
+  'Lock Type 2 Cost',
+  'Lock Type 2 Labour',
+  'Lock Height 2',
+  'Spindle face prep - Lock 2',
+  'Spindle face prep - Lock 2 Labour',
+  'Cylinder Face Prep - Lock 2',
+  'Cylinder Face Prep - Lock 2 Labour',
+  'Flush Bolt Supply/prep',
+  'Flush Bolt Cost',
+  'Flush Bolt Labour',
+  'Flush bolt qty',
+  'Levers & pull handles',
+  'Levers & pull handles Cost',
+  'Levers & pull handles Labour',
+  'Escutcheons/bathroom turn',
+  'Escutcheons/bathroom turn Labour',
+  'Cylinder Lock 1',
+  'Cylinder Lock 1 Cost',
+  'Cylinder Lock 1 Labour',
+  'Cylinder lock 2',
+  'Cylinder Lock 2 Cost',
+  'Cylinder Lock 2 Labour',
+  'Finger Plates',
+  'Finger Plates Cost',
+  'Finger Plates Labour',
+  'Kick Plates',
+  'Kick Plates Cost',
+  'Kick Plates Labour',
+  'Kick plate position',
+  'Bump Plate',
+  'Bump Plate Cost',
+  'Bump Plate Labour',
+  'Fire Signage',
+  'Fire Signage Cost',
+  'Fire Signage Labour',
+  'Additional signage',
+  'Additional signage Cost',
+  'Additional signage Labour',
+  'Letter Plate',
+  'Letter Plate Cost',
+  'Letter Plate Labour',
+  'Letter plate position',
+  'Door viewer',
+  'Door viewer Cost',
+  'Door viewer Labour',
+  'Door viewer position',
+  'Door viewer hole prep size',
+  'Door Chain',
+  'Door Chain Cost',
+  'Door Chain Labour',
+  'Finger Protection',
+  'Finger Protection Cost',
+  'Finger Protection Labour',
+  'Fire ID Disc',
+  'Fire ID Disc Cost',
+  'Fire ID Disc Labour',
+  'Factory Fit Hinges',
+  'Factory Fit Hinges Labour',
+  'Factory Fit Locks',
+  'Factory Fit Locks Labour',
+  'Factory Fit Flush Bolts',
+  'Factory Fit Flush Bolts Labour',
+  'Ironmongery Pack REF',
+  'Comments',
+  'Closer type',
+  'Closers/floorsprings',
+  'Closers/floorsprings Cost',
+  'Closers/floorsprings Labour',
+  'anti barricade / emergency stop',
+  'anti barricade / emergency stop Cost',
+  'anti barricade / emergency stop Labour',
+  'Wiring prep',
+  'Wiring prep Labour',
+  'Cable loop',
+  'Cable loop Labour',
+  'Addition 1 / Note 1',
+  'Addition 1 Qty',
+  'Addition 2 / Note 2',
+  'Addition 2 Qty',
+  'Addition 3 / Note 3',
+  'Addition 3 Qty',
+  'S/O Width',
+  'S/O Height',
+  'S/O Wall thickness',
+  'Extension Material',
+  'Extension Material Cost',
+  'Extension Material Labour',
+  'Extension lining width visible',
+  'Extension lining width actual size',
+  'Overpanel details',
+  'Screen details',
+  'Fanlight / Overpanel Qty',
+  'Fanlight / Overpanel Qty Cost',
+  'Fanlight / Overpanel Qty Labour',
+  'Fanlight Frame Thickness (Production)',
+  'Fanlight / Overpanel height',
+  'Fanlight / Overpanel Width',
+  'Number of Sidelight 1',
+  'Number of Sidelight 1 Cost',
+  'Number of Sidelight 1 Labour',
+  'Sidelight 1 Width',
+  'Sidelight 1 Height',
+  'Number of Sidelight 2',
+  'Number of Sidelight 2 Cost',
+  'Number of Sidelight 2 Labour',
+  'Sidelight 2 Width',
+  'Sidelight 2 Height',
+  'Number of Sidelight 3',
+  'Number of Sidelight 3 Cost',
+  'Number of Sidelight 3 Labour',
+  'Sidelight 3 Width',
+  'Sidelight 3 Height',
+  'Number of Sidelight 4',
+  'Number of Sidelight 4 Cost',
+  'Number of Sidelight 4 Labour',
+  'Sidelight 4 Width',
+  'Sidelight 4 Height',
+  'Fanlight / Sidelight Glazing',
+  'Fanlight / Sidelight Glazing Cost',
+  'Fanlight / Sidelight Glazing Labour',
+  'O/F Width (doorset)',
+  'O/F Height (doorset)',
+  'Frame Thickness',
+  'Frame Material',
+  'Frame Material (Production)',
+  'Lining Thickness - Jambs',
+  'Lining Cost',
+  'Lining Labour',
+  'Jamb Profile - Hanging Edge',
+  'Jamb Profile - Leading Edge Edge',
+  'Jamb Cost',
+  'Jamb Labour',
+  'Lining Thickness - Heads',
+  'Frame Finish',
+  'Frame Type',
+  'Stop Material',
+  'Stop Cost',
+  'Stop Labour',
+  'Stop Material (Production)',
+  'Rebate / Stop Width',
+  'Rebate / Stop Depth',
+  'Arc Material',
+  'Arc Stop',
+  'Arc Labour',
+  'Arc Detail',
+  'Arc Width',
+  'Arc Depth',
+  'M Leaf Width',
+  'S Leaf Width',
+  'Leaf Height',
+  'Leaf Thickness',
+  'Core Type',
+  'Leaf Style',
+  'Leaf Cost',
+  'Leaf Labour',
+  'Vision Panel Qty, Leaf 1',
+  'Vision Panel 1 Cost',
+  'Vision Panel 1 Labour',
+  'Leaf Aperture 1 Width',
+  'Leaf Aperture 1 Height',
+  'Leaf Aperture 1 Width (Production)',
+  'Leaf Aperture 1 Height (Production)',
+  'Aperture Position 1',
+  'Vision Panel Leaf 1 Aperture 2 Cost',
+  'Vision Panel Leaf 1 Aperture 2 Labour',
+  'Leaf 1 Aperture 2 Width',
+  'Leaf 1 Aperture 2 Height',
+  'Leaf 1 Aperture 2 Width (Production)',
+  'Leaf 1 Aperture 2 Height (Production)',
+  'Aperture Position 2',
+  'Air Transfer grille requirement',
+  'Air Transfer Grille Qty',
+  'Air Transfer grille Size',
+  'Air Transfer grille Position',
+  'Vision Panel Qty, Leaf 2',
+  'Vision Panel Leaf 2 Aperture 1 Cost',
+  'Vision Panel Leaf 2 Aperture 1 Labour',
+  'Leaf 2 Cutout Aperture 1 Width',
+  'Leaf 2 Cutout Aperture 1 Height',
+  'Leaf 2 Aperture 1 Width (Production)',
+  'Leaf 2 Aperture 1 Height (Production)',
+  'Vision Panel Leaf 2 Aperture 2 Cost',
+  'Vision Panel Leaf 2 Aperture 2 Labour',
+  'Leaf 2 Cutout Aperture 2 Width',
+  'Leaf 2 Cutout Aperture 2 Height',
+  'Leaf 2 Aperture 2 Width (Production)',
+  'Leaf 2 Aperture 2 Height (Production)',
+  'Vision Panel Size Detail',
+  'Temp Glass Check',
+  'Glass Concat',
+  'Glass Type',
+  'Bead Type',
+  'Bead Material',
+  'Bead Material (Production)',
+  'Total Glazed Area Master Leaf (msq)',
+  'Glazing Tape',
+  'Glazing Tape Cost',
+  'Glazing Tape Labour',
+  'Max Permitted Glazed Area (Based on Strebord)',
+  'Door Facing',
+  'Door Finish - Side 1 (Push)',
+  'Door Finish - Side 1 (Push) Cost',
+  'Door Finish - Side 1 (Push) Labour',
+  'Door Finish - Side 2 (Pull)',
+  'Door Finish - Side 2 (Pull) Cost',
+  'Door Finish - Side 2 (Pull) Labour',
+  'Door Colour',
+  'Lipping Material',
+  'Lipping Cost',
+  'Lipping Labour',
+  'Lipping Material (Production)',
+  'Lipping Style',
+  'Lipping Thickness',
+  'Lipping Finish',
+  'Door Edge Protection Type',
+  'Door Edge Protection Type Cost',
+  'Door Edge Protection Type Labour',
+  'Door Edge Protection Position',
+  'PVC Face Protection',
+  'PVC Face Protection Cost',
+  'PVC Face Protection Labour',
+  'PVC Colour',
+  'PVC Cost',
+  'PVC Labour',
+  'Door Undercut',
+  'Certification',
+  'Q Mark Plug Outer Colour',
+  'Q Mark Tree Colour',
+  'Q Mark Vision Panel Plug',
+  'Material Sustainability',
+  'Price Ea',
+  'Qty2',
+  'Line Price',
+  'Important notes for Fire Rating',
+  'Client Notes 1',
+  'Client Notes 2',
+  'Client Notes 3',
+  'Client Notes 4',
+  'Test Certificate Used',
+  'Associated Document',
+  'Master Leaf Weight (Approx) kg',
+  'Fire Rating2',
+  'Latched/Unlatched',
+  'Single Action / Double Action',
+  'Single Door / Double Door',
+  'Door Leaf Type',
+  'Wizardoorer Ref (If used)',
+  'Master Leaf Area',
+  'Slave Leaf Area',
+  'Leaf Weight Code',
+  'Leaf Weight msq',
+  'Slave Leaf Weight (Approx) kg',
+  'Lining Volume',
+  'Lining Material',
+  'Lining Material Weight msq',
+  'Lining Weight (Approx) kg',
+  'Stop Volume',
+  'Stop Material2',
+  'Stop Material Density',
+  'Stop Weight (Approx) kg',
+  'Arc Volume',
+  'Arc Material3',
+  'Arc Material Density',
+  'Arc Weight (Approx) kg',
+  'Fanlight',
+  'Screen',
+  'Frame Weight (Approx) kg',
+  'Doorset Weight (Approx) kg - Ironmongery not allowed for',
+] as const;
+
+const FIRE_DOOR_FIELD_CATALOG: readonly string[] = (() => {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of FIRE_DOOR_FIELD_CATALOG_RAW) {
+    const label = normalizeCatalogLabel(raw);
+    if (!label) continue;
+    const n = normalizeHeaderKey(label);
+    if (!n || seen.has(n)) continue;
+    seen.add(n);
+    out.push(label);
+  }
+  return out;
+})();
+
+function buildColumnsFromCatalog(base: ReadonlyArray<Column<FireDoorRow>>, catalog: readonly string[]): Column<FireDoorRow>[] {
+  const byNormName = new Map<string, Column<FireDoorRow>>();
+  for (const col of base) {
+    const n = normalizeHeaderKey(String((col as any)?.name || ''));
+    if (!n) continue;
+    if (!byNormName.has(n)) byNormName.set(n, col);
+  }
+
+  const out: Column<FireDoorRow>[] = [];
+
+  // Always keep the row index first (and frozen) when present.
+  const rowIndexCol = base.find((c) => (c as any)?.key === 'rowIndex') || { key: 'rowIndex', name: '#', width: 60, frozen: true };
+  out.push(rowIndexCol as any);
+
+  // Add catalog fields in order, reusing existing definitions when possible.
+  const usedKeys = new Set<string>([String((rowIndexCol as any)?.key || '')]);
+  for (const label of catalog) {
+    const norm = normalizeHeaderKey(label);
+    const existing = byNormName.get(norm);
+    if (existing) {
+      out.push(existing);
+      usedKeys.add(String((existing as any)?.key || ''));
+      continue;
+    }
+
+    // For new/missing fields, auto-generate a stable key.
+    let key = autoKeyFromLabel(label);
+    if (usedKeys.has(key)) {
+      let i = 2;
+      while (usedKeys.has(`${key}${i}`)) i++;
+      key = `${key}${i}`;
+    }
+    usedKeys.add(key);
+
+    out.push({
+      key,
+      name: label,
+      width: inferWidthFromLabel(label),
+      editable: true,
+    } as any);
+  }
+
+  // Ensure we don't accidentally keep other base columns after the catalog.
+  return out;
+}
+
+// Base grid columns (legacy): used to preserve existing keys/configs.
+const BASE_COLUMNS: Column<FireDoorRow>[] = [
   { key: "rowIndex", name: "#", width: 60, frozen: true },
   { key: "sequence", name: "Sequence", width: 100, editable: true },
   { key: "batchPhase", name: "Batch / Phase", width: 120, editable: true },
@@ -490,6 +892,8 @@ const COLUMNS: Column<FireDoorRow>[] = [
   { key: "doorsetWeight", name: "Doorset Weight (Approx) kg - Ironmongery not allowed for", width: 380, editable: true },
 ];
 
+const COLUMNS: Column<FireDoorRow>[] = buildColumnsFromCatalog(BASE_COLUMNS, FIRE_DOOR_FIELD_CATALOG);
+
 const GRID_KEYS: string[] = Array.from(new Set(COLUMNS.map((c) => String((c as any).key || "")).filter(Boolean)));
 
 export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onComponentCreated }: FireDoorSpreadsheetProps) {
@@ -517,16 +921,21 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   const [rfiContext, setRfiContext] = useState<{ rowId: string | null; columnKey: string; columnName?: string } | null>(null);
 
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const [columnWidthsLoaded, setColumnWidthsLoaded] = useState(false);
 
   const rowsRef = useRef<FireDoorRow[]>([]);
   const saveTimersRef = useRef<Map<string, any>>(new Map());
   const bomTimerRef = useRef<any>(null);
   const gridContainerRef = useRef<HTMLDivElement | null>(null);
 
-  const columnWidthStorageKey = useMemo(() => {
-    if (!importId) return null;
-    return `fire-door-grid:column-widths:${importId}`;
-  }, [importId]);
+  const stableStringifyObject = useCallback((obj: Record<string, any>) => {
+    const keys = Object.keys(obj || {}).sort();
+    const ordered: Record<string, any> = {};
+    for (const k of keys) ordered[k] = (obj as any)[k];
+    return JSON.stringify(ordered);
+  }, []);
+
+  const lastSavedColumnWidthsRef = useRef<string>("{}");
 
   useEffect(() => {
     rowsRef.current = rows;
@@ -568,25 +977,16 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     return items;
   }, [importId]);
 
-  const ensureRowCount = useCallback(async (minRowCount: number) => {
-    if (!importId) return;
-    const current = rowsRef.current;
-    const need = Math.max(0, Math.floor(minRowCount) - current.length);
-    if (need <= 0) return;
-
-    const created = await bulkCreateRows(need);
-    if (!created.length) return;
-
-    const hydratedNew = created.map((item) => hydrateImportRow(item, COLUMNS));
-    const merged = [...current, ...hydratedNew].sort((a: any, b: any) => {
-      const ai = Number((a as any)?.rowIndex ?? 0);
-      const bi = Number((b as any)?.rowIndex ?? 0);
-      return ai - bi;
-    });
-
-    setRows(merged);
-    rowsRef.current = merged;
-  }, [importId, bulkCreateRows]);
+  const coerceDefaultValue = useCallback((cfg: any): any => {
+    const v = (cfg && typeof cfg === 'object') ? (cfg as any).defaultValue : null;
+    if (v == null) return null;
+    const inputType = String((cfg as any)?.inputType || '').toLowerCase();
+    if (inputType === 'number') {
+      const n = typeof v === 'number' ? v : Number(v);
+      return Number.isFinite(n) ? n : null;
+    }
+    return String(v);
+  }, []);
 
   const bulkDeleteRows = useCallback(async (ids: string[]) => {
     const clean = Array.from(new Set((ids || []).map((x) => String(x || '').trim()).filter(Boolean)));
@@ -597,37 +997,48 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     });
   }, []);
 
-  // Load and persist column widths per import (Excel-like drag resize)
+  // Load and persist column widths per tenant (Excel-like drag resize)
   useEffect(() => {
-    if (!columnWidthStorageKey) return;
-    try {
-      const raw = window.localStorage.getItem(columnWidthStorageKey);
-      if (!raw) {
-        setColumnWidths({});
-        return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch<{ ok: boolean; columnWidths?: Record<string, number> }>(
+          `/fire-doors/order-grid/column-widths`
+        );
+        const widths = res?.columnWidths && typeof res.columnWidths === "object" ? res.columnWidths : {};
+        if (cancelled) return;
+        setColumnWidths(widths);
+        lastSavedColumnWidthsRef.current = stableStringifyObject(widths as any);
+      } catch {
+        // ignore (fall back to defaults)
+      } finally {
+        if (!cancelled) setColumnWidthsLoaded(true);
       }
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object') {
-        setColumnWidths(parsed);
-      } else {
-        setColumnWidths({});
-      }
-    } catch {
-      setColumnWidths({});
-    }
-  }, [columnWidthStorageKey]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [stableStringifyObject]);
 
   useEffect(() => {
-    if (!columnWidthStorageKey) return;
-    const t = window.setTimeout(() => {
+    if (!columnWidthsLoaded) return;
+    const sig = stableStringifyObject(columnWidths || {});
+    if (sig === lastSavedColumnWidthsRef.current) return;
+
+    const t = window.setTimeout(async () => {
       try {
-        window.localStorage.setItem(columnWidthStorageKey, JSON.stringify(columnWidths || {}));
+        await apiFetch(`/fire-doors/order-grid/column-widths`, {
+          method: "POST",
+          json: { columnWidths: columnWidths || {} },
+        });
+        lastSavedColumnWidthsRef.current = sig;
       } catch {
         // ignore
       }
     }, 250);
+
     return () => window.clearTimeout(t);
-  }, [columnWidthStorageKey, columnWidths]);
+  }, [columnWidths, columnWidthsLoaded, stableStringifyObject]);
 
   const loadRfis = useCallback(async () => {
     if (!importId) return;
@@ -734,6 +1145,51 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       setError(err?.message || 'Failed to save changes');
     }
   }, []);
+
+  const ensureRowCount = useCallback(async (minRowCount: number) => {
+    if (!importId) return;
+    const current = rowsRef.current;
+    const need = Math.max(0, Math.floor(minRowCount) - current.length);
+    if (need <= 0) return;
+
+    const created = await bulkCreateRows(need);
+    if (!created.length) return;
+
+    const hydratedNew = created.map((item) => hydrateImportRow(item, COLUMNS));
+
+    // Apply default values to newly created rows (only where the cell is currently empty)
+    const updates: Array<{ id: string; changes: Record<string, any> }> = [];
+    const hydratedWithDefaults = hydratedNew.map((row: any) => {
+      const patch: Record<string, any> = {};
+      for (const [k, cfg] of Object.entries(gridConfig || {})) {
+        const key = String(k || '').trim();
+        if (!key) continue;
+        const isCalculated = !!(cfg as any)?.formula || String((cfg as any)?.inputType || '').toLowerCase() === 'formula';
+        if (isCalculated) continue;
+
+        const cur = row[key];
+        if (!(cur == null || cur === '')) continue;
+        const dv = coerceDefaultValue(cfg);
+        if (dv == null || dv === '') continue;
+        row[key] = dv;
+        patch[key] = dv;
+      }
+      if (Object.keys(patch).length) updates.push({ id: row.id, changes: patch });
+      return row;
+    });
+    const merged = [...current, ...hydratedWithDefaults].sort((a: any, b: any) => {
+      const ai = Number((a as any)?.rowIndex ?? 0);
+      const bi = Number((b as any)?.rowIndex ?? 0);
+      return ai - bi;
+    });
+
+    setRows(merged);
+    rowsRef.current = merged;
+
+    if (updates.length) {
+      await bulkPersist(updates);
+    }
+  }, [importId, bulkCreateRows, bulkPersist, coerceDefaultValue, gridConfig]);
 
   const selectionRange = useMemo(() => {
     if (!selection) return null;
@@ -1159,10 +1615,25 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
           
           tables.forEach((table: any) => {
             if (table.rows && Array.isArray(table.rows)) {
-              optionsMap[table.tableName] = table.rows.map((row: any) => ({
-                value: row.value || row.id || '',
-                label: row.label || row.name || row.description || row.value || ''
-              }));
+              const tableName = String(table.tableName || table.name || '').trim();
+              if (!tableName) return;
+
+              const cols = Array.isArray(table.columns) ? table.columns.map((c: any) => String(c)).filter(Boolean) : [];
+              const firstCol = cols.length ? cols[0] : null;
+
+              const opts = table.rows
+                .map((row: any) => {
+                  const raw = firstCol ? row?.[firstCol] : (row?.value ?? row?.label ?? row?.name ?? row?.description ?? row?.id);
+                  const v = raw == null ? '' : String(raw).trim();
+                  if (!v) return null;
+                  return { value: v, label: v };
+                })
+                .filter(Boolean) as Array<{ value: string; label: string }>;
+
+              // Keep options sorted for better UX
+              opts.sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+
+              optionsMap[tableName] = opts;
             }
           });
           
@@ -1205,10 +1676,13 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     const fieldConfig = gridConfig[column.key];
     const options = fieldConfig?.lookupTable ? lookupOptions[fieldConfig.lookupTable] || [] : [];
 
+    const currentValue = row[column.key];
+    const currentValueStr = currentValue == null ? '' : String(currentValue);
+
     return (
       <select
         className="w-full h-full px-2 border-0 outline-none bg-white"
-        value={row[column.key] || ''}
+        value={currentValueStr}
         onChange={(e) => {
           const newValue = e.target.value;
           onRowChange({ ...row, [column.key]: newValue }, true);
@@ -1429,8 +1903,65 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
         }
       }
 
+      const AND = (...args: any[]) => args.every((x) => !!x);
+      const OR = (...args: any[]) => args.some((x) => !!x);
+      const IF = (cond: any, truthy: any, falsy: any) => (cond ? truthy : falsy);
+      const SUM = (...args: any[]) => args.reduce((s, v) => s + (Number(v) || 0), 0);
+      const MULTIPLY = (...args: any[]) => args.reduce((p, v) => p * (Number(v) || 0), 1);
+      const DIVIDE = (a: any, b: any) => {
+        const na = Number(a);
+        const nb = Number(b);
+        if (!Number.isFinite(na) || !Number.isFinite(nb) || nb === 0) return 0;
+        return na / nb;
+      };
+      const SUBTRACT = (a: any, b: any) => (Number(a) || 0) - (Number(b) || 0);
+      const MAX = (...args: any[]) => Math.max(...args.map((v) => (Number(v) || 0)));
+      const MIN = (...args: any[]) => Math.min(...args.map((v) => (Number(v) || 0)));
+      const ROUND = (n: any, decimals: any = 0) => {
+        const nn = Number(n);
+        const d = Number(decimals);
+        if (!Number.isFinite(nn) || !Number.isFinite(d)) return 0;
+        const f = Math.pow(10, Math.max(0, Math.floor(d)));
+        return Math.round(nn * f) / f;
+      };
+      const CEIL = (n: any) => Math.ceil(Number(n) || 0);
+      const FLOOR = (n: any) => Math.floor(Number(n) || 0);
+      const CONCAT = (...args: any[]) => args.map((v) => (v == null ? '' : String(v))).join('');
+      const LENGTH = (v: any) => (v == null ? 0 : String(v).length);
+
       // eslint-disable-next-line no-new-func
-      return new Function('return ' + expression)();
+      return new Function(
+        'AND',
+        'OR',
+        'IF',
+        'SUM',
+        'MULTIPLY',
+        'DIVIDE',
+        'SUBTRACT',
+        'MAX',
+        'MIN',
+        'ROUND',
+        'CEIL',
+        'FLOOR',
+        'CONCAT',
+        'LENGTH',
+        'return ' + expression
+      )(
+        AND,
+        OR,
+        IF,
+        SUM,
+        MULTIPLY,
+        DIVIDE,
+        SUBTRACT,
+        MAX,
+        MIN,
+        ROUND,
+        CEIL,
+        FLOOR,
+        CONCAT,
+        LENGTH
+      );
     } catch (err) {
       console.error('Formula evaluation error:', err);
       return null;
@@ -1554,15 +2085,29 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
             // Show lookup label if configured
             if (isDropdown && fieldConfig?.lookupTable) {
               const options = lookupOptions[fieldConfig.lookupTable] || [];
-              const option = options.find(opt => opt.value === value);
+              const valueStr = value == null ? '' : String(value).trim();
+              const option = valueStr
+                ? (
+                    options.find((opt) => String(opt.value).trim() === valueStr) ||
+                    (() => {
+                      const asNum = Number(valueStr);
+                      if (!Number.isFinite(asNum)) return undefined;
+                      return options.find((opt) => {
+                        const optNum = Number(String(opt.value).trim());
+                        return Number.isFinite(optNum) && optNum === asNum;
+                      });
+                    })() ||
+                    options.find((opt) => String(opt.label).trim() === valueStr)
+                  )
+                : undefined;
 
-              const hasTypedValue = value != null && String(value).trim() !== '';
+              const hasTypedValue = valueStr !== '';
               const isInvalidDropdownValue = hasTypedValue && !option;
 
               return (
                 <div className={clsx(baseClass, isInvalidDropdownValue && !cellHasRfi && 'bg-orange-100')}>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="truncate">{option?.label || value}</span>
+                    <span className="truncate">{option?.label || valueStr}</span>
                     {isActive && (
                       <button
                         type="button"

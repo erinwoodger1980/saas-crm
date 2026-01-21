@@ -1,7 +1,15 @@
 const bcrypt = require('bcrypt');
 const { PrismaClient } = require('@prisma/client');
+const { PrismaPg } = require('@prisma/adapter-pg');
+const { Pool } = require('pg');
 (async () => {
-  const prisma = new PrismaClient();
+  if (!process.env.DATABASE_URL) {
+    console.error('DATABASE_URL is not set');
+    process.exit(1);
+  }
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const adapter = new PrismaPg(pool);
+  const prisma = new PrismaClient({ adapter, log: ['error'] });
   try {
     const pwd = 'secret12';
     const hash = await bcrypt.hash(pwd, 10);
@@ -15,5 +23,6 @@ const { PrismaClient } = require('@prisma/client');
     process.exitCode = 1;
   } finally {
     await prisma.$disconnect();
+    await pool.end();
   }
 })();

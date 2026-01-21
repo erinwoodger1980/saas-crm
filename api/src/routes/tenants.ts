@@ -207,6 +207,15 @@ function toPlainObject(value: any): Record<string, any> {
   return {};
 }
 
+function shouldFallbackTenantSettingsQuery(err: any): boolean {
+  if (!err) return false;
+  const msg = (err?.message || String(err || "")) as string;
+  if (!msg) return false;
+  // Prisma/Postgres schema drift patterns.
+  // Examples: "column \"notificationEmails\" does not exist", "Unknown column".
+  return /does not exist|unknown column|no such column|column .* does not exist|relation .* does not exist/i.test(msg);
+}
+
 function cleanOptionalString(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -350,7 +359,21 @@ router.get("/settings", async (req, res) => {
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
   try {
-    let s = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    let s: any = null;
+    try {
+      s = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    } catch (err: any) {
+      if (!shouldFallbackTenantSettingsQuery(err)) throw err;
+      console.warn(
+        "[GET /tenant/settings] Prisma findUnique failed; falling back to raw query:",
+        err?.message || err,
+      );
+      const rows: any[] = await prisma.$queryRawUnsafe(
+        `SELECT * FROM "TenantSettings" WHERE "tenantId" = $1 LIMIT 1`,
+        tenantId,
+      );
+      s = rows?.[0] ?? null;
+    }
     if (!s) {
       // Prefer seeding from Demo Tenant template so new tenants start with the demo client's questionnaire
       let preparedQuestions: any[] | null = null;
@@ -435,29 +458,34 @@ router.get("/settings", async (req, res) => {
   }
 
     // Safe parsing of all JSON fields with fallbacks to prevent crashes
-    const normalizedPlaybook = normalizeTaskPlaybook(safeParseJson(s?.taskPlaybook, {}));
-    const normalizedQuestionnaire = normalizeQuestionnaire(safeParseJson(s?.questionnaire, []));
+    const rawPlaybook = safeParseJson(s?.taskPlaybook, {});
+    const normalizedPlaybook = normalizeTaskPlaybook(toPlainObject(rawPlaybook));
+
+    const rawQuestionnaire = safeParseJson(s?.questionnaire, []);
+    const normalizedQuestionnaire = normalizeQuestionnaire(Array.isArray(rawQuestionnaire) ? rawQuestionnaire : []);
+
     const beta = toPlainObject(safeParseJson(s?.beta, {}));
     const ownerFirstName = cleanOptionalString(beta.ownerFirstName);
     const ownerLastName = cleanOptionalString(beta.ownerLastName);
     const aiLearning = toPlainObject(beta.aiFollowupLearning || {});
     
     // Safe quote defaults parsing - critical for settings page
-    const quoteDefaults = safeParseJson(s?.quoteDefaults, {});
-    const productTypes = safeParseJson(s?.productTypes, []);
-    
-    console.log('[GET /tenant/settings] Response data:', {
+    const quoteDefaults = toPlainObject(safeParseJson(s?.quoteDefaults, {}));
+    const rawProductTypes = safeParseJson(s?.productTypes, []);
+    const productTypes = Array.isArray(rawProductTypes) ? rawProductTypes : [];
+    const notificationEmails = toPlainObject(safeParseJson((s as any)?.notificationEmails, {}));
+
+    console.log('[GET /tenant/settings] OK', {
       tenantId,
-      hasProductTypes: !!s?.productTypes,
-      productTypesRaw: s?.productTypes,
-      productTypesParsed: productTypes,
-      productTypesLength: productTypes?.length
+      productTypesLength: productTypes.length,
+      hasNotificationEmails: Object.keys(notificationEmails || {}).length > 0,
     });
     
     res.json({
       ...s,
       quoteDefaults,
       productTypes,
+      notificationEmails,
       taskPlaybook: normalizedPlaybook,
       questionnaire: normalizedQuestionnaire,
       questionnaireEmailSubject: s?.questionnaireEmailSubject ?? DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
@@ -514,6 +542,7 @@ async function updateSettings(req: any, res: any) {
     isFireDoorManufacturer,
     isGroupCoachingMember,
     productTypes,
+    notificationEmails,
   } = req.body || {};
 
   try {
@@ -605,6 +634,13 @@ async function updateSettings(req: any, res: any) {
       }
     }
 
+    if (notificationEmails !== undefined) {
+      if (!notificationEmails || typeof notificationEmails !== 'object') {
+        return res.status(400).json({ error: 'invalid_notification_emails' });
+      }
+      update.notificationEmails = notificationEmails;
+    }
+
     if (ownerFirstName !== undefined) {
       betaChanged = true;
       const val = cleanOptionalString(ownerFirstName);
@@ -672,6 +708,7 @@ async function updateSettings(req: any, res: any) {
       questionnaire: normalizedQuestionnaire,
       questionnaireEmailSubject: saved.questionnaireEmailSubject ?? DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
       questionnaireEmailBody: saved.questionnaireEmailBody ?? DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
+      notificationEmails: toPlainObject(safeParseJson((saved as any)?.notificationEmails, {})),
       ownerFirstName: savedOwnerFirstName,
       ownerLastName: savedOwnerLastName,
       aiFollowupLearning: {

@@ -4,9 +4,18 @@
  */
 
 import { Router, Request, Response } from 'express';
+import multer from 'multer';
+import { parse as parseCsv } from 'csv-parse/sync';
 import { prisma } from '../prisma';
 
 const router = Router();
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB
+  },
+});
 
 /**
  * Get tenant ID from request auth context
@@ -84,6 +93,37 @@ function buildDbRowFromUiRow(uiRow: Record<string, any>, columns: string[], inde
     sortOrder: index,
     isActive: uiRow.isActive === false ? false : true,
   };
+}
+
+function csvEscape(value: any): string {
+  const s = value === null || value === undefined ? '' : String(value);
+  const needsQuotes = /[\n\r",]/.test(s);
+  const escaped = s.replace(/"/g, '""');
+  return needsQuotes ? `"${escaped}"` : escaped;
+}
+
+function getCsvHeaders(csvContent: Buffer | string): string[] {
+  const records = parseCsv(csvContent, {
+    columns: true,
+    skip_empty_lines: true,
+    trim: true,
+    bom: true,
+    to: 1,
+    relax_column_count: true,
+  }) as Array<Record<string, any>>;
+
+  if (!records.length) return [];
+  return Object.keys(records[0]).map((h) => String(h || '').trim()).filter(Boolean);
+}
+
+function parseCsvRecords(csvContent: Buffer | string): Array<Record<string, any>> {
+  return parseCsv(csvContent, {
+    columns: true,
+    skip_empty_lines: true,
+    trim: true,
+    bom: true,
+    relax_column_count: true,
+  }) as Array<Record<string, any>>;
 }
 
 // ============================================================================
@@ -714,6 +754,204 @@ router.delete('/lookup-tables/:tableId', async (req: Request, res: Response) => 
   } catch (error) {
     console.error('Error deleting lookup table:', error);
     return res.status(500).json({ error: 'Failed to delete lookup table' });
+  }
+});
+
+/**
+ * GET /api/lookup-tables/:tableId/csv
+ * Export a lookup table as CSV
+ */
+router.get('/lookup-tables/:tableId/csv', async (req: Request, res: Response) => {
+  try {
+    const { tableId } = req.params;
+    const tenantId = getTenantId(req);
+
+    if (!tenantId) {
+      return res.status(400).json({ error: 'tenantId is required for /api/flexible-fields' });
+    }
+
+    const table = await prisma.lookupTable.findFirst({
+      where: { id: tableId, tenantId },
+      include: { rows: { orderBy: { sortOrder: 'asc' } } },
+    });
+
+    if (!table) return res.status(404).json({ error: 'Lookup table not found' });
+
+    const columns = normalizeStringArray((table as any).columns);
+    const dbRows = Array.isArray((table as any).rows) ? (table as any).rows : [];
+    const uiRows = dbRows.map(buildUiRowFromDbRow);
+
+    const effectiveColumns = columns.length
+      ? columns
+      : (uiRows[0] ? Object.keys(uiRows[0]) : []);
+
+    const lines: string[] = [];
+    lines.push(effectiveColumns.map(csvEscape).join(','));
+    for (const r of uiRows) {
+      const vals = effectiveColumns.map((c) => csvEscape((r as any)[c]));
+      lines.push(vals.join(','));
+    }
+
+    const csvText = lines.join('\n');
+    const safeName = String((table as any).tableName || (table as any).name || 'lookup-table')
+      .replace(/[^a-z0-9\-_.]+/gi, '_');
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}.csv"`);
+    return res.status(200).send(csvText);
+  } catch (error: any) {
+    console.error('[lookup-tables] Error exporting CSV:', error);
+    return res.status(500).json({ error: 'Failed to export lookup table CSV' });
+  }
+});
+
+/**
+ * POST /api/lookup-tables/:tableId/csv-import
+ * Import (upsert) lookup table rows from CSV.
+ * - Matches rows by first column (table.columns[0] or CSV's first header)
+ * - Adds new columns from CSV headers
+ * - Updates existing rows or creates new rows
+ * - Does NOT delete/deactivate rows missing from CSV
+ */
+router.post('/lookup-tables/:tableId/csv-import', upload.single('file'), async (req: Request, res: Response) => {
+  try {
+    const { tableId } = req.params;
+    const tenantId = getTenantId(req);
+
+    if (!tenantId) {
+      return res.status(400).json({ error: 'tenantId is required for /api/flexible-fields' });
+    }
+
+    if (!req.file?.buffer) {
+      return res.status(400).json({ error: 'No CSV file uploaded' });
+    }
+
+    const existing = await prisma.lookupTable.findFirst({
+      where: { id: tableId, tenantId },
+      include: { rows: { orderBy: { sortOrder: 'asc' } } },
+    });
+
+    if (!existing) return res.status(404).json({ error: 'Lookup table not found' });
+
+    const incomingHeaders = getCsvHeaders(req.file.buffer);
+    const records = parseCsvRecords(req.file.buffer);
+
+    const existingColumns = normalizeStringArray((existing as any).columns);
+    const primaryColumn = (existingColumns[0] || incomingHeaders[0] || '').trim();
+
+    if (!primaryColumn) {
+      return res.status(400).json({ error: 'Lookup table must have at least one column (first column is the key)' });
+    }
+
+    const nextColumns = (() => {
+      const base = existingColumns.length ? [...existingColumns] : [...incomingHeaders];
+      const set = new Set(base);
+      for (const h of incomingHeaders) {
+        if (!set.has(h)) {
+          base.push(h);
+          set.add(h);
+        }
+      }
+      // Ensure primary column is first
+      if (base.length && base[0] !== primaryColumn) {
+        const idx = base.indexOf(primaryColumn);
+        if (idx > 0) {
+          base.splice(idx, 1);
+          base.unshift(primaryColumn);
+        } else if (idx < 0) {
+          base.unshift(primaryColumn);
+        }
+      }
+      return base;
+    })();
+
+    const dbRows = Array.isArray((existing as any).rows) ? (existing as any).rows : [];
+    const uiRows = dbRows.map((r: any) => ({ db: r, ui: buildUiRowFromDbRow(r) }));
+    const existingByKey = new Map<string, { db: any; ui: Record<string, any> }>();
+
+    for (const r of uiRows) {
+      const k = String((r.ui as any)[primaryColumn] ?? (r.ui as any).value ?? '').trim();
+      if (k) existingByKey.set(k, r);
+    }
+
+    const maxSort = dbRows.reduce((m: number, r: any) => Math.max(m, Number(r?.sortOrder ?? 0)), 0);
+    let nextSort = maxSort + 1;
+
+    const updates = records
+      .map((rec) => {
+        const key = String((rec as any)[primaryColumn] ?? '').trim();
+        if (!key) return null;
+
+        const hit = existingByKey.get(key);
+        const baseUi = hit ? { ...(hit.ui || {}) } : {};
+
+        // Overlay CSV values
+        for (const h of incomingHeaders) {
+          (baseUi as any)[h] = (rec as any)[h];
+        }
+
+        // Ensure the primary column is set
+        (baseUi as any)[primaryColumn] = key;
+
+        const sortOrder = hit ? Number(hit.db?.sortOrder ?? 0) : nextSort++;
+        const dbRow = buildDbRowFromUiRow(baseUi, nextColumns, sortOrder);
+        return { value: dbRow.value, dbRow, sortOrder };
+      })
+      .filter(Boolean) as Array<{ value: string; dbRow: ReturnType<typeof buildDbRowFromUiRow>; sortOrder: number }>;
+
+    const updated = await prisma.$transaction(async (tx) => {
+      // Update columns if changed
+      const colsChanged = JSON.stringify(existingColumns) !== JSON.stringify(nextColumns);
+      if (colsChanged) {
+        await tx.lookupTable.update({
+          where: { id: tableId },
+          data: { columns: nextColumns },
+        });
+      }
+
+      for (const u of updates) {
+        await tx.lookupTableRow.upsert({
+          where: {
+            lookupTableId_value: {
+              lookupTableId: tableId,
+              value: u.value,
+            },
+          },
+          update: {
+            label: u.dbRow.label,
+            description: u.dbRow.description,
+            code: u.dbRow.code,
+            sortOrder: u.sortOrder,
+            isActive: true,
+            customProps: u.dbRow.customProps,
+          },
+          create: {
+            lookupTableId: tableId,
+            value: u.value,
+            label: u.dbRow.label,
+            description: u.dbRow.description,
+            code: u.dbRow.code,
+            sortOrder: u.sortOrder,
+            isActive: true,
+            customProps: u.dbRow.customProps,
+          },
+        });
+      }
+
+      const full = await tx.lookupTable.findUnique({
+        where: { id: tableId },
+        include: { rows: { orderBy: { sortOrder: 'asc' } } },
+      });
+      return full;
+    });
+
+    return res.json({
+      ...updated,
+      rows: Array.isArray((updated as any)?.rows) ? (updated as any).rows.map(buildUiRowFromDbRow) : [],
+    });
+  } catch (error: any) {
+    console.error('[lookup-tables] Error importing CSV:', error);
+    return res.status(500).json({ error: 'Failed to import lookup table CSV', message: error?.message });
   }
 });
 

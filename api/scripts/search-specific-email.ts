@@ -5,8 +5,16 @@
 
 import { PrismaClient } from "@prisma/client";
 import fetch from "node-fetch";
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 
-const prisma = new PrismaClient();
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL is not set');
+}
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter, log: ['error'] });
 const TENANT_ID = "cmgt7eozw0000sh2htcmplljf"; // Wealden Joinery
 
 async function getAccessToken() {
@@ -157,6 +165,7 @@ async function main() {
     throw error;
   } finally {
     await prisma.$disconnect();
+    await pool.end();
   }
 }
 

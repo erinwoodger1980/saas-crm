@@ -831,18 +831,76 @@ function LeadsPageContent() {
     const trimmed = raw.trim();
     const now = new Date();
     const dateHeader = now.toUTCString();
-    const subject = "Dropped email";
+
+    function normalizeHeaderLine(s: string): string {
+      return String(s || "")
+        .replace(/^>\s*/g, "")
+        .trim();
+    }
+
+    function extractHeaderValue(lines: string[], headerName: string): string | null {
+      const re = new RegExp(`^${headerName}:\\s*(.+)$`, "i");
+      for (let i = 0; i < lines.length; i += 1) {
+        const line = normalizeHeaderLine(lines[i]);
+        const m = line.match(re);
+        if (m?.[1]) {
+          // Handle folded headers (RFC5322): subsequent lines starting with whitespace.
+          let v = m[1].trim();
+          let j = i + 1;
+          while (j < lines.length) {
+            const nextRaw = String(lines[j] || "");
+            if (/^\s+/.test(nextRaw)) {
+              v += " " + nextRaw.trim();
+              j += 1;
+              continue;
+            }
+            break;
+          }
+          return v.trim() || null;
+        }
+      }
+      return null;
+    }
+
+    // Try to peel off a header-like block from the top of the dropped text.
+    const rawLines = raw.split("\n");
+    const headerLines: string[] = [];
+    let bodyStart = 0;
+    for (let i = 0; i < rawLines.length; i += 1) {
+      const line = String(rawLines[i] || "");
+      const normalized = normalizeHeaderLine(line);
+      if (normalized === "") {
+        bodyStart = i + 1;
+        break;
+      }
+
+      // Only treat as headers while it resembles header lines.
+      const isHeaderish = /^(from|to|cc|bcc|subject|date|sent|reply-to):\s*/i.test(normalized);
+      if (!isHeaderish) {
+        bodyStart = i;
+        break;
+      }
+      headerLines.push(line);
+      bodyStart = i + 1;
+    }
+
+    const subject = extractHeaderValue(headerLines, "Subject") || "Dropped email";
+    const from = extractHeaderValue(headerLines, "From") || "unknown <unknown@joineryai.local>";
+    const to = extractHeaderValue(headerLines, "To") || "undisclosed-recipients:;";
+    const date = extractHeaderValue(headerLines, "Date") || dateHeader;
+
+    const bodyText = (rawLines.slice(bodyStart).join("\n").trim() || trimmed || raw || "(no content)").trim();
 
     return (
-      `From: unknown <unknown@joineryai.local>\r\n` +
-      `To: undisclosed-recipients:;\r\n` +
+      `From: ${from}\r\n` +
+      `To: ${to}\r\n` +
       `Subject: ${subject}\r\n` +
-      `Date: ${dateHeader}\r\n` +
+      `Date: ${date}\r\n` +
       `MIME-Version: 1.0\r\n` +
       `Content-Type: text/plain; charset="UTF-8"\r\n` +
       `Content-Transfer-Encoding: 7bit\r\n` +
       `\r\n` +
-      `${trimmed || raw || "(no content)"}\r\n`
+      `${bodyText}\r\n`
     );
   }
 

@@ -5,17 +5,158 @@
 
 import { Router } from 'express';
 import multer from 'multer';
+import ExcelJS from 'exceljs';
 import { prisma } from '../prisma';
 import { Prisma } from '@prisma/client';
 import { 
   parseFireDoorCSV, 
   calculateTotalValue, 
   validateCSVHeaders,
+  getCsvHeaders,
+  getExpectedCsvHeaders,
+  COLUMN_MAPPING,
+  isCostOrLabourFieldLabel,
   type ParsedFireDoorRow,
   type FireDoorImportResponse 
 } from '../lib/fireDoorImport';
 
 const router = Router();
+
+const FIRE_DOOR_REQUIRED_HEADERS: readonly string[] = [];
+
+function isXlsxUpload(file: Express.Multer.File): boolean {
+  const name = String(file?.originalname || '').toLowerCase();
+  const type = String((file as any)?.mimetype || '').toLowerCase();
+  if (name.endsWith('.xlsx')) return true;
+  if (type.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')) return true;
+  return false;
+}
+
+function csvEscape(value: any): string {
+  const s = value === null || value === undefined ? '' : String(value);
+  const needsQuotes = /[\n\r",]/.test(s);
+  const escaped = s.replace(/"/g, '""');
+  return needsQuotes ? `"${escaped}"` : escaped;
+}
+
+function normalizeHeaderCandidate(input: any): string {
+  return String(input ?? '')
+    .toLowerCase()
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*\/\s*/g, '/')
+    .replace(/\s*-\s*/g, '-')
+    .trim();
+}
+
+function getCellText(cell: ExcelJS.Cell): string {
+  const t = (cell as any)?.text;
+  if (typeof t === 'string') return t;
+  const v = cell?.value as any;
+  if (v === null || v === undefined) return '';
+  return String(v);
+}
+
+function rowToValues(row: ExcelJS.Row, maxColumns: number): string[] {
+  const out: string[] = [];
+  for (let col = 1; col <= maxColumns; col++) {
+    const cell = row.getCell(col);
+    out.push(getCellText(cell));
+  }
+  while (out.length > 1 && String(out[out.length - 1] ?? '').trim() === '') {
+    out.pop();
+  }
+  return out;
+}
+
+function detectHeaderRowNumber(
+  worksheet: ExcelJS.Worksheet,
+  opts: { requiredHeaders: readonly string[]; expectedHeaders: readonly string[] }
+): number {
+  const requiredSet = new Set(opts.requiredHeaders.map(normalizeHeaderCandidate));
+  const expectedSet = new Set(opts.expectedHeaders.map(normalizeHeaderCandidate));
+  const hasRequired = requiredSet.size > 0;
+
+  const maxScanRows = Math.min(worksheet.actualRowCount || worksheet.rowCount || 0, 50);
+  const maxColumns = Math.max(worksheet.actualColumnCount || 0, worksheet.columnCount || 0, 1);
+
+  let bestRow = 1;
+  let bestScore = -1;
+
+  for (let i = 1; i <= maxScanRows; i++) {
+    const row = worksheet.getRow(i);
+    const values = rowToValues(row, maxColumns);
+    const normCells = new Set(values.map(normalizeHeaderCandidate).filter(Boolean));
+    if (normCells.size === 0) continue;
+
+    let requiredMatches = 0;
+    let expectedMatches = 0;
+    for (const c of normCells) {
+      if (requiredSet.has(c)) requiredMatches++;
+      if (expectedSet.has(c)) expectedMatches++;
+    }
+
+    // Prefer rows that match required headers if they exist; otherwise use expected headers.
+    const score = (hasRequired ? (requiredMatches * 1000) : 0) + expectedMatches * 10 + Math.min(normCells.size, 50);
+    if (score > bestScore) {
+      bestScore = score;
+      bestRow = i;
+    }
+  }
+
+  // Guard: if we didn't match anything meaningful, default to row 1.
+  const bestRowValues = rowToValues(worksheet.getRow(bestRow), Math.max(worksheet.actualColumnCount || 0, worksheet.columnCount || 0, 1));
+  const bestNorm = new Set(bestRowValues.map(normalizeHeaderCandidate).filter(Boolean));
+  let bestRequiredMatches = 0;
+  let bestExpectedMatches = 0;
+  for (const c of bestNorm) {
+    if (requiredSet.has(c)) bestRequiredMatches++;
+    if (expectedSet.has(c)) bestExpectedMatches++;
+  }
+  // Guard: when required headers exist, insist on at least 2 matches.
+  if (hasRequired && bestRequiredMatches < 2) return 1;
+  // Guard: when we have no required headers, still require a minimal signal.
+  if (!hasRequired && bestExpectedMatches < 2) return 1;
+
+  return bestRow;
+}
+
+async function convertXlsxBufferToCsv(
+  buffer: Buffer | Uint8Array | ArrayBuffer,
+  opts: { requiredHeaders: readonly string[]; expectedHeaders: readonly string[]; sheetName?: string | null; sheetIndex?: number | null }
+): Promise<string> {
+  const workbook = new ExcelJS.Workbook();
+  const input = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer as any);
+  const arrayBuffer = input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength);
+  await workbook.xlsx.load(arrayBuffer as any);
+
+  const sheets = Array.isArray(workbook.worksheets) ? workbook.worksheets : [];
+  const pickByName = (opts.sheetName ? sheets.find((ws) => ws.name === opts.sheetName) : undefined);
+  const pickByIndex = (Number.isFinite(opts.sheetIndex as any) && (opts.sheetIndex as any) != null)
+    ? sheets[(opts.sheetIndex as number) - 1]
+    : undefined;
+
+  const worksheet = pickByName || pickByIndex || sheets[0];
+  if (!worksheet) {
+    throw new Error('Excel file has no worksheets');
+  }
+
+  const maxColumns = Math.max(worksheet.actualColumnCount || 0, worksheet.columnCount || 0, 1);
+  const headerRowNumber = detectHeaderRowNumber(worksheet, opts);
+  const lastRow = worksheet.actualRowCount || worksheet.rowCount || headerRowNumber;
+
+  const lines: string[] = [];
+  for (let r = headerRowNumber; r <= lastRow; r++) {
+    const row = worksheet.getRow(r);
+    const values = rowToValues(row, maxColumns);
+    // Skip completely empty rows
+    if (!values.some((v) => String(v ?? '').trim() !== '')) continue;
+    const cells = values.map((v) => csvEscape(v));
+    lines.push(cells.join(','));
+  }
+
+  return lines.join('\n');
+}
 
 const FIRE_DOOR_LINE_ITEM_MODEL = (() => {
   try {
@@ -162,6 +303,93 @@ const upload = multer({
   },
 });
 
+function getJsonObject(value: any): Record<string, any> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return value as Record<string, any>;
+}
+
+function sanitizeColumnWidths(input: any): Record<string, number> {
+  const obj = getJsonObject(input);
+  const out: Record<string, number> = {};
+  for (const [kRaw, v] of Object.entries(obj)) {
+    const k = String(kRaw || '').trim();
+    if (!k) continue;
+    const n = typeof v === 'number' ? v : Number(v);
+    if (!Number.isFinite(n)) continue;
+    // Keep within a sensible UI range
+    const clamped = Math.max(40, Math.min(1200, n));
+    out[k] = clamped;
+  }
+  return out;
+}
+
+/**
+ * GET /api/fire-doors/order-grid/column-widths
+ * Tenant-scoped UI preference for Fire Door Order Grid column widths.
+ */
+router.get('/order-grid/column-widths', async (req, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: 'Authentication required' });
+
+    const tenantSettings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { isFireDoorManufacturer: true, beta: true },
+    });
+
+    if (!tenantSettings?.isFireDoorManufacturer) {
+      return res.status(403).json({ error: 'Fire door import access required' });
+    }
+
+    const beta = getJsonObject((tenantSettings as any).beta);
+    const columnWidths = sanitizeColumnWidths((beta as any).fireDoorOrderGridColumnWidths);
+    return res.json({ ok: true, columnWidths });
+  } catch (error: any) {
+    console.error('[fire-doors] Get order grid column widths error:', error);
+    return res.status(500).json({ error: 'Failed to load column widths' });
+  }
+});
+
+/**
+ * POST /api/fire-doors/order-grid/column-widths
+ * Body: { columnWidths: Record<string, number> }
+ */
+router.post('/order-grid/column-widths', async (req, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: 'Authentication required' });
+
+    const tenantSettings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { isFireDoorManufacturer: true, beta: true },
+    });
+
+    if (!tenantSettings?.isFireDoorManufacturer) {
+      return res.status(403).json({ error: 'Fire door import access required' });
+    }
+
+    const body = (req.body && typeof req.body === 'object') ? (req.body as any) : {};
+    const columnWidths = sanitizeColumnWidths(body.columnWidths);
+    const beta = getJsonObject((tenantSettings as any).beta);
+
+    await prisma.tenantSettings.update({
+      where: { tenantId },
+      data: {
+        beta: {
+          ...(beta as any),
+          fireDoorOrderGridColumnWidths: columnWidths,
+        },
+      },
+      select: { tenantId: true },
+    });
+
+    return res.json({ ok: true, columnWidths });
+  } catch (error: any) {
+    console.error('[fire-doors] Save order grid column widths error:', error);
+    return res.status(500).json({ error: 'Failed to save column widths' });
+  }
+});
+
 /**
  * POST /api/fire-doors/import
  * Import fire door orders from CSV spreadsheet
@@ -200,34 +428,147 @@ router.post('/import', upload.single('file'), async (req, res) => {
     }
 
     const sourceName = req.file.originalname;
-    const csvContent = req.file.buffer;
+    let csvContent: string | Buffer = req.file.buffer;
 
-    // 4. Validate CSV headers
-    const headerValidation = validateCSVHeaders(csvContent);
-    if (!headerValidation.valid) {
-      return res.status(400).json({
-        error: 'Invalid CSV format',
-        message: 'CSV file is missing required columns',
-        missingHeaders: headerValidation.missingHeaders,
+    if (isXlsxUpload(req.file)) {
+      const rawSheetName = (req.body as any)?.sheetName;
+      const sheetName = typeof rawSheetName === 'string' && rawSheetName.trim() ? rawSheetName.trim() : null;
+
+      const rawSheetIndex = (req.body as any)?.sheetIndex;
+      const sheetIndex = typeof rawSheetIndex === 'string' && rawSheetIndex.trim()
+        ? Number(rawSheetIndex)
+        : (typeof rawSheetIndex === 'number' ? rawSheetIndex : null);
+      const sheetIndexClean = Number.isFinite(sheetIndex as any) ? Math.floor(sheetIndex as number) : null;
+
+      try {
+        // If the workbook has multiple sheets and the user didn't specify which one,
+        // return a selection prompt so the UI can ask.
+        if (!sheetName && !sheetIndexClean) {
+          const workbook = new ExcelJS.Workbook();
+          const input = Buffer.isBuffer(req.file.buffer) ? req.file.buffer : Buffer.from(req.file.buffer as any);
+          const arrayBuffer = input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength);
+          await workbook.xlsx.load(arrayBuffer as any);
+          const sheets = Array.isArray(workbook.worksheets) ? workbook.worksheets.map((ws) => ws.name).filter(Boolean) : [];
+          if (sheets.length > 1) {
+            return res.status(422).json({
+              error: 'Select sheet',
+              message: 'Please select which sheet to import from this Excel workbook.',
+              needsSheetSelection: true,
+              sheets,
+            });
+          }
+        }
+
+        csvContent = await convertXlsxBufferToCsv(req.file.buffer, {
+          requiredHeaders: FIRE_DOOR_REQUIRED_HEADERS,
+          expectedHeaders: getExpectedCsvHeaders(),
+          sheetName,
+          sheetIndex: sheetIndexClean,
+        });
+      } catch (err: any) {
+        console.error('[fire-door-import] Excel parse error:', err);
+        return res.status(400).json({
+          error: 'Failed to parse Excel file',
+          message: err?.message || 'Invalid Excel format',
+        });
+      }
+    }
+
+    // Optional header mapping (for column matcher UI)
+    let headerMap: Record<string, string> | undefined;
+    try {
+      const raw = (req.body as any)?.headerMap;
+      if (typeof raw === 'string' && raw.trim()) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          const out: Record<string, string> = {};
+          for (const [k, v] of Object.entries(parsed as any)) {
+            const kk = String(k || '').trim();
+            const vv = String(v || '').trim();
+            if (!kk || !vv) continue;
+            out[kk] = vv;
+          }
+          headerMap = Object.keys(out).length ? out : undefined;
+        }
+      }
+    } catch {
+      headerMap = undefined;
+    }
+
+    // 4. Validate headers (CSV or Excel converted to CSV)
+    const headers = getCsvHeaders(csvContent);
+    const expectedHeaders = getExpectedCsvHeaders();
+    const expectedHeadersForMapping = expectedHeaders.filter((csvHeader) => {
+      // Primary rule: hide by label suffix (matches the user's CSV field list).
+      if (isCostOrLabourFieldLabel(csvHeader)) return false;
+
+      // Back-compat: if the expected header happens to be a COLUMN_MAPPING key,
+      // also hide when the mapped internal field ends with cost/labour.
+      const mappedField = (COLUMN_MAPPING as any)?.[csvHeader];
+      const f = String(mappedField || '').trim().toLowerCase();
+      return !(f.endsWith('cost') || f.endsWith('labour'));
+    });
+
+    const forceMapping = (() => {
+      const raw = (req.body as any)?.forceMapping;
+      if (raw === true) return true;
+      const s = String(raw ?? '').trim().toLowerCase();
+      return s === '1' || s === 'true' || s === 'yes';
+    })();
+
+    const normalize = (input: any) =>
+      String(input ?? '')
+        .toLowerCase()
+        .replace(/\u00a0/g, ' ')
+        .replace(/\s+/g, ' ')
+        .replace(/\s*\/\s*/g, '/')
+        .replace(/\s*-\s*/g, '-')
+        .trim();
+
+    const headerNormSet = new Set(headers.map(normalize).filter(Boolean));
+    const hm = headerMap && typeof headerMap === 'object' ? headerMap : undefined;
+    const missingExpected = expectedHeadersForMapping.filter((expected) => {
+      const ne = normalize(expected);
+      if (!ne) return false;
+      if (headerNormSet.has(ne)) return false;
+      const mapped = hm ? String((hm as any)[expected] || '').trim() : '';
+      if (mapped && headerNormSet.has(normalize(mapped))) return false;
+      return true;
+    });
+
+    // No "required" fields, but if the file doesn't match the import template and the user
+    // hasn't provided a mapping, prompt the column matcher UI.
+    // If forceMapping is true, always prompt once so the user can review/adjust mappings.
+    if (!hm && (forceMapping || missingExpected.length > 0)) {
+      return res.status(422).json({
+        error: 'Column mapping recommended',
+        message: forceMapping
+          ? 'Review how your spreadsheet columns map to the import format.'
+          : 'Your spreadsheet columns don’t match the expected import format. Please map columns to continue.',
+        needsMapping: true,
+        missingHeaders: missingExpected,
+        requiredHeaders: [],
+        headers,
+        expectedHeaders: expectedHeadersForMapping,
       });
     }
 
-    // 5. Parse CSV
+    // 5. Parse CSV (or Excel-as-CSV)
     let parsedRows: ParsedFireDoorRow[];
     try {
-      parsedRows = parseFireDoorCSV(csvContent);
+      parsedRows = parseFireDoorCSV(csvContent, { headerMap });
     } catch (err: any) {
       console.error('[fire-door-import] CSV parse error:', err);
       return res.status(400).json({
-        error: 'Failed to parse CSV file',
-        message: err.message || 'Invalid CSV format',
+        error: 'Failed to parse spreadsheet file',
+        message: err.message || 'Invalid spreadsheet format',
       });
     }
 
     if (parsedRows.length === 0) {
       return res.status(400).json({
         error: 'No valid product rows found',
-        message: 'CSV must contain rows with Item = "Product"',
+        message: 'No importable rows were found in this spreadsheet.',
       });
     }
 
@@ -243,164 +584,175 @@ router.post('/import', upload.single('file'), async (req, res) => {
     const jobDescriptionFromForm = (req.body.jobDescription as string) || null;
     const netValueFromForm = req.body.netValue ? Number(req.body.netValue) : null;
     const firstRow = parsedRows[0];
-    const mjsNumber = mjsNumberFromForm || firstRow.code || sourceName.replace('.csv', '');
+    const mjsNumber = mjsNumberFromForm || firstRow.code || sourceName.replace(/\.(csv|xlsx)$/i, '');
     const clientName = customerNameFromForm || firstRow.location || 'New Fire Door Customer';
     const jobDescription = jobDescriptionFromForm || `${clientName} - ${mjsNumber}`;
     const netValue = netValueFromForm ?? totalValue;
 
-    // 8. Persist using a transaction
-    const result = await prisma.$transaction(async (tx) => {
-      // Ensure project exists
-      let fireDoorProjectId = projectId;
-      if (!fireDoorProjectId) {
-        const existingProject = await tx.fireDoorScheduleProject.findFirst({
-          where: { tenantId, mjsNumber },
-        });
-        if (existingProject) {
-          fireDoorProjectId = existingProject.id;
-        } else {
-          const fireDoorProject = await tx.fireDoorScheduleProject.create({
-            data: {
-              tenantId,
-              mjsNumber,
-              clientName,
-              jobName: jobDescription,
-              netValue: netValue as any,
-              dateReceived: new Date(),
-              jobLocation: 'RED FOLDER',
-              signOffStatus: 'NOT LOOKED AT',
-              lastUpdatedBy: userId,
-              lastUpdatedAt: new Date(),
-            },
-          });
-          fireDoorProjectId = fireDoorProject.id;
+    const importStartMs = Date.now();
 
-          // Create/ensure lead and opportunity
-          let lead = await tx.lead.findFirst({ where: { tenantId, contactName: clientName } });
-          if (!lead) {
-            lead = await tx.lead.create({
-              data: {
-                tenantId,
-                createdById: userId,
-                contactName: clientName,
-                capturedAt: new Date(),
-                status: 'INFO_REQUESTED',
-              },
-            });
-          }
-          const opportunity = await tx.opportunity.create({
-            data: {
-              tenantId,
-              leadId: lead.id,
-              title: `${clientName} - ${mjsNumber}`,
-              stage: 'QUALIFY',
-              createdAt: new Date(),
-            },
-          });
-          await tx.fireDoorScheduleProject.update({
-            where: { id: fireDoorProjectId },
-            data: { projectId: opportunity.id },
-          });
-        }
+    // 8. Prepare line item payloads outside any transaction (keeps interactive tx fast)
+    const preparedLineItems = parsedRows.map((row, idx) => {
+      const scalarData: Record<string, any> = {};
+      for (const [k, v] of Object.entries(row as any)) {
+        if (!k || k === 'rawRowJson') continue;
+        if (LINE_ITEM_FORBIDDEN_UPDATE_FIELDS.has(k)) continue;
+        const meta = FIRE_DOOR_LINE_ITEM_SCALAR_FIELDS.get(k);
+        if (!meta) continue;
+        scalarData[k] = coerceScalarValue(v, meta);
       }
 
-      // Create import record
-      const importRecord = await tx.fireDoorImport.create({
-        data: {
-          tenantId,
-          createdById: userId,
-          sourceName,
-          status: 'COMPLETED',
-          totalValue,
-          currency: 'GBP',
-          rowCount,
-          projectId: fireDoorProjectId,
-          orderId,
-        },
-      });
-
-      // Create line items
-      const lineItems = await Promise.all(
-        parsedRows.map((row, idx) =>
-          tx.fireDoorLineItem.create({
-            data: {
-              fireDoorImportId: importRecord.id,
-              tenantId,
-              rowIndex: idx,
-              itemType: row.itemType,
-              code: row.code,
-              quantity: row.quantity,
-              doorRef: row.doorRef,
-              location: row.location,
-              doorsetType: row.doorSetType,
-              rating: row.fireRating,
-              acousticRatingDb: row.acousticRatingDb,
-              internalColour: row.internalColour,
-              externalColour: row.externalColour,
-              frameFinish: row.frameFinish,
-              leafHeight: row.leafHeight,
-              masterLeafWidth: row.masterLeafWidth,
-              slaveLeafWidth: row.slaveLeafWidth,
-              leafThickness: row.leafThickness,
-              leafConfiguration: row.leafConfiguration,
-              ifSplitMasterSize: row.ifSplitMasterSize,
-              doorFinishSide1: row.doorFinishSide1,
-              doorFinishSide2: row.doorFinishSide2,
-              doorFacing: row.doorFacing,
-              lippingFinish: row.lippingFinish,
-              doorEdgeProtType: row.doorEdgeProtType,
-              doorEdgeProtPos: row.doorEdgeProtPos,
-              doorUndercut: row.doorUndercut,
-              doorUndercutMm: row.doorUndercutMm,
-              visionQtyLeaf1: row.visionQtyLeaf1,
-              vp1WidthLeaf1: row.vp1WidthLeaf1,
-              vp1HeightLeaf1: row.vp1HeightLeaf1,
-              vp2WidthLeaf1: row.vp2WidthLeaf1,
-              vp2HeightLeaf1: row.vp2HeightLeaf1,
-              visionQtyLeaf2: row.visionQtyLeaf2,
-              vp1WidthLeaf2: row.vp1WidthLeaf2,
-              vp1HeightLeaf2: row.vp1HeightLeaf2,
-              vp2WidthLeaf2: row.vp2WidthLeaf2,
-              vp2HeightLeaf2: row.vp2HeightLeaf2,
-              totalGlazedAreaMaster: row.totalGlazedAreaMaster,
-              fanlightSidelightGlz: row.fanlightSidelightGlz,
-              glazingTape: row.glazingTape,
-              ironmongeryPackRef: row.ironmongeryPackRef,
-              closerOrFloorSpring: row.closerOrFloorSpring,
-              spindleFacePrep: row.spindleFacePrep,
-              cylinderFacePrep: row.cylinderFacePrep,
-              flushBoltSupplyPrep: row.flushBoltSupplyPrep,
-              flushBoltQty: row.flushBoltQty,
-              fingerProtection: row.fingerProtection,
-              fireSignage: row.fireSignage,
-              fireSignageQty: row.fireSignageQty,
-              fireSignageFactoryFit: row.fireSignageFactoryFit,
-              fireIdDisc: row.fireIdDisc,
-              fireIdDiscQty: row.fireIdDiscQty,
-              doorViewer: row.doorViewer,
-              doorViewerPosition: row.doorViewerPosition,
-              doorViewerPrepSize: row.doorViewerPrepSize,
-              doorChain: row.doorChain,
-              doorViewersQty: row.doorViewersQty,
-              doorChainFactoryFit: row.doorChainFactoryFit,
-              doorViewersFactoryFit: row.doorViewersFactoryFit,
-              additionNote1: row.additionNote1,
-              additionNote1Qty: row.additionNote1Qty,
-              unitValue: row.unitValue,
-              labourCost: row.labourCost,
-              materialCost: row.materialCost,
-              lineTotal: row.lineTotal,
-              rawRowJson: row.rawRowJson as any,
-            },
-          })
-        )
-      );
-
-      return { importRecord, lineItems };
+      return {
+        rawRowJson: (row as any).rawRowJson as any,
+        ...scalarData,
+        tenantId,
+        rowIndex: idx,
+      };
     });
 
-    // 9. Build response with preview of first 10 line items
-    const previewItems = result.lineItems.slice(0, 10).map((item) => ({
+    // 9. Persist project + import record in a short interactive transaction
+    const result = await prisma.$transaction(
+      async (tx) => {
+        // Ensure project exists
+        let fireDoorProjectId = projectId;
+        if (!fireDoorProjectId) {
+          const existingProject = await tx.fireDoorScheduleProject.findFirst({
+            where: { tenantId, mjsNumber },
+          });
+          if (existingProject) {
+            fireDoorProjectId = existingProject.id;
+          } else {
+            const fireDoorProject = await tx.fireDoorScheduleProject.create({
+              data: {
+                tenantId,
+                mjsNumber,
+                clientName,
+                jobName: jobDescription,
+                netValue: netValue as any,
+                dateReceived: new Date(),
+                jobLocation: 'RED FOLDER',
+                signOffStatus: 'NOT LOOKED AT',
+                lastUpdatedBy: userId,
+                lastUpdatedAt: new Date(),
+              },
+            });
+            fireDoorProjectId = fireDoorProject.id;
+
+            // Create/ensure lead and opportunity
+            let lead = await tx.lead.findFirst({ where: { tenantId, contactName: clientName } });
+            if (!lead) {
+              lead = await tx.lead.create({
+                data: {
+                  tenantId,
+                  createdById: userId,
+                  contactName: clientName,
+                  capturedAt: new Date(),
+                  status: 'INFO_REQUESTED',
+                },
+              });
+            }
+            const opportunity = await tx.opportunity.create({
+              data: {
+                tenantId,
+                leadId: lead.id,
+                title: `${clientName} - ${mjsNumber}`,
+                stage: 'QUALIFY',
+                createdAt: new Date(),
+              },
+            });
+            await tx.fireDoorScheduleProject.update({
+              where: { id: fireDoorProjectId },
+              data: { projectId: opportunity.id },
+            });
+          }
+        }
+
+        // Create import record (mark as processing until rows are inserted)
+        const importRecord = await tx.fireDoorImport.create({
+          data: {
+            tenantId,
+            createdById: userId,
+            sourceName,
+            status: 'PROCESSING',
+            totalValue,
+            currency: 'GBP',
+            rowCount,
+            projectId: fireDoorProjectId,
+            orderId,
+          },
+        });
+
+        return { importRecord, fireDoorProjectId };
+      },
+      // Render/production defaults can be 5s; imports can legitimately take longer.
+      { timeout: 120000 }
+    );
+
+    // 10. Insert line items in small batches outside the interactive transaction
+    const BATCH_SIZE = 100;
+    try {
+      const total = preparedLineItems.length;
+      const batches = Math.ceil(total / BATCH_SIZE) || 1;
+      console.log('[fire-door-import] Inserting line items:', {
+        tenantId,
+        importId: result.importRecord.id,
+        total,
+        batchSize: BATCH_SIZE,
+        batches,
+      });
+
+      for (let i = 0; i < preparedLineItems.length; i += BATCH_SIZE) {
+        const chunk = preparedLineItems.slice(i, i + BATCH_SIZE);
+        await prisma.fireDoorLineItem.createMany({
+          data: chunk.map((li) => ({
+            ...li,
+            fireDoorImportId: result.importRecord.id,
+          })) as any,
+        });
+      }
+
+      await prisma.fireDoorImport.update({
+        where: { id: result.importRecord.id },
+        data: { status: 'COMPLETED' },
+      });
+
+      console.log('[fire-door-import] Insert complete:', {
+        tenantId,
+        importId: result.importRecord.id,
+        totalInserted: preparedLineItems.length,
+        durationMs: Date.now() - importStartMs,
+      });
+    } catch (e: any) {
+      await prisma.fireDoorImport.update({
+        where: { id: result.importRecord.id },
+        data: { status: 'FAILED' },
+      });
+
+      console.error('[fire-door-import] Insert failed:', {
+        tenantId,
+        importId: result.importRecord.id,
+        durationMs: Date.now() - importStartMs,
+        message: e?.message || String(e),
+      });
+      throw e;
+    }
+
+    const previewRows = await prisma.fireDoorLineItem.findMany({
+      where: { fireDoorImportId: result.importRecord.id },
+      orderBy: { rowIndex: 'asc' },
+      take: 10,
+      select: {
+        id: true,
+        doorRef: true,
+        location: true,
+        rating: true,
+        quantity: true,
+        lineTotal: true,
+      },
+    });
+
+    // 11. Build response with preview of first 10 line items
+    const previewItems = previewRows.map((item) => ({
       id: item.id,
       doorRef: item.doorRef,
       location: item.location,

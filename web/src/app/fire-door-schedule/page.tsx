@@ -809,6 +809,27 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
   }
 
   // Tab definitions with labels and column sets
+  const PRODUCTION_COLUMNS = [
+    'mjsNumber',
+    'clientName',
+    'jobName',
+    'blanksCutPercent',
+    'edgebandPercent',
+    'calibratePercent',
+    'facingsPercent',
+    'finalCncPercent',
+    'finishPercent',
+    'sandPercent',
+    'sprayPercent',
+    'cutPercent',
+    'cncPercent',
+    'buildPercent',
+    'overallProgress',
+    'transportStatus',
+    'doorSets',
+    'leaves',
+    'deliveryNotes'
+  ];
   const TAB_DEFINITIONS = {
     CLIENT_PORTAL: {
       label: 'Client Portal',
@@ -936,27 +957,11 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
     },
     PRODUCTION: {
       label: 'Production',
-      columns: [
-        'mjsNumber',
-        'clientName',
-        'jobName',
-        'blanksCutPercent',
-        'edgebandPercent',
-        'calibratePercent',
-        'facingsPercent',
-        'finalCncPercent',
-        'finishPercent',
-        'sandPercent',
-        'sprayPercent',
-        'cutPercent',
-        'cncPercent',
-        'buildPercent',
-        'overallProgress',
-        'transportStatus',
-        'doorSets',
-        'leaves',
-        'deliveryNotes'
-      ]
+      columns: PRODUCTION_COLUMNS
+    },
+    SNAPSHOT: {
+      label: 'Snapshot',
+      columns: PRODUCTION_COLUMNS
     },
     ALL: {
       label: 'All',
@@ -1849,38 +1854,6 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
             <div className="flex gap-3">
               {!isCustomerPortal && (
                 <>
-                  <label className="cursor-pointer">
-                    <input
-                      type="file"
-                      accept=".csv"
-                      className="hidden"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        
-                        try {
-                          setLoading(true);
-                          const csvContent = await file.text();
-                          const result = await apiFetch<any>('/fire-door-schedule/trigger-bom-import', {
-                            method: 'POST',
-                            json: { csvContent }
-                          });
-                          
-                          alert(`Import complete!\nCreated: ${result.summary.created}\nUpdated: ${result.summary.updated}\nSkipped: ${result.summary.skipped}\nErrors: ${result.summary.errors}`);
-                          loadData();
-                        } catch (error: any) {
-                          alert(`Import failed: ${error.message || 'Unknown error'}`);
-                        } finally {
-                          setLoading(false);
-                          e.target.value = ''; // Reset file input
-                        }
-                      }}
-                    />
-                    <span className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none border border-slate-200 bg-white/50 hover:bg-white h-10 py-2 px-4 cursor-pointer">
-                      <Download className="w-4 h-4 mr-2" />
-                      Import CSV
-                    </span>
-                  </label>
                   <Button 
                     onClick={() => router.push("/fire-door-schedule/new")}
                     className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg hover:shadow-xl transition-all"

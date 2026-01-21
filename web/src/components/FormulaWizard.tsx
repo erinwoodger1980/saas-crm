@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Plus, Trash2, Copy } from "lucide-react";
 
 interface FormulaToken {
@@ -41,6 +41,8 @@ const AVAILABLE_FUNCTIONS = [
   { name: "MULTIPLY", description: "Multiply numbers: MULTIPLY(a, b)" },
   { name: "DIVIDE", description: "Divide: DIVIDE(a, b)" },
   { name: "SUBTRACT", description: "Subtract: SUBTRACT(a, b)" },
+  { name: "AND", description: "All true: AND(a, b, c)" },
+  { name: "OR", description: "Any true: OR(a, b, c)" },
   { name: "IF", description: "Conditional: IF(condition, true_value, false_value)" },
   { name: "MAX", description: "Maximum: MAX(a, b, c)" },
   { name: "MIN", description: "Minimum: MIN(a, b, c)" },
@@ -79,6 +81,42 @@ export function FormulaWizard({
   const [aiBusy, setAiBusy] = useState(false);
   const [aiNotes, setAiNotes] = useState<string>("");
   const [aiIssues, setAiIssues] = useState<string[]>([]);
+
+  const sortedAvailableFields = useMemo(() => {
+    return [...(availableFields || [])].sort((a, b) =>
+      String(a?.name || '').localeCompare(String(b?.name || ''), undefined, { sensitivity: 'base' })
+    );
+  }, [availableFields]);
+
+  const sortedAvailableFunctions = useMemo(() => {
+    return [...(availableFunctions || [])]
+      .filter((fn) => fn && fn !== 'LOOKUP')
+      .sort((a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: 'base' }));
+  }, [availableFunctions]);
+
+  const sortedAvailableLookupTables = useMemo(() => {
+    return [...(availableLookupTables || [])].sort((a, b) => {
+      const an = String(a?.tableName || a?.name || '');
+      const bn = String(b?.tableName || b?.name || '');
+      return an.localeCompare(bn, undefined, { sensitivity: 'base' });
+    });
+  }, [availableLookupTables]);
+
+  const selectedLookupTableObj = useMemo(
+    () => (availableLookupTables || []).find((t) => t.id === selectedLookupTable),
+    [availableLookupTables, selectedLookupTable]
+  );
+
+  const lookupTableColumns = useMemo(
+    () => (Array.isArray(selectedLookupTableObj?.columns) ? selectedLookupTableObj!.columns! : []),
+    [selectedLookupTableObj]
+  );
+
+  const sortedLookupTableColumns = useMemo(() => {
+    return [...(lookupTableColumns || [])].sort((a, b) =>
+      String(a).localeCompare(String(b), undefined, { sensitivity: 'base' })
+    );
+  }, [lookupTableColumns]);
 
   // Parse formula into tokens on load
   useEffect(() => {
@@ -242,9 +280,6 @@ export function FormulaWizard({
     }
   };
 
-  const selectedLookupTableObj = availableLookupTables.find((t) => t.id === selectedLookupTable);
-  const lookupTableColumns = Array.isArray(selectedLookupTableObj?.columns) ? selectedLookupTableObj!.columns! : [];
-
   const removeToken = (index: number) => {
     const newTokens = tokens.filter((_, i) => i !== index);
     setTokens(newTokens);
@@ -333,7 +368,7 @@ export function FormulaWizard({
                     <SelectValue placeholder="Select field..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableFields.map((field) => (
+                    {sortedAvailableFields.map((field) => (
                       <SelectItem key={field.name} value={field.name}>
                         {field.name} ({field.type})
                       </SelectItem>
@@ -355,7 +390,7 @@ export function FormulaWizard({
                     <SelectValue placeholder="Select function..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableFunctions.filter((fn) => fn !== "LOOKUP").map((fn) => {
+                    {sortedAvailableFunctions.map((fn) => {
                       const funcDef = AVAILABLE_FUNCTIONS.find((f) => f.name === fn);
                       return (
                         <SelectItem key={fn} value={fn}>
@@ -445,7 +480,7 @@ export function FormulaWizard({
                       <SelectValue placeholder="Select lookup table..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {availableLookupTables.map((table) => (
+                      {sortedAvailableLookupTables.map((table) => (
                         <SelectItem key={table.id} value={table.id}>
                           {table.tableName || table.name} {table.category ? `(${table.category})` : ""}
                         </SelectItem>
@@ -484,7 +519,7 @@ export function FormulaWizard({
                                 <SelectValue placeholder="Lookup table column..." />
                               </SelectTrigger>
                               <SelectContent>
-                                {lookupTableColumns.map((c) => (
+                                {sortedLookupTableColumns.map((c) => (
                                   <SelectItem key={c} value={c}>
                                     {c}
                                   </SelectItem>
@@ -502,7 +537,7 @@ export function FormulaWizard({
                                 <SelectValue placeholder="Match to field..." />
                               </SelectTrigger>
                               <SelectContent>
-                                {availableFields.map((field) => (
+                                {sortedAvailableFields.map((field) => (
                                   <SelectItem key={field.name} value={field.name}>
                                     {field.name}
                                   </SelectItem>
@@ -545,7 +580,7 @@ export function FormulaWizard({
                           <SelectValue placeholder="Select return column..." />
                         </SelectTrigger>
                         <SelectContent>
-                          {lookupTableColumns.map((c) => (
+                          {sortedLookupTableColumns.map((c) => (
                             <SelectItem key={c} value={c}>
                               {c}
                             </SelectItem>
