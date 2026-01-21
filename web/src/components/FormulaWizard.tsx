@@ -102,6 +102,16 @@ export function FormulaWizard({
     });
   }, [availableLookupTables]);
 
+  const selectedLookupTableObj = useMemo(
+    () => (availableLookupTables || []).find((t) => t.id === selectedLookupTable),
+    [availableLookupTables, selectedLookupTable]
+  );
+
+  const lookupTableColumns = useMemo(
+    () => (Array.isArray(selectedLookupTableObj?.columns) ? selectedLookupTableObj!.columns! : []),
+    [selectedLookupTableObj]
+  );
+
   const sortedLookupTableColumns = useMemo(() => {
     return [...(lookupTableColumns || [])].sort((a, b) =>
       String(a).localeCompare(String(b), undefined, { sensitivity: 'base' })
@@ -269,9 +279,6 @@ export function FormulaWizard({
       setLookupReturnColumn("");
     }
   };
-
-  const selectedLookupTableObj = availableLookupTables.find((t) => t.id === selectedLookupTable);
-  const lookupTableColumns = Array.isArray(selectedLookupTableObj?.columns) ? selectedLookupTableObj!.columns! : [];
 
   const removeToken = (index: number) => {
     const newTokens = tokens.filter((_, i) => i !== index);
