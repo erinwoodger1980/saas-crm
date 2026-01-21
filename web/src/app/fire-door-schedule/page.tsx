@@ -1185,11 +1185,25 @@ export default function FireDoorSchedulePage({ isCustomerPortal = false, clientA
     setShowColumnConfig(false);
   }
 
-  // Get available fields for column config modal (all fields from ALL tab)
-  const allAvailableFields = TAB_DEFINITIONS.ALL.columns.map(field => ({
+  // Get available fields for column config modal.
+  // Start with ALL tab fields (stable ordering), then add any fields from other tabs
+  // (e.g. Client Portal-only columns) so they can be selected on any tab.
+  const allFieldsOrdered: string[] = [];
+  const allFieldsSeen = new Set<string>();
+  const addField = (field: string) => {
+    if (!allFieldsSeen.has(field)) {
+      allFieldsSeen.add(field);
+      allFieldsOrdered.push(field);
+    }
+  };
+
+  TAB_DEFINITIONS.ALL.columns.forEach(addField);
+  Object.values(TAB_DEFINITIONS).forEach((tabDef) => tabDef.columns.forEach(addField));
+
+  const allAvailableFields = allFieldsOrdered.map((field) => ({
     field,
     label: COLUMN_LABELS[field] || field,
-    type: 'text'
+    type: 'text',
   }));
 
   // Get current column config for the modal
