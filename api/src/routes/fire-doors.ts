@@ -12,6 +12,7 @@ import {
   parseFireDoorCSV, 
   calculateTotalValue, 
   validateCSVHeaders,
+  getCsvHeaders,
   getExpectedCsvHeaders,
   type ParsedFireDoorRow,
   type FireDoorImportResponse 
@@ -19,7 +20,7 @@ import {
 
 const router = Router();
 
-const FIRE_DOOR_REQUIRED_HEADERS = ['Item', 'Code', 'Door Ref', 'Location', 'Fire Rating', 'Value'] as const;
+const FIRE_DOOR_REQUIRED_HEADERS: readonly string[] = [];
 
 function isXlsxUpload(file: Express.Multer.File): boolean {
   const name = String(file?.originalname || '').toLowerCase();
@@ -72,6 +73,7 @@ function detectHeaderRowNumber(
 ): number {
   const requiredSet = new Set(opts.requiredHeaders.map(normalizeHeaderCandidate));
   const expectedSet = new Set(opts.expectedHeaders.map(normalizeHeaderCandidate));
+  const hasRequired = requiredSet.size > 0;
 
   const maxScanRows = Math.min(worksheet.actualRowCount || worksheet.rowCount || 0, 50);
   const maxColumns = Math.max(worksheet.actualColumnCount || 0, worksheet.columnCount || 0, 1);
@@ -92,8 +94,8 @@ function detectHeaderRowNumber(
       if (expectedSet.has(c)) expectedMatches++;
     }
 
-    // Strongly prefer rows that match multiple required headers.
-    const score = requiredMatches * 1000 + expectedMatches * 10 + Math.min(normCells.size, 50);
+    // Prefer rows that match required headers if they exist; otherwise use expected headers.
+    const score = (hasRequired ? (requiredMatches * 1000) : 0) + expectedMatches * 10 + Math.min(normCells.size, 50);
     if (score > bestScore) {
       bestScore = score;
       bestRow = i;
@@ -104,8 +106,15 @@ function detectHeaderRowNumber(
   const bestRowValues = rowToValues(worksheet.getRow(bestRow), Math.max(worksheet.actualColumnCount || 0, worksheet.columnCount || 0, 1));
   const bestNorm = new Set(bestRowValues.map(normalizeHeaderCandidate).filter(Boolean));
   let bestRequiredMatches = 0;
-  for (const c of bestNorm) if (requiredSet.has(c)) bestRequiredMatches++;
-  if (bestRequiredMatches < 2) return 1;
+  let bestExpectedMatches = 0;
+  for (const c of bestNorm) {
+    if (requiredSet.has(c)) bestRequiredMatches++;
+    if (expectedSet.has(c)) bestExpectedMatches++;
+  }
+  // Guard: when required headers exist, insist on at least 2 matches.
+  if (hasRequired && bestRequiredMatches < 2) return 1;
+  // Guard: when we have no required headers, still require a minimal signal.
+  if (!hasRequired && bestExpectedMatches < 2) return 1;
 
   return bestRow;
 }
@@ -485,16 +494,50 @@ router.post('/import', upload.single('file'), async (req, res) => {
     }
 
     // 4. Validate headers (CSV or Excel converted to CSV)
-    const headerValidation = validateCSVHeaders(csvContent, { headerMap });
-    if (!headerValidation.valid) {
+    const headers = getCsvHeaders(csvContent);
+    const expectedHeaders = getExpectedCsvHeaders();
+
+    const forceMapping = (() => {
+      const raw = (req.body as any)?.forceMapping;
+      if (raw === true) return true;
+      const s = String(raw ?? '').trim().toLowerCase();
+      return s === '1' || s === 'true' || s === 'yes';
+    })();
+
+    const normalize = (input: any) =>
+      String(input ?? '')
+        .toLowerCase()
+        .replace(/\u00a0/g, ' ')
+        .replace(/\s+/g, ' ')
+        .replace(/\s*\/\s*/g, '/')
+        .replace(/\s*-\s*/g, '-')
+        .trim();
+
+    const headerNormSet = new Set(headers.map(normalize).filter(Boolean));
+    const hm = headerMap && typeof headerMap === 'object' ? headerMap : undefined;
+    const missingExpected = expectedHeaders.filter((expected) => {
+      const ne = normalize(expected);
+      if (!ne) return false;
+      if (headerNormSet.has(ne)) return false;
+      const mapped = hm ? String((hm as any)[expected] || '').trim() : '';
+      if (mapped && headerNormSet.has(normalize(mapped))) return false;
+      return true;
+    });
+
+    // No "required" fields, but if the file doesn't match the import template and the user
+    // hasn't provided a mapping, prompt the column matcher UI.
+    // If forceMapping is true, always prompt once so the user can review/adjust mappings.
+    if (!hm && (forceMapping || missingExpected.length > 0)) {
       return res.status(422).json({
-        error: 'Missing columns',
-        message: 'Spreadsheet file is missing required columns. Please map your columns to continue.',
+        error: 'Column mapping recommended',
+        message: forceMapping
+          ? 'Review how your spreadsheet columns map to the import format.'
+          : 'Your spreadsheet columns don’t match the expected import format. Please map columns to continue.',
         needsMapping: true,
-        missingHeaders: headerValidation.missingHeaders,
-        requiredHeaders: headerValidation.requiredHeaders,
-        headers: headerValidation.headers,
-        expectedHeaders: getExpectedCsvHeaders(),
+        missingHeaders: missingExpected,
+        requiredHeaders: [],
+        headers,
+        expectedHeaders,
       });
     }
 
@@ -513,7 +556,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
     if (parsedRows.length === 0) {
       return res.status(400).json({
         error: 'No valid product rows found',
-        message: 'CSV must contain rows with Item = "Product"',
+        message: 'No importable rows were found in this spreadsheet.',
       });
     }
 

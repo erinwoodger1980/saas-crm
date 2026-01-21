@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, Save, Trash2, Sparkles, FileCheck, Upload, Info, Table, RotateCw, QrCode } from "lucide-react";
@@ -235,6 +236,103 @@ export default function FireDoorScheduleDetailPage() {
   const [selectedImportId, setSelectedImportId] = useState<string | null>(null);
   const [netValueInput, setNetValueInput] = useState<string>("");
   const [uploading, setUploading] = useState(false);
+    const IGNORE_SENTINEL = "__IGNORE__";
+    const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
+    const [mappingOpen, setMappingOpen] = useState(false);
+    const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
+    const [missingHeaders, setMissingHeaders] = useState<string[]>([]);
+    const [requiredHeaders, setRequiredHeaders] = useState<string[]>([]);
+    const [expectedHeaders, setExpectedHeaders] = useState<string[]>([]);
+    const [headerMap, setHeaderMap] = useState<Record<string, string>>({});
+
+    const [sheetOpen, setSheetOpen] = useState(false);
+    const [excelSheets, setExcelSheets] = useState<string[]>([]);
+    const [selectedSheetName, setSelectedSheetName] = useState<string>("");
+
+    const normalizeCsvHeader = (s: string) =>
+      String(s || "")
+        .toLowerCase()
+        .replace(/\u00a0/g, " ")
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+
+    const levenshtein = (a: string, b: string) => {
+      const s = a || "";
+      const t = b || "";
+      const n = s.length;
+      const m = t.length;
+      if (n === 0) return m;
+      if (m === 0) return n;
+
+      const dp = new Array(m + 1);
+      for (let j = 0; j <= m; j++) dp[j] = j;
+      for (let i = 1; i <= n; i++) {
+        let prev = dp[0];
+        dp[0] = i;
+        for (let j = 1; j <= m; j++) {
+          const tmp = dp[j];
+          const cost = s[i - 1] === t[j - 1] ? 0 : 1;
+          dp[j] = Math.min(dp[j] + 1, dp[j - 1] + 1, prev + cost);
+          prev = tmp;
+        }
+      }
+      return dp[m];
+    };
+
+    const similarityScore = (expected: string, candidate: string) => {
+      const e = normalizeCsvHeader(expected);
+      const c = normalizeCsvHeader(candidate);
+      if (!e || !c) return 0;
+      if (e === c) return 1;
+      if (c.includes(e) || e.includes(c)) return 0.92;
+
+      const eTokens = new Set(e.split(" ").filter(Boolean));
+      const cTokens = new Set(c.split(" ").filter(Boolean));
+      const inter = [...eTokens].filter((x) => cTokens.has(x)).length;
+      const union = new Set([...eTokens, ...cTokens]).size || 1;
+      const jaccard = inter / union;
+
+      const dist = levenshtein(e, c);
+      const maxLen = Math.max(e.length, c.length) || 1;
+      const levSim = 1 - dist / maxLen;
+
+      return 0.55 * jaccard + 0.45 * levSim;
+    };
+
+    const guessHeaderMap = (missing: string[], headers: string[]) => {
+      const out: Record<string, string> = {};
+      const byNorm = new Map<string, string>();
+      for (const h of headers) {
+        const n = normalizeCsvHeader(h);
+        if (n && !byNorm.has(n)) byNorm.set(n, h);
+      }
+
+      for (const expected of missing) {
+        const ne = normalizeCsvHeader(expected);
+        const direct = byNorm.get(ne);
+        if (direct) {
+          out[expected] = direct;
+          continue;
+        }
+        const candidate = headers.find((h) => {
+          const nh = normalizeCsvHeader(h);
+          return nh === ne || nh.includes(ne) || ne.includes(nh);
+        });
+        if (candidate) out[expected] = candidate;
+
+        if (!out[expected]) {
+          let best: { h: string; score: number } | null = null;
+          for (const h of headers) {
+            const score = similarityScore(expected, h);
+            if (!best || score > best.score) best = { h, score };
+          }
+          if (best && best.score >= 0.6) {
+            out[expected] = best.h;
+          }
+        }
+      }
+      return out;
+    };
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [refreshing, setRefreshing] = useState(false);
@@ -469,7 +567,7 @@ export default function FireDoorScheduleDetailPage() {
     }, 800));
   }
 
-  async function handleCSVImport(file: File) {
+  async function handleCSVImport(file: File, opts?: { headerMap?: Record<string, string>; sheetName?: string }) {
     if (isNew || !id) {
       toast({ title: "Error", description: "Please save the project first before importing line items", variant: "destructive" });
       return;
@@ -479,6 +577,16 @@ export default function FireDoorScheduleDetailPage() {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("projectId", id);
+      if (opts?.headerMap && Object.keys(opts.headerMap).length > 0) {
+        formData.append("headerMap", JSON.stringify(opts.headerMap));
+      } else {
+        // Ask backend to return mapping UI payload even if headers already match.
+        formData.append("forceMapping", "1");
+      }
+      const sheetToSend = String(opts?.sheetName || selectedSheetName || "").trim();
+      if (sheetToSend) {
+        formData.append("sheetName", sheetToSend);
+      }
 
       // Always hit same-origin Next.js API route; it proxies to the backend.
       const legacyJwt = (() => {
@@ -509,6 +617,35 @@ export default function FireDoorScheduleDetailPage() {
           errorPayload = await response.json();
         } catch {
           errorPayload = null;
+        }
+
+        if (errorPayload?.needsSheetSelection && Array.isArray(errorPayload?.sheets)) {
+          const sheets = errorPayload.sheets.map((s: any) => String(s)).filter(Boolean);
+          setPendingImportFile(file);
+          setExcelSheets(sheets);
+          setSelectedSheetName(sheets[0] || "");
+          setSheetOpen(true);
+          return;
+        }
+
+        if (errorPayload?.needsMapping && Array.isArray(errorPayload?.missingHeaders) && Array.isArray(errorPayload?.headers)) {
+          const missing = errorPayload.missingHeaders.map((s: any) => String(s)).filter(Boolean);
+          const headers = errorPayload.headers.map((s: any) => String(s)).filter(Boolean);
+          const required = Array.isArray(errorPayload.requiredHeaders)
+            ? errorPayload.requiredHeaders.map((s: any) => String(s)).filter(Boolean)
+            : [];
+          const expected = Array.isArray(errorPayload.expectedHeaders)
+            ? errorPayload.expectedHeaders.map((s: any) => String(s)).filter(Boolean)
+            : [];
+
+          setPendingImportFile(file);
+          setCsvHeaders(headers);
+          setMissingHeaders(missing);
+          setRequiredHeaders(required);
+          setExpectedHeaders(expected);
+          setHeaderMap(guessHeaderMap(missing, headers));
+          setMappingOpen(true);
+          return;
         }
 
         const message =
@@ -589,7 +726,10 @@ export default function FireDoorScheduleDetailPage() {
                     className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
-                      if (file) handleCSVImport(file);
+                      if (file) {
+                        setPendingImportFile(file);
+                        handleCSVImport(file);
+                      }
                     }}
                   />
                   <Button
@@ -1409,6 +1549,141 @@ export default function FireDoorScheduleDetailPage() {
           </div>
         )}
       </div>
+
+      <Dialog open={mappingOpen} onOpenChange={(open) => setMappingOpen(open)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{missingHeaders.length ? 'Match Columns' : 'Review Column Mapping'}</DialogTitle>
+            <DialogDescription>
+              {missingHeaders.length
+                ? 'Your spreadsheet columns don’t match the expected import format. Match columns below.'
+                : 'Confirm (or adjust) how your spreadsheet columns map to the import format before importing.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {(() => {
+              const required = new Set((requiredHeaders || []).map((x) => String(x)));
+              const expectedAll = (expectedHeaders && expectedHeaders.length) ? expectedHeaders : requiredHeaders;
+              const optional = (expectedAll || []).filter((x) => !required.has(String(x)));
+              const all = [...(requiredHeaders || []), ...optional];
+              return all;
+            })().map((expected) => (
+              <div key={expected} className="grid grid-cols-1 md:grid-cols-2 gap-2 items-center">
+                <div className="text-sm font-medium text-slate-800">
+                  {expected}
+                  {(requiredHeaders || []).includes(expected) ? <span className="text-red-500"> *</span> : null}
+                  {(missingHeaders || []).includes(expected) ? <span className="text-xs text-orange-600"> (missing)</span> : null}
+                </div>
+                <Select
+                  value={headerMap[expected] ?? undefined}
+                  onValueChange={(val) => {
+                    if (val === IGNORE_SENTINEL) {
+                      setHeaderMap((prev) => {
+                        const next = { ...prev };
+                        delete next[expected];
+                        return next;
+                      });
+                      return;
+                    }
+                    setHeaderMap((prev) => ({ ...prev, [expected]: val }));
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select CSV column…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={IGNORE_SENTINEL}>(Ignore)</SelectItem>
+                    {csvHeaders.map((h) => (
+                      <SelectItem key={h} value={h}>
+                        {h}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={() => setMappingOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                for (const expected of requiredHeaders) {
+                  const hasDirect = csvHeaders.includes(expected);
+                  const mapped = String(headerMap[expected] || "").trim();
+                  if (!hasDirect && !mapped) {
+                    toast({ title: "Error", description: `Please map: ${expected}`, variant: "destructive" });
+                    return;
+                  }
+                }
+                const f = pendingImportFile;
+                setMappingOpen(false);
+                if (!f) {
+                  toast({ title: "Error", description: "No pending file to import", variant: "destructive" });
+                  return;
+                }
+                await handleCSVImport(f, { headerMap, sheetName: selectedSheetName || undefined });
+              }}
+            >
+              Import
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={sheetOpen} onOpenChange={(open) => setSheetOpen(open)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Select Sheet</DialogTitle>
+            <DialogDescription>
+              This Excel file has multiple sheets. Choose which sheet you want to import.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="text-sm font-medium text-slate-800">Sheet</div>
+            <Select value={selectedSheetName} onValueChange={(v) => setSelectedSheetName(v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a sheet…" />
+              </SelectTrigger>
+              <SelectContent>
+                {excelSheets.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={() => setSheetOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                const f = pendingImportFile;
+                if (!f) {
+                  toast({ title: "Error", description: "No pending file to import", variant: "destructive" });
+                  return;
+                }
+                const sheet = String(selectedSheetName || "").trim();
+                if (!sheet) {
+                  toast({ title: "Error", description: "Please select a sheet", variant: "destructive" });
+                  return;
+                }
+                setSheetOpen(false);
+                await handleCSVImport(f, { sheetName: sheet });
+              }}
+            >
+              Continue
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Toaster />
     </div>

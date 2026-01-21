@@ -8,7 +8,8 @@ import { COLUMN_MAPPING, ParsedFireDoorRow, RawCSVRow } from './types';
 
 export type FireDoorHeaderMap = Record<string, string>;
 
-const REQUIRED_HEADERS = ['Item', 'Code', 'Door Ref', 'Location', 'Fire Rating', 'Value'] as const;
+// No required headers. Import can proceed with partial mappings.
+const REQUIRED_HEADERS = [] as const;
 
 function getHeadersFromCsv(csvContent: string | Buffer): string[] {
   const records = parse(csvContent, {
@@ -22,6 +23,10 @@ function getHeadersFromCsv(csvContent: string | Buffer): string[] {
   if (!records.length) return [];
   const firstRecord = records[0] as Record<string, any>;
   return Object.keys(firstRecord);
+}
+
+export function getCsvHeaders(csvContent: string | Buffer): string[] {
+  return getHeadersFromCsv(csvContent);
 }
 
 function getMappedValue(rawRow: RawCSVRow, expectedHeader: string, headerMap?: FireDoorHeaderMap): string | undefined {
@@ -163,13 +168,23 @@ export function parseFireDoorCSV(csvContent: string | Buffer, opts?: { headerMap
 
   const parsedRows: ParsedFireDoorRow[] = [];
 
+  // If the spreadsheet has an explicit "Item" column, we keep the historical behaviour
+  // and only import rows where Item === "Product". If not, treat every row as importable.
+  const hasItemColumn = (() => {
+    const first = (records?.[0] as any) || null;
+    if (!first || typeof first !== 'object') return false;
+    return Object.prototype.hasOwnProperty.call(first, 'Item');
+  })();
+
   for (let i = 0; i < records.length; i++) {
     const rawRow = records[i] as RawCSVRow;
     
-    // Only process rows where Item === "Product"
-    const itemType = String(getMappedValue(rawRow, 'Item', opts?.headerMap) || '').trim();
-    if (itemType !== 'Product') {
-      continue;
+    if (hasItemColumn) {
+      // Only process rows where Item === "Product" (legacy format)
+      const itemType = String((rawRow as any)?.Item || '').trim();
+      if (itemType !== 'Product') {
+        continue;
+      }
     }
 
     const parsed = parseFireDoorRow(rawRow, i + 2, opts); // +2 because row 1 is header, array is 0-indexed

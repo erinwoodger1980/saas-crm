@@ -95,6 +95,49 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
       .replace(/[^a-z0-9]+/g, " ")
       .trim();
 
+  const levenshtein = (a: string, b: string) => {
+    const s = a || "";
+    const t = b || "";
+    const n = s.length;
+    const m = t.length;
+    if (n === 0) return m;
+    if (m === 0) return n;
+
+    const dp = new Array(m + 1);
+    for (let j = 0; j <= m; j++) dp[j] = j;
+    for (let i = 1; i <= n; i++) {
+      let prev = dp[0];
+      dp[0] = i;
+      for (let j = 1; j <= m; j++) {
+        const tmp = dp[j];
+        const cost = s[i - 1] === t[j - 1] ? 0 : 1;
+        dp[j] = Math.min(dp[j] + 1, dp[j - 1] + 1, prev + cost);
+        prev = tmp;
+      }
+    }
+    return dp[m];
+  };
+
+  const similarityScore = (expected: string, candidate: string) => {
+    const e = normalize(expected);
+    const c = normalize(candidate);
+    if (!e || !c) return 0;
+    if (e === c) return 1;
+    if (c.includes(e) || e.includes(c)) return 0.92;
+
+    const eTokens = new Set(e.split(" ").filter(Boolean));
+    const cTokens = new Set(c.split(" ").filter(Boolean));
+    const inter = [...eTokens].filter((x) => cTokens.has(x)).length;
+    const union = new Set([...eTokens, ...cTokens]).size || 1;
+    const jaccard = inter / union;
+
+    const dist = levenshtein(e, c);
+    const maxLen = Math.max(e.length, c.length) || 1;
+    const levSim = 1 - dist / maxLen;
+
+    return 0.55 * jaccard + 0.45 * levSim;
+  };
+
   const guessHeaderMap = (missing: string[], headers: string[]) => {
     const out: Record<string, string> = {};
     const byNorm = new Map<string, string>();
@@ -116,6 +159,18 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
         return nh === ne || nh.includes(ne) || ne.includes(nh);
       });
       if (candidate) out[expected] = candidate;
+
+      // fuzzy fallback
+      if (!out[expected]) {
+        let best: { h: string; score: number } | null = null;
+        for (const h of headers) {
+          const score = similarityScore(expected, h);
+          if (!best || score > best.score) best = { h, score };
+        }
+        if (best && best.score >= 0.6) {
+          out[expected] = best.h;
+        }
+      }
     }
     return out;
   };
@@ -162,6 +217,10 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
       }
       if (opts?.headerMap && Object.keys(opts.headerMap).length > 0) {
         formData.append("headerMap", JSON.stringify(opts.headerMap));
+      } else {
+        // Ask backend to return the mapping UI payload even if headers already match.
+        // This lets the user review/adjust mappings before import.
+        formData.append("forceMapping", "1");
       }
       const sheetToSend = (opts?.sheetName || selectedSheetName || "").trim();
       if (sheetToSend) {
@@ -591,9 +650,11 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
       <Dialog open={mappingOpen} onOpenChange={(open) => setMappingOpen(open)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Match Columns</DialogTitle>
+            <DialogTitle>{missingHeaders.length ? 'Match Columns' : 'Review Column Mapping'}</DialogTitle>
             <DialogDescription>
-              Your CSV headers don’t match the expected import format. Match the required columns below.
+              {missingHeaders.length
+                ? 'Your spreadsheet columns don’t match the expected import format. Match columns below.'
+                : 'Confirm (or adjust) how your spreadsheet columns map to the import format before importing.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -644,6 +705,29 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
 
             {missingHeaders.length === 0 ? (
               <div className="text-sm text-slate-600">No missing required columns detected.</div>
+            ) : null}
+
+            {csvHeaders.length ? (
+              <div className="pt-2">
+                <div className="text-sm font-medium text-slate-800">Unmatched spreadsheet columns</div>
+                <div className="text-xs text-slate-600">
+                  {(() => {
+                    const expectedAll = (expectedHeaders && expectedHeaders.length) ? expectedHeaders : requiredHeaders;
+                    const expectedNorm = new Set((expectedAll || []).map((x) => normalize(String(x))));
+                    const used = new Set<string>();
+                    for (const expected of expectedAll || []) {
+                      const mapped = String(headerMap[String(expected)] || "").trim();
+                      if (mapped) used.add(mapped);
+                    }
+                    const unmatched = csvHeaders.filter((h) => {
+                      if (used.has(h)) return false;
+                      const nh = normalize(h);
+                      return !expectedNorm.has(nh);
+                    });
+                    return unmatched.length ? unmatched.join(", ") : "None";
+                  })()}
+                </div>
+              </div>
             ) : null}
           </div>
 
