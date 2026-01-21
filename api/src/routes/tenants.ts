@@ -445,6 +445,7 @@ router.get("/settings", async (req, res) => {
     // Safe quote defaults parsing - critical for settings page
     const quoteDefaults = safeParseJson(s?.quoteDefaults, {});
     const productTypes = safeParseJson(s?.productTypes, []);
+    const notificationEmails = toPlainObject(safeParseJson((s as any)?.notificationEmails, {}));
     
     console.log('[GET /tenant/settings] Response data:', {
       tenantId,
@@ -458,6 +459,7 @@ router.get("/settings", async (req, res) => {
       ...s,
       quoteDefaults,
       productTypes,
+      notificationEmails,
       taskPlaybook: normalizedPlaybook,
       questionnaire: normalizedQuestionnaire,
       questionnaireEmailSubject: s?.questionnaireEmailSubject ?? DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
@@ -514,6 +516,7 @@ async function updateSettings(req: any, res: any) {
     isFireDoorManufacturer,
     isGroupCoachingMember,
     productTypes,
+    notificationEmails,
   } = req.body || {};
 
   try {
@@ -605,6 +608,13 @@ async function updateSettings(req: any, res: any) {
       }
     }
 
+    if (notificationEmails !== undefined) {
+      if (!notificationEmails || typeof notificationEmails !== 'object') {
+        return res.status(400).json({ error: 'invalid_notification_emails' });
+      }
+      update.notificationEmails = notificationEmails;
+    }
+
     if (ownerFirstName !== undefined) {
       betaChanged = true;
       const val = cleanOptionalString(ownerFirstName);
@@ -672,6 +682,7 @@ async function updateSettings(req: any, res: any) {
       questionnaire: normalizedQuestionnaire,
       questionnaireEmailSubject: saved.questionnaireEmailSubject ?? DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
       questionnaireEmailBody: saved.questionnaireEmailBody ?? DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
+      notificationEmails: toPlainObject(safeParseJson((saved as any)?.notificationEmails, {})),
       ownerFirstName: savedOwnerFirstName,
       ownerLastName: savedOwnerLastName,
       aiFollowupLearning: {

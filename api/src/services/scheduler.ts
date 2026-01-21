@@ -1,6 +1,7 @@
 // api/src/services/scheduler.ts
 import cron from "node-cron";
 import { sendDailyDigestsToAllUsers } from "./task-digest";
+import { sendWeeklyFireDoorScheduleSnapshotEmails } from "./fire-door-schedule-snapshot-email";
 
 /**
  * Initialize all scheduled jobs
@@ -27,6 +28,25 @@ export function initializeScheduler(): void {
   );
 
   console.log("[scheduler] ✅ Daily task digest scheduled for weekdays at 9:00 AM UK time");
+
+  // Weekly Fire Door Schedule Snapshot - Mondays at 9:00 AM (UK time)
+  // 0 9 * * 1 = 9:00 AM Monday
+  cron.schedule(
+    "0 9 * * 1",
+    async () => {
+      console.log("[scheduler] Running weekly fire door schedule snapshot email job");
+      try {
+        await sendWeeklyFireDoorScheduleSnapshotEmails();
+      } catch (error: any) {
+        console.error("[scheduler] Weekly fire door snapshot job failed:", error?.message || error);
+      }
+    },
+    {
+      timezone: "Europe/London",
+    }
+  );
+
+  console.log("[scheduler] ✅ Weekly fire door snapshot scheduled for Mondays at 9:00 AM UK time");
 }
 
 /**

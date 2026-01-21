@@ -589,108 +589,170 @@ router.post('/import', upload.single('file'), async (req, res) => {
     const jobDescription = jobDescriptionFromForm || `${clientName} - ${mjsNumber}`;
     const netValue = netValueFromForm ?? totalValue;
 
-    // 8. Persist using a transaction
-    const result = await prisma.$transaction(async (tx) => {
-      // Ensure project exists
-      let fireDoorProjectId = projectId;
-      if (!fireDoorProjectId) {
-        const existingProject = await tx.fireDoorScheduleProject.findFirst({
-          where: { tenantId, mjsNumber },
-        });
-        if (existingProject) {
-          fireDoorProjectId = existingProject.id;
-        } else {
-          const fireDoorProject = await tx.fireDoorScheduleProject.create({
-            data: {
-              tenantId,
-              mjsNumber,
-              clientName,
-              jobName: jobDescription,
-              netValue: netValue as any,
-              dateReceived: new Date(),
-              jobLocation: 'RED FOLDER',
-              signOffStatus: 'NOT LOOKED AT',
-              lastUpdatedBy: userId,
-              lastUpdatedAt: new Date(),
-            },
-          });
-          fireDoorProjectId = fireDoorProject.id;
+    const importStartMs = Date.now();
 
-          // Create/ensure lead and opportunity
-          let lead = await tx.lead.findFirst({ where: { tenantId, contactName: clientName } });
-          if (!lead) {
-            lead = await tx.lead.create({
-              data: {
-                tenantId,
-                createdById: userId,
-                contactName: clientName,
-                capturedAt: new Date(),
-                status: 'INFO_REQUESTED',
-              },
-            });
-          }
-          const opportunity = await tx.opportunity.create({
-            data: {
-              tenantId,
-              leadId: lead.id,
-              title: `${clientName} - ${mjsNumber}`,
-              stage: 'QUALIFY',
-              createdAt: new Date(),
-            },
-          });
-          await tx.fireDoorScheduleProject.update({
-            where: { id: fireDoorProjectId },
-            data: { projectId: opportunity.id },
-          });
-        }
+    // 8. Prepare line item payloads outside any transaction (keeps interactive tx fast)
+    const preparedLineItems = parsedRows.map((row, idx) => {
+      const scalarData: Record<string, any> = {};
+      for (const [k, v] of Object.entries(row as any)) {
+        if (!k || k === 'rawRowJson') continue;
+        if (LINE_ITEM_FORBIDDEN_UPDATE_FIELDS.has(k)) continue;
+        const meta = FIRE_DOOR_LINE_ITEM_SCALAR_FIELDS.get(k);
+        if (!meta) continue;
+        scalarData[k] = coerceScalarValue(v, meta);
       }
 
-      // Create import record
-      const importRecord = await tx.fireDoorImport.create({
-        data: {
-          tenantId,
-          createdById: userId,
-          sourceName,
-          status: 'COMPLETED',
-          totalValue,
-          currency: 'GBP',
-          rowCount,
-          projectId: fireDoorProjectId,
-          orderId,
-        },
-      });
-
-      // Create line items
-      const lineItems = await Promise.all(
-        parsedRows.map((row, idx) =>
-          (() => {
-            const scalarData: Record<string, any> = {};
-            for (const [k, v] of Object.entries(row as any)) {
-              if (!k || k === 'rawRowJson') continue;
-              if (LINE_ITEM_FORBIDDEN_UPDATE_FIELDS.has(k)) continue;
-              const meta = FIRE_DOOR_LINE_ITEM_SCALAR_FIELDS.get(k);
-              if (!meta) continue;
-              scalarData[k] = coerceScalarValue(v, meta);
-            }
-
-            return tx.fireDoorLineItem.create({
-              data: {
-                rawRowJson: (row as any).rawRowJson as any,
-                ...scalarData,
-                fireDoorImportId: importRecord.id,
-                tenantId,
-                rowIndex: idx,
-              },
-            });
-          })()
-        )
-      );
-
-      return { importRecord, lineItems };
+      return {
+        rawRowJson: (row as any).rawRowJson as any,
+        ...scalarData,
+        tenantId,
+        rowIndex: idx,
+      };
     });
 
-    // 9. Build response with preview of first 10 line items
-    const previewItems = result.lineItems.slice(0, 10).map((item) => ({
+    // 9. Persist project + import record in a short interactive transaction
+    const result = await prisma.$transaction(
+      async (tx) => {
+        // Ensure project exists
+        let fireDoorProjectId = projectId;
+        if (!fireDoorProjectId) {
+          const existingProject = await tx.fireDoorScheduleProject.findFirst({
+            where: { tenantId, mjsNumber },
+          });
+          if (existingProject) {
+            fireDoorProjectId = existingProject.id;
+          } else {
+            const fireDoorProject = await tx.fireDoorScheduleProject.create({
+              data: {
+                tenantId,
+                mjsNumber,
+                clientName,
+                jobName: jobDescription,
+                netValue: netValue as any,
+                dateReceived: new Date(),
+                jobLocation: 'RED FOLDER',
+                signOffStatus: 'NOT LOOKED AT',
+                lastUpdatedBy: userId,
+                lastUpdatedAt: new Date(),
+              },
+            });
+            fireDoorProjectId = fireDoorProject.id;
+
+            // Create/ensure lead and opportunity
+            let lead = await tx.lead.findFirst({ where: { tenantId, contactName: clientName } });
+            if (!lead) {
+              lead = await tx.lead.create({
+                data: {
+                  tenantId,
+                  createdById: userId,
+                  contactName: clientName,
+                  capturedAt: new Date(),
+                  status: 'INFO_REQUESTED',
+                },
+              });
+            }
+            const opportunity = await tx.opportunity.create({
+              data: {
+                tenantId,
+                leadId: lead.id,
+                title: `${clientName} - ${mjsNumber}`,
+                stage: 'QUALIFY',
+                createdAt: new Date(),
+              },
+            });
+            await tx.fireDoorScheduleProject.update({
+              where: { id: fireDoorProjectId },
+              data: { projectId: opportunity.id },
+            });
+          }
+        }
+
+        // Create import record (mark as processing until rows are inserted)
+        const importRecord = await tx.fireDoorImport.create({
+          data: {
+            tenantId,
+            createdById: userId,
+            sourceName,
+            status: 'PROCESSING',
+            totalValue,
+            currency: 'GBP',
+            rowCount,
+            projectId: fireDoorProjectId,
+            orderId,
+          },
+        });
+
+        return { importRecord, fireDoorProjectId };
+      },
+      // Render/production defaults can be 5s; imports can legitimately take longer.
+      { timeout: 120000 }
+    );
+
+    // 10. Insert line items in small batches outside the interactive transaction
+    const BATCH_SIZE = 100;
+    try {
+      const total = preparedLineItems.length;
+      const batches = Math.ceil(total / BATCH_SIZE) || 1;
+      console.log('[fire-door-import] Inserting line items:', {
+        tenantId,
+        importId: result.importRecord.id,
+        total,
+        batchSize: BATCH_SIZE,
+        batches,
+      });
+
+      for (let i = 0; i < preparedLineItems.length; i += BATCH_SIZE) {
+        const chunk = preparedLineItems.slice(i, i + BATCH_SIZE);
+        await prisma.fireDoorLineItem.createMany({
+          data: chunk.map((li) => ({
+            ...li,
+            fireDoorImportId: result.importRecord.id,
+          })) as any,
+        });
+      }
+
+      await prisma.fireDoorImport.update({
+        where: { id: result.importRecord.id },
+        data: { status: 'COMPLETED' },
+      });
+
+      console.log('[fire-door-import] Insert complete:', {
+        tenantId,
+        importId: result.importRecord.id,
+        totalInserted: preparedLineItems.length,
+        durationMs: Date.now() - importStartMs,
+      });
+    } catch (e: any) {
+      await prisma.fireDoorImport.update({
+        where: { id: result.importRecord.id },
+        data: { status: 'FAILED' },
+      });
+
+      console.error('[fire-door-import] Insert failed:', {
+        tenantId,
+        importId: result.importRecord.id,
+        durationMs: Date.now() - importStartMs,
+        message: e?.message || String(e),
+      });
+      throw e;
+    }
+
+    const previewRows = await prisma.fireDoorLineItem.findMany({
+      where: { fireDoorImportId: result.importRecord.id },
+      orderBy: { rowIndex: 'asc' },
+      take: 10,
+      select: {
+        id: true,
+        doorRef: true,
+        location: true,
+        rating: true,
+        quantity: true,
+        lineTotal: true,
+      },
+    });
+
+    // 11. Build response with preview of first 10 line items
+    const previewItems = previewRows.map((item) => ({
       id: item.id,
       doorRef: item.doorRef,
       location: item.location,

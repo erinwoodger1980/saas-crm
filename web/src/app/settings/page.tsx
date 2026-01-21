@@ -76,6 +76,9 @@ type Settings = {
     quoteRejected?: { subject: string; body: string };
   } | null;
   aiFollowupLearning?: { crossTenantOptIn: boolean; lastUpdatedISO?: string | null } | null;
+  notificationEmails?: {
+    fireDoorScheduleSnapshot?: string;
+  } | null;
   quoteDefaults?: {
     currency?: string;
     defaultMargin?: number;
@@ -2329,8 +2332,9 @@ export default function SettingsPage() {
       )}
 
       {currentStage === "email-templates" && (
-        <Section title="Email Templates" description="Customize the email templates used throughout your CRM. Use template variables like {{contactName}}, {{brandName}}, {{ownerName}}, {{phone}}, etc.">
-          <div className="space-y-6">
+        <div className="space-y-6">
+          <Section title="Email Templates" description="Customize the email templates used throughout your CRM. Use template variables like {{contactName}}, {{brandName}}, {{ownerName}}, {{phone}}, etc.">
+            <div className="space-y-6">
             {/* Questionnaire Intro HTML */}
             <div className="rounded-xl border bg-white/70 p-4">
               <div className="mb-3">
@@ -2414,8 +2418,45 @@ export default function SettingsPage() {
                 Save Email Templates
               </Button>
             </div>
-          </div>
-        </Section>
+            </div>
+          </Section>
+
+          <Section
+            title="Notification Emails"
+            description="Configure who receives automated system emails. Enter multiple emails separated by commas."
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Field
+                label="Fire Door Schedule Snapshot (Mondays 9am)"
+                hint="Example: ops@company.com, production@company.com"
+              >
+                <input
+                  className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+                  value={s.notificationEmails?.fireDoorScheduleSnapshot ?? ""}
+                  onChange={(e) =>
+                    setS((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            notificationEmails: {
+                              ...(prev.notificationEmails || {}),
+                              fireDoorScheduleSnapshot: e.target.value,
+                            },
+                          }
+                        : prev
+                    )
+                  }
+                  placeholder="name@company.com, name2@company.com"
+                />
+              </Field>
+            </div>
+            <div className="mt-3">
+              <Button size="sm" onClick={() => saveSettings()} disabled={savingSettings}>
+                {savingSettings ? "Saving..." : "Save Notification Emails"}
+              </Button>
+            </div>
+          </Section>
+        </div>
       )}
 
       {currentStage === "marketing" && (

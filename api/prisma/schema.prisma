@@ -1229,6 +1229,7 @@ model TenantSettings {
   fireDoorScheduleColors       Json?
   fireDoorLineItemLayout       Json?
   fireDoorScheduleColumnConfig Json?
+  notificationEmails           Json?
   productTypes                 Json?
   componentTypeLabels          Json?     @default("{}")
 }
