@@ -178,6 +178,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     isEarlyAccessRoute
   );
 
+  const siteTitle = isWealdenMarketingHost ? "Lignum Windows" : "Joineryai.app";
+
   // GA4 SPA pageview tracking for joineryai.app only.
   useEffect(() => {
     if (!shouldLoadAnalytics || !isJoineryHost) return;
@@ -191,6 +193,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className="h-full">
       <head>
+        <title>{siteTitle}</title>
         {shouldLoadAnalytics && (
           <>
             {/* GA4 for joineryai.app only */}
