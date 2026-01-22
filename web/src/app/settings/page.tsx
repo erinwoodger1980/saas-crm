@@ -77,7 +77,19 @@ type Settings = {
   } | null;
   aiFollowupLearning?: { crossTenantOptIn: boolean; lastUpdatedISO?: string | null } | null;
   notificationEmails?: {
+    // Legacy single-field config (kept for backwards compatibility)
     fireDoorScheduleSnapshot?: string;
+    // New structured notification config
+    notifications?: Array<{
+      key: string;
+      description: string;
+      dayOfWeek: "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | "SUN";
+      time: string; // HH:mm
+      frequency: "WEEKLY" | "DAILY";
+      toEmails: string; // comma separated
+      allUsers: boolean;
+      userIds: string[];
+    }>;
   } | null;
   quoteDefaults?: {
     currency?: string;
@@ -300,6 +312,7 @@ export default function SettingsPage() {
   const [qScopeTab, setQScopeTab] = useState<"client" | "item" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal">(initialQuestionnaireScopeTab);
   const legacyQuestionnaireDetailsRef = useRef<HTMLDetailsElement | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [tenantUsers, setTenantUsers] = useState<Array<{ id: string; name: string | null; email: string }> | null>(null);
     // Seed placeholder testimonials if none exist on initial load
     useEffect(() => {
       if (s && (s.quoteDefaults?.testimonials || []).length === 0) {
@@ -515,6 +528,71 @@ export default function SettingsPage() {
     setProfileLastName(user?.lastName ?? "");
   }, [user]);
 
+  // Load tenant users for notification recipient selection
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const users = await apiFetch<Array<{ id: string; name: string | null; email: string }>>("/tenant/users", { method: "GET" });
+        if (!cancelled) setTenantUsers(users);
+      } catch {
+        if (!cancelled) setTenantUsers([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function normalizeNotificationEmails(prev: Settings): Settings {
+    const current = prev.notificationEmails || {};
+    const existing = Array.isArray(current.notifications) ? current.notifications : [];
+
+    // Ensure the Fire Door Schedule Snapshot notification exists as a row.
+    const hasSnapshotRow = existing.some((n) => n?.key === "fireDoorScheduleSnapshot");
+    if (hasSnapshotRow) return prev;
+
+    const legacyEmails = typeof current.fireDoorScheduleSnapshot === "string" ? current.fireDoorScheduleSnapshot : "";
+    const merged = [
+      {
+        key: "fireDoorScheduleSnapshot",
+        description: "Fire Door Schedule Snapshot",
+        dayOfWeek: "MON" as const,
+        time: "09:00",
+        frequency: "WEEKLY" as const,
+        toEmails: legacyEmails,
+        allUsers: false,
+        userIds: [],
+      },
+      ...existing,
+    ];
+
+    return {
+      ...prev,
+      notificationEmails: {
+        ...current,
+        notifications: merged,
+      },
+    };
+  }
+
+  async function saveNotificationEmails() {
+    if (!s) return;
+    setSavingSettings(true);
+    try {
+      const updated = await apiFetch<Settings>("/tenant/settings", {
+        method: "PATCH",
+        json: { notificationEmails: s.notificationEmails },
+      });
+      setS(updated);
+      toast({ title: "Notification emails saved" });
+    } catch (e: any) {
+      toast({ title: "Save failed", description: e?.message || "", variant: "destructive" });
+    } finally {
+      setSavingSettings(false);
+    }
+  }
+
   async function saveSettings() {
     if (!s) return;
     setSavingSettings(true);
@@ -535,6 +613,7 @@ export default function SettingsPage() {
         questionnaire: serializeQuestionnaire(qFields),
         taskPlaybook: playbook,
         isFireDoorManufacturer: s?.isFireDoorManufacturer,
+        notificationEmails: s.notificationEmails,
       } as any;
 
       const updated = await apiFetch<Settings>("/tenant/settings", { method: "PATCH", json: payload });
@@ -1045,6 +1124,13 @@ export default function SettingsPage() {
   // (removed unused trainModel helper)
 
   if (loading || !s) return <div className="p-6 text-sm text-slate-600">Loading…</div>;
+
+  // Keep notification config normalized (ensures the table has the snapshot row)
+  if (s && (!s.notificationEmails?.notifications || !Array.isArray(s.notificationEmails.notifications))) {
+    // Safe: normalized in render path only once because it adds the missing notifications array
+    // eslint-disable-next-line react/no-unstable-nested-components
+    Promise.resolve().then(() => setS((prev) => (prev ? normalizeNotificationEmails(prev) : prev)));
+  }
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 space-y-6">
@@ -2425,35 +2511,177 @@ export default function SettingsPage() {
             title="Notification Emails"
             description="Configure who receives automated system emails. Enter multiple emails separated by commas."
           >
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field
-                label="Fire Door Schedule Snapshot (Mondays 9am)"
-                hint="Example: ops@company.com, production@company.com"
-              >
-                <input
-                  className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
-                  value={s.notificationEmails?.fireDoorScheduleSnapshot ?? ""}
-                  onChange={(e) =>
-                    setS((prev) =>
-                      prev
-                        ? {
-                            ...prev,
-                            notificationEmails: {
-                              ...(prev.notificationEmails || {}),
-                              fireDoorScheduleSnapshot: e.target.value,
-                            },
-                          }
-                        : prev
-                    )
-                  }
-                  placeholder="name@company.com, name2@company.com"
-                />
-              </Field>
-            </div>
-            <div className="mt-3">
-              <Button size="sm" onClick={() => saveSettings()} disabled={savingSettings}>
-                {savingSettings ? "Saving..." : "Save Notification Emails"}
-              </Button>
+            <div className="space-y-4">
+              <div className="overflow-x-auto rounded-2xl border bg-white/70">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b">
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600">Description</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600">Day</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600">Time</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600">Frequency</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600">Email Addresses</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600">Recipients</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(s.notificationEmails?.notifications || []).map((n, idx) => (
+                      <tr key={n.key} className="border-b last:border-b-0">
+                        <td className="px-3 py-2 align-top">
+                          <input
+                            className="w-[260px] rounded-xl border bg-white/95 px-3 py-2 text-sm"
+                            value={n.description}
+                            onChange={(e) =>
+                              setS((prev) => {
+                                if (!prev) return prev;
+                                const current = prev.notificationEmails || {};
+                                const notifications = Array.isArray(current.notifications) ? [...current.notifications] : [];
+                                notifications[idx] = { ...notifications[idx], description: e.target.value };
+                                return { ...prev, notificationEmails: { ...current, notifications } };
+                              })
+                            }
+                          />
+                        </td>
+                        <td className="px-3 py-2 align-top">
+                          <select
+                            className="rounded-xl border bg-white/95 px-3 py-2 text-sm"
+                            value={n.dayOfWeek}
+                            onChange={(e) =>
+                              setS((prev) => {
+                                if (!prev) return prev;
+                                const current = prev.notificationEmails || {};
+                                const notifications = Array.isArray(current.notifications) ? [...current.notifications] : [];
+                                notifications[idx] = { ...notifications[idx], dayOfWeek: e.target.value as any };
+                                return { ...prev, notificationEmails: { ...current, notifications } };
+                              })
+                            }
+                          >
+                            <option value="MON">Mon</option>
+                            <option value="TUE">Tue</option>
+                            <option value="WED">Wed</option>
+                            <option value="THU">Thu</option>
+                            <option value="FRI">Fri</option>
+                            <option value="SAT">Sat</option>
+                            <option value="SUN">Sun</option>
+                          </select>
+                        </td>
+                        <td className="px-3 py-2 align-top">
+                          <input
+                            type="time"
+                            className="rounded-xl border bg-white/95 px-3 py-2 text-sm"
+                            value={n.time}
+                            onChange={(e) =>
+                              setS((prev) => {
+                                if (!prev) return prev;
+                                const current = prev.notificationEmails || {};
+                                const notifications = Array.isArray(current.notifications) ? [...current.notifications] : [];
+                                notifications[idx] = { ...notifications[idx], time: e.target.value };
+                                return { ...prev, notificationEmails: { ...current, notifications } };
+                              })
+                            }
+                          />
+                        </td>
+                        <td className="px-3 py-2 align-top">
+                          <select
+                            className="rounded-xl border bg-white/95 px-3 py-2 text-sm"
+                            value={n.frequency}
+                            onChange={(e) =>
+                              setS((prev) => {
+                                if (!prev) return prev;
+                                const current = prev.notificationEmails || {};
+                                const notifications = Array.isArray(current.notifications) ? [...current.notifications] : [];
+                                notifications[idx] = { ...notifications[idx], frequency: e.target.value as any };
+                                return { ...prev, notificationEmails: { ...current, notifications } };
+                              })
+                            }
+                          >
+                            <option value="WEEKLY">Weekly</option>
+                            <option value="DAILY">Daily</option>
+                          </select>
+                        </td>
+                        <td className="px-3 py-2 align-top">
+                          <input
+                            className="w-[320px] rounded-xl border bg-white/95 px-3 py-2 text-sm"
+                            value={n.toEmails}
+                            onChange={(e) =>
+                              setS((prev) => {
+                                if (!prev) return prev;
+                                const current = prev.notificationEmails || {};
+                                const notifications = Array.isArray(current.notifications) ? [...current.notifications] : [];
+                                notifications[idx] = { ...notifications[idx], toEmails: e.target.value };
+                                // keep legacy field in sync for snapshot
+                                const legacy = notifications[idx].key === "fireDoorScheduleSnapshot" ? e.target.value : current.fireDoorScheduleSnapshot;
+                                return { ...prev, notificationEmails: { ...current, notifications, fireDoorScheduleSnapshot: legacy } };
+                              })
+                            }
+                            placeholder="ops@company.com, production@company.com"
+                          />
+                        </td>
+                        <td className="px-3 py-2 align-top">
+                          <div className="space-y-2">
+                            <label className="flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={n.allUsers}
+                                onChange={(e) =>
+                                  setS((prev) => {
+                                    if (!prev) return prev;
+                                    const current = prev.notificationEmails || {};
+                                    const notifications = Array.isArray(current.notifications) ? [...current.notifications] : [];
+                                    notifications[idx] = { ...notifications[idx], allUsers: e.target.checked };
+                                    return { ...prev, notificationEmails: { ...current, notifications } };
+                                  })
+                                }
+                              />
+                              All users
+                            </label>
+
+                            {!n.allUsers && (
+                              <div className="max-h-28 overflow-auto rounded-xl border bg-white/80 p-2">
+                                {(tenantUsers || []).length === 0 ? (
+                                  <div className="text-xs text-slate-500">No users found</div>
+                                ) : (
+                                  (tenantUsers || []).map((u) => {
+                                    const checked = n.userIds.includes(u.id);
+                                    const label = u.name?.trim() ? `${u.name} (${u.email})` : u.email;
+                                    return (
+                                      <label key={u.id} className="flex items-center gap-2 text-xs py-1">
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={(e) =>
+                                            setS((prev) => {
+                                              if (!prev) return prev;
+                                              const current = prev.notificationEmails || {};
+                                              const notifications = Array.isArray(current.notifications) ? [...current.notifications] : [];
+                                              const currentIds = new Set<string>(notifications[idx].userIds || []);
+                                              if (e.target.checked) currentIds.add(u.id);
+                                              else currentIds.delete(u.id);
+                                              notifications[idx] = { ...notifications[idx], userIds: Array.from(currentIds) };
+                                              return { ...prev, notificationEmails: { ...current, notifications } };
+                                            })
+                                          }
+                                        />
+                                        {label}
+                                      </label>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex justify-end">
+                <Button size="sm" onClick={saveNotificationEmails} disabled={savingSettings}>
+                  {savingSettings ? "Saving..." : "Save Notification Emails"}
+                </Button>
+              </div>
             </div>
           </Section>
         </div>

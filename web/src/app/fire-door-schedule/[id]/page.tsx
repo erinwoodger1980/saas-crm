@@ -1434,6 +1434,10 @@ export default function FireDoorScheduleDetailPage() {
                   <EditableCell type="date" value={project.deliveryDate} onChange={(v) => updateField("deliveryDate", v)} />
                 </div>
                 <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Del Date Agreed By</label>
+                  <EditableCell type="text" value={(project as any).delDateAgreedBy} onChange={(v) => updateField("delDateAgreedBy", v)} placeholder="Name" />
+                </div>
+                <div>
                   <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Install Start</label>
                   <EditableCell type="date" value={project.installStart} onChange={(v) => updateField("installStart", v)} />
                 </div>

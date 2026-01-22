@@ -29,16 +29,15 @@ export function initializeScheduler(): void {
 
   console.log("[scheduler] ✅ Daily task digest scheduled for weekdays at 9:00 AM UK time");
 
-  // Weekly Fire Door Schedule Snapshot - Mondays at 9:00 AM (UK time)
-  // 0 9 * * 1 = 9:00 AM Monday
+  // Fire Door Schedule Snapshot notifications
+  // Runs every minute and checks tenant-configured day/time/frequency.
   cron.schedule(
-    "0 9 * * 1",
+    "* * * * *",
     async () => {
-      console.log("[scheduler] Running weekly fire door schedule snapshot email job");
       try {
-        await sendWeeklyFireDoorScheduleSnapshotEmails();
+        await sendWeeklyFireDoorScheduleSnapshotEmails(new Date());
       } catch (error: any) {
-        console.error("[scheduler] Weekly fire door snapshot job failed:", error?.message || error);
+        console.error("[scheduler] Fire door snapshot job failed:", error?.message || error);
       }
     },
     {
@@ -46,7 +45,7 @@ export function initializeScheduler(): void {
     }
   );
 
-  console.log("[scheduler] ✅ Weekly fire door snapshot scheduled for Mondays at 9:00 AM UK time");
+  console.log("[scheduler] ✅ Fire door snapshot notifications scheduled (every minute, Europe/London)");
 }
 
 /**

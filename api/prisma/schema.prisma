@@ -3949,6 +3949,7 @@ model FireDoorScheduleProject {
   invoiceStatus            String?
   transportStatus          String?
   deliveryDate             DateTime?
+  delDateAgreedBy          String?
   installStart             DateTime?
   installEnd               DateTime?
   snaggingStatus           String?
