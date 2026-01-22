@@ -1,5 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 
+function isAbortError(err: any): boolean {
+  const name = String(err?.name || "");
+  const msg = String(err?.message || "");
+  return name === "AbortError" || /aborted|abort/i.test(msg);
+}
+
+function getTimeoutMs(path: string[]): number {
+  const p = `/${(path || []).join("/")}`;
+  // PDF rendering can be slow (Chromium cold start). Give it more runway.
+  if (/\/quotes\/.+\/(render-pdf|render-proposal)\b/i.test(p)) return 180_000;
+  // Auth should be fast; if not, fail loudly.
+  if (/^\/auth\/(login|me)\b/i.test(p)) return 30_000;
+  return 60_000;
+}
+
 function pickBackendOrigin(req: NextRequest): string {
   const host = (req.headers.get("host") || "").toLowerCase();
 
@@ -91,12 +106,36 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path?: string[] 
 
   const body = method === "GET" || method === "HEAD" ? undefined : await req.arrayBuffer();
 
-  const upstream = await fetch(target.toString(), {
-    method,
-    headers,
-    body: body ? Buffer.from(body) : undefined,
-    redirect: "manual",
-  });
+  const timeoutMs = getTimeoutMs(path);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(target.toString(), {
+      method,
+      headers,
+      body: body ? Buffer.from(body) : undefined,
+      redirect: "manual",
+      signal: controller.signal,
+    });
+  } catch (err: any) {
+    const pathStr = `/${(path || []).join("/")}`;
+    if (isAbortError(err)) {
+      console.warn("[web api proxy] upstream timeout", { backend, path: pathStr, timeoutMs });
+      return NextResponse.json(
+        { ok: false, error: "upstream_timeout", backend, path: pathStr },
+        { status: 504 },
+      );
+    }
+    console.error("[web api proxy] upstream fetch failed", { backend, path: pathStr, error: String(err?.message || err) });
+    return NextResponse.json(
+      { ok: false, error: "upstream_failed", backend, path: pathStr },
+      { status: 502 },
+    );
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   const resHeaders = filterResponseHeaders(upstream.headers);
 
