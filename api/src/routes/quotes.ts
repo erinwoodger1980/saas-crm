@@ -7,6 +7,7 @@ import crypto from "crypto";
 import { prisma } from "../prisma";
 import { Prisma, FileKind } from "@prisma/client";
 import jwt from "jsonwebtoken";
+import OpenAI from "openai";
 import { env } from "../env";
 import { logOrderFlow } from "../lib/order-flow-log";
 import { buildQuoteEmailPayload } from "../services/quote-email";
@@ -3145,7 +3146,7 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     const logoDataUrl = ts?.logoUrl ? await imageUrlToDataUrl(ts.logoUrl) : undefined;
     
     // 🔹 Build Soho-style multi-page proposal HTML via shared helper
-    const html = buildQuoteProposalHtml({
+    const html = await buildQuoteProposalHtml({
       quote,
       tenantSettings: ts,
       currencyCode: cur,
@@ -3435,7 +3436,7 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
     // Convert logo URL to base64 data URL for embedding in PDF
     const logoDataUrl = ts?.logoUrl ? await imageUrlToDataUrl(ts.logoUrl) : undefined;
     
-    const html = buildQuoteProposalHtml({
+    const html = await buildQuoteProposalHtml({
       quote,
       tenantSettings: ts,
       currencyCode: cur,
@@ -3703,7 +3704,7 @@ router.get("/:id/proposal/html", requireAuth, async (req: any, res) => {
 
     const logoDataUrl = ts?.logoUrl ? await imageUrlToDataUrl(ts.logoUrl) : undefined;
 
-    const html = buildQuoteProposalHtml({
+    const html = await buildQuoteProposalHtml({
       quote,
       tenantSettings: ts,
       currencyCode: totals.currencyCode,
@@ -3847,11 +3848,119 @@ async function imageUrlToDataUrl(imageUrl: string): Promise<string> {
   }
 }
 
+type ChristchurchAiSummary = {
+  timber: string;
+  finish: string;
+  glazing: string;
+  fittings: string;
+  ventilation: string;
+  scope: string;
+};
+
+function buildLineItemAiContext(lines: any[]): string {
+  const chunks: string[] = [];
+  const maxLines = 80;
+
+  for (const ln of (lines || []).slice(0, maxLines)) {
+    const qty = ln?.qty ?? 1;
+    const description = String(ln?.description || "").replace(/\s+/g, " ").trim();
+
+    const metaAny: any = (ln?.meta as any) || {};
+    const metaPruned: Record<string, string> = {};
+    for (const [k, v] of Object.entries(metaAny)) {
+      if (v == null) continue;
+      if (typeof v === "string") {
+        const s = v.trim();
+        if (s && s.length <= 240) metaPruned[k] = s;
+        continue;
+      }
+      if (typeof v === "number" || typeof v === "boolean") {
+        metaPruned[k] = String(v);
+        continue;
+      }
+      if (Array.isArray(v) && v.length && v.every(x => typeof x === "string")) {
+        const s = v
+          .map(x => String(x).trim())
+          .filter(Boolean)
+          .slice(0, 8)
+          .join("; ");
+        if (s) metaPruned[k] = s;
+        continue;
+      }
+    }
+
+    const metaText = Object.keys(metaPruned).length ? JSON.stringify(metaPruned) : "";
+    chunks.push(`- qty: ${qty}; description: ${description}${metaText ? `; meta: ${metaText}` : ""}`);
+  }
+
+  return `Line items (from CRM):\n${chunks.join("\n")}`;
+}
+
+async function summarizeChristchurchFromLineItems(lines: any[]): Promise<ChristchurchAiSummary | null> {
+  if (!env.OPENAI_API_KEY) return null;
+
+  try {
+    const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+    const ctx = buildLineItemAiContext(lines);
+
+    const resp = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.2,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are summarizing a joinery quotation for a proposal. Using ONLY the provided line items and their metadata, extract concise details. Do not guess or invent. If a field is not stated or cannot be inferred, return an empty string. Return JSON only.",
+        },
+        {
+          role: "user",
+          content:
+            `Extract these fields:\n- timber (species/material/engineering)\n- finish (paint/stain/color/system)\n- glazing (double/triple, coatings, Ug, etc)\n- fittings (hardware/ironmongery)\n- ventilation (vents/trickle vents)\n- scope (1-2 sentence overall scope summary)\n\n${ctx}`.slice(0, 12000),
+        },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "christchurch_proposal_summary",
+          schema: {
+            type: "object",
+            properties: {
+              timber: { type: "string" },
+              finish: { type: "string" },
+              glazing: { type: "string" },
+              fittings: { type: "string" },
+              ventilation: { type: "string" },
+              scope: { type: "string" },
+            },
+            required: ["timber", "finish", "glazing", "fittings", "ventilation", "scope"],
+            additionalProperties: false,
+          },
+        },
+      },
+    });
+
+    const content = resp.choices[0]?.message?.content || "{}";
+    const parsed = JSON.parse(content) as Partial<ChristchurchAiSummary>;
+
+    return {
+      timber: typeof parsed.timber === "string" ? parsed.timber.trim() : "",
+      finish: typeof parsed.finish === "string" ? parsed.finish.trim() : "",
+      glazing: typeof parsed.glazing === "string" ? parsed.glazing.trim() : "",
+      fittings: typeof parsed.fittings === "string" ? parsed.fittings.trim() : "",
+      ventilation: typeof parsed.ventilation === "string" ? parsed.ventilation.trim() : "",
+      scope: typeof parsed.scope === "string" ? parsed.scope.trim() : "",
+    };
+  } catch (err: any) {
+    console.warn("[quotes] Christchurch AI spec summary failed; falling back:", err?.message || err);
+    return null;
+  }
+}
+
 /**
  * Build a beautiful, multi-section Soho-style PDF proposal HTML
  * Shared by both /render-pdf and /render-proposal endpoints
  */
-function buildQuoteProposalHtml(opts: {
+async function buildQuoteProposalHtml(opts: {
   quote: any & { lines: any[]; tenant: any; lead: any | null };
   tenantSettings: any | null;
   currencyCode: string;
@@ -3860,7 +3969,7 @@ function buildQuoteProposalHtml(opts: {
   imageUrlMap?: Record<string, string>;  // NEW: Map of imageFileId to signed URL
   proposalAssetUrlMap?: Record<string, string>; // Map of proposal asset file IDs to signed URLs
   logoDataUrl?: string;  // Base64 encoded logo for embedding in PDF
-}): string {
+}): Promise<string> {
   const { quote, tenantSettings: ts, currencyCode: cur, currencySymbol: sym, totals, logoDataUrl } = opts;
   const { subtotal, vatAmount, totalGBP, vatRate, showVat } = totals;
   
@@ -3944,6 +4053,9 @@ function buildQuoteProposalHtml(opts: {
   const termsHtml = hydrateProposalAssetUrls(applyTemplateVariables(blocks.termsHtml, templateVars), proposalAssets);
 
   if (proposalTemplate === "christchurch") {
+    const hasUserScopeHtml = Boolean(String(blocks.scopeHtml || "").trim());
+    const ai = await summarizeChristchurchFromLineItems(quote.lines || []);
+
     const ccAny: any = (quoteMeta?.proposalChristchurchImageFileIds as any) || {};
     const ccUrls = {
       logoMark: typeof ccAny?.logoMarkFileId === "string" ? proposalAssets[String(ccAny.logoMarkFileId).trim()] : undefined,
@@ -3963,6 +4075,16 @@ function buildQuoteProposalHtml(opts: {
       logoDataUrl,
       imageUrls: ccUrls,
       scopeHtml,
+      aiSummary: ai
+        ? {
+            timber: ai.timber,
+            finish: ai.finish,
+            glazing: ai.glazing,
+            fittings: ai.fittings,
+            ventilation: ai.ventilation,
+            scopeHtml: !hasUserScopeHtml && ai.scope ? `<p>${escapeHtml(ai.scope)}</p>` : undefined,
+          }
+        : undefined,
     });
   }
   

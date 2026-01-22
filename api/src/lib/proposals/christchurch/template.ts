@@ -23,6 +23,14 @@ export function buildChristchurchProposalHtml(opts: {
     badge1?: string;
     badge2?: string;
   };
+  aiSummary?: {
+    timber?: string;
+    finish?: string;
+    glazing?: string;
+    fittings?: string;
+    ventilation?: string;
+    scopeHtml?: string;
+  };
   scopeHtml?: string;
 }): string {
   const { quote, tenantSettings: ts, currencySymbol: sym } = opts;
@@ -110,16 +118,34 @@ export function buildChristchurchProposalHtml(opts: {
   const fittingsValues = collectLineMetaValues(["fittings", "hardware", "ironmongery"]).slice(0, 4);
   const ventilationValues = collectLineMetaValues(["ventilation", "vents", "trickleVent"]).slice(0, 3);
 
-  const timber = timberValues.length ? timberValues.join(" / ") : fallbackTimber;
-  const finish = finishValues.length ? finishValues.join(" / ") : fallbackFinish;
-  const glazing = glazingValues.length ? glazingValues.join(" / ") : fallbackGlazing;
-  const fittings = fittingsValues.length ? fittingsValues.join(", ") : fallbackFittings;
-  const ventilation = ventilationValues.length ? ventilationValues.join(" / ") : fallbackVentilation;
+  const timber =
+    (typeof opts.aiSummary?.timber === "string" && opts.aiSummary.timber.trim())
+      ? opts.aiSummary.timber.trim()
+      : (timberValues.length ? timberValues.join(" / ") : fallbackTimber);
+  const finish =
+    (typeof opts.aiSummary?.finish === "string" && opts.aiSummary.finish.trim())
+      ? opts.aiSummary.finish.trim()
+      : (finishValues.length ? finishValues.join(" / ") : fallbackFinish);
+  const glazing =
+    (typeof opts.aiSummary?.glazing === "string" && opts.aiSummary.glazing.trim())
+      ? opts.aiSummary.glazing.trim()
+      : (glazingValues.length ? glazingValues.join(" / ") : fallbackGlazing);
+  const fittings =
+    (typeof opts.aiSummary?.fittings === "string" && opts.aiSummary.fittings.trim())
+      ? opts.aiSummary.fittings.trim()
+      : (fittingsValues.length ? fittingsValues.join(", ") : fallbackFittings);
+  const ventilation =
+    (typeof opts.aiSummary?.ventilation === "string" && opts.aiSummary.ventilation.trim())
+      ? opts.aiSummary.ventilation.trim()
+      : (ventilationValues.length ? ventilationValues.join(" / ") : fallbackVentilation);
 
-  const scopeHtml = String(opts.scopeHtml || "").trim() || `<p>${escapeHtml(
-    ((quote.meta as any) || {})?.scopeDescription ||
-      `Supply of bespoke timber joinery manufactured to specification, factory finished, glazed, and supplied with appropriate ironmongery and ventilation.`,
-  )}</p>`;
+  const scopeHtml =
+    (typeof opts.aiSummary?.scopeHtml === "string" && opts.aiSummary.scopeHtml.trim())
+      ? opts.aiSummary.scopeHtml.trim()
+      : (String(opts.scopeHtml || "").trim() || `<p>${escapeHtml(
+          ((quote.meta as any) || {})?.scopeDescription ||
+            `Supply of bespoke timber joinery manufactured to specification, factory finished, glazed, and supplied with appropriate ironmongery and ventilation.`,
+        )}</p>`);
 
   // For Christchurch we want delivery broken out explicitly (matches the reference PDF).
   const deliveryExVat = safeMoney(quote.deliveryCost);
@@ -150,6 +176,7 @@ export function buildChristchurchProposalHtml(opts: {
         padding: 18mm 16mm;
         background: #ffffff;
         overflow: hidden;
+        position: relative;
       }
 
       .page.page-bleed { padding: 0; }
@@ -310,6 +337,8 @@ export function buildChristchurchProposalHtml(opts: {
   const email = (quoteDefaults?.email || "").toString();
   const address = (quoteDefaults?.address || "").toString();
 
+  const displayProjectRef = projectReference || projectName || jobNumber;
+
   const coverPage = `
     <div class="page">
       <div class="coverHero">
@@ -322,7 +351,7 @@ export function buildChristchurchProposalHtml(opts: {
       <div class="coverBrandName">${escapeHtml(brand)}</div>
       <div class="coverTagline">${escapeHtml(tagline)}</div>
 
-      <p class="coverTitle">Project Quotation – ${escapeHtml(projectName)}</p>
+      <p class="coverTitle">Project Quotation – ${escapeHtml(displayProjectRef)}</p>
       <div class="coverMeta">Client: ${escapeHtml(client)} • ${escapeHtml(when)}</div>
 
       <div class="coverFooter">
@@ -345,8 +374,7 @@ export function buildChristchurchProposalHtml(opts: {
               <h3 class="ovSubTitle">Client Details</h3>
               <div class="kv">
                 ${kvRow("Client", client)}
-                ${kvRow("Property", projectName)}
-                ${kvRow("Project", projectName)}
+                ${kvRow("Project", displayProjectRef)}
                 ${kvRow("Job Number", jobNumber)}
                 ${deliveryAddress ? kvRow("Delivery Address", deliveryAddress) : ""}
                 ${surveyTeam ? kvRow("Survey Team", surveyTeam) : ""}
