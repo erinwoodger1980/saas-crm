@@ -2353,6 +2353,67 @@ export default function QuoteBuilderPage() {
             <TabsContent value="quote-lines" className="space-y-6">
               {lines && lines.length > 0 ? (
                 <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
+                  <div className="rounded-xl border bg-muted/20 p-4">
+                    <button
+                      type="button"
+                      className="w-full flex items-center justify-between gap-3"
+                      onClick={() => setProposalBasicsOpen((v) => !v)}
+                    >
+                      <div className="text-left">
+                        <div className="text-sm font-medium">Scope & project details (proposal)</div>
+                        <div className="text-xs text-muted-foreground">Shown at the top of the proposal; edit here if AI didn’t fill it.</div>
+                      </div>
+                      {proposalBasicsOpen ? (
+                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </button>
+
+                    {proposalBasicsOpen ? (
+                      <div className="mt-4 space-y-4">
+                        <div className="space-y-1">
+                          <div className="text-xs font-medium text-muted-foreground">Scope (1–3 sentences)</div>
+                          <Textarea
+                            value={proposalScopeDraft}
+                            onChange={(e) => setProposalScopeDraft(e.target.value)}
+                            placeholder="Describe the overall scope shown in the proposal…"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <div className="text-xs font-medium text-muted-foreground">Timber</div>
+                            <Input value={proposalSpecsDraft.timber} onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, timber: e.target.value }))} />
+                          </div>
+                          <div className="space-y-1">
+                            <div className="text-xs font-medium text-muted-foreground">Finish</div>
+                            <Input value={proposalSpecsDraft.finish} onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, finish: e.target.value }))} />
+                          </div>
+                          <div className="space-y-1">
+                            <div className="text-xs font-medium text-muted-foreground">Glazing</div>
+                            <Input value={proposalSpecsDraft.glazing} onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, glazing: e.target.value }))} />
+                          </div>
+                          <div className="space-y-1">
+                            <div className="text-xs font-medium text-muted-foreground">Hardware / fittings</div>
+                            <Input value={proposalSpecsDraft.fittings} onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, fittings: e.target.value }))} />
+                          </div>
+                          <div className="space-y-1 md:col-span-2">
+                            <div className="text-xs font-medium text-muted-foreground">Ventilation</div>
+                            <Input value={proposalSpecsDraft.ventilation} onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, ventilation: e.target.value }))} />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-end">
+                          <Button onClick={handleSaveProposalBasics} disabled={isSavingProposalBasics} className="gap-2">
+                            {isSavingProposalBasics ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                            Save proposal details
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+
                   {lineMaterialAlerts.length > 0 && (
                     <div className="space-y-2">
                       <button
@@ -2497,67 +2558,6 @@ export default function QuoteBuilderPage() {
             <TabsContent value="proposal" className="space-y-6">
               {quoteId ? (
                 <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-4">
-                  <div className="rounded-xl border bg-muted/20 p-4">
-                    <button
-                      type="button"
-                      className="w-full flex items-center justify-between gap-3"
-                      onClick={() => setProposalBasicsOpen((v) => !v)}
-                    >
-                      <div className="text-left">
-                        <div className="text-sm font-medium">Scope & project details (proposal)</div>
-                        <div className="text-xs text-muted-foreground">Shown at the top of the proposal; edit here if AI didn’t fill it.</div>
-                      </div>
-                      {proposalBasicsOpen ? (
-                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                      )}
-                    </button>
-
-                    {proposalBasicsOpen ? (
-                      <div className="mt-4 space-y-4">
-                        <div className="space-y-1">
-                          <div className="text-xs font-medium text-muted-foreground">Scope (1–3 sentences)</div>
-                          <Textarea
-                            value={proposalScopeDraft}
-                            onChange={(e) => setProposalScopeDraft(e.target.value)}
-                            placeholder="Describe the overall scope shown in the proposal…"
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <div className="text-xs font-medium text-muted-foreground">Timber</div>
-                            <Input value={proposalSpecsDraft.timber} onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, timber: e.target.value }))} />
-                          </div>
-                          <div className="space-y-1">
-                            <div className="text-xs font-medium text-muted-foreground">Finish</div>
-                            <Input value={proposalSpecsDraft.finish} onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, finish: e.target.value }))} />
-                          </div>
-                          <div className="space-y-1">
-                            <div className="text-xs font-medium text-muted-foreground">Glazing</div>
-                            <Input value={proposalSpecsDraft.glazing} onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, glazing: e.target.value }))} />
-                          </div>
-                          <div className="space-y-1">
-                            <div className="text-xs font-medium text-muted-foreground">Hardware / fittings</div>
-                            <Input value={proposalSpecsDraft.fittings} onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, fittings: e.target.value }))} />
-                          </div>
-                          <div className="space-y-1 md:col-span-2">
-                            <div className="text-xs font-medium text-muted-foreground">Ventilation</div>
-                            <Input value={proposalSpecsDraft.ventilation} onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, ventilation: e.target.value }))} />
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-end">
-                          <Button onClick={handleSaveProposalBasics} disabled={isSavingProposalBasics} className="gap-2">
-                            {isSavingProposalBasics ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                            Save proposal details
-                          </Button>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <h2 className="text-2xl font-semibold text-foreground mb-2">Live preview</h2>

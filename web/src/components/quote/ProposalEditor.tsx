@@ -331,7 +331,7 @@ export function ProposalEditor({
     } finally {
       setIsSaving(false);
     }
-  }, [quoteId, proposalTemplate, heroFileId, editorScope, onSaved]);
+  }, [quoteId, proposalTemplate, heroFileId, ccImageFileIds, editorScope, onSaved]);
 
   const handleUploadChristchurchImage = useCallback(
     async (

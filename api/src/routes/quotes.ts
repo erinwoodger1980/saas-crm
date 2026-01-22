@@ -4,6 +4,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
+import { Readable } from "stream";
 import { prisma } from "../prisma";
 import { Prisma, FileKind } from "@prisma/client";
 import jwt from "jsonwebtoken";
@@ -713,7 +714,16 @@ async function writePuppeteerPdfToFile(
 ): Promise<{ sizeBytes: number; usedStream: boolean }> {
   const anyPage: any = page as any;
   if (typeof anyPage?.createPDFStream === "function") {
-    const pdfStream = await anyPage.createPDFStream(options);
+    const pdfStreamRaw = await anyPage.createPDFStream(options);
+    const pdfStream: any =
+      pdfStreamRaw && typeof (pdfStreamRaw as any).pipe === "function"
+        ? pdfStreamRaw
+        : typeof (Readable as any).fromWeb === "function"
+          ? (Readable as any).fromWeb(pdfStreamRaw)
+          : null;
+    if (!pdfStream) {
+      throw new Error("createPDFStream returned an unsupported stream type");
+    }
     await new Promise<void>((resolve, reject) => {
       const out = fs.createWriteStream(filepath);
       pdfStream.on("error", reject);
