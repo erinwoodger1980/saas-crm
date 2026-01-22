@@ -61,6 +61,13 @@ function canonicalizeProposalHtmlForSave(html: string): string {
   if (!raw.trim()) return "";
   try {
     const doc = new DOMParser().parseFromString(raw, "text/html");
+
+    // Treat empty rich-text (e.g. <p></p>, <p><br></p>) as empty so the
+    // server can fall back to Settings-driven defaults.
+    const text = (doc.body?.textContent || "").replace(/\u00a0/g, " ").trim();
+    const hasImages = doc.body ? doc.body.querySelectorAll("img").length > 0 : false;
+    if (!text && !hasImages) return "";
+
     const imgs = Array.from(doc.querySelectorAll("img[data-file-id]"));
     for (const img of imgs) {
       const fileId = (img.getAttribute("data-file-id") || "").trim();
@@ -133,11 +140,9 @@ export function ProposalEditor({
         blocks.scopeHtml ||
         "<p>This quotation covers the supply of bespoke joinery for <strong>{{projectName}}</strong>. Please review specifications and quantities.</p>",
       guaranteesHtml:
-        blocks.guaranteesHtml ||
-        "<ul><li>Delivered on time</li><li>No hidden extras</li><li>Fully compliant</li></ul>",
+        blocks.guaranteesHtml || "",
       termsHtml:
-        blocks.termsHtml ||
-        "<p>Prices are valid until <strong>{{validUntil}}</strong>. Payment terms and lead times as agreed.</p>",
+        blocks.termsHtml || "",
     };
   }, [initialMeta]);
 

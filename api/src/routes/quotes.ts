@@ -1865,11 +1865,13 @@ router.get("/:id", requireAuth, async (req: any, res) => {
       orderBy: { uploadedAt: "desc" },
     });
     const supplierFiles = allFiles.filter((f: any) => String(f.kind) === "SUPPLIER_QUOTE");
+    const ownQuoteFiles = allFiles.filter((f: any) => String(f.kind) === "OWN_QUOTE");
     const clientQuoteFiles = allFiles.filter((f: any) => String(f.kind) === "CLIENT_QUOTE");
 
     return res.json({
       ...normalizedQuote,
       supplierFiles,
+      ownQuoteFiles,
       clientQuoteFiles,
     });
   } catch (e: any) {
@@ -1951,7 +1953,7 @@ router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: an
   // Used for non-supplier documents such as purchase orders and delivery notes.
   const requestedKindRaw = req.query?.kind;
   const requestedKind = typeof requestedKindRaw === "string" ? requestedKindRaw.trim() : "";
-  const allowedKinds: FileKind[] = ["SUPPLIER_QUOTE", "CLIENT_QUOTE", "OTHER"];
+  const allowedKinds: FileKind[] = ["SUPPLIER_QUOTE", "OWN_QUOTE", "CLIENT_QUOTE", "OTHER"];
   const uploadKind: FileKind = (allowedKinds as any).includes(requestedKind as any)
     ? (requestedKind as FileKind)
     : "SUPPLIER_QUOTE";
@@ -3881,6 +3883,7 @@ function buildQuoteProposalHtml(opts: {
   const ref = `Q-${quote.id.slice(0, 8).toUpperCase()}`;
   const leadCustom: any = (quote.lead?.custom as any) || {};
   const jobNumber = (leadCustom?.refId as string) || ref;
+  const projectReference = typeof leadCustom?.projectReference === "string" ? leadCustom.projectReference : "";
   const deliveryAddress = (leadCustom?.address as string) || "";
   
   // Extract specifications
@@ -4560,6 +4563,7 @@ function buildQuoteProposalHtml(opts: {
             <div class="detail-line"><strong>Project:</strong> ${escapeHtml(projectName)}</div>
             ${leadCustom?.phone ? `<div class="detail-line"><strong>Phone:</strong> ${escapeHtml(leadCustom.phone)}</div>` : ""}
             ${quote.lead?.email ? `<div class="detail-line"><strong>Email:</strong> ${escapeHtml(quote.lead.email)}</div>` : ""}
+            ${projectReference ? `<div class="detail-line"><strong>Project ref:</strong> ${escapeHtml(projectReference)}</div>` : ""}
             <div class="detail-line"><strong>Job Number:</strong> ${escapeHtml(jobNumber)}</div>
             <div class="detail-line"><strong>Date:</strong> ${when}</div>
             <div class="detail-line"><strong>Valid Until:</strong> ${validUntil}</div>
@@ -5554,6 +5558,7 @@ router.post("/:id/delivery", requireAuth, async (req: any, res) => {
  *   distributeDelivery?: boolean;
  *   hideDeliveryLine?: boolean;
  *   applyMarkup?: boolean;
+ *   fileKind?: "SUPPLIER_QUOTE" | "OWN_QUOTE";
  * }
  */
 router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
@@ -5592,7 +5597,7 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
     await normaliseQuoteSourceTypeColumn(quoteId);
     
     if (!quote.supplierFiles || quote.supplierFiles.length === 0) {
-      return res.status(400).json({ error: "no_supplier_files" });
+      return res.status(400).json({ error: "no_files" });
     }
 
     const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
@@ -5617,6 +5622,10 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
       hideDeliveryLine = true,
       applyMarkup = true,
     } = req.body || {};
+
+    const rawFileKind = req.body?.fileKind;
+    const requestedFileKind = typeof rawFileKind === "string" ? rawFileKind.trim() : "";
+    const fileKind: "SUPPLIER_QUOTE" | "OWN_QUOTE" = requestedFileKind === "OWN_QUOTE" ? "OWN_QUOTE" : "SUPPLIER_QUOTE";
 
     // Heuristic: the "Upload your own quote" tab calls this endpoint with *all* transformations disabled.
     // In that mode we prefer deterministic-first parsing (no LLM) and only rely on OCR if Stage A is poor.
@@ -5703,13 +5712,17 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
     })();
 
     const pdfFiles = (quote.supplierFiles || [])
-      .filter((f: any) => f?.kind === "SUPPLIER_QUOTE")
+      .filter((f: any) => f?.kind === fileKind)
       .filter((f: any) => /pdf$/i.test(f.mimeType || "") || /\.pdf$/i.test(f.name || ""))
       .sort((a: any, b: any) => {
         const at = a?.uploadedAt ? new Date(a.uploadedAt).getTime() : 0;
         const bt = b?.uploadedAt ? new Date(b.uploadedAt).getTime() : 0;
         return bt - at;
       });
+
+    if (!pdfFiles.length) {
+      return res.status(400).json({ error: fileKind === "OWN_QUOTE" ? "no_own_quote_files" : "no_supplier_files" });
+    }
 
     const filesToParse = pdfFiles.slice(0, maxFiles);
     if (pdfFiles.length > filesToParse.length) {

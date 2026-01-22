@@ -33,6 +33,7 @@ export type QuoteDto = {
   lines?: ParsedLineDto[];
   questionnaireAnswers?: Record<string, any> | null;
   supplierFiles?: SupplierFileDto[];
+  ownQuoteFiles?: SupplierFileDto[];
   clientQuoteFiles?: SupplierFileDto[];
   notes?: string | null;
   proposalPdfUrl?: string | null;
@@ -199,6 +200,16 @@ export async function uploadSupplierPdf(quoteId: string, file: File): Promise<vo
   const fd = new FormData();
   fd.append("files", file);
   await apiFetch(`/quotes/${encodeURIComponent(quoteId)}/files`, {
+    method: "POST",
+    body: fd as any,
+  } as any);
+}
+
+export async function uploadOwnQuotePdf(quoteId: string, file: File): Promise<void> {
+  if (!quoteId || !file) throw new Error("quoteId and file required");
+  const fd = new FormData();
+  fd.append("files", file);
+  await apiFetch(`/quotes/${encodeURIComponent(quoteId)}/files?kind=OWN_QUOTE`, {
     method: "POST",
     body: fd as any,
   } as any);

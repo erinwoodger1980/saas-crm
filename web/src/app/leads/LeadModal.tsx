@@ -521,6 +521,7 @@ export default function LeadModal({
 
   // Form inputs
   const [numberInput, setNumberInput] = useState("");
+  const [projectRefInput, setProjectRefInput] = useState("");
   const [nameInput, setNameInput] = useState("");
   const [emailInput, setEmailInput] = useState("");
   const [phoneInput, setPhoneInput] = useState("");
@@ -1121,6 +1122,7 @@ export default function LeadModal({
       };
 
       setNumberInput(normalized.number ?? "");
+      setProjectRefInput(typeof (leadPreview as any)?.custom?.projectReference === "string" ? String((leadPreview as any).custom.projectReference) : "");
       setNameInput(normalized.contactName ?? "");
       setEmailInput(normalized.email ?? "");
       setPhoneInput(normalized.phone ?? "");
@@ -1272,6 +1274,11 @@ export default function LeadModal({
 
         // seed inputs
         setNumberInput((row as any)?.number || "");
+        setProjectRefInput(
+          row?.custom && typeof row.custom === "object" && !Array.isArray(row.custom)
+            ? ((row.custom as any)?.projectReference ? String((row.custom as any).projectReference) : "")
+            : "",
+        );
         setNameInput(contactName || "");
         setEmailInput(email || "");
         setPhoneInput((row as any)?.phone || "");
@@ -5049,6 +5056,35 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           value={formatShortDate((lead?.capturedAt ?? (lead as any)?.createdAt) || undefined) || ""}
                           readOnly
                           placeholder="—"
+                        />
+                      </label>
+
+                      {/* Project Ref */}
+                      <label className="text-sm">
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                          Project ref
+                        </span>
+                        <input
+                          className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                          value={projectRefInput}
+                          onChange={(e) => setProjectRefInput(e.target.value)}
+                          onBlur={(e) => {
+                            const nextProjectRef = e.currentTarget.value;
+                            setProjectRefInput(nextProjectRef);
+                            setLead((prev) => {
+                              if (!prev) return prev;
+                              const prevCustom =
+                                prev.custom && typeof prev.custom === "object" && !Array.isArray(prev.custom)
+                                  ? { ...(prev.custom as Record<string, any>) }
+                                  : {};
+                              return {
+                                ...prev,
+                                custom: { ...prevCustom, projectReference: nextProjectRef ? nextProjectRef : null },
+                              };
+                            });
+                            savePatch({ custom: { projectReference: nextProjectRef ? nextProjectRef : null } });
+                          }}
+                          placeholder="e.g. ABC-123"
                         />
                       </label>
 

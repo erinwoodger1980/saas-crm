@@ -5,8 +5,6 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import useSWR from "swr";
 import { ParsedLinesTable } from "@/components/quotes/ParsedLinesTable";
-import { SupplierFilesCard } from "@/components/quotes/SupplierFilesCard";
-import { TemplatePickerDialog } from "@/components/quotes/TemplatePickerDialog";
 import { LeadDetailsCard } from "@/components/quotes/LeadDetailsCard";
 import { ClientQuoteUploadCard } from "@/components/quotes/ClientQuoteUploadCard";
 import { UnifiedQuoteLineItems } from "@/components/quotes/UnifiedQuoteLineItems";
@@ -20,9 +18,9 @@ import { AIComponentConfigurator } from "@/components/configurator/AIComponentCo
 import {
   fetchQuote,
   fetchParsedLines,
-  parseSupplierPdfs,
   generateMlEstimate,
   uploadSupplierPdf,
+  uploadOwnQuotePdf,
   uploadClientQuotePdf,
   fillLineStandardFromParsed,
   saveQuoteMappings,
@@ -32,8 +30,6 @@ import {
   processQuoteFromFile,
   saveClientQuoteLines,
   priceQuoteFromQuestionnaire,
-  updateQuoteSource,
-  type SupplierFileDto as SupplierFile,
 } from "@/lib/api/quotes";
 import type {
   EstimateResponse,
@@ -166,8 +162,6 @@ export default function QuoteBuilderPage() {
   const [estimate, setEstimate] = useState<EstimateResponse | null>(null);
   const [lastEstimateAt, setLastEstimateAt] = useState<string | null>(null);
   const [isParsing, setIsParsing] = useState(false);
-  const [isTemplatePickerOpen, setTemplatePickerOpen] = useState(false);
-  const [isTemplateSelectionSaving, setTemplateSelectionSaving] = useState(false);
   const [_isSavingMappings, setIsSavingMappings] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isUploadingClientQuote, setIsUploadingClientQuote] = useState(false);
@@ -181,6 +175,9 @@ export default function QuoteBuilderPage() {
   const [rawParseOpen, setRawParseOpen] = useState(false);
   const [processDialogOpen, setProcessDialogOpen] = useState(false);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
+  const [supplierPreviewFileId, setSupplierPreviewFileId] = useState<string | null>(null);
+  const [supplierPreviewUrl, setSupplierPreviewUrl] = useState<string | null>(null);
+  const [supplierPreviewLoading, setSupplierPreviewLoading] = useState(false);
   const ownQuoteFileInputRef = useRef<HTMLInputElement | null>(null);
   const [ownQuotePreviewFileId, setOwnQuotePreviewFileId] = useState<string | null>(null);
   const [ownQuotePreviewUrl, setOwnQuotePreviewUrl] = useState<string | null>(null);
@@ -468,14 +465,6 @@ export default function QuoteBuilderPage() {
 
   const runSupplierProcessing = useCallback(async () => {
     if (!quoteId) return;
-    if (!quote?.supplierFiles?.length) {
-      toast({
-        title: "No files to parse",
-        description: "Upload supplier PDFs first",
-        variant: "destructive",
-      });
-      return;
-    }
 
     setIsParsing(true);
     setError(null);
@@ -500,7 +489,6 @@ export default function QuoteBuilderPage() {
       });
 
       await Promise.all([mutateQuote(), mutateLines()]);
-      setActiveTab("quote-lines");
     } catch (err: any) {
       setError(err?.message || "Failed to parse supplier PDFs");
       toast({
@@ -514,44 +502,10 @@ export default function QuoteBuilderPage() {
   }, [quoteId, quote?.supplierFiles, mutateQuote, mutateLines, toast]);
 
   const handleParse = useCallback(() => {
-    if (!quoteId || !quote?.supplierFiles?.length) {
-      toast({
-        title: "No files to parse",
-        description: "Upload supplier PDFs first",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (isParsing || isTemplateSelectionSaving) return;
-    setTemplatePickerOpen(true);
-  }, [quoteId, quote?.supplierFiles, toast, isParsing, isTemplateSelectionSaving]);
-
-  const handleTemplateConfirm = useCallback(
-    async ({ sourceType, profileId }: { sourceType: "supplier" | "software" | null; profileId: string | null }) => {
-      if (!quoteId) return;
-      setTemplateSelectionSaving(true);
-      const nextSource = sourceType ?? null;
-      const nextProfile = profileId ?? null;
-      const prevSource = quote?.quoteSourceType ?? null;
-      const prevProfile = quote?.supplierProfileId ?? null;
-
-      try {
-        if (nextSource !== prevSource || nextProfile !== prevProfile) {
-          await updateQuoteSource(quoteId, nextSource, nextProfile);
-          await mutateQuote();
-        }
-        setTemplatePickerOpen(false);
-        await runSupplierProcessing();
-      } catch (err: any) {
-        const message = err?.message || "Failed to save template selection";
-        setError(message);
-        toast({ title: "Template picker failed", description: message, variant: "destructive" });
-      } finally {
-        setTemplateSelectionSaving(false);
-      }
-    },
-    [quoteId, quote?.quoteSourceType, quote?.supplierProfileId, mutateQuote, runSupplierProcessing, toast],
-  );
+    if (!quoteId) return;
+    if (isParsing) return;
+    void runSupplierProcessing();
+  }, [quoteId, isParsing, runSupplierProcessing]);
 
   const handleUploadFiles = useCallback(
     async (files: FileList | null) => {
@@ -562,8 +516,21 @@ export default function QuoteBuilderPage() {
         for (const file of Array.from(files)) {
           await uploadSupplierPdf(quoteId, file);
         }
-        toast({ title: "Files uploaded", description: `${files.length} file(s) ready for parsing.` });
-        await Promise.all([mutateQuote(), mutateLines()]);
+
+        toast({ title: "Files uploaded", description: `${files.length} file(s) uploaded. Processing…` });
+
+        const updatedQuote = await mutateQuote();
+        const latest = ((updatedQuote?.supplierFiles ?? quote?.supplierFiles) ?? [])
+          .filter((f: any) => f?.kind === "SUPPLIER_QUOTE")
+          .slice()
+          .sort((a, b) => new Date(b.uploadedAt || 0).getTime() - new Date(a.uploadedAt || 0).getTime())[0];
+        if (latest?.id) {
+          setSupplierPreviewFileId(latest.id);
+          void handlePreviewSupplierFile(latest.id);
+        }
+
+        await runSupplierProcessing();
+        await mutateLines();
       } catch (err: any) {
         setError(err?.message || "Upload failed");
         toast({ title: "Upload failed", description: err?.message || "Unable to upload supplier file", variant: "destructive" });
@@ -572,7 +539,7 @@ export default function QuoteBuilderPage() {
         setIsUploading(false);
       }
     },
-    [quoteId, mutateQuote, mutateLines, toast],
+    [quoteId, mutateQuote, mutateLines, quote?.supplierFiles, runSupplierProcessing, toast, handlePreviewSupplierFile],
   );
 
   const handleUploadClientQuoteFiles = useCallback(
@@ -602,9 +569,9 @@ export default function QuoteBuilderPage() {
       setIsUploadingOwnQuote(true);
       setError(null);
       try {
-        // Upload files as supplier files
+        // Upload files as OWN_QUOTE files (kept separate from supplier uploads)
         for (const file of Array.from(files)) {
-          await uploadSupplierPdf(quoteId, file);
+          await uploadOwnQuotePdf(quoteId, file);
         }
         
         // Parse without transformations
@@ -612,6 +579,7 @@ export default function QuoteBuilderPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            fileKind: "OWN_QUOTE",
             convertCurrency: false,
             distributeDelivery: false,
             hideDeliveryLine: false,
@@ -624,12 +592,13 @@ export default function QuoteBuilderPage() {
           description: `${res.count} line items extracted without modifications` 
         });
         
-        await Promise.all([mutateQuote(), mutateLines()]);
+        const updatedQuote = await mutateQuote();
+        await mutateLines();
 
         // Keep user on this tab so they can preview + review parsed lines.
         // Default preview to the most recently uploaded file.
-        const latest = (quote?.supplierFiles ?? [])
-          .filter((f: any) => f?.kind === "SUPPLIER_QUOTE")
+        const latest = ((updatedQuote?.ownQuoteFiles ?? quote?.ownQuoteFiles) ?? [])
+          .filter((f: any) => f?.kind === "OWN_QUOTE")
           .slice()
           .sort((a, b) => new Date(b.uploadedAt || 0).getTime() - new Date(a.uploadedAt || 0).getTime())[0];
         if (latest?.id) {
@@ -646,7 +615,7 @@ export default function QuoteBuilderPage() {
         setIsUploadingOwnQuote(false);
       }
     },
-    [quoteId, mutateQuote, mutateLines, toast],
+    [quoteId, mutateQuote, mutateLines, quote?.ownQuoteFiles, toast],
   );
 
   const handlePreviewOwnQuoteFile = useCallback(
@@ -665,6 +634,27 @@ export default function QuoteBuilderPage() {
         setOwnQuotePreviewUrl(null);
       } finally {
         setOwnQuotePreviewLoading(false);
+      }
+    },
+    [quoteId, toast],
+  );
+
+  const handlePreviewSupplierFile = useCallback(
+    async (fileId: string) => {
+      if (!quoteId || !fileId) return;
+      setSupplierPreviewFileId(fileId);
+      setSupplierPreviewLoading(true);
+      setSupplierPreviewUrl(null);
+      try {
+        const signed = await apiFetch<{ url: string }>(
+          `/quotes/${encodeURIComponent(quoteId)}/files/${encodeURIComponent(fileId)}/signed`,
+        );
+        setSupplierPreviewUrl(signed?.url || null);
+      } catch (err: any) {
+        toast({ title: "Unable to preview file", description: err?.message || "Missing file", variant: "destructive" });
+        setSupplierPreviewUrl(null);
+      } finally {
+        setSupplierPreviewLoading(false);
       }
     },
     [quoteId, toast],
@@ -1053,13 +1043,19 @@ export default function QuoteBuilderPage() {
           setOwnQuotePreviewLoading(false);
         }
 
+        if (supplierPreviewFileId === fileId) {
+          setSupplierPreviewFileId(null);
+          setSupplierPreviewUrl(null);
+          setSupplierPreviewLoading(false);
+        }
+
         await mutateQuote();
       } catch (err: any) {
         setError(err?.message || "Delete failed");
         toast({ title: "Delete failed", description: err?.message || "Unable to delete file", variant: "destructive" });
       }
     },
-    [mutateQuote, ownQuotePreviewFileId, toast],
+    [mutateQuote, ownQuotePreviewFileId, supplierPreviewFileId, toast],
   );
 
   // Handle product type selection from type selector modal
@@ -1726,49 +1722,99 @@ export default function QuoteBuilderPage() {
                   </p>
                 </div>
 
-                <SupplierFilesCard
-                  files={quote?.supplierFiles}
-                  quoteId={quoteId}
-                  quoteSourceType={quote?.quoteSourceType}
-                  supplierProfileId={quote?.supplierProfileId}
-                  onOpen={handleOpenFile}
-                  onDelete={(file) => void handleDeleteUploadedFile(file.id)}
-                  onUpload={handleUploadFiles}
-                  onUploadClick={openUploadDialog}
-                  isUploading={isUploading}
-                  onSourceUpdated={() => {
-                    void mutateQuote();
-                  }}
-                />
-
-                {(quote?.supplierFiles ?? []).length > 0 && (
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-6 bg-muted/30 rounded-xl">
-                    <div>
-                      <h3 className="font-medium text-foreground mb-1">Parse supplier PDFs</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Extract line items and pricing using ML
-                      </p>
-                    </div>
-                    <Button
-                      onClick={handleParse}
-                      disabled={isParsing}
-                      size="lg"
-                      className="gap-2"
+                {/* Upload area (mirrors Own Quote UX) */}
+                <div className="space-y-4">
+                  <div 
+                    className="text-center py-8 border-2 border-dashed border-muted rounded-xl hover:border-primary/50 transition-colors cursor-pointer"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <FileUp className="h-12 w-12 mx-auto mb-4 opacity-40" />
+                    <h3 className="text-lg font-medium mb-2">Upload supplier quote</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Click to browse or drag PDF files here
+                    </p>
+                    <Button 
+                      variant="outline" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openUploadDialog();
+                      }}
+                      disabled={isUploading || isParsing}
                     >
-                      {isParsing ? (
+                      {isUploading || isParsing ? (
                         <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Parsing...
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          {isUploading ? "Uploading..." : "Parsing..."}
                         </>
                       ) : (
                         <>
-                          <Sparkles className="h-4 w-4" />
-                          Parse & build estimate
+                          <FileUp className="h-4 w-4 mr-2" />
+                          Select PDF
                         </>
                       )}
                     </Button>
                   </div>
-                )}
+
+                  {(quote?.supplierFiles ?? []).length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-medium">Uploaded files:</h4>
+                      {(quote?.supplierFiles ?? []).map((file) => (
+                        <div
+                          key={file.id}
+                          className={`flex items-center gap-2 text-sm p-2 rounded border hover:bg-muted/30 ${
+                            supplierPreviewFileId === file.id ? "border-primary" : ""
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            className="flex flex-1 min-w-0 items-center gap-2 text-left"
+                            onClick={() => void handlePreviewSupplierFile(file.id)}
+                          >
+                            <FileText className="h-4 w-4 flex-shrink-0" />
+                            <span className="truncate">{file.name}</span>
+                            <span className="text-muted-foreground flex-shrink-0">
+                              ({(file.sizeBytes ? file.sizeBytes / 1024 : 0).toFixed(1)} KB)
+                            </span>
+                            <span className="ml-auto text-xs text-muted-foreground">Preview</span>
+                          </button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleDeleteUploadedFile(file.id);
+                            }}
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                            aria-label="Delete file"
+                            title="Delete"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {(supplierPreviewLoading || supplierPreviewUrl) && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-medium">Preview</h4>
+                      {supplierPreviewLoading ? (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Loading preview...
+                        </div>
+                      ) : supplierPreviewUrl ? (
+                        <iframe
+                          title="Uploaded supplier quote preview"
+                          src={supplierPreviewUrl}
+                          className="w-full rounded-xl border"
+                          style={{ height: "70vh" }}
+                        />
+                      ) : null}
+                    </div>
+                  )}
+                </div>
 
                 {lines && lines.length > 0 && (
                   <div className="text-center py-4">
@@ -1893,10 +1939,10 @@ export default function QuoteBuilderPage() {
                     </Button>
                   </div>
                   
-                  {quote?.supplierFiles && quote.supplierFiles.length > 0 && (
+                  {quote?.ownQuoteFiles && quote.ownQuoteFiles.length > 0 && (
                     <div className="space-y-2">
                       <h4 className="text-sm font-medium">Uploaded files:</h4>
-                      {quote.supplierFiles.map((file) => (
+                      {quote.ownQuoteFiles.map((file) => (
                         <div
                           key={file.id}
                           className={`flex items-center gap-2 text-sm p-2 rounded border hover:bg-muted/30 ${
@@ -2308,8 +2354,13 @@ export default function QuoteBuilderPage() {
                         Updates automatically as quote lines change.
                       </p>
                     </div>
-                    <div className="text-sm text-muted-foreground">
-                      {proposalPreviewLoading ? "Updating…" : null}
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href="/settings#business-details">Edit business details</Link>
+                      </Button>
+                      <div className="text-sm text-muted-foreground">
+                        {proposalPreviewLoading ? "Updating…" : null}
+                      </div>
                     </div>
                   </div>
 
@@ -2612,16 +2663,6 @@ export default function QuoteBuilderPage() {
         </DialogContent>
       </Dialog>
 
-      <TemplatePickerDialog
-        open={isTemplatePickerOpen}
-        onOpenChange={setTemplatePickerOpen}
-        quoteId={quoteId}
-        supplierFiles={quote?.supplierFiles}
-        initialSourceType={quote?.quoteSourceType}
-        initialProfileId={quote?.supplierProfileId}
-        onConfirm={handleTemplateConfirm}
-        isSubmitting={isTemplateSelectionSaving || isParsing}
-      />
     </div>
   );
 }

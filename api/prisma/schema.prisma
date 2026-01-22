@@ -4424,6 +4424,7 @@ enum QuoteStatus {
 
 enum FileKind {
   SUPPLIER_QUOTE
+  OWN_QUOTE
   CLIENT_QUOTE
   LINE_IMAGE
   OTHER
