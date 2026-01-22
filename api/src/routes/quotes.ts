@@ -3948,6 +3948,7 @@ function buildQuoteProposalHtml(opts: {
     const ccUrls = {
       logoMark: typeof ccAny?.logoMarkFileId === "string" ? proposalAssets[String(ccAny.logoMarkFileId).trim()] : undefined,
       logoWide: typeof ccAny?.logoWideFileId === "string" ? proposalAssets[String(ccAny.logoWideFileId).trim()] : undefined,
+      coverHero: typeof ccAny?.coverHeroFileId === "string" ? proposalAssets[String(ccAny.coverHeroFileId).trim()] : undefined,
       sidebarPhoto: typeof ccAny?.sidebarPhotoFileId === "string" ? proposalAssets[String(ccAny.sidebarPhotoFileId).trim()] : undefined,
       badge1: typeof ccAny?.badge1FileId === "string" ? proposalAssets[String(ccAny.badge1FileId).trim()] : undefined,
       badge2: typeof ccAny?.badge2FileId === "string" ? proposalAssets[String(ccAny.badge2FileId).trim()] : undefined,

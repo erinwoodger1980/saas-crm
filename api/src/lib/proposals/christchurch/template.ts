@@ -18,6 +18,7 @@ export function buildChristchurchProposalHtml(opts: {
   imageUrls?: {
     logoMark?: string;
     logoWide?: string;
+    coverHero?: string;
     sidebarPhoto?: string;
     badge1?: string;
     badge2?: string;
@@ -30,6 +31,7 @@ export function buildChristchurchProposalHtml(opts: {
   const img = {
     logoMark: String(opts.imageUrls?.logoMark || opts.logoDataUrl || CHRISTCHURCH_ASSETS.logoMark),
     logoWide: String(opts.imageUrls?.logoWide || CHRISTCHURCH_ASSETS.logoWide),
+    coverHero: String(opts.imageUrls?.coverHero || ""),
     sidebarPhoto: String(opts.imageUrls?.sidebarPhoto || CHRISTCHURCH_ASSETS.sidebarPhoto),
     badge1: String(opts.imageUrls?.badge1 || CHRISTCHURCH_ASSETS.badge1),
     badge2: String(opts.imageUrls?.badge2 || CHRISTCHURCH_ASSETS.badge2),
@@ -133,12 +135,24 @@ export function buildChristchurchProposalHtml(opts: {
 
   const styles = `
     <style>
-      @page { size: A4; margin: 18mm 16mm; }
-      html, body { margin: 0; padding: 0; }
+      @page { size: A4 portrait; margin: 18mm 16mm; }
+      html, body { margin: 0; padding: 0; background: #ffffff; }
       body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; color: #0f172a; }
 
       .page { page-break-after: always; }
       .page:last-child { page-break-after: auto; }
+
+      /* Ensure the on-screen preview renders as A4 portrait too */
+      .page {
+        width: 210mm;
+        height: 297mm;
+        box-sizing: border-box;
+        padding: 18mm 16mm;
+        background: #ffffff;
+        overflow: hidden;
+      }
+
+      .page.page-bleed { padding: 0; }
 
       .header {
         display: flex;
@@ -170,15 +184,26 @@ export function buildChristchurchProposalHtml(opts: {
       .titleBlock .sub { margin-top: 2mm; font-size: 10.5pt; color: #334155; }
 
       /* Updated cover page (more visual) */
-      .coverHero { width: 100%; height: 82mm; overflow: hidden; border-radius: 8px; border: 1px solid #e2e8f0; }
+      .coverHero { width: 100%; height: 76mm; overflow: hidden; }
       .coverHero img { width: 100%; height: 100%; object-fit: cover; display: block; }
-      .coverLogos { display:flex; justify-content:center; align-items:center; gap:8mm; margin: 8mm 0 4mm 0; }
-      .coverTitle { text-align:center; font-size: 20pt; font-weight: 800; margin: 0; }
-      .coverProject { text-align:center; margin-top: 2mm; font-size: 13pt; color: #334155; }
-      .coverMeta { text-align:center; margin-top: 2mm; font-size: 10.5pt; color: #334155; }
-      .coverFooter { margin-top: 10mm; border-top: 1px solid #e2e8f0; padding-top: 5mm; display:flex; justify-content: space-between; gap: 10mm; }
-      .coverFooter .left { font-size: 9.5pt; color: #334155; line-height: 1.5; }
-      .coverFooter .right { font-size: 9.5pt; color: #334155; line-height: 1.5; text-align:right; }
+      .coverLogo { display:flex; justify-content:center; align-items:center; margin: 10mm 0 4mm 0; }
+      .coverLogo img { max-height: 24mm; width: auto; display: block; }
+      .coverBrandName { text-align:center; font-weight: 800; margin-top: 1mm; font-size: 10.5pt; color: #92400e; }
+      .coverTagline { text-align:center; margin-top: 1mm; font-size: 9.8pt; color: #334155; }
+      .coverTitle { text-align:center; font-size: 21pt; font-weight: 900; margin: 10mm 0 0 0; }
+      .coverMeta { text-align:center; margin-top: 4mm; font-size: 10.5pt; color: #334155; }
+      .coverFooter { position: absolute; left: 16mm; right: 16mm; bottom: 18mm; text-align: center; font-size: 9.8pt; color: #334155; line-height: 1.55; }
+
+      /* Overview page (page 2) */
+      .overviewBleed { width: 210mm; height: 297mm; display: grid; grid-template-columns: 78mm 1fr; }
+      .overviewBleed .photo { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .overviewBleed .content { padding: 18mm 16mm; box-sizing: border-box; }
+      .ovTitle { font-size: 18pt; font-weight: 900; color: #1e3a8a; margin: 0 0 8mm 0; }
+      .ovGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10mm; }
+      .ovSubTitle { font-size: 12.5pt; font-weight: 900; color: #1e3a8a; margin: 0 0 4mm 0; }
+      .ovBlock { margin-bottom: 8mm; }
+      .ovScope { margin-top: 6mm; }
+      .ovScope p { margin: 0; }
 
       .overviewWrap { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; }
 
@@ -288,86 +313,67 @@ export function buildChristchurchProposalHtml(opts: {
   const coverPage = `
     <div class="page">
       <div class="coverHero">
-        <img src="${img.sidebarPhoto}" alt="Project" />
+        <img src="${img.coverHero || img.logoWide || img.sidebarPhoto}" alt="Project" />
       </div>
 
-      <div class="coverLogos">
-        <img src="${img.logoMark}" alt="Logo" style="height:14mm;" />
-        <img src="${img.logoWide}" alt="${escapeHtml(brand)}" style="height:16mm;" />
+      <div class="coverLogo">
+        <img src="${img.logoMark}" alt="${escapeHtml(brand)}" />
       </div>
-      <p class="coverTitle">Project Quotation</p>
-      <div class="coverProject">${escapeHtml(projectName)}</div>
+      <div class="coverBrandName">${escapeHtml(brand)}</div>
+      <div class="coverTagline">${escapeHtml(tagline)}</div>
+
+      <p class="coverTitle">Project Quotation – ${escapeHtml(projectName)}</p>
       <div class="coverMeta">Client: ${escapeHtml(client)} • ${escapeHtml(when)}</div>
 
       <div class="coverFooter">
-        <div class="left">
-          <strong>${escapeHtml(brand)}</strong><br/>
-          ${escapeHtml(tagline)}
-        </div>
-        <div class="right">
-          ${phone ? `Telephone: ${escapeHtml(phone)}<br/>` : ""}
-          ${email ? `Email: ${escapeHtml(email)}<br/>` : ""}
-          ${address ? `Address: ${escapeHtml(address)}` : ""}
-        </div>
+        ${phone ? `Telephone: ${escapeHtml(phone)}<br/>` : ""}
+        ${email ? `Email: ${escapeHtml(email)}<br/>` : ""}
+        ${address ? `Address: ${escapeHtml(address)}` : ""}
       </div>
     </div>
   `;
 
   const overviewPage = `
-    <div class="page">
-      <div class="header">
-        <div class="brand">
-          <div>
-            <h1>${escapeHtml(brand)}</h1>
-            <div class="tagline">${escapeHtml(tagline)}</div>
-          </div>
-        </div>
-        <div class="contact">
-          ${phone ? `Telephone: ${escapeHtml(phone)}<br/>` : ""}
-          ${email ? `Email: ${escapeHtml(email)}<br/>` : ""}
-          ${address ? `Address: ${escapeHtml(address)}` : ""}
-        </div>
-      </div>
+    <div class="page page-bleed">
+      <div class="overviewBleed">
+        <img src="${img.sidebarPhoto}" alt="Project" class="photo" />
+        <div class="content">
+          <h2 class="ovTitle">Project Overview</h2>
 
-      <div style="font-weight:800; font-size:12pt; margin-bottom:3mm;">Project Overview</div>
+          <div class="ovGrid">
+            <div class="ovBlock">
+              <h3 class="ovSubTitle">Client Details</h3>
+              <div class="kv">
+                ${kvRow("Client", client)}
+                ${kvRow("Property", projectName)}
+                ${kvRow("Project", projectName)}
+                ${kvRow("Job Number", jobNumber)}
+                ${deliveryAddress ? kvRow("Delivery Address", deliveryAddress) : ""}
+                ${surveyTeam ? kvRow("Survey Team", surveyTeam) : ""}
+                ${kvRow("Date", when)}
+              </div>
+            </div>
 
-      <div class="overviewWithPhoto">
-        <div class="overviewWrap">
-          <div class="panel">
-            <h3>Client Details</h3>
-            <div class="kv">
-              ${kvRow("Client", client)}
-              ${projectReference ? kvRow("Project ref", projectReference) : ""}
-              ${kvRow("Delivery Address", deliveryAddress)}
-              ${surveyTeam ? kvRow("Survey Team", surveyTeam) : ""}
-              ${kvRow("Date", when)}
+            <div class="ovBlock">
+              <h3 class="ovSubTitle">Specification Highlights</h3>
+              <div class="kv highlights">
+                <ul>
+                  <li><strong>Timber:</strong> ${escapeHtml(timber)}</li>
+                  <li><strong>Finish:</strong> ${escapeHtml(finish)}</li>
+                  <li><strong>Glazing:</strong> ${escapeHtml(glazing)}</li>
+                  <li><strong>Hardware/Fittings:</strong> ${escapeHtml(fittings)}</li>
+                  <li><strong>Ventilation:</strong> ${escapeHtml(ventilation)}</li>
+                </ul>
+              </div>
             </div>
           </div>
 
-          <div class="panel">
-            <h3>Specification</h3>
-            <div class="kv highlights">
-              <div class="row"><div class="k">Highlights</div><div class="v"></div></div>
-              <ul>
-                <li><strong>Timber:</strong> ${escapeHtml(timber)}</li>
-                <li><strong>Finish:</strong> ${escapeHtml(finish)}</li>
-                <li><strong>Glazing:</strong> ${escapeHtml(glazing)}</li>
-                <li><strong>Hardware/Fittings:</strong> ${escapeHtml(fittings)}</li>
-                <li><strong>Ventilation:</strong> ${escapeHtml(ventilation)}</li>
-              </ul>
-            </div>
+          <div class="ovScope">
+            <h3 class="ovSubTitle">Project Scope</h3>
+            <div class="para">${scopeHtml}</div>
+            <div class="note" style="margin-top: 4mm;"><strong>Compliance Note:</strong> ${escapeHtml(compliance)}</div>
           </div>
         </div>
-
-        <div>
-          <img src="${img.sidebarPhoto}" alt="Project" class="sidebarPhoto" />
-        </div>
-      </div>
-
-      <div class="scope">
-        <h3>Project Scope</h3>
-        <div class="body">${scopeHtml}</div>
-        <div class="note"><strong>Compliance Note:</strong> ${escapeHtml(compliance)}</div>
       </div>
     </div>
   `;
