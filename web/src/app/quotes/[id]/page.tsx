@@ -12,6 +12,7 @@ import { ProposalEditor } from "@/components/quote/ProposalEditor";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Sparkles, Printer, ChevronDown, ChevronRight, Download, FileText, Building2, Cpu, Edit3, Eye, FileUp, Mail, Save, Box, Wand2, X } from "lucide-react";
 import { TypeSelectorModal } from "@/components/TypeSelectorModal";
 import { AIComponentConfigurator } from "@/components/configurator/AIComponentConfigurator";
@@ -53,6 +54,18 @@ export default function QuoteBuilderPage() {
   const quoteId = String(params?.id ?? "");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { toast } = useToast();
+
+  const proposalBasicsInitRef = useRef(false);
+  const [proposalBasicsOpen, setProposalBasicsOpen] = useState(true);
+  const [proposalScopeDraft, setProposalScopeDraft] = useState<string>("");
+  const [proposalSpecsDraft, setProposalSpecsDraft] = useState<{ timber: string; finish: string; glazing: string; fittings: string; ventilation: string }>({
+    timber: "",
+    finish: "",
+    glazing: "",
+    fittings: "",
+    ventilation: "",
+  });
+  const [isSavingProposalBasics, setIsSavingProposalBasics] = useState(false);
   
   // Product type picker state
   const [showTypeSelector, setShowTypeSelector] = useState(false);
@@ -709,12 +722,21 @@ export default function QuoteBuilderPage() {
     if (!quoteId) return;
     setIsRendering(true);
     setError(null);
+    // Open a placeholder window synchronously to avoid popup blockers.
+    // (Browsers often block window.open after awaiting network requests.)
+    const popup = window.open("about:blank", "_blank");
     try {
       await apiFetch(`/quotes/${encodeURIComponent(quoteId)}/render-pdf`, { method: "POST" });
       const signed = await apiFetch<{ url: string }>(`/quotes/${encodeURIComponent(quoteId)}/proposal/signed`);
-      if (signed?.url) window.open(signed.url, "_blank");
+      if (signed?.url) {
+        if (popup) popup.location.href = signed.url;
+        else window.open(signed.url, "_blank");
+      } else {
+        if (popup) popup.close();
+      }
       toast({ title: "Proposal generated", description: "Proposal PDF opened in a new tab." });
     } catch (err: any) {
+      if (popup) popup.close();
       setError(err?.message || "Failed to render proposal");
       toast({ title: "Proposal failed", description: err?.message || "Unable to render proposal", variant: "destructive" });
     } finally {
@@ -982,9 +1004,72 @@ export default function QuoteBuilderPage() {
   }, [quoteId, quote?.meta, quote?.proposalPdfUrl, mutateQuote]);
 
   const handleSavePdfFromProposalTab = useCallback(async () => {
+    // Open immediately to keep the user gesture and avoid popup blockers.
+    const popup = window.open("about:blank", "_blank");
     const url = await ensureProposalPdfUrl();
-    if (url) window.open(url, "_blank");
+    if (url) {
+      if (popup) popup.location.href = url;
+      else window.open(url, "_blank");
+    } else {
+      if (popup) popup.close();
+    }
   }, [ensureProposalPdfUrl]);
+
+  const handleSaveProposalBasics = useCallback(async () => {
+    if (!quoteId) return;
+    setIsSavingProposalBasics(true);
+    try {
+      const existingMeta = ((quote as any)?.meta || {}) as any;
+      const existingSpecs = (existingMeta?.specifications || {}) as any;
+
+      const nextSpecs = {
+        ...existingSpecs,
+        timber: proposalSpecsDraft.timber,
+        finish: proposalSpecsDraft.finish,
+        glazing: proposalSpecsDraft.glazing,
+        fittings: proposalSpecsDraft.fittings,
+        ventilation: proposalSpecsDraft.ventilation,
+      };
+
+      await apiFetch(`/quotes/${encodeURIComponent(quoteId)}`, {
+        method: "PATCH",
+        json: {
+          meta: {
+            scopeDescription: proposalScopeDraft,
+            specifications: nextSpecs,
+          },
+        },
+      });
+
+      await mutateQuote();
+      setProposalPreviewRevision((r) => r + 1);
+      toast({ title: "Saved", description: "Scope and project details updated for the proposal." });
+    } catch (err: any) {
+      toast({ title: "Save failed", description: err?.message || "Unable to save proposal details", variant: "destructive" });
+    } finally {
+      setIsSavingProposalBasics(false);
+    }
+  }, [quoteId, mutateQuote, proposalScopeDraft, proposalSpecsDraft, toast, quote]);
+
+  // Initialize proposal basics drafts from quote.meta (only once per quote load).
+  useEffect(() => {
+    if (!quoteId) {
+      proposalBasicsInitRef.current = false;
+      return;
+    }
+    if (!quote || proposalBasicsInitRef.current) return;
+    const metaAny: any = (quote as any)?.meta || {};
+    const specsAny: any = metaAny?.specifications || {};
+    setProposalScopeDraft(typeof metaAny?.scopeDescription === "string" ? metaAny.scopeDescription : "");
+    setProposalSpecsDraft({
+      timber: typeof specsAny?.timber === "string" ? specsAny.timber : "",
+      finish: typeof specsAny?.finish === "string" ? specsAny.finish : "",
+      glazing: typeof specsAny?.glazing === "string" ? specsAny.glazing : "",
+      fittings: typeof specsAny?.fittings === "string" ? specsAny.fittings : "",
+      ventilation: typeof specsAny?.ventilation === "string" ? specsAny.ventilation : "",
+    });
+    proposalBasicsInitRef.current = true;
+  }, [quoteId, quote]);
 
   const handlePrintPdfFromProposalTab = useCallback(async () => {
     const url = await ensureProposalPdfUrl();
@@ -2412,6 +2497,67 @@ export default function QuoteBuilderPage() {
             <TabsContent value="proposal" className="space-y-6">
               {quoteId ? (
                 <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-4">
+                  <div className="rounded-xl border bg-muted/20 p-4">
+                    <button
+                      type="button"
+                      className="w-full flex items-center justify-between gap-3"
+                      onClick={() => setProposalBasicsOpen((v) => !v)}
+                    >
+                      <div className="text-left">
+                        <div className="text-sm font-medium">Scope & project details (proposal)</div>
+                        <div className="text-xs text-muted-foreground">Shown at the top of the proposal; edit here if AI didn’t fill it.</div>
+                      </div>
+                      {proposalBasicsOpen ? (
+                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </button>
+
+                    {proposalBasicsOpen ? (
+                      <div className="mt-4 space-y-4">
+                        <div className="space-y-1">
+                          <div className="text-xs font-medium text-muted-foreground">Scope (1–3 sentences)</div>
+                          <Textarea
+                            value={proposalScopeDraft}
+                            onChange={(e) => setProposalScopeDraft(e.target.value)}
+                            placeholder="Describe the overall scope shown in the proposal…"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <div className="text-xs font-medium text-muted-foreground">Timber</div>
+                            <Input value={proposalSpecsDraft.timber} onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, timber: e.target.value }))} />
+                          </div>
+                          <div className="space-y-1">
+                            <div className="text-xs font-medium text-muted-foreground">Finish</div>
+                            <Input value={proposalSpecsDraft.finish} onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, finish: e.target.value }))} />
+                          </div>
+                          <div className="space-y-1">
+                            <div className="text-xs font-medium text-muted-foreground">Glazing</div>
+                            <Input value={proposalSpecsDraft.glazing} onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, glazing: e.target.value }))} />
+                          </div>
+                          <div className="space-y-1">
+                            <div className="text-xs font-medium text-muted-foreground">Hardware / fittings</div>
+                            <Input value={proposalSpecsDraft.fittings} onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, fittings: e.target.value }))} />
+                          </div>
+                          <div className="space-y-1 md:col-span-2">
+                            <div className="text-xs font-medium text-muted-foreground">Ventilation</div>
+                            <Input value={proposalSpecsDraft.ventilation} onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, ventilation: e.target.value }))} />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-end">
+                          <Button onClick={handleSaveProposalBasics} disabled={isSavingProposalBasics} className="gap-2">
+                            {isSavingProposalBasics ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                            Save proposal details
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <h2 className="text-2xl font-semibold text-foreground mb-2">Live preview</h2>

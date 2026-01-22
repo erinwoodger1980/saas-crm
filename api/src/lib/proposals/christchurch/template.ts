@@ -49,10 +49,12 @@ export function buildChristchurchProposalHtml(opts: {
     sidebarPhoto: String(opts.imageUrls?.sidebarPhoto || CHRISTCHURCH_ASSETS.sidebarPhoto),
     badge1: String(opts.imageUrls?.badge1 || CHRISTCHURCH_ASSETS.badge1),
     badge2: String(opts.imageUrls?.badge2 || CHRISTCHURCH_ASSETS.badge2),
-    fensa: String(opts.imageUrls?.fensa || TRANSPARENT_GIF),
+    // If tenant hasn't uploaded distinct certification logos yet, fall back to the
+    // legacy badge so the section doesn't render blank.
+    fensa: String(opts.imageUrls?.fensa || opts.imageUrls?.badge2 || CHRISTCHURCH_ASSETS.badge2),
     pas24: String(opts.imageUrls?.pas24 || opts.imageUrls?.badge2 || CHRISTCHURCH_ASSETS.badge2),
-    fsc: String(opts.imageUrls?.fsc || TRANSPARENT_GIF),
-    ggf: String(opts.imageUrls?.ggf || TRANSPARENT_GIF),
+    fsc: String(opts.imageUrls?.fsc || opts.imageUrls?.badge2 || CHRISTCHURCH_ASSETS.badge2),
+    ggf: String(opts.imageUrls?.ggf || opts.imageUrls?.badge2 || CHRISTCHURCH_ASSETS.badge2),
   };
 
   const brand = (ts?.brandName || quote.tenant?.brandName || "Wealden Joinery Ltd").toString();
