@@ -15,6 +15,7 @@ export function buildChristchurchProposalHtml(opts: {
   currencySymbol: string;
   totals: { subtotal: number; vatAmount: number; totalGBP: number; vatRate: number; showVat: boolean };
   logoDataUrl?: string;
+  assetBaseUrl?: string;
   imageUrls?: {
     logoMark?: string;
     logoWide?: string;
@@ -42,19 +43,22 @@ export function buildChristchurchProposalHtml(opts: {
 
   const TRANSPARENT_GIF = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
 
+  const assetBase = typeof opts.assetBaseUrl === "string" ? opts.assetBaseUrl.replace(/\/$/, "") : "";
+  const assetUrl = (name: string) => (assetBase ? `${assetBase}/public/christchurch-assets/${name}` : "");
+
   const img = {
-    logoMark: String(opts.imageUrls?.logoMark || opts.logoDataUrl || CHRISTCHURCH_ASSETS.logoMark),
-    logoWide: String(opts.imageUrls?.logoWide || CHRISTCHURCH_ASSETS.logoWide),
+    logoMark: String(opts.imageUrls?.logoMark || opts.logoDataUrl || assetUrl("logoMark") || CHRISTCHURCH_ASSETS.logoMark),
+    logoWide: String(opts.imageUrls?.logoWide || assetUrl("logoWide") || CHRISTCHURCH_ASSETS.logoWide),
     coverHero: String(opts.imageUrls?.coverHero || ""),
-    sidebarPhoto: String(opts.imageUrls?.sidebarPhoto || CHRISTCHURCH_ASSETS.sidebarPhoto),
-    badge1: String(opts.imageUrls?.badge1 || CHRISTCHURCH_ASSETS.badge1),
-    badge2: String(opts.imageUrls?.badge2 || CHRISTCHURCH_ASSETS.badge2),
+    sidebarPhoto: String(opts.imageUrls?.sidebarPhoto || assetUrl("sidebarPhoto") || CHRISTCHURCH_ASSETS.sidebarPhoto),
+    badge1: String(opts.imageUrls?.badge1 || assetUrl("badge1") || CHRISTCHURCH_ASSETS.badge1),
+    badge2: String(opts.imageUrls?.badge2 || assetUrl("badge2") || CHRISTCHURCH_ASSETS.badge2),
     // If tenant hasn't uploaded distinct certification logos yet, fall back to the
     // legacy badge so the section doesn't render blank.
-    fensa: String(opts.imageUrls?.fensa || opts.imageUrls?.badge2 || CHRISTCHURCH_ASSETS.badge2),
-    pas24: String(opts.imageUrls?.pas24 || opts.imageUrls?.badge2 || CHRISTCHURCH_ASSETS.badge2),
-    fsc: String(opts.imageUrls?.fsc || opts.imageUrls?.badge2 || CHRISTCHURCH_ASSETS.badge2),
-    ggf: String(opts.imageUrls?.ggf || opts.imageUrls?.badge2 || CHRISTCHURCH_ASSETS.badge2),
+    fensa: String(opts.imageUrls?.fensa || opts.imageUrls?.badge2 || assetUrl("badge2") || CHRISTCHURCH_ASSETS.badge2),
+    pas24: String(opts.imageUrls?.pas24 || opts.imageUrls?.badge2 || assetUrl("badge2") || CHRISTCHURCH_ASSETS.badge2),
+    fsc: String(opts.imageUrls?.fsc || opts.imageUrls?.badge2 || assetUrl("badge2") || CHRISTCHURCH_ASSETS.badge2),
+    ggf: String(opts.imageUrls?.ggf || opts.imageUrls?.badge2 || assetUrl("badge2") || CHRISTCHURCH_ASSETS.badge2),
   };
 
   const brand = (ts?.brandName || quote.tenant?.brandName || "Wealden Joinery Ltd").toString();

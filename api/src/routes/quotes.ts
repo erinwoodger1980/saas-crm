@@ -3230,6 +3230,13 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     
     // Avoid base64-inlining large logos (can OOM on Render). Puppeteer can load normal URLs.
     const logoDataUrl = ts?.logoUrl ? String(ts.logoUrl) : undefined;
+
+    const API_BASE = (
+      process.env.APP_API_URL ||
+      process.env.API_URL ||
+      process.env.RENDER_EXTERNAL_URL ||
+      `http://localhost:${process.env.PORT || 4000}`
+    ).replace(/\/$/, "");
     
     // 🔹 Build Soho-style multi-page proposal HTML via shared helper
     const html = await buildQuoteProposalHtml({
@@ -3241,6 +3248,7 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
       imageUrlMap,
       proposalAssetUrlMap,
       logoDataUrl,
+      publicAssetBaseUrl: API_BASE,
     });
 
     const filenameSafe = (title || `Quote ${quote.id}`).replace(/[^\w.\-]+/g, "_");
@@ -3394,13 +3402,6 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     });
 
     // Generate signed URL for the PDF
-    const API_BASE = (
-      process.env.APP_API_URL ||
-      process.env.API_URL ||
-      process.env.RENDER_EXTERNAL_URL ||
-      `http://localhost:${process.env.PORT || 4000}`
-    ).replace(/\/$/, "");
-    
     const token = jwt.sign({ t: tenantId, q: quote.id }, env.APP_JWT_SECRET, { expiresIn: "7d" });
     const proposalPdfUrl = `${API_BASE}/files/${encodeURIComponent(fileRow.id)}?jwt=${encodeURIComponent(token)}`;
 
@@ -3541,6 +3542,13 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
     
     // Avoid base64-inlining large logos (can OOM on Render). Puppeteer can load normal URLs.
     const logoDataUrl = ts?.logoUrl ? String(ts.logoUrl) : undefined;
+
+    const API_BASE = (
+      process.env.APP_API_URL ||
+      process.env.API_URL ||
+      process.env.RENDER_EXTERNAL_URL ||
+      `http://localhost:${process.env.PORT || 4000}`
+    ).replace(/\/$/, "");
     
     const html = await buildQuoteProposalHtml({
       quote,
@@ -3551,6 +3559,7 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
       imageUrlMap,
       proposalAssetUrlMap,
       logoDataUrl,
+      publicAssetBaseUrl: API_BASE,
     });
 
     const filenameSafe = (title || `Quote ${quote.id}`).replace(/[^\w.\-]+/g, "_");
@@ -3701,13 +3710,6 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
       },
     });
 
-    const API_BASE = (
-      process.env.APP_API_URL ||
-      process.env.API_URL ||
-      process.env.RENDER_EXTERNAL_URL ||
-      `http://localhost:${process.env.PORT || 4000}`
-    ).replace(/\/$/, "");
-
     const token = jwt.sign({ t: tenantId, q: quote.id }, env.APP_JWT_SECRET, { expiresIn: "7d" });
     const proposalPdfUrl = `${API_BASE}/files/${encodeURIComponent(fileRow.id)}?jwt=${encodeURIComponent(token)}`;
 
@@ -3828,6 +3830,13 @@ router.get("/:id/proposal/html", requireAuth, async (req: any, res) => {
     // Avoid base64-inlining large logos for live preview (can OOM on Render).
     const logoDataUrl = ts?.logoUrl ? String(ts.logoUrl) : undefined;
 
+    const API_BASE = (
+      process.env.APP_API_URL ||
+      process.env.API_URL ||
+      process.env.RENDER_EXTERNAL_URL ||
+      `http://localhost:${process.env.PORT || 4000}`
+    ).replace(/\/$/, "");
+
     const html = await buildQuoteProposalHtml({
       quote,
       tenantSettings: ts,
@@ -3837,6 +3846,7 @@ router.get("/:id/proposal/html", requireAuth, async (req: any, res) => {
       imageUrlMap,
       proposalAssetUrlMap,
       logoDataUrl,
+      publicAssetBaseUrl: API_BASE,
     });
 
     return res.json({ ok: true, html });
@@ -4093,6 +4103,7 @@ async function buildQuoteProposalHtml(opts: {
   imageUrlMap?: Record<string, string>;  // NEW: Map of imageFileId to signed URL
   proposalAssetUrlMap?: Record<string, string>; // Map of proposal asset file IDs to signed URLs
   logoDataUrl?: string;  // Base64 encoded logo for embedding in PDF
+  publicAssetBaseUrl?: string;
 }): Promise<string> {
   const { quote, tenantSettings: ts, currencyCode: cur, currencySymbol: sym, totals, logoDataUrl } = opts;
   const { subtotal, vatAmount, totalGBP, vatRate, showVat } = totals;
@@ -4201,6 +4212,7 @@ async function buildQuoteProposalHtml(opts: {
       currencySymbol: sym,
       totals,
       logoDataUrl,
+      assetBaseUrl: opts.publicAssetBaseUrl,
       imageUrls: ccUrls,
       scopeHtml,
       aiSummary: ai

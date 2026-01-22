@@ -300,12 +300,21 @@ export function ProposalEditor({
       const uploadedId = resp?.files?.[0]?.id;
       if (uploadedId) {
         setHeroFileId(uploadedId);
+        try {
+          await apiFetch(`/quotes/${encodeURIComponent(quoteId)}`, {
+            method: "PATCH",
+            json: { meta: { proposalHeroImageFileId: String(uploadedId) } },
+          });
+          onSaved?.();
+        } catch {
+          // Non-fatal: the preview will still show; user can hit Save proposal.
+        }
       }
     } finally {
       setIsUploadingHero(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  }, [quoteId]);
+  }, [quoteId, onSaved]);
 
   const handleSave = useCallback(async () => {
     if (!quoteId) return;
@@ -350,9 +359,19 @@ export function ProposalEditor({
     ) => {
       const uploadedId = await uploadQuoteImage(file);
       if (!uploadedId) return;
-      setCcImageFileIds((prev) => ({ ...prev, [slot]: uploadedId }));
+      const next = { ...ccImageFileIds, [slot]: uploadedId };
+      setCcImageFileIds(next);
+      try {
+        await apiFetch(`/quotes/${encodeURIComponent(quoteId)}`, {
+          method: "PATCH",
+          json: { meta: { proposalChristchurchImageFileIds: next } },
+        });
+        onSaved?.();
+      } catch {
+        // Non-fatal: user can hit Save proposal.
+      }
     },
-    [uploadQuoteImage],
+    [uploadQuoteImage, ccImageFileIds, quoteId, onSaved],
   );
 
   return (
