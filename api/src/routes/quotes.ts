@@ -702,6 +702,35 @@ const storage = multer.diskStorage({
   },
 });
 
+async function writePuppeteerPdfToFile(
+  page: any,
+  filepath: string,
+  options: {
+    format: string;
+    printBackground: boolean;
+    margin: { top: string; bottom: string; left: string; right: string };
+  },
+): Promise<{ sizeBytes: number; usedStream: boolean }> {
+  const anyPage: any = page as any;
+  if (typeof anyPage?.createPDFStream === "function") {
+    const pdfStream = await anyPage.createPDFStream(options);
+    await new Promise<void>((resolve, reject) => {
+      const out = fs.createWriteStream(filepath);
+      pdfStream.on("error", reject);
+      out.on("error", reject);
+      out.on("finish", resolve);
+      pdfStream.pipe(out);
+    });
+    const stat = fs.statSync(filepath);
+    return { sizeBytes: stat.size, usedStream: true };
+  }
+
+  // Fallback: ask Puppeteer to write to a path. Note: Puppeteer may still buffer internally.
+  await page.pdf({ ...options, path: filepath });
+  const stat = fs.statSync(filepath);
+  return { sizeBytes: stat.size, usedStream: false };
+}
+
 /**
  * GET /quotes/:id/files/:fileId/signed-any
  * Returns a signed URL for any file attached to the quote (not just supplier files).
@@ -3204,6 +3233,12 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
       logoDataUrl,
     });
 
+    const filenameSafe = (title || `Quote ${quote.id}`).replace(/[^\w.\-]+/g, "_");
+    // Truncate filename to prevent ENAMETOOLONG errors (max 100 chars before extension)
+    const truncatedName = filenameSafe.length > 100 ? filenameSafe.substring(0, 100) : filenameSafe;
+    const filename = `${truncatedName}.pdf`;
+    const filepath = path.join(UPLOAD_DIR, `${Date.now()}__${filename}`);
+
     let browser: any;
     let firstLaunchError: any;
     try {
@@ -3257,15 +3292,20 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
         });
       }
     }
-
-    let pdfBuffer: Buffer;
+    let pdfSizeBytes = 0;
+    let pdfUsedStream = false;
     let page: any;
     try {
       page = await browser.newPage();
       const pdfDebug = shouldEnablePdfDebug(req);
       if (pdfDebug) {
         attachPuppeteerDebug(page, { route: "render-pdf", tenantId, quoteId: quote.id });
-        console.log("[/quotes/:id/render-pdf] debug enabled", { tenantId, quoteId: quote.id, htmlChars: html.length });
+        console.log("[/quotes/:id/render-pdf] debug enabled", {
+          tenantId,
+          quoteId: quote.id,
+          htmlChars: html.length,
+          htmlBytes: Buffer.byteLength(html, "utf8"),
+        });
       }
 
       page.setDefaultTimeout(60_000);
@@ -3293,18 +3333,21 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
       }
 
       const pdfStartedAt = Date.now();
-      pdfBuffer = await page.pdf({
+      const out = await writePuppeteerPdfToFile(page, filepath, {
         format: "A4",
         printBackground: true,
         margin: { top: "16mm", bottom: "16mm", left: "12mm", right: "12mm" },
       });
+      pdfSizeBytes = out.sizeBytes;
+      pdfUsedStream = out.usedStream;
 
       if (pdfDebug) {
         console.log("[/quotes/:id/render-pdf] page.pdf done", {
           tenantId,
           quoteId: quote.id,
           ms: Date.now() - pdfStartedAt,
-          sizeBytes: pdfBuffer?.length || 0,
+          sizeBytes: pdfSizeBytes,
+          usedStream: pdfUsedStream,
         });
       }
     } catch (err: any) {
@@ -3313,6 +3356,9 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
         "[/quotes/:id/render-pdf] pdf generation failed:",
         err?.message || err,
       );
+      try {
+        fs.unlinkSync(filepath);
+      } catch {}
       return res
         .status(500)
         .json({ error: "render_failed", reason: "pdf_generation_failed" });
@@ -3325,20 +3371,6 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
       } catch {}
     }
 
-    const filenameSafe = (title || `Quote ${quote.id}`).replace(/[^\w.\-]+/g, "_");
-    // Truncate filename to prevent ENAMETOOLONG errors (max 100 chars before extension)
-    const truncatedName = filenameSafe.length > 100 ? filenameSafe.substring(0, 100) : filenameSafe;
-    const filename = `${truncatedName}.pdf`;
-    const filepath = path.join(UPLOAD_DIR, `${Date.now()}__${filename}`);
-    try {
-      fs.writeFileSync(filepath, pdfBuffer);
-    } catch (err: any) {
-      console.error("[/quotes/:id/render-pdf] write file failed:", err?.message || err);
-      return res
-        .status(500)
-        .json({ error: "render_failed", reason: "write_failed" });
-    }
-
     const fileRow = await prisma.uploadedFile.create({
       data: {
         tenantId,
@@ -3347,7 +3379,7 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
         name: filename,
         path: path.relative(process.cwd(), filepath),
         mimeType: "application/pdf",
-        sizeBytes: pdfBuffer.length,
+        sizeBytes: pdfSizeBytes,
       },
     });
 
@@ -3378,7 +3410,8 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     console.log("[/quotes/:id/render-pdf] done", {
       tenantId,
       quoteId: quote.id,
-      sizeBytes: pdfBuffer.length,
+      sizeBytes: pdfSizeBytes,
+      usedStream: pdfUsedStream,
       ms: Date.now() - renderStartedAt,
     });
 
@@ -3510,6 +3543,12 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
       logoDataUrl,
     });
 
+    const filenameSafe = (title || `Quote ${quote.id}`).replace(/[^\w.\-]+/g, "_");
+    // Truncate filename to prevent ENAMETOOLONG errors (max 100 chars before extension)
+    const truncatedName = filenameSafe.length > 100 ? filenameSafe.substring(0, 100) : filenameSafe;
+    const filename = `${truncatedName}.pdf`;
+    const filepath = path.join(UPLOAD_DIR, `${Date.now()}__${filename}`);
+
     let browser: any;
     let firstLaunchError: any;
     try {
@@ -3561,15 +3600,20 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
         });
       }
     }
-
-    let pdfBuffer: Buffer;
+    let pdfSizeBytes = 0;
+    let pdfUsedStream = false;
     let page: any;
     try {
       page = await browser.newPage();
       const pdfDebug = shouldEnablePdfDebug(req);
       if (pdfDebug) {
         attachPuppeteerDebug(page, { route: "render-proposal", tenantId, quoteId: quote.id });
-        console.log("[/quotes/:id/render-proposal] debug enabled", { tenantId, quoteId: quote.id, htmlChars: html.length });
+        console.log("[/quotes/:id/render-proposal] debug enabled", {
+          tenantId,
+          quoteId: quote.id,
+          htmlChars: html.length,
+          htmlBytes: Buffer.byteLength(html, "utf8"),
+        });
       }
 
       page.setDefaultTimeout(60_000);
@@ -3597,18 +3641,21 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
       }
 
       const pdfStartedAt = Date.now();
-      pdfBuffer = await page.pdf({
+      const out = await writePuppeteerPdfToFile(page, filepath, {
         format: "A4",
         printBackground: true,
         margin: { top: "16mm", bottom: "16mm", left: "12mm", right: "12mm" },
       });
+      pdfSizeBytes = out.sizeBytes;
+      pdfUsedStream = out.usedStream;
 
       if (pdfDebug) {
         console.log("[/quotes/:id/render-proposal] page.pdf done", {
           tenantId,
           quoteId: quote.id,
           ms: Date.now() - pdfStartedAt,
-          sizeBytes: pdfBuffer?.length || 0,
+          sizeBytes: pdfSizeBytes,
+          usedStream: pdfUsedStream,
         });
       }
     } catch (err: any) {
@@ -3617,6 +3664,9 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
         "[/quotes/:id/render-proposal] pdf generation failed:",
         err?.message || err,
       );
+      try {
+        fs.unlinkSync(filepath);
+      } catch {}
       return res
         .status(500)
         .json({ error: "render_failed", reason: "pdf_generation_failed" });
@@ -3629,23 +3679,6 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
       } catch {}
     }
 
-    const filenameSafe = (title || `Quote ${quote.id}`).replace(/[^\w.\-]+/g, "_");
-    // Truncate filename to prevent ENAMETOOLONG errors (max 100 chars before extension)
-    const truncatedName = filenameSafe.length > 100 ? filenameSafe.substring(0, 100) : filenameSafe;
-    const filename = `${truncatedName}.pdf`;
-    const filepath = path.join(UPLOAD_DIR, `${Date.now()}__${filename}`);
-    try {
-      fs.writeFileSync(filepath, pdfBuffer);
-    } catch (err: any) {
-      console.error(
-        "[/quotes/:id/render-proposal] write file failed:",
-        err?.message || err,
-      );
-      return res
-        .status(500)
-        .json({ error: "render_failed", reason: "write_failed" });
-    }
-
     const fileRow = await prisma.uploadedFile.create({
       data: {
         tenantId,
@@ -3654,7 +3687,7 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
         name: filename,
         path: path.relative(process.cwd(), filepath),
         mimeType: "application/pdf",
-        sizeBytes: pdfBuffer.length,
+        sizeBytes: pdfSizeBytes,
       },
     });
 
@@ -3680,7 +3713,8 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
     console.log("[/quotes/:id/render-proposal] done", {
       tenantId,
       quoteId: quote.id,
-      sizeBytes: pdfBuffer.length,
+      sizeBytes: pdfSizeBytes,
+      usedStream: pdfUsedStream,
       ms: Date.now() - renderStartedAt,
     });
 
