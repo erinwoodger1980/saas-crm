@@ -126,8 +126,56 @@ function parseLineItemsFromTextLines(
   const detectedTotals: SupplierParseResult["detected_totals"] = {};
   let supplier = supplierHint?.trim();
 
-  // Only treat explicit currency amounts as "money" to avoid matching weights/dimensions.
-  const moneyTokenRe = /[£€$]\s*\d[\d,]*\.\d{2}/;
+  const tryFixLeadingQtyConcatenation = (first: string, second: string): string => {
+    // Common extraction glitch for some PDFs: "2798.52 1 2798.52" becomes "2798.5212798.52".
+    // When we split by decimals we see: first=2798.52, second=12798.52. Recover by stripping
+    // the leading qty digit when it matches this pattern.
+    if (!first || !second) return second;
+    if (second.length === first.length + 1 && second.startsWith("1") && second.endsWith(first)) {
+      return first;
+    }
+    return second;
+  };
+
+  const parseLangvaldaPriceRow = (text: string) => {
+    const line = String(text || "");
+    const dimMatch = line.match(/\b\d{3,4}\s*[xX]\s*\d{3,4}\s*mm\b/);
+    const areaMatch = line.match(/\b\d+(?:\.\d+)?\s*m(?:2|\u00B2)(?=\s|$)/i);
+    if (!dimMatch || !areaMatch) return null;
+
+    // Remove the area token before extracting price decimals, so we don't treat 3.10m² as money.
+    const withoutArea = line.replace(areaMatch[0], " ");
+    // Some PDFs concatenate tokens (e.g. "2798.52 1 2798.52" => "2798.5212798.52").
+    // Avoid word-boundary matching here.
+    const decimals = withoutArea.match(/\d{1,6}\.\d{2}/g) || [];
+    if (decimals.length < 2) return null;
+
+    const unitRaw = decimals[0];
+    const totalRaw = tryFixLeadingQtyConcatenation(unitRaw, decimals[decimals.length - 1]);
+
+    const unit = Number(unitRaw.replace(/,/g, ""));
+    const total = Number(totalRaw.replace(/,/g, ""));
+    if (!Number.isFinite(unit) || !Number.isFinite(total) || unit <= 0 || total <= 0) return null;
+
+    const ratio = unit > 0 ? total / unit : 1;
+    const qtyRounded = Math.round(ratio);
+    const qty = Number.isFinite(ratio) && qtyRounded >= 1 && qtyRounded <= 999 && Math.abs(ratio - qtyRounded) < 0.02
+      ? qtyRounded
+      : 1;
+
+    return {
+      dimensions: cleanText(dimMatch[0]).replace(/\s+/g, ""),
+      area: cleanText(areaMatch[0]).replace(/\s+/g, ""),
+      costUnit: unit,
+      lineTotal: total,
+      qty,
+    };
+  };
+
+  // Treat either explicit currency amounts, OR bare-decimal amounts as money.
+  // Some supplier PDFs use columns like "Price, GBP" but the numeric cells contain no £ symbol.
+  // Avoid interpreting areas/dimensions (e.g. 3.10m², 1730x1790mm) as money.
+  const moneyTokenRe = /(?:[£€$]\s*)?\b\d[\d,]*\.\d{2}\b(?!\s*(?:m2|m\u00B2|mm|cm|kg)\b)/i;
   const moneyTokenReGlobal = new RegExp(moneyTokenRe.source, "g");
   const getMoneyTokens = (text: string): string[] => text.match(moneyTokenReGlobal) || [];
   const hasMoneyToken = (text: string): boolean => moneyTokenRe.test(text);
@@ -179,9 +227,72 @@ function parseLineItemsFromTextLines(
     const line = cleanedLines[i];
     const lower = line.toLowerCase();
     if (!supplier && /\bfit47\b/i.test(line)) supplier = "Fit47";
+    if (!supplier && /\blangvalda\b/i.test(line)) supplier = "Langvalda";
+    if (!supplier && /\bfenstercraft\b/i.test(line)) supplier = "Fenstercraft";
 
     // Skip obvious headers.
     if (isHeaderOrMeta(line)) continue;
+
+    // Special-case: Langvalda/Fenstercraft style rows like:
+    // "1730x1790mm 3.10m² 2798.52 1 2798.52" (often without £, and sometimes the "1" is concatenated).
+    // If detected, attach the nearest preceding WG* line as the description.
+    const langRow = parseLangvaldaPriceRow(line);
+    if (langRow) {
+      let descIndex: number | null = null;
+      for (let off = 1; off <= 18; off += 1) {
+        const idx = i - off;
+        if (idx < 0) break;
+        const candidate = cleanedLines[idx];
+        if (!candidate) continue;
+        if (/^wg\d+\b/i.test(candidate)) {
+          descIndex = idx;
+          break;
+        }
+        if (/^l\d+\b/i.test(candidate) && idx + 1 < cleanedLines.length && /^wg\d+\b/i.test(cleanedLines[idx + 1] || "")) {
+          descIndex = idx + 1;
+          break;
+        }
+        if (/^l\d+\s*:\s*wg\d+\b/i.test(candidate)) {
+          descIndex = idx;
+          break;
+        }
+      }
+
+      const descBase = descIndex != null ? cleanText(cleanedLines[descIndex]).trim() : "Joinery item";
+
+      const detailLines: string[] = [];
+      const detailStart = descIndex != null ? descIndex + 1 : Math.max(0, i - 12);
+      for (let j = detailStart; j < i; j += 1) {
+        const t = cleanedLines[j];
+        if (!t) continue;
+        if (isHeaderOrMeta(t)) continue;
+        if (/^price\b/i.test(t)) continue;
+        if (/^\d+\s*[xX]\s*\d+\s*mm\b/i.test(t)) continue;
+        if (/\bpcs\b|\btotal\b|\bgbp\b/i.test(t)) continue;
+        if (/^\d+\./.test(t) || /(wood:|finish:|glass:|fittings:|ventilation:)/i.test(t)) {
+          detailLines.push(t);
+        }
+      }
+
+      const details = detailLines
+        .map((l) => cleanText(l).replace(/\s{2,}/g, " ").trim())
+        .filter(Boolean)
+        .slice(0, 18);
+
+      const desc = `${descBase} (${langRow.dimensions}, ${langRow.area})${details.length ? ` — ${details.join(" ")}` : ""}`
+        .replace(/\s{2,}/g, " ")
+        .trim();
+
+      parsedLines.push({
+        description: desc,
+        qty: langRow.qty,
+        costUnit: langRow.costUnit,
+        lineTotal: langRow.lineTotal,
+        rawText: [descBase, ...details, line].join("\n"),
+        meta: { sourceLine: line, detailLines: details, dimensions: langRow.dimensions, area: langRow.area } as any,
+      });
+      continue;
+    }
 
     // Totals.
     if (/\btotal\s+weight\b/i.test(lower)) continue;
