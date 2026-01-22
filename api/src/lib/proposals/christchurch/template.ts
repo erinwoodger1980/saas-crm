@@ -15,10 +15,25 @@ export function buildChristchurchProposalHtml(opts: {
   currencySymbol: string;
   totals: { subtotal: number; vatAmount: number; totalGBP: number; vatRate: number; showVat: boolean };
   logoDataUrl?: string;
+  imageUrls?: {
+    logoMark?: string;
+    logoWide?: string;
+    sidebarPhoto?: string;
+    badge1?: string;
+    badge2?: string;
+  };
   scopeHtml?: string;
 }): string {
   const { quote, tenantSettings: ts, currencySymbol: sym } = opts;
   const quoteDefaults: any = (ts?.quoteDefaults as any) || {};
+
+  const img = {
+    logoMark: String(opts.imageUrls?.logoMark || opts.logoDataUrl || CHRISTCHURCH_ASSETS.logoMark),
+    logoWide: String(opts.imageUrls?.logoWide || CHRISTCHURCH_ASSETS.logoWide),
+    sidebarPhoto: String(opts.imageUrls?.sidebarPhoto || CHRISTCHURCH_ASSETS.sidebarPhoto),
+    badge1: String(opts.imageUrls?.badge1 || CHRISTCHURCH_ASSETS.badge1),
+    badge2: String(opts.imageUrls?.badge2 || CHRISTCHURCH_ASSETS.badge2),
+  };
 
   const brand = (ts?.brandName || quote.tenant?.brandName || "Wealden Joinery Ltd").toString();
   const tagline = (quoteDefaults?.tagline || "Timber Joinery Specialists • Established 1994").toString();
@@ -222,8 +237,8 @@ export function buildChristchurchProposalHtml(opts: {
 
       <div class="titleBlock">
         <div style="display:flex; justify-content:center; align-items:center; gap:8mm; margin-bottom:3mm;">
-          <img src="${opts.logoDataUrl || CHRISTCHURCH_ASSETS.logoMark}" alt="Logo" style="height:14mm;" />
-          <img src="${CHRISTCHURCH_ASSETS.logoWide}" alt="${escapeHtml(brand)}" style="height:16mm;" />
+          <img src="${img.logoMark}" alt="Logo" style="height:14mm;" />
+          <img src="${img.logoWide}" alt="${escapeHtml(brand)}" style="height:16mm;" />
         </div>
         <p class="title">Project Quotation – ${escapeHtml(projectName)}</p>
         <div class="sub">Client: ${escapeHtml(client)} • ${escapeHtml(when)}</div>
@@ -280,7 +295,7 @@ export function buildChristchurchProposalHtml(opts: {
         </div>
 
         <div>
-          <img src="${CHRISTCHURCH_ASSETS.sidebarPhoto}" alt="Project" class="sidebarPhoto" />
+          <img src="${img.sidebarPhoto}" alt="Project" class="sidebarPhoto" />
         </div>
       </div>
 
@@ -459,7 +474,7 @@ export function buildChristchurchProposalHtml(opts: {
 
       <div class="accoya">
         <div class="accoyaHead">
-          <img src="${CHRISTCHURCH_ASSETS.badge1}" alt="Accoya" />
+          <img src="${img.badge1}" alt="Accoya" />
         </div>
 
         <div class="advGrid">
@@ -479,28 +494,28 @@ export function buildChristchurchProposalHtml(opts: {
 
         <div class="certGrid">
           <div class="cert">
-            <img src="${CHRISTCHURCH_ASSETS.badge2}" alt="Certification" />
+            <img src="${img.badge2}" alt="Certification" />
             <div>
               <h4>FENSA Certified</h4>
               <p>Ensuring compliance with all building regulations for replacement windows and doors, focusing on energy efficiency and structural integrity.</p>
             </div>
           </div>
           <div class="cert">
-            <img src="${CHRISTCHURCH_ASSETS.badge2}" alt="Certification" />
+            <img src="${img.badge2}" alt="Certification" />
             <div>
               <h4>PAS 24 Security Compliance</h4>
               <p>Meeting police-preferred standards for enhanced security performance, providing robust protection for your property.</p>
             </div>
           </div>
           <div class="cert">
-            <img src="${CHRISTCHURCH_ASSETS.badge2}" alt="Certification" />
+            <img src="${img.badge2}" alt="Certification" />
             <div>
               <h4>FSC Chain of Custody</h4>
               <p>Verification of sustainable timber sourcing, demonstrating our commitment to environmental responsibility and ethical practices.</p>
             </div>
           </div>
           <div class="cert">
-            <img src="${CHRISTCHURCH_ASSETS.badge2}" alt="Certification" />
+            <img src="${img.badge2}" alt="Certification" />
             <div>
               <h4>Glass & Glazing Federation (GGF)</h4>
               <p>Adherence to industry best practices and professional standards for glazing, guaranteeing superior product quality and installation.</p>

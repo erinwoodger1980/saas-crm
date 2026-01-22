@@ -29,12 +29,10 @@ const ProposalImage = Image.extend({
     };
   },
   renderHTML({ HTMLAttributes }) {
-    const attrs: Record<string, any> = { ...HTMLAttributes };
-    const fileId = attrs["data-file-id"];
-    if (fileId) {
-      attrs.src = `proposal-asset://${String(fileId)}`;
-    }
-    return ["img", attrs];
+    // IMPORTANT:
+    // - In the editor we want <img src> to be a real (signed) URL so the browser can display it.
+    // - We still keep data-file-id so we can canonicalize on save back to proposal-asset://<id>.
+    return ["img", { ...HTMLAttributes }];
   },
 });
 
@@ -48,8 +46,33 @@ type ProposalBlocks = {
 export type ProposalEditorMeta = {
   proposalTemplate?: "soho" | "christchurch";
   proposalHeroImageFileId?: string | null;
+  proposalChristchurchImageFileIds?: {
+    logoMarkFileId?: string | null;
+    logoWideFileId?: string | null;
+    sidebarPhotoFileId?: string | null;
+    badge1FileId?: string | null;
+    badge2FileId?: string | null;
+  };
   proposalBlocks?: ProposalBlocks;
 };
+
+function canonicalizeProposalHtmlForSave(html: string): string {
+  const raw = String(html || "");
+  if (!raw.trim()) return "";
+  try {
+    const doc = new DOMParser().parseFromString(raw, "text/html");
+    const imgs = Array.from(doc.querySelectorAll("img[data-file-id]"));
+    for (const img of imgs) {
+      const fileId = (img.getAttribute("data-file-id") || "").trim();
+      if (!fileId) continue;
+      img.setAttribute("src", `proposal-asset://${fileId}`);
+    }
+    return doc.body.innerHTML;
+  } catch {
+    // If parsing fails for any reason, fall back to the raw HTML.
+    return raw;
+  }
+}
 
 export function ProposalEditor({
   quoteId,
@@ -64,6 +87,17 @@ export function ProposalEditor({
   const [proposalTemplate, setProposalTemplate] = useState<"soho" | "christchurch">(initialTemplate);
   const [heroFileId, setHeroFileId] = useState<string | null>(initialMeta?.proposalHeroImageFileId ?? null);
   const [heroPreviewUrl, setHeroPreviewUrl] = useState<string | null>(null);
+
+  const [ccImageFileIds, setCcImageFileIds] = useState<NonNullable<ProposalEditorMeta["proposalChristchurchImageFileIds"]>>(
+    initialMeta?.proposalChristchurchImageFileIds || {},
+  );
+  const [ccPreviewUrls, setCcPreviewUrls] = useState<Record<string, string | null>>({
+    logoMarkFileId: null,
+    logoWideFileId: null,
+    sidebarPhotoFileId: null,
+    badge1FileId: null,
+    badge2FileId: null,
+  });
 
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingHero, setIsUploadingHero] = useState(false);
@@ -116,7 +150,38 @@ export function ProposalEditor({
   useEffect(() => {
     setProposalTemplate((initialMeta?.proposalTemplate || "soho") as any);
     setHeroFileId(initialMeta?.proposalHeroImageFileId ?? null);
+    setCcImageFileIds(initialMeta?.proposalChristchurchImageFileIds || {});
   }, [initialMeta?.proposalTemplate, initialMeta?.proposalHeroImageFileId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const next: Record<string, string | null> = {
+        logoMarkFileId: null,
+        logoWideFileId: null,
+        sidebarPhotoFileId: null,
+        badge1FileId: null,
+        badge2FileId: null,
+      };
+
+      const keys = Object.keys(next) as Array<keyof typeof next>;
+      for (const k of keys) {
+        const fileId = (ccImageFileIds as any)?.[k] ? String((ccImageFileIds as any)[k]) : "";
+        if (!fileId) continue;
+        try {
+          next[k] = await getSignedUrlForFileId(fileId);
+        } catch {
+          next[k] = null;
+        }
+      }
+
+      if (!cancelled) setCcPreviewUrls(next);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ccImageFileIds, getSignedUrlForFileId]);
 
   const getSignedUrlForFileId = useCallback(async (fileId: string): Promise<string | null> => {
     const id = String(fileId || "").trim();
@@ -267,11 +332,12 @@ export function ProposalEditor({
       const meta: ProposalEditorMeta = {
         proposalTemplate,
         proposalHeroImageFileId: heroFileId,
+        proposalChristchurchImageFileIds: proposalTemplate === "christchurch" ? ccImageFileIds : ccImageFileIds,
         proposalBlocks: {
-          introHtml: editorIntro?.getHTML() || "",
-          scopeHtml: editorScope?.getHTML() || "",
-          guaranteesHtml: editorGuarantees?.getHTML() || "",
-          termsHtml: editorTerms?.getHTML() || "",
+          introHtml: canonicalizeProposalHtmlForSave(editorIntro?.getHTML() || ""),
+          scopeHtml: canonicalizeProposalHtmlForSave(editorScope?.getHTML() || ""),
+          guaranteesHtml: canonicalizeProposalHtmlForSave(editorGuarantees?.getHTML() || ""),
+          termsHtml: canonicalizeProposalHtmlForSave(editorTerms?.getHTML() || ""),
         },
       };
 
@@ -284,6 +350,23 @@ export function ProposalEditor({
       setIsSaving(false);
     }
   }, [quoteId, proposalTemplate, heroFileId, editorIntro, editorScope, editorGuarantees, editorTerms, onSaved]);
+
+  const handleUploadChristchurchImage = useCallback(
+    async (
+      slot:
+        | "logoMarkFileId"
+        | "logoWideFileId"
+        | "sidebarPhotoFileId"
+        | "badge1FileId"
+        | "badge2FileId",
+      file: File,
+    ) => {
+      const uploadedId = await uploadQuoteImage(file);
+      if (!uploadedId) return;
+      setCcImageFileIds((prev) => ({ ...prev, [slot]: uploadedId }));
+    },
+    [uploadQuoteImage],
+  );
 
   return (
     <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
@@ -344,6 +427,41 @@ export function ProposalEditor({
         ) : null}
       </div>
 
+      {proposalTemplate === "christchurch" ? (
+        <div className="space-y-3">
+          <div className="text-sm font-medium">Christchurch template images</div>
+          <div className="text-xs text-muted-foreground">
+            Defaults come from the reference PDF. Uploading here overrides them for this quote only.
+          </div>
+
+          <TemplateImageRow
+            label="Logo mark"
+            previewUrl={ccPreviewUrls.logoMarkFileId}
+            onPick={(f) => void handleUploadChristchurchImage("logoMarkFileId", f)}
+          />
+          <TemplateImageRow
+            label="Logo wide"
+            previewUrl={ccPreviewUrls.logoWideFileId}
+            onPick={(f) => void handleUploadChristchurchImage("logoWideFileId", f)}
+          />
+          <TemplateImageRow
+            label="Sidebar photo"
+            previewUrl={ccPreviewUrls.sidebarPhotoFileId}
+            onPick={(f) => void handleUploadChristchurchImage("sidebarPhotoFileId", f)}
+          />
+          <TemplateImageRow
+            label="Badge 1"
+            previewUrl={ccPreviewUrls.badge1FileId}
+            onPick={(f) => void handleUploadChristchurchImage("badge1FileId", f)}
+          />
+          <TemplateImageRow
+            label="Badge 2"
+            previewUrl={ccPreviewUrls.badge2FileId}
+            onPick={(f) => void handleUploadChristchurchImage("badge2FileId", f)}
+          />
+        </div>
+      ) : null}
+
       <div className="space-y-4">
         <Section
           title="Intro"
@@ -369,6 +487,48 @@ export function ProposalEditor({
           onInsertImage={(file) => insertImageIntoEditor("terms", file)}
           inserting={isUploadingImageFor === "terms"}
         />
+      </div>
+    </div>
+  );
+}
+
+function TemplateImageRow({
+  label,
+  previewUrl,
+  onPick,
+}: {
+  label: string;
+  previewUrl: string | null | undefined;
+  onPick: (file: File) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border bg-background p-3">
+      <div className="min-w-0">
+        <div className="text-sm font-medium">{label}</div>
+        {previewUrl ? (
+          <div className="mt-2">
+            <img src={previewUrl} alt={`${label} preview`} className="h-12 w-auto rounded border bg-white" />
+          </div>
+        ) : (
+          <div className="text-xs text-muted-foreground mt-1">Using default</div>
+        )}
+      </div>
+      <div className="shrink-0">
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) onPick(f);
+            if (fileRef.current) fileRef.current.value = "";
+          }}
+        />
+        <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
+          Upload
+        </Button>
       </div>
     </div>
   );

@@ -3119,7 +3119,14 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     if (typeof quoteMetaAny?.proposalHeroImageFileId === "string" && quoteMetaAny.proposalHeroImageFileId.trim()) {
       proposalAssetIds.push(quoteMetaAny.proposalHeroImageFileId.trim());
     }
-    // Also sign any images embedded in proposalBlocks HTML, stored as proposal-asset://<fileId>
+    // Christchurch template image overrides (stored as fileIds)
+    const ccAny: any = (quoteMetaAny?.proposalChristchurchImageFileIds as any) || {};
+    for (const k of ["logoMarkFileId", "logoWideFileId", "sidebarPhotoFileId", "badge1FileId", "badge2FileId"]) {
+      const v = typeof ccAny?.[k] === "string" ? String(ccAny[k]).trim() : "";
+      if (v) proposalAssetIds.push(v);
+    }
+
+    // Also sign any images embedded in proposalBlocks HTML (proposal-asset://<fileId> or <img data-file-id="...">)
     const proposalBlocksAny: any = (quoteMetaAny?.proposalBlocks as any) || {};
     const proposalBlockHtmlCandidates: string[] = [
       String(proposalBlocksAny?.introHtml || ""),
@@ -3204,12 +3211,51 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     let pdfBuffer: Buffer;
     try {
       const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: "networkidle0" });
+      const pdfDebug = shouldEnablePdfDebug(req);
+      if (pdfDebug) {
+        attachPuppeteerDebug(page, { route: "render-pdf", tenantId, quoteId: quote.id });
+        console.log("[/quotes/:id/render-pdf] debug enabled", { tenantId, quoteId: quote.id, htmlChars: html.length });
+      }
+
+      page.setDefaultTimeout(60_000);
+      page.setDefaultNavigationTimeout(60_000);
+
+      const setContentStartedAt = Date.now();
+      try {
+        await page.setContent(html, { waitUntil: "networkidle0", timeout: 60_000 });
+      } catch (err: any) {
+        console.warn("[/quotes/:id/render-pdf] setContent(networkidle0) failed; retrying with waitUntil=load", {
+          tenantId,
+          quoteId: quote.id,
+          ms: Date.now() - setContentStartedAt,
+          error: String(err?.message || err),
+        });
+        await page.setContent(html, { waitUntil: "load", timeout: 60_000 });
+      }
+
+      if (pdfDebug) {
+        console.log("[/quotes/:id/render-pdf] setContent done", {
+          tenantId,
+          quoteId: quote.id,
+          ms: Date.now() - setContentStartedAt,
+        });
+      }
+
+      const pdfStartedAt = Date.now();
       pdfBuffer = await page.pdf({
         format: "A4",
         printBackground: true,
         margin: { top: "16mm", bottom: "16mm", left: "12mm", right: "12mm" },
       });
+
+      if (pdfDebug) {
+        console.log("[/quotes/:id/render-pdf] page.pdf done", {
+          tenantId,
+          quoteId: quote.id,
+          ms: Date.now() - pdfStartedAt,
+          sizeBytes: pdfBuffer?.length || 0,
+        });
+      }
       await browser.close();
     } catch (err: any) {
       try {
@@ -3364,7 +3410,14 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
     if (typeof quoteMetaAny?.proposalHeroImageFileId === "string" && quoteMetaAny.proposalHeroImageFileId.trim()) {
       proposalAssetIds.push(quoteMetaAny.proposalHeroImageFileId.trim());
     }
-    // Also sign any images embedded in proposalBlocks HTML, stored as proposal-asset://<fileId>
+    // Christchurch template image overrides (stored as fileIds)
+    const ccAny: any = (quoteMetaAny?.proposalChristchurchImageFileIds as any) || {};
+    for (const k of ["logoMarkFileId", "logoWideFileId", "sidebarPhotoFileId", "badge1FileId", "badge2FileId"]) {
+      const v = typeof ccAny?.[k] === "string" ? String(ccAny[k]).trim() : "";
+      if (v) proposalAssetIds.push(v);
+    }
+
+    // Also sign any images embedded in proposalBlocks HTML (proposal-asset://<fileId> or <img data-file-id="...">)
     const proposalBlocksAny: any = (quoteMetaAny?.proposalBlocks as any) || {};
     const proposalBlockHtmlCandidates: string[] = [
       String(proposalBlocksAny?.introHtml || ""),
@@ -3446,12 +3499,51 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
     let pdfBuffer: Buffer;
     try {
       const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: "networkidle0" });
+      const pdfDebug = shouldEnablePdfDebug(req);
+      if (pdfDebug) {
+        attachPuppeteerDebug(page, { route: "render-proposal", tenantId, quoteId: quote.id });
+        console.log("[/quotes/:id/render-proposal] debug enabled", { tenantId, quoteId: quote.id, htmlChars: html.length });
+      }
+
+      page.setDefaultTimeout(60_000);
+      page.setDefaultNavigationTimeout(60_000);
+
+      const setContentStartedAt = Date.now();
+      try {
+        await page.setContent(html, { waitUntil: "networkidle0", timeout: 60_000 });
+      } catch (err: any) {
+        console.warn("[/quotes/:id/render-proposal] setContent(networkidle0) failed; retrying with waitUntil=load", {
+          tenantId,
+          quoteId: quote.id,
+          ms: Date.now() - setContentStartedAt,
+          error: String(err?.message || err),
+        });
+        await page.setContent(html, { waitUntil: "load", timeout: 60_000 });
+      }
+
+      if (pdfDebug) {
+        console.log("[/quotes/:id/render-proposal] setContent done", {
+          tenantId,
+          quoteId: quote.id,
+          ms: Date.now() - setContentStartedAt,
+        });
+      }
+
+      const pdfStartedAt = Date.now();
       pdfBuffer = await page.pdf({
         format: "A4",
         printBackground: true,
         margin: { top: "16mm", bottom: "16mm", left: "12mm", right: "12mm" },
       });
+
+      if (pdfDebug) {
+        console.log("[/quotes/:id/render-proposal] page.pdf done", {
+          tenantId,
+          quoteId: quote.id,
+          ms: Date.now() - pdfStartedAt,
+          sizeBytes: pdfBuffer?.length || 0,
+        });
+      }
       await browser.close();
     } catch (err: any) {
       try {
@@ -3780,6 +3872,15 @@ function buildQuoteProposalHtml(opts: {
   const termsHtml = hydrateProposalAssetUrls(applyTemplateVariables(blocks.termsHtml, templateVars), proposalAssets);
 
   if (proposalTemplate === "christchurch") {
+    const ccAny: any = (quoteMeta?.proposalChristchurchImageFileIds as any) || {};
+    const ccUrls = {
+      logoMark: typeof ccAny?.logoMarkFileId === "string" ? proposalAssets[String(ccAny.logoMarkFileId).trim()] : undefined,
+      logoWide: typeof ccAny?.logoWideFileId === "string" ? proposalAssets[String(ccAny.logoWideFileId).trim()] : undefined,
+      sidebarPhoto: typeof ccAny?.sidebarPhotoFileId === "string" ? proposalAssets[String(ccAny.sidebarPhotoFileId).trim()] : undefined,
+      badge1: typeof ccAny?.badge1FileId === "string" ? proposalAssets[String(ccAny.badge1FileId).trim()] : undefined,
+      badge2: typeof ccAny?.badge2FileId === "string" ? proposalAssets[String(ccAny.badge2FileId).trim()] : undefined,
+    };
+
     return buildChristchurchProposalHtml({
       quote,
       tenantSettings: ts,
@@ -3787,6 +3888,7 @@ function buildQuoteProposalHtml(opts: {
       currencySymbol: sym,
       totals,
       logoDataUrl,
+      imageUrls: ccUrls,
       scopeHtml,
     });
   }
@@ -4595,15 +4697,20 @@ function extractProposalAssetIdsFromHtml(html: string): string[] {
   while ((m = re.exec(raw))) {
     if (m[1]) ids.push(String(m[1]));
   }
+  const reData = /data-file-id\s*=\s*["']([a-zA-Z0-9-]+)["']/g;
+  while ((m = reData.exec(raw))) {
+    if (m[1]) ids.push(String(m[1]));
+  }
   return ids;
 }
 
 function hydrateProposalAssetUrls(html: string, urlMap: Record<string, string>): string {
   const raw = String(html || "");
   if (!raw) return "";
+  const TRANSPARENT_GIF = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
   return raw.replace(/proposal-asset:\/\/([a-zA-Z0-9-]+)/g, (_m, idRaw) => {
     const id = String(idRaw || "");
-    return urlMap?.[id] || `proposal-asset://${id}`;
+    return urlMap?.[id] || TRANSPARENT_GIF;
   });
 }
 
@@ -4632,6 +4739,72 @@ async function fetchQuoteFileUrls(fileIds: string[], tenantId: string): Promise<
     urlMap[f.id] = `${API_BASE}/files/${encodeURIComponent(f.id)}?jwt=${encodeURIComponent(token)}`;
   }
   return urlMap;
+}
+
+function shouldEnablePdfDebug(req: any): boolean {
+  const q = String(req?.query?.debug ?? "").trim();
+  if (q === "1" || q.toLowerCase() === "true") return true;
+  const envFlag = String(process.env.PDF_DEBUG || process.env.RENDER_PDF_DEBUG || "").trim();
+  return envFlag === "1" || envFlag.toLowerCase() === "true";
+}
+
+function redactUrlForLogs(input: string): string {
+  const raw = String(input || "");
+  if (!raw) return raw;
+  try {
+    const u = new URL(raw);
+    for (const k of ["jwt", "token", "signature", "sig"]) {
+      if (u.searchParams.has(k)) u.searchParams.set(k, "REDACTED");
+    }
+    return u.toString();
+  } catch {
+    return raw.replace(/([?&](jwt|token|signature|sig)=)[^&]+/gi, "$1REDACTED");
+  }
+}
+
+function attachPuppeteerDebug(page: any, ctx: { route: string; tenantId: string; quoteId: string }): void {
+  const prefix = `[/quotes/:id/${ctx.route}]`;
+  try {
+    page.on("console", (msg: any) => {
+      try {
+        const type = typeof msg?.type === "function" ? msg.type() : "log";
+        const textRaw = typeof msg?.text === "function" ? msg.text() : String(msg);
+        const text = String(textRaw || "").slice(0, 800);
+        console.log(`${prefix} [page console:${type}]`, { tenantId: ctx.tenantId, quoteId: ctx.quoteId, text });
+      } catch {}
+    });
+    page.on("pageerror", (err: any) => {
+      console.warn(`${prefix} [pageerror]`, {
+        tenantId: ctx.tenantId,
+        quoteId: ctx.quoteId,
+        error: String(err?.message || err),
+      });
+    });
+    page.on("requestfailed", (req: any) => {
+      try {
+        const url = redactUrlForLogs(typeof req?.url === "function" ? req.url() : String(req?.url || ""));
+        const method = typeof req?.method === "function" ? req.method() : "";
+        const failure = typeof req?.failure === "function" ? req.failure() : null;
+        console.warn(`${prefix} [requestfailed]`, {
+          tenantId: ctx.tenantId,
+          quoteId: ctx.quoteId,
+          method,
+          url,
+          error: String(failure?.errorText || ""),
+        });
+      } catch {}
+    });
+    page.on("response", (resp: any) => {
+      try {
+        const status = typeof resp?.status === "function" ? resp.status() : 0;
+        if (!status || status < 400) return;
+        const url = redactUrlForLogs(typeof resp?.url === "function" ? resp.url() : String(resp?.url || ""));
+        console.warn(`${prefix} [response ${status}]`, { tenantId: ctx.tenantId, quoteId: ctx.quoteId, url });
+      } catch {}
+    });
+  } catch {
+    // Never fail rendering because debug hooks failed.
+  }
 }
 
 /**
