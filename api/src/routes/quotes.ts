@@ -28,6 +28,7 @@ import {
 import { sendParserErrorAlert, sendParserFallbackAlert } from "../lib/ops/alerts";
 import { descriptionQualityScore } from "../lib/pdf/quality";
 import { fromDbQuoteSourceType, normalizeQuoteSourceValue, toDbQuoteSourceType } from "../lib/quoteSourceType";
+import { buildChristchurchProposalHtml } from "../lib/proposals/christchurch/template";
 import {
   matchRowsToQuestionnaireItems,
   parsePdfToRows,
@@ -3112,11 +3113,22 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     // Fetch image URLs for line items
     const imageUrlMap = await fetchLineImageUrls(quote.lines, tenantId);
 
-    // Fetch proposal asset URLs (e.g., hero images) referenced by quote.meta
+    // Fetch proposal asset URLs (e.g., hero images + embedded proposal images) referenced by quote.meta
     const quoteMetaAny: any = (quote.meta as any) || {};
     const proposalAssetIds: string[] = [];
     if (typeof quoteMetaAny?.proposalHeroImageFileId === "string" && quoteMetaAny.proposalHeroImageFileId.trim()) {
       proposalAssetIds.push(quoteMetaAny.proposalHeroImageFileId.trim());
+    }
+    // Also sign any images embedded in proposalBlocks HTML, stored as proposal-asset://<fileId>
+    const proposalBlocksAny: any = (quoteMetaAny?.proposalBlocks as any) || {};
+    const proposalBlockHtmlCandidates: string[] = [
+      String(proposalBlocksAny?.introHtml || ""),
+      String(proposalBlocksAny?.scopeHtml || ""),
+      String(proposalBlocksAny?.guaranteesHtml || ""),
+      String(proposalBlocksAny?.termsHtml || ""),
+    ];
+    for (const html of proposalBlockHtmlCandidates) {
+      proposalAssetIds.push(...extractProposalAssetIdsFromHtml(html));
     }
     const proposalAssetUrlMap = await fetchQuoteFileUrls(proposalAssetIds, tenantId);
     
@@ -3346,11 +3358,22 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
     // Fetch image URLs for line items
     const imageUrlMap = await fetchLineImageUrls(quote.lines, tenantId);
 
-    // Fetch proposal asset URLs (e.g., hero images) referenced by quote.meta
+    // Fetch proposal asset URLs (e.g., hero images + embedded proposal images) referenced by quote.meta
     const quoteMetaAny: any = (quote.meta as any) || {};
     const proposalAssetIds: string[] = [];
     if (typeof quoteMetaAny?.proposalHeroImageFileId === "string" && quoteMetaAny.proposalHeroImageFileId.trim()) {
       proposalAssetIds.push(quoteMetaAny.proposalHeroImageFileId.trim());
+    }
+    // Also sign any images embedded in proposalBlocks HTML, stored as proposal-asset://<fileId>
+    const proposalBlocksAny: any = (quoteMetaAny?.proposalBlocks as any) || {};
+    const proposalBlockHtmlCandidates: string[] = [
+      String(proposalBlocksAny?.introHtml || ""),
+      String(proposalBlocksAny?.scopeHtml || ""),
+      String(proposalBlocksAny?.guaranteesHtml || ""),
+      String(proposalBlocksAny?.termsHtml || ""),
+    ];
+    for (const html of proposalBlockHtmlCandidates) {
+      proposalAssetIds.push(...extractProposalAssetIdsFromHtml(html));
     }
     const proposalAssetUrlMap = await fetchQuoteFileUrls(proposalAssetIds, tenantId);
     
@@ -3740,16 +3763,33 @@ function buildQuoteProposalHtml(opts: {
     total: `${sym}${totalGBP.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
   };
 
-  const introHtml = applyTemplateVariables(blocks.introHtml, templateVars);
-  const scopeHtml = applyTemplateVariables(
-    blocks.scopeHtml || escapeHtml(
-      quoteMeta?.scopeDescription ||
-        `This project involves supplying bespoke timber joinery products crafted to meet your specifications. All products are manufactured to the highest standards and comply with ${compliance}.`,
+  const proposalAssets = opts.proposalAssetUrlMap || {};
+
+  const introHtml = hydrateProposalAssetUrls(applyTemplateVariables(blocks.introHtml, templateVars), proposalAssets);
+  const scopeHtml = hydrateProposalAssetUrls(
+    applyTemplateVariables(
+      blocks.scopeHtml || `<p>${escapeHtml(
+        quoteMeta?.scopeDescription ||
+          `This project involves supplying bespoke timber joinery products crafted to meet your specifications. All products are manufactured to the highest standards and comply with ${compliance}.`,
+      )}</p>`,
+      templateVars,
     ),
-    templateVars,
+    proposalAssets,
   );
-  const guaranteesHtml = applyTemplateVariables(blocks.guaranteesHtml, templateVars);
-  const termsHtml = applyTemplateVariables(blocks.termsHtml, templateVars);
+  const guaranteesHtml = hydrateProposalAssetUrls(applyTemplateVariables(blocks.guaranteesHtml, templateVars), proposalAssets);
+  const termsHtml = hydrateProposalAssetUrls(applyTemplateVariables(blocks.termsHtml, templateVars), proposalAssets);
+
+  if (proposalTemplate === "christchurch") {
+    return buildChristchurchProposalHtml({
+      quote,
+      tenantSettings: ts,
+      currencyCode: cur,
+      currencySymbol: sym,
+      totals,
+      logoDataUrl,
+      scopeHtml,
+    });
+  }
   
   // Build rows for table - CRITICAL: Use meta.sellTotalGBP directly when available
   const marginDefault = Number(quote.markupDefault ?? quoteDefaults?.defaultMargin ?? 0.25);
@@ -4544,6 +4584,27 @@ function applyTemplateVariables(html: string, vars: Record<string, string>): str
     return Object.prototype.hasOwnProperty.call(vars, key) ? String(vars[key]) : "";
   });
   return out;
+}
+
+function extractProposalAssetIdsFromHtml(html: string): string[] {
+  const raw = String(html || "");
+  if (!raw) return [];
+  const ids: string[] = [];
+  const re = /proposal-asset:\/\/([a-zA-Z0-9-]+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(raw))) {
+    if (m[1]) ids.push(String(m[1]));
+  }
+  return ids;
+}
+
+function hydrateProposalAssetUrls(html: string, urlMap: Record<string, string>): string {
+  const raw = String(html || "");
+  if (!raw) return "";
+  return raw.replace(/proposal-asset:\/\/([a-zA-Z0-9-]+)/g, (_m, idRaw) => {
+    const id = String(idRaw || "");
+    return urlMap?.[id] || `proposal-asset://${id}`;
+  });
 }
 
 async function fetchQuoteFileUrls(fileIds: string[], tenantId: string): Promise<Record<string, string>> {
