@@ -771,6 +771,53 @@ let pdfBrowserPromise: Promise<any> | null = null;
 let pdfBrowserLastUsedAt = 0;
 let chromiumExecPathPromise: Promise<string> | null = null;
 
+// Render containers can be memory constrained; launching Chromium is the biggest spike.
+// Limit concurrent PDF renders per API instance to avoid OOM.
+let activePdfRenders = 0;
+
+function tryAcquirePdfRenderSlot(): { release: () => void; active: number; max: number } | null {
+  const max = Math.max(1, Number(process.env.PDF_MAX_CONCURRENT || 1));
+  if (activePdfRenders >= max) return null;
+  activePdfRenders += 1;
+  let released = false;
+  return {
+    max,
+    active: activePdfRenders,
+    release: () => {
+      if (released) return;
+      released = true;
+      activePdfRenders = Math.max(0, activePdfRenders - 1);
+    },
+  };
+}
+
+async function configurePdfPageForLowMemory(page: any) {
+  try {
+    if (typeof page?.setJavaScriptEnabled === "function") {
+      await page.setJavaScriptEnabled(false);
+    }
+  } catch {}
+
+  try {
+    if (typeof page?.setRequestInterception === "function") {
+      await page.setRequestInterception(true);
+      page.on("request", (r: any) => {
+        try {
+          const type = typeof r?.resourceType === "function" ? r.resourceType() : "";
+          if (type === "media" || type === "font" || type === "websocket" || type === "eventsource") {
+            return r.abort();
+          }
+          return r.continue();
+        } catch {
+          try {
+            return r.continue();
+          } catch {}
+        }
+      });
+    }
+  } catch {}
+}
+
 async function getChromiumExecPathWithCache(params: {
   timeoutMs: number;
   log?: (msg: string, extra?: Record<string, any>) => void;
@@ -3441,6 +3488,12 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     const filename = `${truncatedName}.pdf`;
     const filepath = path.join(UPLOAD_DIR, `${Date.now()}__${filename}`);
 
+    const slot = tryAcquirePdfRenderSlot();
+    if (!slot) {
+      console.warn("[/quotes/:id/render-pdf] busy: too many concurrent renders");
+      return res.status(503).json({ error: "render_busy", reason: "too_many_concurrent_renders" });
+    }
+
     // Render cold starts can exceed 30s; enforce a sane minimum.
     const launchTimeoutMs = Math.max(120_000, Number(process.env.PDF_BROWSER_LAUNCH_TIMEOUT_MS || 120_000));
     let browser: any;
@@ -3462,6 +3515,7 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     let page: any;
     try {
       page = await browser.newPage();
+      await configurePdfPageForLowMemory(page);
       const pdfDebug = shouldEnablePdfDebug(req);
       if (pdfDebug) {
         attachPuppeteerDebug(page, { route: "render-pdf", tenantId, quoteId: quote.id });
@@ -3522,6 +3576,9 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
         if (page) await page.close();
       } catch {}
       // Intentionally do not close the browser: we reuse it across PDF requests.
+      try {
+        slot.release();
+      } catch {}
     }
 
     const fileRow = await prisma.uploadedFile.create({
@@ -3716,6 +3773,12 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
     const filename = `${truncatedName}.pdf`;
     const filepath = path.join(UPLOAD_DIR, `${Date.now()}__${filename}`);
 
+    const slot = tryAcquirePdfRenderSlot();
+    if (!slot) {
+      console.warn("[/quotes/:id/render-proposal] busy: too many concurrent renders");
+      return res.status(503).json({ error: "render_busy", reason: "too_many_concurrent_renders" });
+    }
+
     let browser: any;
     try {
       browser = await getPdfBrowser(puppeteer, {
@@ -3736,6 +3799,7 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
     let page: any;
     try {
       page = await browser.newPage();
+      await configurePdfPageForLowMemory(page);
       const pdfDebug = shouldEnablePdfDebug(req);
       if (pdfDebug) {
         attachPuppeteerDebug(page, { route: "render-proposal", tenantId, quoteId: quote.id });
@@ -3804,6 +3868,9 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
     } finally {
       try {
         if (page) await page.close();
+      } catch {}
+      try {
+        slot.release();
       } catch {}
     }
 
