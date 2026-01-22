@@ -1,12 +1,22 @@
 #!/bin/bash
 # migrate-live.sh: Run Prisma migration in the live environment
 
-export DATABASE_URL="postgresql://joineryai_db_user:prBIH2Iho6o8Q1mMiDzVMoEzQjeJTPkQ@dpg-d3mfk6mr433s73ajvdg0-a.oregon-postgres.render.com/joineryai_db?sslmode=require"
-
-# If you use a shadow database, uncomment and set below:
-# export SHADOW_DATABASE_URL="your_live_shadow_database_url_here"
-
 cd "$(dirname "$0")"
+
+# Load api/.env if present (do not hardcode credentials in this script).
+if [ -f ".env" ]; then
+	set -a
+	source .env
+	set +a
+fi
+
+if [ -z "$DATABASE_URL" ]; then
+	echo "❌ ERROR: DATABASE_URL not set."
+	echo "Set it in api/.env or export it in your shell before running this script."
+	exit 1
+fi
+
+# If you use a shadow database, set SHADOW_DATABASE_URL in api/.env as well.
 
 npx prisma migrate deploy
 npx prisma generate

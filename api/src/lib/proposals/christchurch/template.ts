@@ -15,24 +15,50 @@ export function buildChristchurchProposalHtml(opts: {
   currencySymbol: string;
   totals: { subtotal: number; vatAmount: number; totalGBP: number; vatRate: number; showVat: boolean };
   logoDataUrl?: string;
+  assetBaseUrl?: string;
   imageUrls?: {
     logoMark?: string;
     logoWide?: string;
+    coverHero?: string;
     sidebarPhoto?: string;
-    badge1?: string;
-    badge2?: string;
+    badge1?: string; // Accoya
+    badge2?: string; // PAS24 (legacy)
+    fensa?: string;
+    pas24?: string;
+    fsc?: string;
+    ggf?: string;
+  };
+  aiSummary?: {
+    timber?: string;
+    finish?: string;
+    glazing?: string;
+    fittings?: string;
+    ventilation?: string;
+    scopeHtml?: string;
   };
   scopeHtml?: string;
 }): string {
   const { quote, tenantSettings: ts, currencySymbol: sym } = opts;
   const quoteDefaults: any = (ts?.quoteDefaults as any) || {};
 
+  const TRANSPARENT_GIF = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+
+  const assetBase = typeof opts.assetBaseUrl === "string" ? opts.assetBaseUrl.replace(/\/$/, "") : "";
+  const assetUrl = (name: string) => (assetBase ? `${assetBase}/public/christchurch-assets/${name}` : "");
+
   const img = {
-    logoMark: String(opts.imageUrls?.logoMark || opts.logoDataUrl || CHRISTCHURCH_ASSETS.logoMark),
-    logoWide: String(opts.imageUrls?.logoWide || CHRISTCHURCH_ASSETS.logoWide),
-    sidebarPhoto: String(opts.imageUrls?.sidebarPhoto || CHRISTCHURCH_ASSETS.sidebarPhoto),
-    badge1: String(opts.imageUrls?.badge1 || CHRISTCHURCH_ASSETS.badge1),
-    badge2: String(opts.imageUrls?.badge2 || CHRISTCHURCH_ASSETS.badge2),
+    logoMark: String(opts.imageUrls?.logoMark || opts.logoDataUrl || assetUrl("logoMark") || CHRISTCHURCH_ASSETS.logoMark),
+    logoWide: String(opts.imageUrls?.logoWide || assetUrl("logoWide") || CHRISTCHURCH_ASSETS.logoWide),
+    coverHero: String(opts.imageUrls?.coverHero || ""),
+    sidebarPhoto: String(opts.imageUrls?.sidebarPhoto || assetUrl("sidebarPhoto") || CHRISTCHURCH_ASSETS.sidebarPhoto),
+    badge1: String(opts.imageUrls?.badge1 || assetUrl("badge1") || CHRISTCHURCH_ASSETS.badge1),
+    badge2: String(opts.imageUrls?.badge2 || assetUrl("badge2") || CHRISTCHURCH_ASSETS.badge2),
+    // If tenant hasn't uploaded distinct certification logos yet, fall back to the
+    // legacy badge so the section doesn't render blank.
+    fensa: String(opts.imageUrls?.fensa || opts.imageUrls?.badge2 || assetUrl("badge2") || CHRISTCHURCH_ASSETS.badge2),
+    pas24: String(opts.imageUrls?.pas24 || opts.imageUrls?.badge2 || assetUrl("badge2") || CHRISTCHURCH_ASSETS.badge2),
+    fsc: String(opts.imageUrls?.fsc || opts.imageUrls?.badge2 || assetUrl("badge2") || CHRISTCHURCH_ASSETS.badge2),
+    ggf: String(opts.imageUrls?.ggf || opts.imageUrls?.badge2 || assetUrl("badge2") || CHRISTCHURCH_ASSETS.badge2),
   };
 
   const brand = (ts?.brandName || quote.tenant?.brandName || "Wealden Joinery Ltd").toString();
@@ -44,6 +70,9 @@ export function buildChristchurchProposalHtml(opts: {
   const leadCustom: any = (quote.lead?.custom as any) || {};
   const ref = `Q-${quote.id.slice(0, 8).toUpperCase()}`;
   const jobNumber = (leadCustom?.refId as string) || ref;
+  const projectReference = typeof leadCustom?.projectReference === "string" ? String(leadCustom.projectReference).trim() : "";
+  const surveyTeam = typeof leadCustom?.surveyTeam === "string" ? String(leadCustom.surveyTeam).trim() : "";
+  const DEFAULT_COMPLIANCE_NOTE = "PAS 24 / Part Q: Glazing to GGF guidelines.";
   const deliveryAddress = (leadCustom?.deliveryAddress as string) || (leadCustom?.address as string) || "";
 
   const today = new Date();
@@ -52,17 +81,87 @@ export function buildChristchurchProposalHtml(opts: {
   const validUntil = formatDateGB(new Date(today.getTime() + Math.max(0, validDays) * 86400000));
 
   const specifications = ((quote.meta as any) || {})?.specifications || {};
-  const timber = (specifications.timber || quoteDefaults?.defaultTimber || "Engineered Redwood").toString();
-  const finish = (specifications.finish || quoteDefaults?.defaultFinish || "RAL 9016 White (painted)").toString();
-  const glazing = (specifications.glazing || quoteDefaults?.defaultGlazing || "Low-energy double glazing (Ug 1.1–1.2)").toString();
-  const fittings = (specifications.fittings || quoteDefaults?.defaultFittings || "Polished chrome heritage fittings").toString();
-  const ventilation = (specifications.ventilation || "Trickle vents").toString();
-  const compliance = (specifications.compliance || quoteDefaults?.compliance || "PAS 24 / Part Q: glazing to GGF guidelines").toString();
+  const fallbackTimber = (specifications.timber || quoteDefaults?.defaultTimber || "Engineered Redwood").toString();
+  const fallbackFinish = (specifications.finish || quoteDefaults?.defaultFinish || "RAL 9016 White (painted)").toString();
+  const fallbackGlazing = (specifications.glazing || quoteDefaults?.defaultGlazing || "Low-energy double glazing (Ug 1.1–1.2)").toString();
+  const fallbackFittings = (specifications.fittings || quoteDefaults?.defaultFittings || "Polished chrome heritage fittings").toString();
+  const fallbackVentilation = (specifications.ventilation || "Trickle vents").toString();
+  const compliance = (
+    (typeof leadCustom?.compliance === "string" && String(leadCustom.compliance).trim())
+      ? String(leadCustom.compliance).trim()
+      : (specifications.compliance || quoteDefaults?.compliance || DEFAULT_COMPLIANCE_NOTE)
+  ).toString();
 
-  const scopeHtml = String(opts.scopeHtml || "").trim() || `<p>${escapeHtml(
-    ((quote.meta as any) || {})?.scopeDescription ||
-      `Supply of bespoke timber joinery manufactured to specification, factory finished, glazed, and supplied with appropriate ironmongery and ventilation.`,
-  )}</p>`;
+  const toNonEmptyStr = (v: any): string => {
+    if (v == null) return "";
+    if (typeof v === "string") return v.trim();
+    if (typeof v === "number" || typeof v === "boolean") return String(v);
+    return "";
+  };
+
+  const collectLineMetaValues = (keys: string[]): string[] => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const ln of quote.lines || []) {
+      const metaAny: any = (ln?.meta as any) || {};
+      for (const k of keys) {
+        const raw = metaAny?.[k];
+        if (Array.isArray(raw)) {
+          for (const item of raw) {
+            const s = toNonEmptyStr(item);
+            const norm = s.toLowerCase();
+            if (s && !seen.has(norm)) {
+              seen.add(norm);
+              out.push(s);
+            }
+          }
+          continue;
+        }
+        const s = toNonEmptyStr(raw);
+        const norm = s.toLowerCase();
+        if (s && !seen.has(norm)) {
+          seen.add(norm);
+          out.push(s);
+        }
+      }
+    }
+    return out;
+  };
+
+  const timberValues = collectLineMetaValues(["wood", "timber", "timberSpecies", "material"]).slice(0, 3);
+  const finishValues = collectLineMetaValues(["finish", "paintFinish", "colour", "color"]).slice(0, 3);
+  const glazingValues = collectLineMetaValues(["glass", "glazing"]).slice(0, 3);
+  const fittingsValues = collectLineMetaValues(["fittings", "hardware", "ironmongery"]).slice(0, 4);
+  const ventilationValues = collectLineMetaValues(["ventilation", "vents", "trickleVent"]).slice(0, 3);
+
+  const timber =
+    (typeof opts.aiSummary?.timber === "string" && opts.aiSummary.timber.trim())
+      ? opts.aiSummary.timber.trim()
+      : (timberValues.length ? timberValues.join(" / ") : fallbackTimber);
+  const finish =
+    (typeof opts.aiSummary?.finish === "string" && opts.aiSummary.finish.trim())
+      ? opts.aiSummary.finish.trim()
+      : (finishValues.length ? finishValues.join(" / ") : fallbackFinish);
+  const glazing =
+    (typeof opts.aiSummary?.glazing === "string" && opts.aiSummary.glazing.trim())
+      ? opts.aiSummary.glazing.trim()
+      : (glazingValues.length ? glazingValues.join(" / ") : fallbackGlazing);
+  const fittings =
+    (typeof opts.aiSummary?.fittings === "string" && opts.aiSummary.fittings.trim())
+      ? opts.aiSummary.fittings.trim()
+      : (fittingsValues.length ? fittingsValues.join(", ") : fallbackFittings);
+  const ventilation =
+    (typeof opts.aiSummary?.ventilation === "string" && opts.aiSummary.ventilation.trim())
+      ? opts.aiSummary.ventilation.trim()
+      : (ventilationValues.length ? ventilationValues.join(" / ") : fallbackVentilation);
+
+  const scopeHtml =
+    (typeof opts.aiSummary?.scopeHtml === "string" && opts.aiSummary.scopeHtml.trim())
+      ? opts.aiSummary.scopeHtml.trim()
+      : (String(opts.scopeHtml || "").trim() || `<p>${escapeHtml(
+          ((quote.meta as any) || {})?.scopeDescription ||
+            `Supply of bespoke timber joinery manufactured to specification, factory finished, glazed, and supplied with appropriate ironmongery and ventilation.`,
+        )}</p>`);
 
   // For Christchurch we want delivery broken out explicitly (matches the reference PDF).
   const deliveryExVat = safeMoney(quote.deliveryCost);
@@ -78,12 +177,25 @@ export function buildChristchurchProposalHtml(opts: {
 
   const styles = `
     <style>
-      @page { size: A4; margin: 18mm 16mm; }
-      html, body { margin: 0; padding: 0; }
+      @page { size: A4 portrait; margin: 18mm 16mm; }
+      html, body { margin: 0; padding: 0; background: #ffffff; }
       body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; color: #0f172a; }
 
       .page { page-break-after: always; }
       .page:last-child { page-break-after: auto; }
+
+      /* Ensure the on-screen preview renders as A4 portrait too */
+      .page {
+        width: 210mm;
+        height: 297mm;
+        box-sizing: border-box;
+        padding: 18mm 16mm;
+        background: #ffffff;
+        overflow: hidden;
+        position: relative;
+      }
+
+      .page.page-bleed { padding: 0; }
 
       .header {
         display: flex;
@@ -114,6 +226,28 @@ export function buildChristchurchProposalHtml(opts: {
       .titleBlock .title { font-size: 18pt; font-weight: 700; margin: 0; }
       .titleBlock .sub { margin-top: 2mm; font-size: 10.5pt; color: #334155; }
 
+      /* Updated cover page (more visual) */
+      .coverHero { width: 100%; height: 76mm; overflow: hidden; }
+      .coverHero img { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .coverLogo { display:flex; justify-content:center; align-items:center; margin: 10mm 0 4mm 0; }
+      .coverLogo img { max-height: 24mm; width: auto; display: block; }
+      .coverBrandName { text-align:center; font-weight: 800; margin-top: 1mm; font-size: 10.5pt; color: #92400e; }
+      .coverTagline { text-align:center; margin-top: 1mm; font-size: 9.8pt; color: #334155; }
+      .coverTitle { text-align:center; font-size: 21pt; font-weight: 900; margin: 10mm 0 0 0; }
+      .coverMeta { text-align:center; margin-top: 4mm; font-size: 10.5pt; color: #334155; }
+      .coverFooter { position: absolute; left: 16mm; right: 16mm; bottom: 18mm; text-align: center; font-size: 9.8pt; color: #334155; line-height: 1.55; }
+
+      /* Overview page (page 2) */
+      .overviewBleed { width: 210mm; height: 297mm; display: grid; grid-template-columns: 78mm 1fr; }
+      .overviewBleed .photo { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .overviewBleed .content { padding: 18mm 16mm; box-sizing: border-box; }
+      .ovTitle { font-size: 18pt; font-weight: 900; color: #1e3a8a; margin: 0 0 8mm 0; }
+      .ovGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10mm; }
+      .ovSubTitle { font-size: 12.5pt; font-weight: 900; color: #1e3a8a; margin: 0 0 4mm 0; }
+      .ovBlock { margin-bottom: 8mm; }
+      .ovScope { margin-top: 6mm; }
+      .ovScope p { margin: 0; }
+
       .overviewWrap { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; }
 
       .panel { border: 1px solid #e2e8f0; border-radius: 6px; padding: 5mm; }
@@ -137,19 +271,19 @@ export function buildChristchurchProposalHtml(opts: {
       .detailHeader .h { font-size: 12pt; font-weight: 700; margin: 0; }
       .detailHeader .p { margin: 2mm auto 0 auto; max-width: 160mm; font-size: 9.8pt; color: #334155; line-height: 1.5; }
 
-      table { width: 100%; border-collapse: collapse; margin-top: 4mm; }
+      table { width: 100%; border-collapse: collapse; margin-top: 3mm; }
       thead th {
         font-size: 9pt;
         text-transform: none;
         text-align: left;
         color: #334155;
         border-bottom: 1px solid #cbd5e1;
-        padding: 2.5mm 2mm;
+        padding: 2mm 2mm;
       }
       tbody td {
         font-size: 9.6pt;
         border-bottom: 1px solid #e2e8f0;
-        padding: 2.5mm 2mm;
+        padding: 2mm 2mm;
         vertical-align: top;
       }
       .col-ref { width: 18mm; }
@@ -164,13 +298,13 @@ export function buildChristchurchProposalHtml(opts: {
       .totals .val { font-weight: 600; }
       .totals .grand { border-top: 1px solid #cbd5e1; margin-top: 2mm; padding-top: 2mm; }
 
-      .h2 { font-size: 14pt; font-weight: 800; margin: 0 0 4mm 0; text-align: center; }
+      .h2 { font-size: 14pt; font-weight: 800; margin: 0 0 4mm 0; text-align: center; color: #1e3a8a; }
       .para { font-size: 10pt; line-height: 1.6; color: #0f172a; }
 
       .triple { margin-top: 3mm; }
       .tripleGrid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6mm; margin-top: 4mm; }
-      .card { border: 1px solid #e2e8f0; border-radius: 6px; padding: 4mm; }
-      .card h4 { margin: 0 0 2mm 0; font-size: 10.5pt; }
+      .card { border: 1px solid #e2e8f0; border-radius: 6px; padding: 4mm; background: #f8fafc; }
+      .card h4 { margin: 0 0 2mm 0; font-size: 10.5pt; color: #1e3a8a; }
       .card p { margin: 0; font-size: 9.6pt; line-height: 1.55; color: #334155; }
 
       .warranty { margin-top: 6mm; }
@@ -188,20 +322,20 @@ export function buildChristchurchProposalHtml(opts: {
       .accoyaHead { text-align: center; margin-bottom: 3mm; }
       .accoyaHead img { max-height: 18mm; }
       .advGrid { display: grid; grid-template-columns: 1fr; gap: 4mm; }
-      .adv { border: 1px solid #e2e8f0; border-radius: 6px; padding: 4mm; }
-      .adv h4 { margin: 0 0 1.5mm 0; font-size: 10.5pt; }
+      .adv { border: 1px solid #e2e8f0; border-radius: 6px; padding: 4mm; background: #f8fafc; }
+      .adv h4 { margin: 0 0 1.5mm 0; font-size: 10.5pt; color: #1e3a8a; }
       .adv p { margin: 0; font-size: 9.6pt; line-height: 1.55; color: #334155; }
 
       .certGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm 8mm; margin-top: 6mm; }
-      .cert { display: flex; gap: 4mm; align-items: flex-start; }
-      .cert img { width: 22mm; height: auto; border-radius: 4px; }
-      .cert h4 { margin: 0; font-size: 10.5pt; }
+      .cert { display: flex; gap: 4mm; align-items: flex-start; border: 1px solid #e2e8f0; border-radius: 6px; padding: 3mm; background: #f8fafc; }
+      .cert img { width: 22mm; height: auto; border-radius: 4px; background: #ffffff; border: 1px solid #e2e8f0; }
+      .cert h4 { margin: 0; font-size: 10.5pt; color: #1e3a8a; }
       .cert p { margin: 1mm 0 0 0; font-size: 9.3pt; line-height: 1.5; color: #334155; }
 
       .termsGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm 10mm; }
-      .termCard { border: 1px solid #e2e8f0; border-radius: 6px; padding: 4mm; }
+      .termCard { border: 1px solid #e2e8f0; border-radius: 6px; padding: 4mm; background: #f8fafc; }
       .termTop { display: flex; gap: 3mm; align-items: baseline; margin-bottom: 2mm; }
-      .termNum { font-weight: 900; font-size: 12pt; color: #0f172a; }
+      .termNum { font-weight: 900; font-size: 12pt; color: #1e3a8a; }
       .termTitle { font-weight: 800; font-size: 10.5pt; }
       .termBody { font-size: 9.6pt; line-height: 1.55; color: #334155; }
 
@@ -219,90 +353,70 @@ export function buildChristchurchProposalHtml(opts: {
   const email = (quoteDefaults?.email || "").toString();
   const address = (quoteDefaults?.address || "").toString();
 
+  const displayProjectRef = projectReference || projectName || jobNumber;
+
   const coverPage = `
     <div class="page">
-      <div class="header">
-        <div class="brand">
-          <div>
-            <h1>${escapeHtml(brand)}</h1>
-            <div class="tagline">${escapeHtml(tagline)}</div>
-          </div>
-        </div>
-        <div class="contact">
-          ${phone ? `Telephone: ${escapeHtml(phone)}<br/>` : ""}
-          ${email ? `Email: ${escapeHtml(email)}<br/>` : ""}
-          ${address ? `Address: ${escapeHtml(address)}` : ""}
-        </div>
+      <div class="coverHero">
+        <img src="${img.coverHero || img.logoWide || img.sidebarPhoto}" alt="Project" />
       </div>
 
-      <div class="titleBlock">
-        <div style="display:flex; justify-content:center; align-items:center; gap:8mm; margin-bottom:3mm;">
-          <img src="${img.logoMark}" alt="Logo" style="height:14mm;" />
-          <img src="${img.logoWide}" alt="${escapeHtml(brand)}" style="height:16mm;" />
-        </div>
-        <p class="title">Project Quotation – ${escapeHtml(projectName)}</p>
-        <div class="sub">Client: ${escapeHtml(client)} • ${escapeHtml(when)}</div>
+      <div class="coverLogo">
+        <img src="${img.logoMark}" alt="${escapeHtml(brand)}" />
+      </div>
+      <div class="coverBrandName">${escapeHtml(brand)}</div>
+      <div class="coverTagline">${escapeHtml(tagline)}</div>
+
+      <p class="coverTitle">Project Quotation – ${escapeHtml(displayProjectRef)}</p>
+      <div class="coverMeta">Client: ${escapeHtml(client)} • ${escapeHtml(when)}</div>
+
+      <div class="coverFooter">
+        ${phone ? `Telephone: ${escapeHtml(phone)}<br/>` : ""}
+        ${email ? `Email: ${escapeHtml(email)}<br/>` : ""}
+        ${address ? `Address: ${escapeHtml(address)}` : ""}
       </div>
     </div>
   `;
 
   const overviewPage = `
-    <div class="page">
-      <div class="header">
-        <div class="brand">
-          <div>
-            <h1>${escapeHtml(brand)}</h1>
-            <div class="tagline">${escapeHtml(tagline)}</div>
-          </div>
-        </div>
-        <div class="contact">
-          ${phone ? `Telephone: ${escapeHtml(phone)}<br/>` : ""}
-          ${email ? `Email: ${escapeHtml(email)}<br/>` : ""}
-          ${address ? `Address: ${escapeHtml(address)}` : ""}
-        </div>
-      </div>
+    <div class="page page-bleed">
+      <div class="overviewBleed">
+        <img src="${img.sidebarPhoto}" alt="Project" class="photo" />
+        <div class="content">
+          <h2 class="ovTitle">Project Overview</h2>
 
-      <div style="font-weight:800; font-size:12pt; margin-bottom:3mm;">Project Overview</div>
+          <div class="ovGrid">
+            <div class="ovBlock">
+              <h3 class="ovSubTitle">Key Details</h3>
+              <div class="kv">
+                ${kvRow("Project", displayProjectRef)}
+                ${kvRow("Job Number", jobNumber)}
+                ${deliveryAddress ? kvRow("Delivery Address", deliveryAddress) : ""}
+                ${surveyTeam ? kvRow("Survey Team", surveyTeam) : ""}
+                ${kvRow("Date", when)}
+              </div>
+            </div>
 
-      <div class="overviewWithPhoto">
-        <div class="overviewWrap">
-          <div class="panel">
-            <h3>Client Details</h3>
-            <div class="kv">
-              ${kvRow("Client", client)}
-              ${kvRow("Property", pickPropertyName(projectName, leadCustom) || "")}
-              ${kvRow("Project", projectName)}
-              ${kvRow("Job Number", jobNumber)}
-              ${kvRow("Delivery Address", deliveryAddress)}
-              ${kvRow("Survey Team", String(leadCustom?.surveyTeam || quoteDefaults?.surveyTeam || ""))}
-              ${kvRow("Date", when)}
+            <div class="ovBlock">
+              <h3 class="ovSubTitle">Specification Highlights</h3>
+              <div class="kv highlights">
+                <ul>
+                  <li><strong>Timber:</strong> ${escapeHtml(timber)}</li>
+                  <li><strong>Finish:</strong> ${escapeHtml(finish)}</li>
+                  <li><strong>Glazing:</strong> ${escapeHtml(glazing)}</li>
+                  <li><strong>Hardware/Fittings:</strong> ${escapeHtml(fittings)}</li>
+                  <li><strong>Ventilation:</strong> ${escapeHtml(ventilation)}</li>
+                </ul>
+              </div>
             </div>
           </div>
 
-          <div class="panel">
-            <h3>Specification</h3>
-            <div class="kv highlights">
-              <div class="row"><div class="k">Highlights</div><div class="v"></div></div>
-              <ul>
-                <li><strong>Timber:</strong> ${escapeHtml(timber)}</li>
-                <li><strong>Finish:</strong> ${escapeHtml(finish)}</li>
-                <li><strong>Glazing:</strong> ${escapeHtml(glazing)}</li>
-                <li><strong>Hardware/Fittings:</strong> ${escapeHtml(fittings)}</li>
-                <li><strong>Ventilation:</strong> ${escapeHtml(ventilation)}</li>
-              </ul>
-            </div>
+          <div class="ovScope">
+            <h3 class="ovSubTitle">Project Scope</h3>
+            <div class="para">${scopeHtml}</div>
+            <div class="note" style="margin-top: 4mm;"><strong>Compliance Note:</strong> ${escapeHtml(compliance)}</div>
           </div>
         </div>
-
-        <div>
-          <img src="${img.sidebarPhoto}" alt="Project" class="sidebarPhoto" />
-        </div>
-      </div>
-
-      <div class="scope">
-        <h3>Project Scope</h3>
-        <div class="body">${scopeHtml}</div>
-        <div class="note"><strong>Compliance Note:</strong> ${escapeHtml(compliance)}</div>
       </div>
     </div>
   `;
@@ -494,28 +608,28 @@ export function buildChristchurchProposalHtml(opts: {
 
         <div class="certGrid">
           <div class="cert">
-            <img src="${img.badge2}" alt="Certification" />
+            <img src="${img.fensa}" alt="FENSA" />
             <div>
               <h4>FENSA Certified</h4>
               <p>Ensuring compliance with all building regulations for replacement windows and doors, focusing on energy efficiency and structural integrity.</p>
             </div>
           </div>
           <div class="cert">
-            <img src="${img.badge2}" alt="Certification" />
+            <img src="${img.pas24}" alt="PAS 24" />
             <div>
               <h4>PAS 24 Security Compliance</h4>
               <p>Meeting police-preferred standards for enhanced security performance, providing robust protection for your property.</p>
             </div>
           </div>
           <div class="cert">
-            <img src="${img.badge2}" alt="Certification" />
+            <img src="${img.fsc}" alt="FSC" />
             <div>
               <h4>FSC Chain of Custody</h4>
               <p>Verification of sustainable timber sourcing, demonstrating our commitment to environmental responsibility and ethical practices.</p>
             </div>
           </div>
           <div class="cert">
-            <img src="${img.badge2}" alt="Certification" />
+            <img src="${img.ggf}" alt="GGF" />
             <div>
               <h4>Glass & Glazing Federation (GGF)</h4>
               <p>Adherence to industry best practices and professional standards for glazing, guaranteeing superior product quality and installation.</p>

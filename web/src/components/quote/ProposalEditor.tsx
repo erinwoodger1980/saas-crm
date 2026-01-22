@@ -49,9 +49,14 @@ export type ProposalEditorMeta = {
   proposalChristchurchImageFileIds?: {
     logoMarkFileId?: string | null;
     logoWideFileId?: string | null;
+    coverHeroFileId?: string | null;
     sidebarPhotoFileId?: string | null;
     badge1FileId?: string | null;
     badge2FileId?: string | null;
+    fensaFileId?: string | null;
+    pas24FileId?: string | null;
+    fscFileId?: string | null;
+    ggfFileId?: string | null;
   };
   proposalBlocks?: ProposalBlocks;
 };
@@ -61,6 +66,13 @@ function canonicalizeProposalHtmlForSave(html: string): string {
   if (!raw.trim()) return "";
   try {
     const doc = new DOMParser().parseFromString(raw, "text/html");
+
+    // Treat empty rich-text (e.g. <p></p>, <p><br></p>) as empty so the
+    // server can fall back to Settings-driven defaults.
+    const text = (doc.body?.textContent || "").replace(/\u00a0/g, " ").trim();
+    const hasImages = doc.body ? doc.body.querySelectorAll("img").length > 0 : false;
+    if (!text && !hasImages) return "";
+
     const imgs = Array.from(doc.querySelectorAll("img[data-file-id]"));
     for (const img of imgs) {
       const fileId = (img.getAttribute("data-file-id") || "").trim();
@@ -94,56 +106,52 @@ export function ProposalEditor({
   const [ccPreviewUrls, setCcPreviewUrls] = useState<Record<string, string | null>>({
     logoMarkFileId: null,
     logoWideFileId: null,
+    coverHeroFileId: null,
     sidebarPhotoFileId: null,
     badge1FileId: null,
     badge2FileId: null,
+    fensaFileId: null,
+    pas24FileId: null,
+    fscFileId: null,
+    ggfFileId: null,
   });
 
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingHero, setIsUploadingHero] = useState(false);
-  const [isUploadingImageFor, setIsUploadingImageFor] = useState<null | "intro" | "scope" | "guarantees" | "terms">(null);
+  const [isUploadingImageFor, setIsUploadingImageFor] = useState<null | "scope">(null);
 
   const signedUrlCacheRef = useRef<Map<string, string>>(new Map());
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const getSignedUrlForFileId = useCallback(async (fileId: string): Promise<string | null> => {
+    const id = String(fileId || "").trim();
+    if (!quoteId || !id) return null;
+    const cached = signedUrlCacheRef.current.get(id);
+    if (cached) return cached;
+
+    const resp = await apiFetch<{ ok: boolean; url?: string }>(
+      `/quotes/${encodeURIComponent(quoteId)}/files/${encodeURIComponent(id)}/signed-any`,
+      { method: "GET" },
+    );
+    const url = resp?.url ? String(resp.url) : null;
+    if (url) signedUrlCacheRef.current.set(id, url);
+    return url;
+  }, [quoteId]);
+
   const defaults = useMemo(() => {
     const blocks = initialMeta?.proposalBlocks || {};
 
     return {
-      introHtml:
-        blocks.introHtml ||
-        "<p><strong>Thank you for the opportunity to quote.</strong> This proposal updates automatically from your quote lines and project details.</p>",
       scopeHtml:
         blocks.scopeHtml ||
         "<p>This quotation covers the supply of bespoke joinery for <strong>{{projectName}}</strong>. Please review specifications and quantities.</p>",
-      guaranteesHtml:
-        blocks.guaranteesHtml ||
-        "<ul><li>Delivered on time</li><li>No hidden extras</li><li>Fully compliant</li></ul>",
-      termsHtml:
-        blocks.termsHtml ||
-        "<p>Prices are valid until <strong>{{validUntil}}</strong>. Payment terms and lead times as agreed.</p>",
     };
   }, [initialMeta]);
-
-  const editorIntro = useEditor({
-    extensions: [StarterKit, ProposalImage],
-    content: defaults.introHtml,
-  });
 
   const editorScope = useEditor({
     extensions: [StarterKit, ProposalImage],
     content: defaults.scopeHtml,
-  });
-
-  const editorGuarantees = useEditor({
-    extensions: [StarterKit, ProposalImage],
-    content: defaults.guaranteesHtml,
-  });
-
-  const editorTerms = useEditor({
-    extensions: [StarterKit, ProposalImage],
-    content: defaults.termsHtml,
   });
 
   // If quote changes under us, keep template in sync.
@@ -151,7 +159,7 @@ export function ProposalEditor({
     setProposalTemplate((initialMeta?.proposalTemplate || "soho") as any);
     setHeroFileId(initialMeta?.proposalHeroImageFileId ?? null);
     setCcImageFileIds(initialMeta?.proposalChristchurchImageFileIds || {});
-  }, [initialMeta?.proposalTemplate, initialMeta?.proposalHeroImageFileId]);
+  }, [initialMeta?.proposalTemplate, initialMeta?.proposalHeroImageFileId, initialMeta?.proposalChristchurchImageFileIds]);
 
   useEffect(() => {
     let cancelled = false;
@@ -159,9 +167,14 @@ export function ProposalEditor({
       const next: Record<string, string | null> = {
         logoMarkFileId: null,
         logoWideFileId: null,
+        coverHeroFileId: null,
         sidebarPhotoFileId: null,
         badge1FileId: null,
         badge2FileId: null,
+        fensaFileId: null,
+        pas24FileId: null,
+        fscFileId: null,
+        ggfFileId: null,
       };
 
       const keys = Object.keys(next) as Array<keyof typeof next>;
@@ -182,21 +195,6 @@ export function ProposalEditor({
       cancelled = true;
     };
   }, [ccImageFileIds, getSignedUrlForFileId]);
-
-  const getSignedUrlForFileId = useCallback(async (fileId: string): Promise<string | null> => {
-    const id = String(fileId || "").trim();
-    if (!quoteId || !id) return null;
-    const cached = signedUrlCacheRef.current.get(id);
-    if (cached) return cached;
-
-    const resp = await apiFetch<{ ok: boolean; url?: string }>(
-      `/quotes/${encodeURIComponent(quoteId)}/files/${encodeURIComponent(id)}/signed-any`,
-      { method: "GET" },
-    );
-    const url = resp?.url ? String(resp.url) : null;
-    if (url) signedUrlCacheRef.current.set(id, url);
-    return url;
-  }, [quoteId]);
 
   const hydrateEditorImages = useCallback(async (editor: any) => {
     if (!editor) return;
@@ -231,20 +229,8 @@ export function ProposalEditor({
   }, [getSignedUrlForFileId]);
 
   useEffect(() => {
-    void hydrateEditorImages(editorIntro);
-  }, [editorIntro, hydrateEditorImages]);
-
-  useEffect(() => {
     void hydrateEditorImages(editorScope);
   }, [editorScope, hydrateEditorImages]);
-
-  useEffect(() => {
-    void hydrateEditorImages(editorGuarantees);
-  }, [editorGuarantees, hydrateEditorImages]);
-
-  useEffect(() => {
-    void hydrateEditorImages(editorTerms);
-  }, [editorTerms, hydrateEditorImages]);
 
   useEffect(() => {
     let cancelled = false;
@@ -280,12 +266,8 @@ export function ProposalEditor({
     return uploadedId ? String(uploadedId) : null;
   }, [quoteId]);
 
-  const insertImageIntoEditor = useCallback(async (which: "intro" | "scope" | "guarantees" | "terms", file: File) => {
-    const editor =
-      which === "intro" ? editorIntro :
-      which === "scope" ? editorScope :
-      which === "guarantees" ? editorGuarantees :
-      editorTerms;
+  const insertImageIntoEditor = useCallback(async (which: "scope", file: File) => {
+    const editor = editorScope;
     if (!editor) return;
 
     setIsUploadingImageFor(which);
@@ -299,7 +281,7 @@ export function ProposalEditor({
     } finally {
       setIsUploadingImageFor(null);
     }
-  }, [editorIntro, editorScope, editorGuarantees, editorTerms, uploadQuoteImage, getSignedUrlForFileId]);
+  }, [editorScope, uploadQuoteImage, getSignedUrlForFileId]);
 
   const handleUploadHero = useCallback(async (file: File) => {
     if (!quoteId) return;
@@ -318,12 +300,21 @@ export function ProposalEditor({
       const uploadedId = resp?.files?.[0]?.id;
       if (uploadedId) {
         setHeroFileId(uploadedId);
+        try {
+          await apiFetch(`/quotes/${encodeURIComponent(quoteId)}`, {
+            method: "PATCH",
+            json: { meta: { proposalHeroImageFileId: String(uploadedId) } },
+          });
+          onSaved?.();
+        } catch {
+          // Non-fatal: the preview will still show; user can hit Save proposal.
+        }
       }
     } finally {
       setIsUploadingHero(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  }, [quoteId]);
+  }, [quoteId, onSaved]);
 
   const handleSave = useCallback(async () => {
     if (!quoteId) return;
@@ -334,10 +325,10 @@ export function ProposalEditor({
         proposalHeroImageFileId: heroFileId,
         proposalChristchurchImageFileIds: proposalTemplate === "christchurch" ? ccImageFileIds : ccImageFileIds,
         proposalBlocks: {
-          introHtml: canonicalizeProposalHtmlForSave(editorIntro?.getHTML() || ""),
+          introHtml: "",
           scopeHtml: canonicalizeProposalHtmlForSave(editorScope?.getHTML() || ""),
-          guaranteesHtml: canonicalizeProposalHtmlForSave(editorGuarantees?.getHTML() || ""),
-          termsHtml: canonicalizeProposalHtmlForSave(editorTerms?.getHTML() || ""),
+          guaranteesHtml: "",
+          termsHtml: "",
         },
       };
 
@@ -349,23 +340,38 @@ export function ProposalEditor({
     } finally {
       setIsSaving(false);
     }
-  }, [quoteId, proposalTemplate, heroFileId, editorIntro, editorScope, editorGuarantees, editorTerms, onSaved]);
+  }, [quoteId, proposalTemplate, heroFileId, ccImageFileIds, editorScope, onSaved]);
 
   const handleUploadChristchurchImage = useCallback(
     async (
       slot:
         | "logoMarkFileId"
         | "logoWideFileId"
+        | "coverHeroFileId"
         | "sidebarPhotoFileId"
         | "badge1FileId"
-        | "badge2FileId",
+        | "badge2FileId"
+        | "fensaFileId"
+        | "pas24FileId"
+        | "fscFileId"
+        | "ggfFileId",
       file: File,
     ) => {
       const uploadedId = await uploadQuoteImage(file);
       if (!uploadedId) return;
-      setCcImageFileIds((prev) => ({ ...prev, [slot]: uploadedId }));
+      const next = { ...ccImageFileIds, [slot]: uploadedId };
+      setCcImageFileIds(next);
+      try {
+        await apiFetch(`/quotes/${encodeURIComponent(quoteId)}`, {
+          method: "PATCH",
+          json: { meta: { proposalChristchurchImageFileIds: next } },
+        });
+        onSaved?.();
+      } catch {
+        // Non-fatal: user can hit Save proposal.
+      }
     },
-    [uploadQuoteImage],
+    [uploadQuoteImage, ccImageFileIds, quoteId, onSaved],
   );
 
   return (
@@ -435,6 +441,12 @@ export function ProposalEditor({
           </div>
 
           <TemplateImageRow
+            label="Cover hero"
+            previewUrl={ccPreviewUrls.coverHeroFileId}
+            onPick={(f) => void handleUploadChristchurchImage("coverHeroFileId", f)}
+          />
+
+          <TemplateImageRow
             label="Logo mark"
             previewUrl={ccPreviewUrls.logoMarkFileId}
             onPick={(f) => void handleUploadChristchurchImage("logoMarkFileId", f)}
@@ -459,33 +471,36 @@ export function ProposalEditor({
             previewUrl={ccPreviewUrls.badge2FileId}
             onPick={(f) => void handleUploadChristchurchImage("badge2FileId", f)}
           />
+
+          <TemplateImageRow
+            label="FENSA logo"
+            previewUrl={ccPreviewUrls.fensaFileId}
+            onPick={(f) => void handleUploadChristchurchImage("fensaFileId", f)}
+          />
+          <TemplateImageRow
+            label="PAS 24 logo"
+            previewUrl={ccPreviewUrls.pas24FileId}
+            onPick={(f) => void handleUploadChristchurchImage("pas24FileId", f)}
+          />
+          <TemplateImageRow
+            label="FSC logo"
+            previewUrl={ccPreviewUrls.fscFileId}
+            onPick={(f) => void handleUploadChristchurchImage("fscFileId", f)}
+          />
+          <TemplateImageRow
+            label="GGF logo"
+            previewUrl={ccPreviewUrls.ggfFileId}
+            onPick={(f) => void handleUploadChristchurchImage("ggfFileId", f)}
+          />
         </div>
       ) : null}
 
       <div className="space-y-4">
         <Section
-          title="Intro"
-          editor={editorIntro}
-          onInsertImage={(file) => insertImageIntoEditor("intro", file)}
-          inserting={isUploadingImageFor === "intro"}
-        />
-        <Section
           title="Scope"
           editor={editorScope}
           onInsertImage={(file) => insertImageIntoEditor("scope", file)}
           inserting={isUploadingImageFor === "scope"}
-        />
-        <Section
-          title="Guarantees"
-          editor={editorGuarantees}
-          onInsertImage={(file) => insertImageIntoEditor("guarantees", file)}
-          inserting={isUploadingImageFor === "guarantees"}
-        />
-        <Section
-          title="Terms"
-          editor={editorTerms}
-          onInsertImage={(file) => insertImageIntoEditor("terms", file)}
-          inserting={isUploadingImageFor === "terms"}
         />
       </div>
     </div>

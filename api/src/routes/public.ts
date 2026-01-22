@@ -20,6 +20,48 @@ import crypto from "crypto";
 import { redisGetJSON, redisSetJSON } from '../services/redis';
 import { calibrateConfidence, combineConfidence } from '../services/vision/calibration';
 import { buildAiTelemetry, getPersistedVisionTelemetry } from '../services/vision/telemetry';
+import { CHRISTCHURCH_ASSETS } from "../lib/proposals/christchurch/assets";
+
+function decodeDataUrlToBuffer(dataUrl: string): { buf: Buffer; mimeType: string } {
+  const raw = String(dataUrl || "");
+  const m = raw.match(/^data:([^;]+);base64,(.*)$/);
+  if (!m) {
+    return { buf: Buffer.from(""), mimeType: "application/octet-stream" };
+  }
+  const mimeType = m[1] || "application/octet-stream";
+  const b64 = m[2] || "";
+  return { buf: Buffer.from(b64, "base64"), mimeType };
+}
+
+const christchurchAssetCache = new Map<string, { buf: Buffer; mimeType: string }>();
+
+// Public assets for the Christchurch proposal template (used by Puppeteer) to avoid
+// embedding large base64 strings directly into the proposal HTML.
+router.get("/christchurch-assets/:name", (req, res) => {
+  const name = String(req.params.name || "").trim();
+  const key = name.replace(/\.(png|jpg|jpeg|webp)$/i, "");
+
+  const map: Record<string, string> = {
+    logoWide: CHRISTCHURCH_ASSETS.logoWide,
+    logoMark: CHRISTCHURCH_ASSETS.logoMark,
+    sidebarPhoto: CHRISTCHURCH_ASSETS.sidebarPhoto,
+    badge1: CHRISTCHURCH_ASSETS.badge1,
+    badge2: CHRISTCHURCH_ASSETS.badge2,
+  };
+
+  const dataUrl = map[key];
+  if (!dataUrl) {
+    return res.status(404).send("not_found");
+  }
+
+  const cached = christchurchAssetCache.get(key);
+  const decoded = cached || decodeDataUrlToBuffer(dataUrl);
+  if (!cached) christchurchAssetCache.set(key, decoded);
+
+  res.setHeader("Content-Type", decoded.mimeType);
+  res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+  return res.status(200).send(decoded.buf);
+});
 
 /**
  * Current public questionnaire surface:

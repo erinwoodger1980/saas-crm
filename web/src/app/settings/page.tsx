@@ -122,12 +122,14 @@ type InboxCfg = { gmail: boolean; ms365: boolean; intervalMinutes: number; recal
 
 /* ---------------- Small UI bits ---------------- */
 function Section({
+  id,
   title,
   description,
   right,
   children,
   className = "",
 }: {
+  id?: string;
   title: string;
   description?: string;
   right?: React.ReactNode;
@@ -135,7 +137,7 @@ function Section({
   className?: string;
 }) {
   return (
-    <section className={`rounded-2xl border bg-white/90 p-5 shadow-[0_10px_30px_-22px_rgba(2,6,23,0.45)] ${className}`}>
+    <section id={id} className={`rounded-2xl border bg-white/90 p-5 shadow-[0_10px_30px_-22px_rgba(2,6,23,0.45)] ${className}`}>
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold tracking-tight text-slate-800">{title}</h2>
@@ -1396,6 +1398,7 @@ export default function SettingsPage() {
 
   {/* Setup checklist */}
   <Section 
+    id="business-details"
     title="Company Details" 
     description="Core business information shown on quotes and throughout the system"
     right={<Button onClick={saveSettings} disabled={savingSettings}>{savingSettings ? "Saving…" : "Save Company"}</Button>}

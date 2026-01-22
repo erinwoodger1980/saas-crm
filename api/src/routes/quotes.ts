@@ -4,9 +4,12 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
+import { Readable } from "stream";
+import { pipeline } from "stream/promises";
 import { prisma } from "../prisma";
 import { Prisma, FileKind } from "@prisma/client";
 import jwt from "jsonwebtoken";
+import OpenAI from "openai";
 import { env } from "../env";
 import { logOrderFlow } from "../lib/order-flow-log";
 import { buildQuoteEmailPayload } from "../services/quote-email";
@@ -701,6 +704,252 @@ const storage = multer.diskStorage({
   },
 });
 
+async function writePuppeteerPdfToFile(
+  page: any,
+  filepath: string,
+  options: {
+    format: string;
+    printBackground: boolean;
+    margin: { top: string; bottom: string; left: string; right: string };
+  },
+): Promise<{ sizeBytes: number; usedStream: boolean }> {
+  const timeoutMs = Math.max(10_000, Number(process.env.PDF_RENDER_TIMEOUT_MS || 120_000));
+
+  const withTimeout = async <T,>(promise: Promise<T>, label: string): Promise<T> => {
+    let t: NodeJS.Timeout | null = null;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_resolve, reject) => {
+          t = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (t) clearTimeout(t);
+    }
+  };
+
+  const anyPage: any = page as any;
+  if (typeof anyPage?.createPDFStream === "function") {
+    const pdfStreamRaw = await anyPage.createPDFStream(options);
+    const pdfStream: any =
+      pdfStreamRaw && typeof (pdfStreamRaw as any).pipe === "function"
+        ? pdfStreamRaw
+        : typeof (Readable as any).fromWeb === "function"
+          ? (Readable as any).fromWeb(pdfStreamRaw)
+          : null;
+    if (!pdfStream) {
+      throw new Error("createPDFStream returned an unsupported stream type");
+    }
+
+    const out = fs.createWriteStream(filepath);
+    try {
+      await withTimeout(pipeline(pdfStream, out), "createPDFStream->file pipeline");
+    } catch (e) {
+      try {
+        if (typeof pdfStream?.destroy === "function") pdfStream.destroy();
+      } catch {}
+      try {
+        out.destroy();
+      } catch {}
+      throw e;
+    }
+    const stat = fs.statSync(filepath);
+    return { sizeBytes: stat.size, usedStream: true };
+  }
+
+  // Fallback: ask Puppeteer to write to a path. Note: Puppeteer may still buffer internally.
+  await withTimeout(page.pdf({ ...options, path: filepath }), "page.pdf(path)");
+  const stat = fs.statSync(filepath);
+  return { sizeBytes: stat.size, usedStream: false };
+}
+
+// --- Puppeteer browser reuse for PDF rendering ---
+// Launching Chromium is slow on Render, and can exceed request timeouts.
+// Reuse a single browser instance across PDF requests.
+let pdfBrowserPromise: Promise<any> | null = null;
+let pdfBrowserLastUsedAt = 0;
+let chromiumExecPathPromise: Promise<string> | null = null;
+
+// Render containers can be memory constrained; launching Chromium is the biggest spike.
+// Limit concurrent PDF renders per API instance to avoid OOM.
+let activePdfRenders = 0;
+
+function tryAcquirePdfRenderSlot(): { release: () => void; active: number; max: number } | null {
+  const max = Math.max(1, Number(process.env.PDF_MAX_CONCURRENT || 1));
+  if (activePdfRenders >= max) return null;
+  activePdfRenders += 1;
+  let released = false;
+  return {
+    max,
+    active: activePdfRenders,
+    release: () => {
+      if (released) return;
+      released = true;
+      activePdfRenders = Math.max(0, activePdfRenders - 1);
+    },
+  };
+}
+
+async function configurePdfPageForLowMemory(page: any) {
+  try {
+    if (typeof page?.setJavaScriptEnabled === "function") {
+      await page.setJavaScriptEnabled(false);
+    }
+  } catch {}
+
+  try {
+    if (typeof page?.setRequestInterception === "function") {
+      await page.setRequestInterception(true);
+      page.on("request", (r: any) => {
+        try {
+          const type = typeof r?.resourceType === "function" ? r.resourceType() : "";
+          if (type === "media" || type === "font" || type === "websocket" || type === "eventsource") {
+            return r.abort();
+          }
+          return r.continue();
+        } catch {
+          try {
+            return r.continue();
+          } catch {}
+        }
+      });
+    }
+  } catch {}
+}
+
+async function getChromiumExecPathWithCache(params: {
+  timeoutMs: number;
+  log?: (msg: string, extra?: Record<string, any>) => void;
+}): Promise<string> {
+  if (!chromiumExecPathPromise) {
+    chromiumExecPathPromise = (async () => {
+      const chromium = require("@sparticuz/chromium");
+      params.log?.("chromium.executablePath start");
+      const execPath = await Promise.race([
+        chromium.executablePath(),
+        new Promise<string>((_resolve, reject) =>
+          setTimeout(() => reject(new Error(`chromium.executablePath timed out after ${params.timeoutMs}ms`)), params.timeoutMs),
+        ),
+      ]);
+      const execPathStr = typeof execPath === "string" ? execPath.trim() : "";
+      params.log?.("chromium.executablePath done", { execPath: execPathStr });
+      if (!execPathStr) {
+        throw new Error("chromium.executablePath returned an empty path");
+      }
+      return execPathStr;
+    })();
+  }
+  return chromiumExecPathPromise;
+}
+
+async function getPdfBrowser(puppeteer: any, opts: {
+  timeoutMs: number;
+  log?: (msg: string, extra?: Record<string, any>) => void;
+}): Promise<any> {
+  const idleMs = Math.max(60_000, Number(process.env.PDF_BROWSER_IDLE_CLOSE_MS || 10 * 60_000));
+  const dumpio = process.env.PDF_PUPPETEER_DUMPIO === "true";
+  const usePipe = process.env.PDF_PUPPETEER_PIPE === "false" ? false : true;
+  const forceSparticuz = process.env.PDF_FORCE_SPARTICUZ_CHROMIUM === "true";
+
+  // If we have a browser and it's been idle too long, close it so we don't leak resources forever.
+  if (pdfBrowserPromise && pdfBrowserLastUsedAt && Date.now() - pdfBrowserLastUsedAt > idleMs) {
+    try {
+      const b = await pdfBrowserPromise;
+      if (b && typeof b.close === "function") await b.close();
+    } catch {}
+    pdfBrowserPromise = null;
+  }
+
+  if (!pdfBrowserPromise) {
+    pdfBrowserPromise = (async () => {
+      const launchWithTimeout = async (label: string, fn: () => Promise<any>) => {
+        opts.log?.(`${label} start`);
+        const started = Date.now();
+        try {
+          const browser = await Promise.race([
+            fn(),
+            new Promise<any>((_resolve, reject) =>
+              setTimeout(() => reject(new Error(`${label} timed out after ${opts.timeoutMs}ms`)), opts.timeoutMs),
+            ),
+          ]);
+          opts.log?.(`${label} done`, { ms: Date.now() - started });
+          return browser;
+        } catch (e: any) {
+          opts.log?.(`${label} failed`, { ms: Date.now() - started, error: String(e?.message || e) });
+          throw e;
+        }
+      };
+
+      // Prefer Puppeteer's resolved executable if available; fall back to env.
+      // On Render this path can point at a non-existent cache location, so validate it.
+      const resolvedExec = typeof puppeteer.executablePath === "function" ? puppeteer.executablePath() : undefined;
+      const candidateExecPath = resolvedExec || process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
+      const execPath = candidateExecPath && fs.existsSync(candidateExecPath) ? candidateExecPath : undefined;
+      if (candidateExecPath && !execPath) {
+        opts.log?.("primary executablePath missing; will fall back", { executablePath: candidateExecPath });
+      }
+
+      try {
+        if (forceSparticuz) {
+          throw new Error("PDF_FORCE_SPARTICUZ_CHROMIUM enabled");
+        }
+        return await launchWithTimeout("puppeteer.launch(primary)", async () =>
+          puppeteer.launch({
+            headless: true,
+            ignoreHTTPSErrors: true,
+            timeout: opts.timeoutMs,
+            protocolTimeout: opts.timeoutMs,
+            pipe: usePipe,
+            dumpio,
+            args: [
+              "--no-sandbox",
+              "--disable-setuid-sandbox",
+              "--disable-dev-shm-usage",
+              "--disable-gpu",
+              "--no-zygote",
+            ],
+            executablePath: execPath,
+          }),
+        );
+      } catch (primaryErr: any) {
+        // Fallback to Sparticuz Chromium which bundles a compatible binary for serverless/container envs
+        opts.log?.("primary launch failed; falling back", { error: String(primaryErr?.message || primaryErr) });
+        const chromium = require("@sparticuz/chromium");
+        const execPath2 = await getChromiumExecPathWithCache({ timeoutMs: opts.timeoutMs, log: opts.log });
+
+        const baseArgs: string[] = Array.isArray(chromium.args) ? chromium.args : [];
+        const extraArgs = [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-gpu",
+          "--no-zygote",
+        ];
+        const args = Array.from(new Set([...baseArgs, ...extraArgs]));
+
+        return await launchWithTimeout("puppeteer.launch(chromium)", async () =>
+          puppeteer.launch({
+            headless: chromium.headless !== undefined ? chromium.headless : true,
+            timeout: opts.timeoutMs,
+            protocolTimeout: opts.timeoutMs,
+            pipe: usePipe,
+            dumpio,
+            args,
+            executablePath: execPath2,
+            defaultViewport: chromium.defaultViewport ?? { width: 1280, height: 800 },
+            ignoreHTTPSErrors: true,
+          }),
+        );
+      }
+    })();
+  }
+
+  const browser = await pdfBrowserPromise;
+  pdfBrowserLastUsedAt = Date.now();
+  return browser;
+}
+
 /**
  * GET /quotes/:id/files/:fileId/signed-any
  * Returns a signed URL for any file attached to the quote (not just supplier files).
@@ -880,7 +1129,7 @@ router.post("/:id/lines/fill-standard-from-parsed", requireAuth, async (req: any
     const quoteId = String(req.params.id);
     const quote = await prisma.quote.findFirst({
       where: { id: quoteId, tenantId },
-      include: { lines: true },
+      include: { lines: { orderBy: [{ sortIndex: "asc" }, { id: "asc" }] } },
     });
     if (!quote) return res.status(404).json({ error: "not_found" });
 
@@ -984,7 +1233,7 @@ router.get("/:id/lines", requireAuth, async (req: any, res) => {
     const id = String(req.params.id);
     const lines = await prisma.quoteLine.findMany({
       where: { quote: { id, tenantId } },
-      orderBy: { id: "asc" },
+      orderBy: [{ sortIndex: "asc" }, { id: "asc" }],
     });
 
     const out = lines.map((ln: any) => ({
@@ -1041,11 +1290,19 @@ router.post("/:id/lines", requireAuth, async (req: any, res) => {
       return res.status(400).json({ error: "invalid_unit_price" });
     }
 
+    const last = await prisma.quoteLine.findFirst({
+      where: { quoteId },
+      orderBy: [{ sortIndex: "desc" }, { id: "desc" }],
+      select: { sortIndex: true },
+    });
+    const nextSortIndex = (last?.sortIndex ?? 0) + 1;
+
     // Create the line
     const line = await prisma.quoteLine.create({
       data: {
         quoteId,
         description,
+        sortIndex: nextSortIndex,
         qty: new Prisma.Decimal(quantity),
         unitPrice: new Prisma.Decimal(unitPrice),
         currency: quote.currency || "GBP",
@@ -1349,7 +1606,10 @@ router.post("/:id/lines/save-processed", requireAuth, async (req: any, res) => {
   try {
     const tenantId = req.auth.tenantId as string;
     const id = String(req.params.id);
-    const quote = await prisma.quote.findFirst({ where: { id, tenantId }, include: { lines: true } });
+    const quote = await prisma.quote.findFirst({
+      where: { id, tenantId },
+      include: { lines: { orderBy: [{ sortIndex: "asc" }, { id: "asc" }] } },
+    });
     if (!quote) return res.status(404).json({ error: "not_found" });
 
     await normaliseQuoteSourceTypeColumn(id);
@@ -1371,7 +1631,7 @@ router.post("/:id/lines/save-processed", requireAuth, async (req: any, res) => {
     }
 
     let created = 0;
-    for (const ln of clientQuote.lines as Array<any>) {
+    for (const [idx, ln] of (clientQuote.lines as Array<any>).entries()) {
       const description = String(ln.description || "Item");
       const qtyRaw = Number(ln.qty ?? 1);
       const qty = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : 1;
@@ -1407,6 +1667,7 @@ router.post("/:id/lines/save-processed", requireAuth, async (req: any, res) => {
           supplier: null as any,
           sku: undefined,
           description,
+          sortIndex: idx,
           qty,
           unitPrice: new Prisma.Decimal(Number.isFinite(supplierUnit) ? supplierUnit : 0),
           currency,
@@ -1706,11 +1967,19 @@ router.post("/:id/lines", requireAuth, async (req: any, res) => {
       return res.status(404).json({ error: "quote_not_found" });
     }
 
+    const last = await prisma.quoteLine.findFirst({
+      where: { quoteId },
+      orderBy: [{ sortIndex: "desc" }, { id: "desc" }],
+      select: { sortIndex: true },
+    });
+    const nextSortIndex = (last?.sortIndex ?? 0) + 1;
+
     // Create line item
     const line = await prisma.quoteLine.create({
       data: {
         quoteId,
         description: String(description),
+        sortIndex: nextSortIndex,
         qty: Number(quantity) || 1,
         unitPrice: new Prisma.Decimal(Number(unitPrice) || 0),
         currency: "GBP",
@@ -1799,7 +2068,7 @@ router.get("/:id", requireAuth, async (req: any, res) => {
     try {
       q = await prisma.quote.findFirst({
         where: { id, tenantId },
-        include: { lines: true, supplierFiles: { select: UPLOADED_FILE_SAFE_SELECT } },
+        include: { lines: { orderBy: [{ sortIndex: "asc" }, { id: "asc" }] }, supplierFiles: { select: UPLOADED_FILE_SAFE_SELECT } },
       });
     } catch (inner: any) {
       const msg = inner?.message || String(inner);
@@ -1865,11 +2134,13 @@ router.get("/:id", requireAuth, async (req: any, res) => {
       orderBy: { uploadedAt: "desc" },
     });
     const supplierFiles = allFiles.filter((f: any) => String(f.kind) === "SUPPLIER_QUOTE");
+    const ownQuoteFiles = allFiles.filter((f: any) => String(f.kind) === "OWN_QUOTE");
     const clientQuoteFiles = allFiles.filter((f: any) => String(f.kind) === "CLIENT_QUOTE");
 
     return res.json({
       ...normalizedQuote,
       supplierFiles,
+      ownQuoteFiles,
       clientQuoteFiles,
     });
   } catch (e: any) {
@@ -1951,7 +2222,7 @@ router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: an
   // Used for non-supplier documents such as purchase orders and delivery notes.
   const requestedKindRaw = req.query?.kind;
   const requestedKind = typeof requestedKindRaw === "string" ? requestedKindRaw.trim() : "";
-  const allowedKinds: FileKind[] = ["SUPPLIER_QUOTE", "CLIENT_QUOTE", "OTHER"];
+  const allowedKinds: FileKind[] = ["SUPPLIER_QUOTE", "OWN_QUOTE", "CLIENT_QUOTE", "OTHER"];
   const uploadKind: FileKind = (allowedKinds as any).includes(requestedKind as any)
     ? (requestedKind as FileKind)
     : "SUPPLIER_QUOTE";
@@ -2394,6 +2665,18 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
         : null;
       const parsedLinesForDb: Prisma.ParsedSupplierLineCreateManyInput[] = [];
 
+      let sortIndexCursor = 0;
+      try {
+        const agg = await prisma.quoteLine.aggregate({
+          where: { quoteId: quote.id },
+          _max: { sortIndex: true },
+        });
+        sortIndexCursor = (agg._max.sortIndex ?? -1) + 1;
+      } catch (e: any) {
+        console.warn("[parse] failed to read max sortIndex; defaulting to 0:", e?.message || e);
+        sortIndexCursor = 0;
+      }
+
       const filesToParse = [...quote.supplierFiles]
         .filter((x: any) => x?.kind === "SUPPLIER_QUOTE")
         .filter((x) => /pdf$/i.test(x.mimeType || "") || /\.pdf$/i.test(x.name || ""))
@@ -2751,12 +3034,16 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
             area: typeof (ln as any)?.area === 'string' ? (ln as any).area : undefined,
           };
 
+          const nextSortIndex = sortIndexCursor;
+          sortIndexCursor += 1;
+
           const row = await prisma.quoteLine.create({
             data: {
               quoteId: quote.id,
               supplier: supplier as any,
               sku: undefined,
               description,
+              sortIndex: nextSortIndex,
               qty,
               unitPrice: new Prisma.Decimal(unitPrice),
               currency,
@@ -3066,11 +3353,27 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
 
     const quote = await prisma.quote.findFirst({
       where: { id, tenantId },
-      include: { lines: true, tenant: true, lead: true },
+      include: { lines: { orderBy: [{ sortIndex: "asc" }, { id: "asc" }] }, tenant: true, lead: true },
     });
     if (!quote) return res.status(404).json({ error: "not_found" });
     const renderStartedAt = Date.now();
     console.log("[/quotes/:id/render-pdf] start", { tenantId, quoteId: quote.id });
+
+    const logStage = (stage: string, extra?: Record<string, any>) => {
+      try {
+        const mem = process.memoryUsage();
+        console.log(`[render-pdf] ${stage}`, {
+          tenantId,
+          quoteId: quote.id,
+          ms: Date.now() - renderStartedAt,
+          rssMB: Math.round(mem.rss / 1024 / 1024),
+          heapUsedMB: Math.round(mem.heapUsed / 1024 / 1024),
+          ...(extra || {}),
+        });
+      } catch {
+        console.log(`[render-pdf] ${stage}`, { tenantId, quoteId: quote.id, ms: Date.now() - renderStartedAt, ...(extra || {}) });
+      }
+    };
 
     const ts = await prisma.tenantSettings.findUnique({ where: { tenantId } });
     const validation = validateQuoteForPdf(quote);
@@ -3121,7 +3424,18 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     }
     // Christchurch template image overrides (stored as fileIds)
     const ccAny: any = (quoteMetaAny?.proposalChristchurchImageFileIds as any) || {};
-    for (const k of ["logoMarkFileId", "logoWideFileId", "sidebarPhotoFileId", "badge1FileId", "badge2FileId"]) {
+    for (const k of [
+      "logoMarkFileId",
+      "logoWideFileId",
+      "coverHeroFileId",
+      "sidebarPhotoFileId",
+      "badge1FileId",
+      "badge2FileId",
+      "fensaFileId",
+      "pas24FileId",
+      "fscFileId",
+      "ggfFileId",
+    ]) {
       const v = typeof ccAny?.[k] === "string" ? String(ccAny[k]).trim() : "";
       if (v) proposalAssetIds.push(v);
     }
@@ -3139,11 +3453,18 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     }
     const proposalAssetUrlMap = await fetchQuoteFileUrls(proposalAssetIds, tenantId);
     
-    // Convert logo URL to base64 data URL for embedding in PDF
-    const logoDataUrl = ts?.logoUrl ? await imageUrlToDataUrl(ts.logoUrl) : undefined;
+    // Avoid base64-inlining large logos (can OOM on Render). Puppeteer can load normal URLs.
+    const logoDataUrl = ts?.logoUrl ? String(ts.logoUrl) : undefined;
+
+    const API_BASE = (
+      process.env.APP_API_URL ||
+      process.env.API_URL ||
+      process.env.RENDER_EXTERNAL_URL ||
+      `http://localhost:${process.env.PORT || 4000}`
+    ).replace(/\/$/, "");
     
     // 🔹 Build Soho-style multi-page proposal HTML via shared helper
-    const html = buildQuoteProposalHtml({
+    const html = await buildQuoteProposalHtml({
       quote,
       tenantSettings: ts,
       currencyCode: cur,
@@ -3152,69 +3473,58 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
       imageUrlMap,
       proposalAssetUrlMap,
       logoDataUrl,
+      publicAssetBaseUrl: API_BASE,
     });
 
-    let browser: any;
-    let firstLaunchError: any;
-    try {
-      // Prefer Puppeteer's resolved executable if available; fall back to env
-      const resolvedExec =
-        typeof puppeteer.executablePath === "function"
-          ? puppeteer.executablePath()
-          : undefined;
-      const execPath = resolvedExec || process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
-      browser = await puppeteer.launch({
-        headless: true,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-gpu",
-          "--single-process",
-          "--no-zygote",
-        ],
-        executablePath: execPath,
-      });
-    } catch (err: any) {
-      firstLaunchError = err;
-      console.warn(
-        "[/quotes/:id/render-pdf] puppeteer launch failed; trying @sparticuz/chromium fallback:",
-        err?.message || err,
-      );
-      try {
-        // Lazy-load Sparticuz Chromium which bundles a compatible binary for serverless/container envs
-        const chromium = require("@sparticuz/chromium");
-        const execPath2 = await chromium.executablePath();
-        browser = await puppeteer.launch({
-          headless: chromium.headless !== undefined ? chromium.headless : true,
-          args: chromium.args ?? ["--no-sandbox", "--disable-setuid-sandbox"],
-          executablePath: execPath2,
-          defaultViewport: chromium.defaultViewport ?? { width: 1280, height: 800 },
-          ignoreHTTPSErrors: true,
-        });
-      } catch (fallbackErr: any) {
-        console.error(
-          "[/quotes/:id/render-pdf] chromium fallback launch failed:",
-          fallbackErr?.message || fallbackErr,
-        );
-        return res.status(500).json({
-          error: "render_failed",
-          reason: "puppeteer_launch_failed",
-          detail: {
-            primary: String(firstLaunchError?.message || firstLaunchError || "unknown"),
-            fallback: String(fallbackErr?.message || fallbackErr || "unknown"),
-          },
-        });
-      }
+    logStage("html built", {
+      htmlChars: html.length,
+      htmlBytes: Buffer.byteLength(html, "utf8"),
+      lineCount: quote.lines.length,
+    });
+
+    const filenameSafe = (title || `Quote ${quote.id}`).replace(/[^\w.\-]+/g, "_");
+    // Truncate filename to prevent ENAMETOOLONG errors (max 100 chars before extension)
+    const truncatedName = filenameSafe.length > 100 ? filenameSafe.substring(0, 100) : filenameSafe;
+    const filename = `${truncatedName}.pdf`;
+    const filepath = path.join(UPLOAD_DIR, `${Date.now()}__${filename}`);
+
+    const slot = tryAcquirePdfRenderSlot();
+    if (!slot) {
+      console.warn("[/quotes/:id/render-pdf] busy: too many concurrent renders");
+      return res.status(503).json({ error: "render_busy", reason: "too_many_concurrent_renders" });
     }
 
-    let pdfBuffer: Buffer;
+    // Render cold starts can exceed 30s; enforce a sane minimum.
+    const launchTimeoutMs = Math.max(120_000, Number(process.env.PDF_BROWSER_LAUNCH_TIMEOUT_MS || 120_000));
+    let browser: any;
     try {
-      const page = await browser.newPage();
+      browser = await getPdfBrowser(puppeteer, {
+        timeoutMs: launchTimeoutMs,
+        log: (msg, extra) => logStage(msg, extra),
+      });
+    } catch (err: any) {
+      console.error("[/quotes/:id/render-pdf] browser launch failed:", err?.message || err);
+      return res.status(500).json({
+        error: "render_failed",
+        reason: "puppeteer_launch_failed",
+        detail: String(err?.message || err || "unknown"),
+      });
+    }
+    let pdfSizeBytes = 0;
+    let pdfUsedStream = false;
+    let page: any;
+    try {
+      page = await browser.newPage();
+      await configurePdfPageForLowMemory(page);
       const pdfDebug = shouldEnablePdfDebug(req);
       if (pdfDebug) {
         attachPuppeteerDebug(page, { route: "render-pdf", tenantId, quoteId: quote.id });
-        console.log("[/quotes/:id/render-pdf] debug enabled", { tenantId, quoteId: quote.id, htmlChars: html.length });
+        console.log("[/quotes/:id/render-pdf] debug enabled", {
+          tenantId,
+          quoteId: quote.id,
+          htmlChars: html.length,
+          htmlBytes: Buffer.byteLength(html, "utf8"),
+        });
       }
 
       page.setDefaultTimeout(60_000);
@@ -3233,55 +3543,42 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
         await page.setContent(html, { waitUntil: "load", timeout: 60_000 });
       }
 
-      if (pdfDebug) {
-        console.log("[/quotes/:id/render-pdf] setContent done", {
-          tenantId,
-          quoteId: quote.id,
-          ms: Date.now() - setContentStartedAt,
-        });
-      }
+      logStage("setContent done", { msSetContent: Date.now() - setContentStartedAt });
 
       const pdfStartedAt = Date.now();
-      pdfBuffer = await page.pdf({
+      const out = await writePuppeteerPdfToFile(page, filepath, {
         format: "A4",
         printBackground: true,
         margin: { top: "16mm", bottom: "16mm", left: "12mm", right: "12mm" },
       });
+      pdfSizeBytes = out.sizeBytes;
+      pdfUsedStream = out.usedStream;
 
-      if (pdfDebug) {
-        console.log("[/quotes/:id/render-pdf] page.pdf done", {
-          tenantId,
-          quoteId: quote.id,
-          ms: Date.now() - pdfStartedAt,
-          sizeBytes: pdfBuffer?.length || 0,
-        });
-      }
-      await browser.close();
+      logStage("pdf written", {
+        msPdf: Date.now() - pdfStartedAt,
+        sizeBytes: pdfSizeBytes,
+        usedStream: pdfUsedStream,
+      });
     } catch (err: any) {
-      try {
-        if (browser) await browser.close();
-      } catch {}
+      // fall through to finally for cleanup
       console.error(
         "[/quotes/:id/render-pdf] pdf generation failed:",
         err?.message || err,
       );
+      try {
+        fs.unlinkSync(filepath);
+      } catch {}
       return res
         .status(500)
         .json({ error: "render_failed", reason: "pdf_generation_failed" });
-    }
-
-    const filenameSafe = (title || `Quote ${quote.id}`).replace(/[^\w.\-]+/g, "_");
-    // Truncate filename to prevent ENAMETOOLONG errors (max 100 chars before extension)
-    const truncatedName = filenameSafe.length > 100 ? filenameSafe.substring(0, 100) : filenameSafe;
-    const filename = `${truncatedName}.pdf`;
-    const filepath = path.join(UPLOAD_DIR, `${Date.now()}__${filename}`);
-    try {
-      fs.writeFileSync(filepath, pdfBuffer);
-    } catch (err: any) {
-      console.error("[/quotes/:id/render-pdf] write file failed:", err?.message || err);
-      return res
-        .status(500)
-        .json({ error: "render_failed", reason: "write_failed" });
+    } finally {
+      try {
+        if (page) await page.close();
+      } catch {}
+      // Intentionally do not close the browser: we reuse it across PDF requests.
+      try {
+        slot.release();
+      } catch {}
     }
 
     const fileRow = await prisma.uploadedFile.create({
@@ -3292,18 +3589,13 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
         name: filename,
         path: path.relative(process.cwd(), filepath),
         mimeType: "application/pdf",
-        sizeBytes: pdfBuffer.length,
+        sizeBytes: pdfSizeBytes,
       },
     });
 
+    logStage("uploadedFile created", { fileId: fileRow.id, sizeBytes: pdfSizeBytes });
+
     // Generate signed URL for the PDF
-    const API_BASE = (
-      process.env.APP_API_URL ||
-      process.env.API_URL ||
-      process.env.RENDER_EXTERNAL_URL ||
-      `http://localhost:${process.env.PORT || 4000}`
-    ).replace(/\/$/, "");
-    
     const token = jwt.sign({ t: tenantId, q: quote.id }, env.APP_JWT_SECRET, { expiresIn: "7d" });
     const proposalPdfUrl = `${API_BASE}/files/${encodeURIComponent(fileRow.id)}?jwt=${encodeURIComponent(token)}`;
 
@@ -3320,10 +3612,13 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
       } as any,
     });
 
+    logStage("quote updated", { fileId: fileRow.id });
+
     console.log("[/quotes/:id/render-pdf] done", {
       tenantId,
       quoteId: quote.id,
-      sizeBytes: pdfBuffer.length,
+      sizeBytes: pdfSizeBytes,
+      usedStream: pdfUsedStream,
       ms: Date.now() - renderStartedAt,
     });
 
@@ -3364,11 +3659,20 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
 
     const quote = await prisma.quote.findFirst({
       where: { id, tenantId },
-      include: { lines: true, tenant: true, lead: true },
+      include: { lines: { orderBy: [{ sortIndex: "asc" }, { id: "asc" }] }, tenant: true, lead: true },
     });
     if (!quote) return res.status(404).json({ error: "not_found" });
     const renderStartedAt = Date.now();
     console.log("[/quotes/:id/render-proposal] start", { tenantId, quoteId: quote.id });
+
+    const logStage = (stage: string, extra?: Record<string, any>) => {
+      console.log(`[render-proposal] ${stage}`, {
+        tenantId,
+        quoteId: quote.id,
+        ms: Date.now() - renderStartedAt,
+        ...(extra || {}),
+      });
+    };
 
     const ts = await prisma.tenantSettings.findUnique({ where: { tenantId } });
     const validation = validateQuoteForPdf(quote);
@@ -3412,7 +3716,18 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
     }
     // Christchurch template image overrides (stored as fileIds)
     const ccAny: any = (quoteMetaAny?.proposalChristchurchImageFileIds as any) || {};
-    for (const k of ["logoMarkFileId", "logoWideFileId", "sidebarPhotoFileId", "badge1FileId", "badge2FileId"]) {
+    for (const k of [
+      "logoMarkFileId",
+      "logoWideFileId",
+      "coverHeroFileId",
+      "sidebarPhotoFileId",
+      "badge1FileId",
+      "badge2FileId",
+      "fensaFileId",
+      "pas24FileId",
+      "fscFileId",
+      "ggfFileId",
+    ]) {
       const v = typeof ccAny?.[k] === "string" ? String(ccAny[k]).trim() : "";
       if (v) proposalAssetIds.push(v);
     }
@@ -3430,10 +3745,17 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
     }
     const proposalAssetUrlMap = await fetchQuoteFileUrls(proposalAssetIds, tenantId);
     
-    // Convert logo URL to base64 data URL for embedding in PDF
-    const logoDataUrl = ts?.logoUrl ? await imageUrlToDataUrl(ts.logoUrl) : undefined;
+    // Avoid base64-inlining large logos (can OOM on Render). Puppeteer can load normal URLs.
+    const logoDataUrl = ts?.logoUrl ? String(ts.logoUrl) : undefined;
+
+    const API_BASE = (
+      process.env.APP_API_URL ||
+      process.env.API_URL ||
+      process.env.RENDER_EXTERNAL_URL ||
+      `http://localhost:${process.env.PORT || 4000}`
+    ).replace(/\/$/, "");
     
-    const html = buildQuoteProposalHtml({
+    const html = await buildQuoteProposalHtml({
       quote,
       tenantSettings: ts,
       currencyCode: cur,
@@ -3442,67 +3764,51 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
       imageUrlMap,
       proposalAssetUrlMap,
       logoDataUrl,
+      publicAssetBaseUrl: API_BASE,
     });
 
-    let browser: any;
-    let firstLaunchError: any;
-    try {
-      const resolvedExec =
-        typeof puppeteer.executablePath === "function"
-          ? puppeteer.executablePath()
-          : undefined;
-      const execPath = resolvedExec || process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
-      browser = await puppeteer.launch({
-        headless: true,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-gpu",
-          "--single-process",
-          "--no-zygote",
-        ],
-        executablePath: execPath,
-      });
-    } catch (err: any) {
-      firstLaunchError = err;
-      console.warn(
-        "[/quotes/:id/render-proposal] puppeteer launch failed; trying @sparticuz/chromium fallback:",
-        err?.message || err,
-      );
-      try {
-        const chromium = require("@sparticuz/chromium");
-        const execPath2 = await chromium.executablePath();
-        browser = await puppeteer.launch({
-          headless: chromium.headless !== undefined ? chromium.headless : true,
-          args: chromium.args ?? ["--no-sandbox", "--disable-setuid-sandbox"],
-          executablePath: execPath2,
-          defaultViewport: chromium.defaultViewport ?? { width: 1280, height: 800 },
-          ignoreHTTPSErrors: true,
-        });
-      } catch (fallbackErr: any) {
-        console.error(
-          "[/quotes/:id/render-proposal] chromium fallback launch failed:",
-          fallbackErr?.message || fallbackErr,
-        );
-        return res.status(500).json({
-          error: "render_failed",
-          reason: "puppeteer_launch_failed",
-          detail: {
-            primary: String(firstLaunchError?.message || firstLaunchError || "unknown"),
-            fallback: String(fallbackErr?.message || fallbackErr || "unknown"),
-          },
-        });
-      }
+    const filenameSafe = (title || `Quote ${quote.id}`).replace(/[^\w.\-]+/g, "_");
+    // Truncate filename to prevent ENAMETOOLONG errors (max 100 chars before extension)
+    const truncatedName = filenameSafe.length > 100 ? filenameSafe.substring(0, 100) : filenameSafe;
+    const filename = `${truncatedName}.pdf`;
+    const filepath = path.join(UPLOAD_DIR, `${Date.now()}__${filename}`);
+
+    const slot = tryAcquirePdfRenderSlot();
+    if (!slot) {
+      console.warn("[/quotes/:id/render-proposal] busy: too many concurrent renders");
+      return res.status(503).json({ error: "render_busy", reason: "too_many_concurrent_renders" });
     }
 
-    let pdfBuffer: Buffer;
+    let browser: any;
     try {
-      const page = await browser.newPage();
+      browser = await getPdfBrowser(puppeteer, {
+        // Render cold starts can exceed 30s; enforce a sane minimum.
+        timeoutMs: Math.max(120_000, Number(process.env.PDF_BROWSER_LAUNCH_TIMEOUT_MS || 120_000)),
+        log: (msg, extra) => logStage(msg, extra),
+      });
+    } catch (err: any) {
+      console.error("[/quotes/:id/render-proposal] browser launch failed:", err?.message || err);
+      return res.status(500).json({
+        error: "render_failed",
+        reason: "puppeteer_launch_failed",
+        detail: String(err?.message || err || "unknown"),
+      });
+    }
+    let pdfSizeBytes = 0;
+    let pdfUsedStream = false;
+    let page: any;
+    try {
+      page = await browser.newPage();
+      await configurePdfPageForLowMemory(page);
       const pdfDebug = shouldEnablePdfDebug(req);
       if (pdfDebug) {
         attachPuppeteerDebug(page, { route: "render-proposal", tenantId, quoteId: quote.id });
-        console.log("[/quotes/:id/render-proposal] debug enabled", { tenantId, quoteId: quote.id, htmlChars: html.length });
+        console.log("[/quotes/:id/render-proposal] debug enabled", {
+          tenantId,
+          quoteId: quote.id,
+          htmlChars: html.length,
+          htmlBytes: Buffer.byteLength(html, "utf8"),
+        });
       }
 
       page.setDefaultTimeout(60_000);
@@ -3530,49 +3836,42 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
       }
 
       const pdfStartedAt = Date.now();
-      pdfBuffer = await page.pdf({
+      const out = await writePuppeteerPdfToFile(page, filepath, {
         format: "A4",
         printBackground: true,
         margin: { top: "16mm", bottom: "16mm", left: "12mm", right: "12mm" },
       });
+      pdfSizeBytes = out.sizeBytes;
+      pdfUsedStream = out.usedStream;
 
       if (pdfDebug) {
         console.log("[/quotes/:id/render-proposal] page.pdf done", {
           tenantId,
           quoteId: quote.id,
           ms: Date.now() - pdfStartedAt,
-          sizeBytes: pdfBuffer?.length || 0,
+          sizeBytes: pdfSizeBytes,
+          usedStream: pdfUsedStream,
         });
       }
-      await browser.close();
     } catch (err: any) {
-      try {
-        if (browser) await browser.close();
-      } catch {}
+      // fall through to finally for cleanup
       console.error(
         "[/quotes/:id/render-proposal] pdf generation failed:",
         err?.message || err,
       );
+      try {
+        fs.unlinkSync(filepath);
+      } catch {}
       return res
         .status(500)
         .json({ error: "render_failed", reason: "pdf_generation_failed" });
-    }
-
-    const filenameSafe = (title || `Quote ${quote.id}`).replace(/[^\w.\-]+/g, "_");
-    // Truncate filename to prevent ENAMETOOLONG errors (max 100 chars before extension)
-    const truncatedName = filenameSafe.length > 100 ? filenameSafe.substring(0, 100) : filenameSafe;
-    const filename = `${truncatedName}.pdf`;
-    const filepath = path.join(UPLOAD_DIR, `${Date.now()}__${filename}`);
-    try {
-      fs.writeFileSync(filepath, pdfBuffer);
-    } catch (err: any) {
-      console.error(
-        "[/quotes/:id/render-proposal] write file failed:",
-        err?.message || err,
-      );
-      return res
-        .status(500)
-        .json({ error: "render_failed", reason: "write_failed" });
+    } finally {
+      try {
+        if (page) await page.close();
+      } catch {}
+      try {
+        slot.release();
+      } catch {}
     }
 
     const fileRow = await prisma.uploadedFile.create({
@@ -3583,16 +3882,9 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
         name: filename,
         path: path.relative(process.cwd(), filepath),
         mimeType: "application/pdf",
-        sizeBytes: pdfBuffer.length,
+        sizeBytes: pdfSizeBytes,
       },
     });
-
-    const API_BASE = (
-      process.env.APP_API_URL ||
-      process.env.API_URL ||
-      process.env.RENDER_EXTERNAL_URL ||
-      `http://localhost:${process.env.PORT || 4000}`
-    ).replace(/\/$/, "");
 
     const token = jwt.sign({ t: tenantId, q: quote.id }, env.APP_JWT_SECRET, { expiresIn: "7d" });
     const proposalPdfUrl = `${API_BASE}/files/${encodeURIComponent(fileRow.id)}?jwt=${encodeURIComponent(token)}`;
@@ -3609,7 +3901,8 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
     console.log("[/quotes/:id/render-proposal] done", {
       tenantId,
       quoteId: quote.id,
-      sizeBytes: pdfBuffer.length,
+      sizeBytes: pdfSizeBytes,
+      usedStream: pdfUsedStream,
       ms: Date.now() - renderStartedAt,
     });
 
@@ -3651,6 +3944,90 @@ router.get("/:id/proposal/signed", requireAuth, async (req: any, res) => {
     return res.json({ ok: true, url, name: f.name });
   } catch (e: any) {
     console.error("[/quotes/:id/proposal/signed] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
+/**
+ * GET /quotes/:id/proposal/html
+ * Returns the proposal HTML for live preview (no PDF generation).
+ */
+router.get("/:id/proposal/html", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+    const id = String(req.params.id);
+
+    const quote = await prisma.quote.findFirst({
+      where: { id, tenantId },
+      include: { lines: { orderBy: [{ sortIndex: "asc" }, { id: "asc" }] }, tenant: true, lead: true },
+    });
+    if (!quote) return res.status(404).json({ error: "not_found" });
+
+    const ts = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    const totals = recalculateQuoteTotals({ quote, tenantSettings: ts });
+    const { subtotal, vatAmount, totalGBP, vatRate, showVat } = totals;
+
+    const imageUrlMap = await fetchLineImageUrls(quote.lines, tenantId);
+
+    const quoteMetaAny: any = (quote.meta as any) || {};
+    const proposalAssetIds: string[] = [];
+    if (typeof quoteMetaAny?.proposalHeroImageFileId === "string" && quoteMetaAny.proposalHeroImageFileId.trim()) {
+      proposalAssetIds.push(quoteMetaAny.proposalHeroImageFileId.trim());
+    }
+    const ccAny: any = (quoteMetaAny?.proposalChristchurchImageFileIds as any) || {};
+    for (const k of [
+      "logoMarkFileId",
+      "logoWideFileId",
+      "coverHeroFileId",
+      "sidebarPhotoFileId",
+      "badge1FileId",
+      "badge2FileId",
+      "fensaFileId",
+      "pas24FileId",
+      "fscFileId",
+      "ggfFileId",
+    ]) {
+      const v = typeof ccAny?.[k] === "string" ? String(ccAny[k]).trim() : "";
+      if (v) proposalAssetIds.push(v);
+    }
+
+    const proposalBlocksAny: any = (quoteMetaAny?.proposalBlocks as any) || {};
+    const proposalBlockHtmlCandidates: string[] = [
+      String(proposalBlocksAny?.introHtml || ""),
+      String(proposalBlocksAny?.scopeHtml || ""),
+      String(proposalBlocksAny?.guaranteesHtml || ""),
+      String(proposalBlocksAny?.termsHtml || ""),
+    ];
+    for (const html of proposalBlockHtmlCandidates) {
+      proposalAssetIds.push(...extractProposalAssetIdsFromHtml(html));
+    }
+    const proposalAssetUrlMap = await fetchQuoteFileUrls(proposalAssetIds, tenantId);
+
+    // Avoid base64-inlining large logos for live preview (can OOM on Render).
+    const logoDataUrl = ts?.logoUrl ? String(ts.logoUrl) : undefined;
+
+    const API_BASE = (
+      process.env.APP_API_URL ||
+      process.env.API_URL ||
+      process.env.RENDER_EXTERNAL_URL ||
+      `http://localhost:${process.env.PORT || 4000}`
+    ).replace(/\/$/, "");
+
+    const html = await buildQuoteProposalHtml({
+      quote,
+      tenantSettings: ts,
+      currencyCode: totals.currencyCode,
+      currencySymbol: totals.currencySymbol,
+      totals: { subtotal, vatAmount, totalGBP, vatRate, showVat },
+      imageUrlMap,
+      proposalAssetUrlMap,
+      logoDataUrl,
+      publicAssetBaseUrl: API_BASE,
+    });
+
+    return res.json({ ok: true, html });
+  } catch (e: any) {
+    console.error("[/quotes/:id/proposal/html] failed:", e?.message || e);
     return res.status(500).json({ error: "internal_error" });
   }
 });
@@ -3781,11 +4158,119 @@ async function imageUrlToDataUrl(imageUrl: string): Promise<string> {
   }
 }
 
+type ChristchurchAiSummary = {
+  timber: string;
+  finish: string;
+  glazing: string;
+  fittings: string;
+  ventilation: string;
+  scope: string;
+};
+
+function buildLineItemAiContext(lines: any[]): string {
+  const chunks: string[] = [];
+  const maxLines = 80;
+
+  for (const ln of (lines || []).slice(0, maxLines)) {
+    const qty = ln?.qty ?? 1;
+    const description = String(ln?.description || "").replace(/\s+/g, " ").trim();
+
+    const metaAny: any = (ln?.meta as any) || {};
+    const metaPruned: Record<string, string> = {};
+    for (const [k, v] of Object.entries(metaAny)) {
+      if (v == null) continue;
+      if (typeof v === "string") {
+        const s = v.trim();
+        if (s && s.length <= 240) metaPruned[k] = s;
+        continue;
+      }
+      if (typeof v === "number" || typeof v === "boolean") {
+        metaPruned[k] = String(v);
+        continue;
+      }
+      if (Array.isArray(v) && v.length && v.every(x => typeof x === "string")) {
+        const s = v
+          .map(x => String(x).trim())
+          .filter(Boolean)
+          .slice(0, 8)
+          .join("; ");
+        if (s) metaPruned[k] = s;
+        continue;
+      }
+    }
+
+    const metaText = Object.keys(metaPruned).length ? JSON.stringify(metaPruned) : "";
+    chunks.push(`- qty: ${qty}; description: ${description}${metaText ? `; meta: ${metaText}` : ""}`);
+  }
+
+  return `Line items (from CRM):\n${chunks.join("\n")}`;
+}
+
+async function summarizeChristchurchFromLineItems(lines: any[]): Promise<ChristchurchAiSummary | null> {
+  if (!env.OPENAI_API_KEY) return null;
+
+  try {
+    const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+    const ctx = buildLineItemAiContext(lines);
+
+    const resp = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.2,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are summarizing a joinery quotation for a proposal. Using ONLY the provided line items and their metadata, extract concise details. Do not guess or invent. If a field is not stated or cannot be inferred, return an empty string. Return JSON only.",
+        },
+        {
+          role: "user",
+          content:
+            `Extract these fields:\n- timber (species/material/engineering)\n- finish (paint/stain/color/system)\n- glazing (double/triple, coatings, Ug, etc)\n- fittings (hardware/ironmongery)\n- ventilation (vents/trickle vents)\n- scope (1-2 sentence overall scope summary)\n\n${ctx}`.slice(0, 12000),
+        },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "christchurch_proposal_summary",
+          schema: {
+            type: "object",
+            properties: {
+              timber: { type: "string" },
+              finish: { type: "string" },
+              glazing: { type: "string" },
+              fittings: { type: "string" },
+              ventilation: { type: "string" },
+              scope: { type: "string" },
+            },
+            required: ["timber", "finish", "glazing", "fittings", "ventilation", "scope"],
+            additionalProperties: false,
+          },
+        },
+      },
+    });
+
+    const content = resp.choices[0]?.message?.content || "{}";
+    const parsed = JSON.parse(content) as Partial<ChristchurchAiSummary>;
+
+    return {
+      timber: typeof parsed.timber === "string" ? parsed.timber.trim() : "",
+      finish: typeof parsed.finish === "string" ? parsed.finish.trim() : "",
+      glazing: typeof parsed.glazing === "string" ? parsed.glazing.trim() : "",
+      fittings: typeof parsed.fittings === "string" ? parsed.fittings.trim() : "",
+      ventilation: typeof parsed.ventilation === "string" ? parsed.ventilation.trim() : "",
+      scope: typeof parsed.scope === "string" ? parsed.scope.trim() : "",
+    };
+  } catch (err: any) {
+    console.warn("[quotes] Christchurch AI spec summary failed; falling back:", err?.message || err);
+    return null;
+  }
+}
+
 /**
  * Build a beautiful, multi-section Soho-style PDF proposal HTML
  * Shared by both /render-pdf and /render-proposal endpoints
  */
-function buildQuoteProposalHtml(opts: {
+async function buildQuoteProposalHtml(opts: {
   quote: any & { lines: any[]; tenant: any; lead: any | null };
   tenantSettings: any | null;
   currencyCode: string;
@@ -3794,7 +4279,8 @@ function buildQuoteProposalHtml(opts: {
   imageUrlMap?: Record<string, string>;  // NEW: Map of imageFileId to signed URL
   proposalAssetUrlMap?: Record<string, string>; // Map of proposal asset file IDs to signed URLs
   logoDataUrl?: string;  // Base64 encoded logo for embedding in PDF
-}): string {
+  publicAssetBaseUrl?: string;
+}): Promise<string> {
   const { quote, tenantSettings: ts, currencyCode: cur, currencySymbol: sym, totals, logoDataUrl } = opts;
   const { subtotal, vatAmount, totalGBP, vatRate, showVat } = totals;
   
@@ -3817,7 +4303,10 @@ function buildQuoteProposalHtml(opts: {
   const ref = `Q-${quote.id.slice(0, 8).toUpperCase()}`;
   const leadCustom: any = (quote.lead?.custom as any) || {};
   const jobNumber = (leadCustom?.refId as string) || ref;
+  const projectReference = typeof leadCustom?.projectReference === "string" ? leadCustom.projectReference : "";
+  const surveyTeam = typeof leadCustom?.surveyTeam === "string" ? String(leadCustom.surveyTeam) : "";
   const deliveryAddress = (leadCustom?.address as string) || "";
+  const DEFAULT_COMPLIANCE_NOTE = "PAS 24 / Part Q: Glazing to GGF guidelines.";
   
   // Extract specifications
   const quoteMeta: any = (quote.meta as any) || {};
@@ -3830,12 +4319,15 @@ function buildQuoteProposalHtml(opts: {
   // Rich text (WYSIWYG) blocks stored on the quote
   const proposalBlocks: any = (quoteMeta?.proposalBlocks as any) || {};
   const specifications = quoteMeta?.specifications || {};
-  const timber = specifications.timber || quoteDefaults?.defaultTimber || "Engineered timber";
-  const finish = specifications.finish || quoteDefaults?.defaultFinish || "Factory finished";
-  const glazing = specifications.glazing || quoteDefaults?.defaultGlazing || "Low-energy double glazing";
-  const fittings = specifications.fittings || quoteDefaults?.defaultFittings || "";
-  const ventilation = specifications.ventilation || "";
-  const compliance = specifications.compliance || quoteDefaults?.compliance || "Industry standards";
+  const fallbackTimber = specifications.timber || quoteDefaults?.defaultTimber || "Engineered timber";
+  const fallbackFinish = specifications.finish || quoteDefaults?.defaultFinish || "Factory finished";
+  const fallbackGlazing = specifications.glazing || quoteDefaults?.defaultGlazing || "Low-energy double glazing";
+  const fallbackFittings = specifications.fittings || quoteDefaults?.defaultFittings || "";
+  const fallbackVentilation = specifications.ventilation || "";
+  const compliance =
+    (typeof leadCustom?.compliance === "string" && String(leadCustom.compliance).trim())
+      ? String(leadCustom.compliance).trim()
+      : (specifications.compliance || quoteDefaults?.compliance || DEFAULT_COMPLIANCE_NOTE);
 
   const blocks = {
     introHtml: sanitizeRichTextHtml(String(proposalBlocks?.introHtml || "")),
@@ -3872,13 +4364,21 @@ function buildQuoteProposalHtml(opts: {
   const termsHtml = hydrateProposalAssetUrls(applyTemplateVariables(blocks.termsHtml, templateVars), proposalAssets);
 
   if (proposalTemplate === "christchurch") {
+    const hasUserScopeHtml = Boolean(String(blocks.scopeHtml || "").trim());
+    const ai = await summarizeChristchurchFromLineItems(quote.lines || []);
+
     const ccAny: any = (quoteMeta?.proposalChristchurchImageFileIds as any) || {};
     const ccUrls = {
       logoMark: typeof ccAny?.logoMarkFileId === "string" ? proposalAssets[String(ccAny.logoMarkFileId).trim()] : undefined,
       logoWide: typeof ccAny?.logoWideFileId === "string" ? proposalAssets[String(ccAny.logoWideFileId).trim()] : undefined,
+      coverHero: typeof ccAny?.coverHeroFileId === "string" ? proposalAssets[String(ccAny.coverHeroFileId).trim()] : undefined,
       sidebarPhoto: typeof ccAny?.sidebarPhotoFileId === "string" ? proposalAssets[String(ccAny.sidebarPhotoFileId).trim()] : undefined,
       badge1: typeof ccAny?.badge1FileId === "string" ? proposalAssets[String(ccAny.badge1FileId).trim()] : undefined,
       badge2: typeof ccAny?.badge2FileId === "string" ? proposalAssets[String(ccAny.badge2FileId).trim()] : undefined,
+      fensa: typeof ccAny?.fensaFileId === "string" ? proposalAssets[String(ccAny.fensaFileId).trim()] : undefined,
+      pas24: typeof ccAny?.pas24FileId === "string" ? proposalAssets[String(ccAny.pas24FileId).trim()] : undefined,
+      fsc: typeof ccAny?.fscFileId === "string" ? proposalAssets[String(ccAny.fscFileId).trim()] : undefined,
+      ggf: typeof ccAny?.ggfFileId === "string" ? proposalAssets[String(ccAny.ggfFileId).trim()] : undefined,
     };
 
     return buildChristchurchProposalHtml({
@@ -3888,8 +4388,19 @@ function buildQuoteProposalHtml(opts: {
       currencySymbol: sym,
       totals,
       logoDataUrl,
+      assetBaseUrl: opts.publicAssetBaseUrl,
       imageUrls: ccUrls,
       scopeHtml,
+      aiSummary: ai
+        ? {
+            timber: ai.timber,
+            finish: ai.finish,
+            glazing: ai.glazing,
+            fittings: ai.fittings,
+            ventilation: ai.ventilation,
+            scopeHtml: !hasUserScopeHtml && ai.scope ? `<p>${escapeHtml(ai.scope)}</p>` : undefined,
+          }
+        : undefined,
     });
   }
   
@@ -3951,6 +4462,67 @@ function buildQuoteProposalHtml(opts: {
     
     return { description, qty, unit: sellUnit, total, dimensions, imageUrl };
   });
+
+  const toNonEmptyStr = (v: any): string => {
+    if (v == null) return "";
+    if (typeof v === "string") return v.trim();
+    if (typeof v === "number" || typeof v === "boolean") return String(v);
+    return "";
+  };
+
+  const collectLineMetaValues = (keys: string[]): string[] => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const ln of quote.lines || []) {
+      const metaAny: any = (ln?.meta as any) || {};
+      for (const k of keys) {
+        const raw = metaAny?.[k];
+        if (Array.isArray(raw)) {
+          for (const item of raw) {
+            const s = toNonEmptyStr(item);
+            const norm = s.toLowerCase();
+            if (s && !seen.has(norm)) {
+              seen.add(norm);
+              out.push(s);
+            }
+          }
+          continue;
+        }
+        const s = toNonEmptyStr(raw);
+        const norm = s.toLowerCase();
+        if (s && !seen.has(norm)) {
+          seen.add(norm);
+          out.push(s);
+        }
+      }
+    }
+    return out;
+  };
+
+  const timberValues = collectLineMetaValues(["wood", "timber", "timberSpecies", "material"]).slice(0, 3);
+  const finishValues = collectLineMetaValues(["finish", "paintFinish", "colour", "color"]).slice(0, 3);
+  const glazingValues = collectLineMetaValues(["glass", "glazing"]).slice(0, 3);
+  const fittingsValues = collectLineMetaValues(["fittings", "hardware", "ironmongery"]).slice(0, 4);
+  const ventilationValues = collectLineMetaValues(["ventilation", "vents", "trickleVent"]).slice(0, 3);
+
+  const timber = timberValues.length ? timberValues.join(" / ") : String(fallbackTimber);
+  const finish = finishValues.length ? finishValues.join(" / ") : String(fallbackFinish);
+  const glazing = glazingValues.length ? glazingValues.join(" / ") : String(fallbackGlazing);
+  const fittings = fittingsValues.length ? fittingsValues.join(", ") : String(fallbackFittings || "");
+  const ventilation = ventilationValues.length ? ventilationValues.join(" / ") : String(fallbackVentilation || "");
+
+  const uniqueItemNames = Array.from(
+    new Set(
+      rows
+        .map((r: any) => String(r?.description || "").trim())
+        .filter(Boolean)
+        .map((s: string) => s.replace(/\s+/g, " "))
+        .slice(0, 12),
+    ),
+  );
+  const scopeText = uniqueItemNames.length
+    ? `Supply of ${uniqueItemNames.slice(0, 8).join(", ")}${uniqueItemNames.length > 8 ? " and related joinery items" : ""}.`
+    : "Supply of bespoke timber joinery products manufactured to your specifications.";
   
   const showLineItems = quoteDefaults?.showLineItems !== false;
   
@@ -3997,6 +4569,87 @@ function buildQuoteProposalHtml(opts: {
         padding: 28px 36px; 
         max-width: 210mm;
       }
+
+      /* Print/PDF pagination helpers */
+      .page-break-before { page-break-before: always; }
+      .page-break-after { page-break-after: always; }
+
+      /* Cover page (Page 1) – image + centered title + contact footer */
+      .cover-page {
+        padding: 0;
+        min-height: 297mm;
+        display: flex;
+        flex-direction: column;
+      }
+      .cover-hero {
+        width: 100%;
+        height: 95mm;
+        overflow: hidden;
+        border-bottom: 1px solid #e2e8f0;
+        background: #f8fafc;
+      }
+      .cover-hero img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .cover-content {
+        flex: 1;
+        padding: 28px 36px 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        justify-content: center;
+        gap: 10px;
+      }
+      .cover-brand {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        margin-bottom: 8px;
+      }
+      .cover-brand img {
+        max-height: 56px;
+        max-width: 240px;
+      }
+      .cover-brand-name {
+        font-size: 18px;
+        font-weight: 700;
+        color: #0f172a;
+        letter-spacing: -0.3px;
+      }
+      .cover-tagline {
+        font-size: 11px;
+        color: #64748b;
+        font-weight: 500;
+        margin-top: 2px;
+      }
+      .cover-title {
+        font-size: 30px;
+        font-weight: 800;
+        color: #0f172a;
+        letter-spacing: -0.8px;
+        line-height: 1.15;
+        margin-top: 10px;
+      }
+      .cover-client {
+        font-size: 12px;
+        color: #475569;
+        font-weight: 500;
+        margin-top: 6px;
+      }
+      .cover-footer {
+        padding: 18px 36px 22px;
+        text-align: center;
+        font-size: 11px;
+        color: #334155;
+        line-height: 1.7;
+      }
+      .cover-footer .label { font-weight: 700; }
+      .cover-footer .sep { margin: 0 10px; color: #cbd5e1; }
       
       /* Page 1: Header & Cover - Soho Style */
       .header { 
@@ -4086,6 +4739,84 @@ function buildQuoteProposalHtml(opts: {
       .project-scope { 
         font-size: 11px; 
         color: #475569; 
+        line-height: 1.7;
+      }
+
+      /* Page 2: Project Overview (photo + summary) */
+      .overview-page {
+        padding: 0;
+        min-height: 297mm;
+        display: flex;
+        flex-direction: row;
+      }
+      .overview-photo {
+        width: 42%;
+        background: #f8fafc;
+        border-right: 1px solid #e2e8f0;
+        overflow: hidden;
+      }
+      .overview-photo img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .overview-main {
+        flex: 1;
+        padding: 28px 36px;
+      }
+      .overview-title {
+        font-size: 28px;
+        font-weight: 800;
+        color: #0ea5e9;
+        letter-spacing: -0.6px;
+        margin-bottom: 16px;
+      }
+      .overview-columns {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 28px;
+        margin-top: 8px;
+      }
+      .overview-block h3 {
+        font-size: 16px;
+        font-weight: 800;
+        color: #0ea5e9;
+        margin-bottom: 10px;
+        letter-spacing: -0.2px;
+      }
+      .kv {
+        font-size: 12px;
+        color: #334155;
+        line-height: 1.6;
+      }
+      .kv strong { font-weight: 800; color: #0f172a; }
+      .spec-list {
+        margin: 0;
+        padding-left: 16px;
+        font-size: 12px;
+        color: #334155;
+        line-height: 1.6;
+      }
+      .spec-list li { margin-bottom: 6px; }
+      .overview-scope {
+        margin-top: 18px;
+      }
+      .overview-scope h3 {
+        font-size: 18px;
+        font-weight: 800;
+        color: #0ea5e9;
+        margin-bottom: 10px;
+      }
+      .overview-scope p {
+        font-size: 12px;
+        color: #334155;
+        line-height: 1.8;
+      }
+      .compliance-note {
+        margin-top: 10px;
+        font-size: 12px;
+        color: #334155;
         line-height: 1.7;
       }
       
@@ -4456,15 +5187,78 @@ function buildQuoteProposalHtml(opts: {
     <html>
     <head><meta charset="utf-8" />${styles}</head>
     <body data-template="${proposalTemplate}">
+      <!-- Page 1: Cover (matches the provided style) -->
+      <div class="page cover-page page-break-after">
+        <div class="cover-hero">
+          ${proposalHeroImageUrl ? `<img src="${proposalHeroImageUrl}" alt="Project image" />` : ""}
+        </div>
+
+        <div class="cover-content">
+          <div class="cover-brand">
+            ${logoUrl ? `<img src="${logoUrl}" alt="${escapeHtml(brand)}" />` : ""}
+          </div>
+          <div class="cover-brand-name">${escapeHtml(brand)}</div>
+          ${tagline ? `<div class="cover-tagline">${escapeHtml(tagline)}</div>` : ""}
+
+          <div class="cover-title">Project Quotation – ${escapeHtml(projectName)}</div>
+          <div class="cover-client">Client: ${escapeHtml(client)} • ${when}${projectReference ? ` • Project ref: ${escapeHtml(projectReference)}` : ""}</div>
+        </div>
+
+        <div class="cover-footer">
+          ${phone ? `<span><span class="label">Telephone:</span> ${escapeHtml(phone)}</span>` : ""}
+          ${(phone && email) ? `<span class="sep">•</span>` : ""}
+          ${email ? `<span><span class="label">Email:</span> ${escapeHtml(email)}</span>` : ""}
+          ${address ? `<div style="margin-top: 6px;"><span class="label">Address:</span> ${escapeHtml(address)}</div>` : ""}
+        </div>
+      </div>
+
+      <!-- Page 2: Project Overview (matches the provided layout) -->
+      <div class="page overview-page page-break-before page-break-after">
+        <div class="overview-photo">
+          ${proposalHeroImageUrl ? `<img src="${proposalHeroImageUrl}" alt="Project photo" />` : ""}
+        </div>
+        <div class="overview-main">
+          <div class="overview-title">Project Overview</div>
+
+          <div class="overview-columns">
+            <div class="overview-block">
+              <h3>Client Details</h3>
+              <div class="kv"><strong>Client:</strong> ${escapeHtml(client)}</div>
+              ${projectReference ? `<div class="kv"><strong>Project ref:</strong> ${escapeHtml(projectReference)}</div>` : ""}
+              ${deliveryAddress ? `<div class="kv"><strong>Delivery Address:</strong> ${escapeHtml(deliveryAddress)}</div>` : ""}
+              ${surveyTeam ? `<div class="kv"><strong>Survey Team:</strong> ${escapeHtml(surveyTeam)}</div>` : ""}
+              <div class="kv"><strong>Date:</strong> ${when}</div>
+            </div>
+
+            <div class="overview-block">
+              <h3>Specification Highlights</h3>
+              <ul class="spec-list">
+                <li><strong>Timber:</strong> ${escapeHtml(timber)}</li>
+                <li><strong>Finish:</strong> ${escapeHtml(finish)}</li>
+                <li><strong>Glazing:</strong> ${escapeHtml(glazing)}</li>
+                ${fittings ? `<li><strong>Hardware/Fittings:</strong> ${escapeHtml(fittings)}</li>` : ""}
+                ${ventilation ? `<li><strong>Ventilation:</strong> ${escapeHtml(ventilation)}</li>` : ""}
+              </ul>
+            </div>
+          </div>
+
+          <div class="overview-scope">
+            <h3>Project Scope</h3>
+            <p>${escapeHtml(scopeText)}</p>
+            <div class="compliance-note"><strong>Compliance Note:</strong> ${escapeHtml(compliance)}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Page 3+: Detailed Quotation -->
       <div class="page">
-        <!-- Page 1: Cover & Overview -->
         <header class="header">
           <div class="header-left">
             <div class="brand">
               ${logoUrl ? `<img src="${logoUrl}" alt="${escapeHtml(brand)}" />` : `<div class="brand-name">${escapeHtml(brand)}</div>`}
             </div>
             ${tagline ? `<div class="tagline">${escapeHtml(tagline)}</div>` : ""}
-            <h1>Project Quotation</h1>
+            <h1>Quotation</h1>
             <div class="project-title">${escapeHtml(projectName)}</div>
             <div class="client-strip">Client: ${escapeHtml(client)} • ${when}</div>
           </div>
@@ -4476,50 +5270,12 @@ function buildQuoteProposalHtml(opts: {
           </div>
         </header>
 
-        ${proposalHeroImageUrl ? `
-          <div style="margin: 18px 0; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
-            <img src="${proposalHeroImageUrl}" alt="Project image" style="width:100%; max-height: 220px; object-fit: cover; display:block;" />
-          </div>
-        ` : ""}
-
         ${introHtml ? `
           <div style="margin: 12px 0; font-size: 12px; color: #475569; line-height: 1.7;">
             ${introHtml}
           </div>
         ` : ""}
 
-        <!-- Project Overview Grid -->
-        <div class="overview-grid">
-          <div class="overview-section">
-            <h3>Client Details</h3>
-            <div class="detail-line"><strong>Client:</strong> ${escapeHtml(client)}</div>
-            <div class="detail-line"><strong>Project:</strong> ${escapeHtml(projectName)}</div>
-            ${leadCustom?.phone ? `<div class="detail-line"><strong>Phone:</strong> ${escapeHtml(leadCustom.phone)}</div>` : ""}
-            ${quote.lead?.email ? `<div class="detail-line"><strong>Email:</strong> ${escapeHtml(quote.lead.email)}</div>` : ""}
-            <div class="detail-line"><strong>Job Number:</strong> ${escapeHtml(jobNumber)}</div>
-            <div class="detail-line"><strong>Date:</strong> ${when}</div>
-            <div class="detail-line"><strong>Valid Until:</strong> ${validUntil}</div>
-            ${deliveryAddress ? `<div class="detail-line"><strong>Site:</strong> ${escapeHtml(deliveryAddress)}</div>` : ""}
-          </div>
-          
-          <div class="overview-section">
-            <h3>Specification Summary</h3>
-            <div class="detail-line"><strong>Timber:</strong> ${escapeHtml(timber)}</div>
-            <div class="detail-line"><strong>Finish:</strong> ${escapeHtml(finish)}</div>
-            <div class="detail-line"><strong>Glazing:</strong> ${escapeHtml(glazing)}</div>
-            ${fittings ? `<div class="detail-line"><strong>Fittings:</strong> ${escapeHtml(fittings)}</div>` : ""}
-            ${ventilation ? `<div class="detail-line"><strong>Ventilation:</strong> ${escapeHtml(ventilation)}</div>` : ""}
-            <div class="detail-line"><strong>Compliance:</strong> ${escapeHtml(compliance)}</div>
-            <div class="detail-line"><strong>Currency:</strong> ${cur}</div>
-          </div>
-          
-          <div class="overview-section">
-            <h3>Project Scope</h3>
-            <div class="project-scope">${scopeHtml || ""}</div>
-          </div>
-        </div>
-
-        <!-- Page 2: Detailed Quotation -->
         <h2 class="section-title">Detailed Quotation</h2>
         <p class="quotation-intro">
           Following the technical specifications outlined above, this section provides a comprehensive 
@@ -4881,7 +5637,10 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
   try {
     const tenantId = await getTenantId(req);
     const id = String(req.params.id);
-    const quote = await prisma.quote.findFirst({ where: { id, tenantId }, include: { lines: true, tenant: true, lead: true } });
+    const quote = await prisma.quote.findFirst({
+      where: { id, tenantId },
+      include: { lines: { orderBy: [{ sortIndex: "asc" }, { id: "asc" }] }, tenant: true, lead: true },
+    });
     if (!quote) return res.status(404).json({ error: "not_found" });
     const method = String(req.body?.method || "margin");
     const margin = Number(req.body?.margin ?? quote.markupDefault ?? 0.25);
@@ -5397,7 +6156,10 @@ router.post("/:id/delivery", requireAuth, async (req: any, res) => {
   try {
     const tenantId = req.auth.tenantId as string;
     const id = String(req.params.id);
-    const quote = await prisma.quote.findFirst({ where: { id, tenantId }, include: { lines: true } });
+    const quote = await prisma.quote.findFirst({
+      where: { id, tenantId },
+      include: { lines: { orderBy: [{ sortIndex: "asc" }, { id: "asc" }] } },
+    });
     if (!quote) return res.status(404).json({ error: "not_found" });
 
     const amountGBP = safeNumber(req.body?.amountGBP);
@@ -5490,6 +6252,7 @@ router.post("/:id/delivery", requireAuth, async (req: any, res) => {
  *   distributeDelivery?: boolean;
  *   hideDeliveryLine?: boolean;
  *   applyMarkup?: boolean;
+ *   fileKind?: "SUPPLIER_QUOTE" | "OWN_QUOTE";
  * }
  */
 router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
@@ -5528,7 +6291,7 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
     await normaliseQuoteSourceTypeColumn(quoteId);
     
     if (!quote.supplierFiles || quote.supplierFiles.length === 0) {
-      return res.status(400).json({ error: "no_supplier_files" });
+      return res.status(400).json({ error: "no_files" });
     }
 
     const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
@@ -5553,6 +6316,10 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
       hideDeliveryLine = true,
       applyMarkup = true,
     } = req.body || {};
+
+    const rawFileKind = req.body?.fileKind;
+    const requestedFileKind = typeof rawFileKind === "string" ? rawFileKind.trim() : "";
+    const fileKind: "SUPPLIER_QUOTE" | "OWN_QUOTE" = requestedFileKind === "OWN_QUOTE" ? "OWN_QUOTE" : "SUPPLIER_QUOTE";
 
     // Heuristic: the "Upload your own quote" tab calls this endpoint with *all* transformations disabled.
     // In that mode we prefer deterministic-first parsing (no LLM) and only rely on OCR if Stage A is poor.
@@ -5639,13 +6406,17 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
     })();
 
     const pdfFiles = (quote.supplierFiles || [])
-      .filter((f: any) => f?.kind === "SUPPLIER_QUOTE")
+      .filter((f: any) => f?.kind === fileKind)
       .filter((f: any) => /pdf$/i.test(f.mimeType || "") || /\.pdf$/i.test(f.name || ""))
       .sort((a: any, b: any) => {
         const at = a?.uploadedAt ? new Date(a.uploadedAt).getTime() : 0;
         const bt = b?.uploadedAt ? new Date(b.uploadedAt).getTime() : 0;
         return bt - at;
       });
+
+    if (!pdfFiles.length) {
+      return res.status(400).json({ error: fileKind === "OWN_QUOTE" ? "no_own_quote_files" : "no_supplier_files" });
+    }
 
     const filesToParse = pdfFiles.slice(0, maxFiles);
     if (pdfFiles.length > filesToParse.length) {
@@ -5776,37 +6547,56 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
             typeof (parseResult as any)?.confidence === "number" && Number.isFinite((parseResult as any).confidence)
               ? (parseResult as any).confidence
               : null;
-          
-          for (const ln of parseResult.lines) {
-            const description = String(ln.description || (ln as any).desc || "Item");
+
+          const candidates = (parseResult.lines || []).map((ln: any) => {
+            const description = String(ln?.description || ln?.desc || "Item");
             const pickedQty = pickQty(ln);
             const qty = Number.isFinite(Number(pickedQty)) && Number(pickedQty) > 0 ? Number(pickedQty) : 1;
-            
+
             let unitPrice = pickUnitCost(ln);
-            let lineTotalParsed = pickLineTotal(ln);
-            
+            const lineTotalParsed = pickLineTotal(ln);
             if ((unitPrice == null || !(unitPrice > 0)) && lineTotalParsed != null && qty > 0) {
               unitPrice = lineTotalParsed / qty;
             }
             if (unitPrice == null || !Number.isFinite(unitPrice) || unitPrice < 0) {
               unitPrice = 0;
             }
-            
-            // Quality filtering to remove gibberish OCR lines
+
             const desc = String(description || "").trim();
             const quality = descriptionQualityScore(desc);
-            const isGibberish = quality < 0.5;
-            if (isGibberish) {
-              // Skip but record a sample for diagnostics (limit meta array growth)
-              if (skippedGibberishSamples.length < 5) {
-                skippedGibberishSamples.push(desc.slice(0, 140));
-              }
-              gibberishCount += 1;
-              continue;
-            }
+            return { ln, desc, qty, unitPrice, quality };
+          });
 
-            // Persist a normalised ParsedSupplierLine row so the raw-parse view and ML features
-            // can use the same stored representation as /parse.
+          const acceptWithThreshold = (minQuality: number) => candidates.filter((c) => c.desc && c.quality >= minQuality);
+          let accepted = acceptWithThreshold(0.5);
+          let rejected = candidates.filter((c) => !c.desc || c.quality < 0.5);
+
+          // If we would drop everything, relax the filter. Some PDFs have valid but "non-joinery" descriptions.
+          if (!accepted.length && candidates.length) {
+            parseWarnings.add("All parsed lines flagged low-quality; relaxing quality filter");
+            accepted = acceptWithThreshold(0.25);
+            rejected = candidates.filter((c) => !c.desc || c.quality < 0.25);
+          }
+
+          // Last resort: keep unfiltered lines (better than returning 400/no_lines_parsed).
+          if (!accepted.length && candidates.length) {
+            parseWarnings.add("All parsed lines flagged low-quality; using unfiltered parse output");
+            accepted = candidates.filter((c) => c.desc);
+            rejected = [];
+          }
+
+          for (const c of rejected) {
+            const sample = String(c?.desc || "").trim();
+            if (sample) {
+              if (skippedGibberishSamples.length < 5) skippedGibberishSamples.push(sample.slice(0, 140));
+              gibberishCount += 1;
+            }
+          }
+
+          for (const c of accepted) {
+            const ln = c.ln;
+            const desc = c.desc;
+
             parsedLinesForDb.push({
               tenantId,
               quoteId: quote.id,
@@ -5835,15 +6625,15 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
 
             parsedLines.push({
               description: desc,
-              qty,
-              unitPrice,
+              qty: c.qty,
+              unitPrice: c.unitPrice,
               fileId: f.id,
               sourceCurrency,
               currency: sourceCurrency,
               meta: {
                 source: "supplier-parser",
                 raw: ln,
-                qualityScore: quality,
+                qualityScore: c.quality,
               },
             });
           }
@@ -6106,6 +6896,11 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
         lineTotalComputedGBP: line.unitPrice * line.qty,
       },
     }));
+
+    const linesToSaveWithSortIndex = linesToSave.map((line, idx) => ({
+      ...line,
+      sortIndex: idx,
+    }));
     
     // Delete existing lines and insert new ones
     await prisma.quoteLine.deleteMany({
@@ -6113,7 +6908,7 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
     });
     
     await prisma.quoteLine.createMany({
-      data: linesToSave,
+      data: linesToSaveWithSortIndex,
     });
 
     // Auto-fill lineStandard fields (width/height/timber/finish/ironmongery/glazing/productType)
@@ -6212,6 +7007,7 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
     // Fetch updated lines
     const updatedLines = await prisma.quoteLine.findMany({
       where: { quoteId: quote.id },
+      orderBy: [{ sortIndex: "asc" }, { id: "asc" }],
     });
 
     // Record deterministic pricing overrides from the parsed quote so "same answers => same price"

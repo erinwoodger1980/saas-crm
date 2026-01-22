@@ -1,12 +1,22 @@
 #!/bin/bash
 # seed-laj-live.sh: Seed LAJ Joinery tenant and materials in PRODUCTION database
 
-export DATABASE_URL="postgresql://joineryai_db_user:prBIH2Iho6o8Q1mMiDzVMoEzQjeJTPkQ@dpg-d3mfk6mr433s73ajvdg0-a.oregon-postgres.render.com/joineryai_db?sslmode=require"
-
 cd "$(dirname "$0")"
 
+# Load api/.env if present (do not hardcode credentials in this script).
+if [ -f ".env" ]; then
+    set -a
+    source .env
+    set +a
+fi
+
+if [ -z "$DATABASE_URL" ]; then
+    echo "❌ ERROR: DATABASE_URL not set."
+    echo "Set it in api/.env or export it in your shell before running this script."
+    exit 1
+fi
+
 echo "🚨 WARNING: You are about to seed LAJ Joinery data into PRODUCTION database"
-echo "Production DB: dpg-d3mfk6mr433s73ajvdg0-a.oregon-postgres.render.com/joineryai_db"
 echo ""
 read -p "Are you sure you want to continue? (type 'yes' to proceed): " confirm
 

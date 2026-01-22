@@ -125,9 +125,65 @@ function parseLineItemsFromTextLines(
   const parsedLines: SupplierParseResult["lines"] = [];
   const detectedTotals: SupplierParseResult["detected_totals"] = {};
   let supplier = supplierHint?.trim();
+  const seenLangRows = new Set<string>();
+  const warnings = new Set<string>();
+  let langvaldaDetected = 0;
+  let langvaldaAdded = 0;
+  let langvaldaDeduped = 0;
 
-  // Only treat explicit currency amounts as "money" to avoid matching weights/dimensions.
-  const moneyTokenRe = /[£€$]\s*\d[\d,]*\.\d{2}/;
+  const tryFixLeadingQtyConcatenation = (first: string, second: string): string => {
+    // Common extraction glitch for some PDFs: "2798.52 1 2798.52" becomes "2798.5212798.52".
+    // When we split by decimals we see: first=2798.52, second=12798.52. Recover by stripping
+    // the leading qty digit when it matches this pattern.
+    if (!first || !second) return second;
+    if (second.length === first.length + 1 && second.startsWith("1") && second.endsWith(first)) {
+      return first;
+    }
+    return second;
+  };
+
+  const parseLangvaldaPriceRow = (text: string) => {
+    const line = String(text || "");
+    const dimMatch = line.match(/\b\d{3,4}\s*[xX]\s*\d{3,4}\s*mm\b/);
+    const areaMatch = line.match(/\b\d+(?:\.\d+)?\s*m(?:2|\u00B2)(?=\s|$)/i);
+    if (!dimMatch || !areaMatch) return null;
+
+    // Remove the area token before extracting price decimals, so we don't treat 3.10m² as money.
+    const withoutArea = line.replace(areaMatch[0], " ");
+    // Some PDFs concatenate tokens (e.g. "2798.52 1 2798.52" => "2798.5212798.52").
+    // Avoid word-boundary matching here.
+    const decimals = withoutArea.match(/\d{1,6}\.\d{2}/g) || [];
+    if (decimals.length < 2) return null;
+
+    const unitRaw = decimals[0] ?? "";
+    const lastRaw = decimals[decimals.length - 1] ?? "";
+    if (!unitRaw || !lastRaw) return null;
+
+    const totalRaw = tryFixLeadingQtyConcatenation(unitRaw, lastRaw);
+
+    const unit = Number(unitRaw.replace(/,/g, ""));
+    const total = Number(totalRaw.replace(/,/g, ""));
+    if (!Number.isFinite(unit) || !Number.isFinite(total) || unit <= 0 || total <= 0) return null;
+
+    const ratio = unit > 0 ? total / unit : 1;
+    const qtyRounded = Math.round(ratio);
+    const qty = Number.isFinite(ratio) && qtyRounded >= 1 && qtyRounded <= 999 && Math.abs(ratio - qtyRounded) < 0.02
+      ? qtyRounded
+      : 1;
+
+    return {
+      dimensions: cleanText(dimMatch[0]).replace(/\s+/g, ""),
+      area: cleanText(areaMatch[0]).replace(/\s+/g, ""),
+      costUnit: unit,
+      lineTotal: total,
+      qty,
+    };
+  };
+
+  // Treat either explicit currency amounts, OR bare-decimal amounts as money.
+  // Some supplier PDFs use columns like "Price, GBP" but the numeric cells contain no £ symbol.
+  // Avoid interpreting areas/dimensions (e.g. 3.10m², 1730x1790mm) as money.
+  const moneyTokenRe = /(?:[£€$]\s*)?\b\d[\d,]*\.\d{2}\b(?!\s*(?:m2|m\u00B2|mm|cm|kg)\b)/i;
   const moneyTokenReGlobal = new RegExp(moneyTokenRe.source, "g");
   const getMoneyTokens = (text: string): string[] => text.match(moneyTokenReGlobal) || [];
   const hasMoneyToken = (text: string): boolean => moneyTokenRe.test(text);
@@ -143,6 +199,8 @@ function parseLineItemsFromTextLines(
     if (/\bthank you\b/i.test(lower)) return true;
     if (/\bvalidity\b/i.test(lower)) return true;
     if (/\bdate\s+of\s+quotation\b/i.test(lower)) return true;
+    // Some PDFs include summary rows like "m2:" (area totals) that are not line items.
+    if (/^\s*m(?:2|\u00B2)\s*:\s*/i.test(lower)) return true;
     if (/^\s*notes?\s*:/i.test(text)) return true;
     if (/\byours\s+(sincerely|faithfully)\b/i.test(lower)) return true;
     if (/\bkind\s+regards\b/i.test(lower)) return true;
@@ -179,9 +237,98 @@ function parseLineItemsFromTextLines(
     const line = cleanedLines[i];
     const lower = line.toLowerCase();
     if (!supplier && /\bfit47\b/i.test(line)) supplier = "Fit47";
+    if (!supplier && /\blangvalda\b/i.test(line)) supplier = "Langvalda";
+    if (!supplier && /\bfenstercraft\b/i.test(line)) supplier = "Fenstercraft";
+
+    // Ignore stray unit labels that sometimes get extracted as their own line.
+    if (/^(?:m2|m\u00B2)\s*:?$/i.test(line)) continue;
 
     // Skip obvious headers.
     if (isHeaderOrMeta(line)) continue;
+
+    // Special-case: Langvalda/Fenstercraft style rows like:
+    // "1730x1790mm 3.10m² 2798.52 1 2798.52" (often without £, and sometimes the "1" is concatenated).
+    // If detected, attach the nearest preceding WG* line as the description.
+    const langRow = parseLangvaldaPriceRow(line);
+    if (langRow) {
+      langvaldaDetected += 1;
+
+      let descIndex: number | null = null;
+      for (let off = 1; off <= 80; off += 1) {
+        const idx = i - off;
+        if (idx < 0) break;
+        const candidate = cleanedLines[idx];
+        if (!candidate) continue;
+
+        // Stop once we've reached a prior priced row so we don't steal the previous item's title.
+        if (parseLangvaldaPriceRow(candidate)) break;
+
+        if (/^(?:wg|wf)\d+\b/i.test(candidate)) {
+          descIndex = idx;
+          break;
+        }
+        if (
+          /^l\d+\b/i.test(candidate) &&
+          idx + 1 < cleanedLines.length &&
+          /^(?:wg|wf)\d+\b/i.test(cleanedLines[idx + 1] || "")
+        ) {
+          descIndex = idx + 1;
+          break;
+        }
+        if (/^l\d+\s*:\s*(?:wg|wf)\d+\b/i.test(candidate)) {
+          descIndex = idx;
+          break;
+        }
+      }
+
+      const descBase = descIndex != null ? cleanText(cleanedLines[descIndex]).trim() : "Joinery item";
+
+      // De-dupe using the nearest WG/WF header + the priced row values.
+      // This avoids dropping distinct items that coincidentally share the same dimensions/prices.
+      const descKey = cleanText(descBase).replace(/\s+/g, " ").trim().toUpperCase();
+      const langKey = `${descKey}|${langRow.dimensions}|${langRow.area}|${langRow.costUnit}|${langRow.lineTotal}`;
+      if (seenLangRows.has(langKey)) {
+        langvaldaDeduped += 1;
+        continue;
+      }
+      seenLangRows.add(langKey);
+
+      const detailLines: string[] = [];
+      const detailStart = descIndex != null ? descIndex + 1 : Math.max(0, i - 12);
+      for (let j = detailStart; j < i; j += 1) {
+        const t = cleanedLines[j];
+        if (!t) continue;
+        if (isHeaderOrMeta(t)) continue;
+        if (/^price\b/i.test(t)) continue;
+        if (/^\d+\s*[xX]\s*\d+\s*mm\b/i.test(t)) continue;
+        if (/\bpcs\b|\btotal\b|\bgbp\b/i.test(t)) continue;
+        if (/^\d+\./.test(t) || /(wood:|finish:|glass:|fittings:|ventilation:)/i.test(t)) {
+          detailLines.push(t);
+        }
+      }
+
+      const details = detailLines
+        .map((l) => cleanText(l).replace(/\s{2,}/g, " ").trim())
+        .filter(Boolean)
+        .slice(0, 18);
+
+      const desc = `${descBase} (${langRow.dimensions}, ${langRow.area})${details.length ? ` — ${details.join(" ")}` : ""}`
+        .replace(/\s{2,}/g, " ")
+        .trim();
+
+      const rawText = [descBase, ...details, line].join("\n");
+
+      parsedLines.push({
+        description: desc,
+        qty: langRow.qty,
+        costUnit: langRow.costUnit,
+        lineTotal: langRow.lineTotal,
+        ...(rawText ? { rawText } : {}),
+        meta: { sourceLine: line, detailLines: details, dimensions: langRow.dimensions, area: langRow.area } as any,
+      });
+      langvaldaAdded += 1;
+      continue;
+    }
 
     // Totals.
     if (/\btotal\s+weight\b/i.test(lower)) continue;
@@ -368,12 +515,38 @@ function parseLineItemsFromTextLines(
 
   if (!parsedLines.length) return null;
 
+  if (langvaldaDetected > 0 && langvaldaAdded > 0 && langvaldaAdded < langvaldaDetected) {
+    warnings.add(
+      `Sanity check: detected ${langvaldaDetected} priced rows but only parsed ${langvaldaAdded} (possible missing line items)`,
+    );
+  }
+  if (langvaldaDeduped > 0) {
+    warnings.add(`Sanity check: removed ${langvaldaDeduped} duplicate priced rows`);
+  }
+
+  // Totals sense check: if the PDF exposes a subtotal/total, compare it to the sum of parsed rows.
+  const sumLineTotals = parsedLines
+    .map((l) => (typeof l.lineTotal === "number" && Number.isFinite(l.lineTotal) ? l.lineTotal : 0))
+    .reduce((acc, v) => acc + v, 0);
+  const expectedTotal =
+    (typeof detectedTotals.subtotal === "number" && Number.isFinite(detectedTotals.subtotal) ? detectedTotals.subtotal : null) ??
+    (typeof detectedTotals.estimated_total === "number" && Number.isFinite(detectedTotals.estimated_total) ? detectedTotals.estimated_total : null);
+  if (expectedTotal != null && sumLineTotals > 0) {
+    const diff = Math.abs(sumLineTotals - expectedTotal);
+    const threshold = Math.max(5, expectedTotal * 0.02);
+    if (diff > threshold) {
+      warnings.add(
+        `Sanity check: sum of line totals (${sumLineTotals.toFixed(2)}) differs from detected total (${expectedTotal.toFixed(2)}) by ${diff.toFixed(2)}`,
+      );
+    }
+  }
+
   return {
     supplier,
     currency: currency || "GBP",
     lines: parsedLines,
     detected_totals: Object.keys(detectedTotals).length ? detectedTotals : undefined,
-    warnings: ["Recovered line items from pdfjs text"],
+    warnings: unique(["Recovered line items from pdfjs text", ...warnings]),
   };
 }
 
@@ -693,12 +866,15 @@ async function runStageB(
 ): Promise<StageBResult> {
   const stageStartedAt = Date.now();
 
-  const extractRawTextByPageForGate = async (): Promise<string[]> => {
+  const extractRawTextByPagePdfJs = async (maxPages?: number): Promise<string[]> => {
     try {
       // pdfjs-dist v4 ships ESM entrypoints. Use dynamic import so this file can remain CJS.
       const pdfjsLib: any = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
-      const data = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+      // IMPORTANT: pdfjs may transfer the Uint8Array to a worker, detaching the underlying
+      // ArrayBuffer. Create a fresh copy each time so repeated extractions (sample + full)
+      // work reliably.
+      const data = new Uint8Array(buffer);
       const standardFontDataUrl = (() => {
         try {
           const pkgPath = require.resolve("pdfjs-dist/package.json");
@@ -714,36 +890,44 @@ async function runStageB(
       });
       const doc = await loadingTask.promise;
       const pages: string[] = [];
-      const pageCount = Math.max(0, Math.min(2, Number(doc?.numPages || 0)));
+      const total = Math.max(0, Number(doc?.numPages || 0));
+      const cap = typeof maxPages === "number" && Number.isFinite(maxPages) ? Math.max(0, maxPages) : total;
+      const hardCap = 20;
+      const pageCount = Math.max(0, Math.min(total, cap, hardCap));
       for (let pageNum = 1; pageNum <= pageCount; pageNum += 1) {
-        const page = await doc.getPage(pageNum);
-        const tc = await page.getTextContent();
+        try {
+          const page = await doc.getPage(pageNum);
+          const tc = await page.getTextContent();
 
-        // Build line breaks by grouping items with similar Y coordinates.
-        const groups = new Map<number, { x: number; str: string }[]>();
-        for (const it of tc?.items || []) {
-          const s = String((it as any)?.str || "").trim();
-          if (!s) continue;
-          const t = (it as any)?.transform;
-          const x = Array.isArray(t) && typeof t[4] === "number" ? t[4] : 0;
-          const yRaw = Array.isArray(t) && typeof t[5] === "number" ? t[5] : 0;
-          const y = Math.round(yRaw);
-          const bucket = groups.get(y) || [];
-          bucket.push({ x, str: s });
-          groups.set(y, bucket);
+          // Build line breaks by grouping items with similar Y coordinates.
+          const groups = new Map<number, { x: number; str: string }[]>();
+          for (const it of tc?.items || []) {
+            const s = String((it as any)?.str || "").trim();
+            if (!s) continue;
+            const t = (it as any)?.transform;
+            const x = Array.isArray(t) && typeof t[4] === "number" ? t[4] : 0;
+            const yRaw = Array.isArray(t) && typeof t[5] === "number" ? t[5] : 0;
+            const y = Math.round(yRaw);
+            const bucket = groups.get(y) || [];
+            bucket.push({ x, str: s });
+            groups.set(y, bucket);
+          }
+
+          const ys = Array.from(groups.keys()).sort((a, b) => b - a);
+          const lines: string[] = [];
+          for (const y of ys) {
+            const parts = groups.get(y) || [];
+            parts.sort((a, b) => a.x - b.x);
+            const line = parts.map((p) => p.str).join(" ").replace(/\s{2,}/g, " ").trim();
+            if (!line) continue;
+            lines.push(line);
+          }
+
+          pages.push(lines.join("\n"));
+        } catch {
+          // Ignore per-page failures; keep partial extraction.
+          continue;
         }
-
-        const ys = Array.from(groups.keys()).sort((a, b) => b - a);
-        const lines: string[] = [];
-        for (const y of ys) {
-          const parts = groups.get(y) || [];
-          parts.sort((a, b) => a.x - b.x);
-          const line = parts.map((p) => p.str).join(" ").replace(/\s{2,}/g, " ").trim();
-          if (!line) continue;
-          lines.push(line);
-        }
-
-        pages.push(lines.join("\n"));
       }
       try {
         await doc.destroy();
@@ -757,8 +941,8 @@ async function runStageB(
   // OCR decision gate: only OCR when extracted text is not usable.
   // We use a lightweight page-text sample for scoring where possible; otherwise we fall back to
   // the extraction summary text.
-  const rawTextByPage: string[] = await extractRawTextByPageForGate();
-  const gate = explainShouldUseOcr(stageA.extraction, rawTextByPage);
+  const rawTextByPageSample: string[] = await extractRawTextByPagePdfJs(2);
+  const gate = explainShouldUseOcr(stageA.extraction, rawTextByPageSample);
 
   const configuredOcrEnabled = (() => {
     if (typeof options?.ocrEnabled === "boolean") return options.ocrEnabled;
@@ -806,9 +990,10 @@ async function runStageB(
 
   // If Stage A found no line items but pdfjs indicates usable text, try a lightweight
   // deterministic recovery from the extracted pdfjs text (no OCR).
-  if (!ocrEnabled && stageA.parse.lines.length === 0 && !gate.useOcr && rawTextByPage.length) {
+  if (!ocrEnabled && stageA.parse.lines.length === 0 && !gate.useOcr && rawTextByPageSample.length) {
+    const rawTextByPageAll: string[] = await extractRawTextByPagePdfJs();
     const recovered = parseLineItemsFromTextLines(
-      rawTextByPage.join("\n").split(/\r?\n+/g),
+      (rawTextByPageAll.length ? rawTextByPageAll : rawTextByPageSample).join("\n").split(/\r?\n+/g),
       stageA.parse.supplier,
       stageA.parse.currency,
     );
