@@ -3659,7 +3659,7 @@ router.get("/:id/proposal/signed", requireAuth, async (req: any, res) => {
  * GET /quotes/:id/proposal/html
  * Returns the proposal HTML for live preview (no PDF generation).
  */
-router.get(":id/proposal/html", requireAuth, async (req: any, res) => {
+router.get("/:id/proposal/html", requireAuth, async (req: any, res) => {
   try {
     const tenantId = req.auth.tenantId as string;
     const id = String(req.params.id);
