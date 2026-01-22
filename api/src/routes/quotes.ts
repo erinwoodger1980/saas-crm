@@ -4064,6 +4064,87 @@ function buildQuoteProposalHtml(opts: {
         padding: 28px 36px; 
         max-width: 210mm;
       }
+
+      /* Print/PDF pagination helpers */
+      .page-break-before { page-break-before: always; }
+      .page-break-after { page-break-after: always; }
+
+      /* Cover page (Page 1) – image + centered title + contact footer */
+      .cover-page {
+        padding: 0;
+        min-height: 297mm;
+        display: flex;
+        flex-direction: column;
+      }
+      .cover-hero {
+        width: 100%;
+        height: 95mm;
+        overflow: hidden;
+        border-bottom: 1px solid #e2e8f0;
+        background: #f8fafc;
+      }
+      .cover-hero img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .cover-content {
+        flex: 1;
+        padding: 28px 36px 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        justify-content: center;
+        gap: 10px;
+      }
+      .cover-brand {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        margin-bottom: 8px;
+      }
+      .cover-brand img {
+        max-height: 56px;
+        max-width: 240px;
+      }
+      .cover-brand-name {
+        font-size: 18px;
+        font-weight: 700;
+        color: #0f172a;
+        letter-spacing: -0.3px;
+      }
+      .cover-tagline {
+        font-size: 11px;
+        color: #64748b;
+        font-weight: 500;
+        margin-top: 2px;
+      }
+      .cover-title {
+        font-size: 30px;
+        font-weight: 800;
+        color: #0f172a;
+        letter-spacing: -0.8px;
+        line-height: 1.15;
+        margin-top: 10px;
+      }
+      .cover-client {
+        font-size: 12px;
+        color: #475569;
+        font-weight: 500;
+        margin-top: 6px;
+      }
+      .cover-footer {
+        padding: 18px 36px 22px;
+        text-align: center;
+        font-size: 11px;
+        color: #334155;
+        line-height: 1.7;
+      }
+      .cover-footer .label { font-weight: 700; }
+      .cover-footer .sep { margin: 0 10px; color: #cbd5e1; }
       
       /* Page 1: Header & Cover - Soho Style */
       .header { 
@@ -4523,15 +4604,40 @@ function buildQuoteProposalHtml(opts: {
     <html>
     <head><meta charset="utf-8" />${styles}</head>
     <body data-template="${proposalTemplate}">
-      <div class="page">
-        <!-- Page 1: Cover & Overview -->
+      <!-- Page 1: Cover (matches the provided style) -->
+      <div class="page cover-page page-break-after">
+        <div class="cover-hero">
+          ${proposalHeroImageUrl ? `<img src="${proposalHeroImageUrl}" alt="Project image" />` : ""}
+        </div>
+
+        <div class="cover-content">
+          <div class="cover-brand">
+            ${logoUrl ? `<img src="${logoUrl}" alt="${escapeHtml(brand)}" />` : ""}
+          </div>
+          <div class="cover-brand-name">${escapeHtml(brand)}</div>
+          ${tagline ? `<div class="cover-tagline">${escapeHtml(tagline)}</div>` : ""}
+
+          <div class="cover-title">Project Quotation – ${escapeHtml(projectName)}</div>
+          <div class="cover-client">Client: ${escapeHtml(client)} • ${when}${projectReference ? ` • Project ref: ${escapeHtml(projectReference)}` : ""}</div>
+        </div>
+
+        <div class="cover-footer">
+          ${phone ? `<span><span class="label">Telephone:</span> ${escapeHtml(phone)}</span>` : ""}
+          ${(phone && email) ? `<span class="sep">•</span>` : ""}
+          ${email ? `<span><span class="label">Email:</span> ${escapeHtml(email)}</span>` : ""}
+          ${address ? `<div style="margin-top: 6px;"><span class="label">Address:</span> ${escapeHtml(address)}</div>` : ""}
+        </div>
+      </div>
+
+      <!-- Page 2+: Existing proposal content -->
+      <div class="page page-break-before">
         <header class="header">
           <div class="header-left">
             <div class="brand">
               ${logoUrl ? `<img src="${logoUrl}" alt="${escapeHtml(brand)}" />` : `<div class="brand-name">${escapeHtml(brand)}</div>`}
             </div>
             ${tagline ? `<div class="tagline">${escapeHtml(tagline)}</div>` : ""}
-            <h1>Project Quotation</h1>
+            <h1>Quotation</h1>
             <div class="project-title">${escapeHtml(projectName)}</div>
             <div class="client-strip">Client: ${escapeHtml(client)} • ${when}</div>
           </div>
@@ -4542,12 +4648,6 @@ function buildQuoteProposalHtml(opts: {
             ${address ? `<div style="margin-top:8px;">${escapeHtml(address)}</div>` : ""}
           </div>
         </header>
-
-        ${proposalHeroImageUrl ? `
-          <div style="margin: 18px 0; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
-            <img src="${proposalHeroImageUrl}" alt="Project image" style="width:100%; max-height: 220px; object-fit: cover; display:block;" />
-          </div>
-        ` : ""}
 
         ${introHtml ? `
           <div style="margin: 12px 0; font-size: 12px; color: #475569; line-height: 1.7;">
