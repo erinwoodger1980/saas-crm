@@ -81,6 +81,9 @@ importers:
       '@tanstack/react-table':
         specifier: ^8.20.5
         version: 8.21.3(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
+      '@tiptap/extension-image':
+        specifier: 3.10.2
+        version: 3.10.2(@tiptap/core@3.10.2(@tiptap/pm@3.10.2))
       '@tiptap/pm':
         specifier: ^3.10.2
         version: 3.10.2
@@ -1501,6 +1504,11 @@ packages:
     peerDependencies:
       '@tiptap/core': ^3.10.2
       '@tiptap/pm': ^3.10.2
+
+  '@tiptap/extension-image@3.10.2':
+    resolution: {integrity: sha512-+EeEOwUCQ4K7wFw0xkVPCwrzRMj5lEW7VdtRj+0zVtAMI+HxO4B6/+ZXyuDybBjtGBgZKdg5DP3pOz0XUCA+vw==}
+    peerDependencies:
+      '@tiptap/core': ^3.10.2
 
   '@tiptap/extension-italic@3.10.2':
     resolution: {integrity: sha512-MnRbTSNtjLE56E7k0CFprIIfr2yaT0Yd0dwYH7pvWePmSYeVFQDwu9CcVOzF58iv5BasyXc3sO2yhWlXRTY7Ig==}
@@ -5195,6 +5203,10 @@ snapshots:
     dependencies:
       '@tiptap/core': 3.10.2(@tiptap/pm@3.10.2)
       '@tiptap/pm': 3.10.2
+
+  '@tiptap/extension-image@3.10.2(@tiptap/core@3.10.2(@tiptap/pm@3.10.2))':
+    dependencies:
+      '@tiptap/core': 3.10.2(@tiptap/pm@3.10.2)
 
   '@tiptap/extension-italic@3.10.2(@tiptap/core@3.10.2(@tiptap/pm@3.10.2))':
     dependencies:
