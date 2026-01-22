@@ -785,8 +785,12 @@ async function getChromiumExecPathWithCache(params: {
           setTimeout(() => reject(new Error(`chromium.executablePath timed out after ${params.timeoutMs}ms`)), params.timeoutMs),
         ),
       ]);
-      params.log?.("chromium.executablePath done", { execPath: String(execPath || "") });
-      return execPath;
+      const execPathStr = typeof execPath === "string" ? execPath.trim() : "";
+      params.log?.("chromium.executablePath done", { execPath: execPathStr });
+      if (!execPathStr) {
+        throw new Error("chromium.executablePath returned an empty path");
+      }
+      return execPathStr;
     })();
   }
   return chromiumExecPathPromise;
@@ -3573,6 +3577,15 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
     const renderStartedAt = Date.now();
     console.log("[/quotes/:id/render-proposal] start", { tenantId, quoteId: quote.id });
 
+    const logStage = (stage: string, extra?: Record<string, any>) => {
+      console.log(`[render-proposal] ${stage}`, {
+        tenantId,
+        quoteId: quote.id,
+        ms: Date.now() - renderStartedAt,
+        ...(extra || {}),
+      });
+    };
+
     const ts = await prisma.tenantSettings.findUnique({ where: { tenantId } });
     const validation = validateQuoteForPdf(quote);
     if (validation.issues.length) {
@@ -3673,55 +3686,18 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
     const filepath = path.join(UPLOAD_DIR, `${Date.now()}__${filename}`);
 
     let browser: any;
-    let firstLaunchError: any;
     try {
-      const resolvedExec =
-        typeof puppeteer.executablePath === "function"
-          ? puppeteer.executablePath()
-          : undefined;
-      const execPath = resolvedExec || process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
-      browser = await puppeteer.launch({
-        headless: true,
-        ignoreHTTPSErrors: true,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-gpu",
-          "--no-zygote",
-        ],
-        executablePath: execPath,
+      browser = await getPdfBrowser(puppeteer, {
+        timeoutMs: Math.max(15_000, Number(process.env.PDF_BROWSER_LAUNCH_TIMEOUT_MS || 75_000)),
+        log: (msg, extra) => logStage(msg, extra),
       });
     } catch (err: any) {
-      firstLaunchError = err;
-      console.warn(
-        "[/quotes/:id/render-proposal] puppeteer launch failed; trying @sparticuz/chromium fallback:",
-        err?.message || err,
-      );
-      try {
-        const chromium = require("@sparticuz/chromium");
-        const execPath2 = await chromium.executablePath();
-        browser = await puppeteer.launch({
-          headless: chromium.headless !== undefined ? chromium.headless : true,
-          args: chromium.args ?? ["--no-sandbox", "--disable-setuid-sandbox"],
-          executablePath: execPath2,
-          defaultViewport: chromium.defaultViewport ?? { width: 1280, height: 800 },
-          ignoreHTTPSErrors: true,
-        });
-      } catch (fallbackErr: any) {
-        console.error(
-          "[/quotes/:id/render-proposal] chromium fallback launch failed:",
-          fallbackErr?.message || fallbackErr,
-        );
-        return res.status(500).json({
-          error: "render_failed",
-          reason: "puppeteer_launch_failed",
-          detail: {
-            primary: String(firstLaunchError?.message || firstLaunchError || "unknown"),
-            fallback: String(fallbackErr?.message || fallbackErr || "unknown"),
-          },
-        });
-      }
+      console.error("[/quotes/:id/render-proposal] browser launch failed:", err?.message || err);
+      return res.status(500).json({
+        error: "render_failed",
+        reason: "puppeteer_launch_failed",
+        detail: String(err?.message || err || "unknown"),
+      });
     }
     let pdfSizeBytes = 0;
     let pdfUsedStream = false;
@@ -3796,9 +3772,6 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
     } finally {
       try {
         if (page) await page.close();
-      } catch {}
-      try {
-        if (browser) await browser.close();
       } catch {}
     }
 
