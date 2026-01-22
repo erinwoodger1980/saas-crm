@@ -139,7 +139,9 @@ export function ProposalEditor({
         <div>
           <h2 className="text-2xl font-semibold text-foreground mb-2">Proposal editor</h2>
           <p className="text-sm text-muted-foreground">
-            Edit the proposal content (WYSIWYG). Use placeholders like <strong>{{"{{projectName}}"}}</strong>, <strong>{{"{{client}}"}}</strong>, <strong>{{"{{total}}"}}</strong>.
+            Edit the proposal content (WYSIWYG). Use placeholders like <strong>{"{{projectName}}"}</strong>,{" "}
+            <strong>{"{{client}}"}</strong>,{" "}
+            <strong>{"{{total}}"}</strong>.
           </p>
         </div>
 
