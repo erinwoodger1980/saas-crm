@@ -764,6 +764,111 @@ async function writePuppeteerPdfToFile(
   return { sizeBytes: stat.size, usedStream: false };
 }
 
+// --- Puppeteer browser reuse for PDF rendering ---
+// Launching Chromium is slow on Render, and can exceed request timeouts.
+// Reuse a single browser instance across PDF requests.
+let pdfBrowserPromise: Promise<any> | null = null;
+let pdfBrowserLastUsedAt = 0;
+let chromiumExecPathPromise: Promise<string> | null = null;
+
+async function getChromiumExecPathWithCache(params: {
+  timeoutMs: number;
+  log?: (msg: string, extra?: Record<string, any>) => void;
+}): Promise<string> {
+  if (!chromiumExecPathPromise) {
+    chromiumExecPathPromise = (async () => {
+      const chromium = require("@sparticuz/chromium");
+      params.log?.("chromium.executablePath start");
+      const execPath = await Promise.race([
+        chromium.executablePath(),
+        new Promise<string>((_resolve, reject) =>
+          setTimeout(() => reject(new Error(`chromium.executablePath timed out after ${params.timeoutMs}ms`)), params.timeoutMs),
+        ),
+      ]);
+      params.log?.("chromium.executablePath done", { execPath: String(execPath || "") });
+      return execPath;
+    })();
+  }
+  return chromiumExecPathPromise;
+}
+
+async function getPdfBrowser(puppeteer: any, opts: {
+  timeoutMs: number;
+  log?: (msg: string, extra?: Record<string, any>) => void;
+}): Promise<any> {
+  const idleMs = Math.max(60_000, Number(process.env.PDF_BROWSER_IDLE_CLOSE_MS || 10 * 60_000));
+
+  // If we have a browser and it's been idle too long, close it so we don't leak resources forever.
+  if (pdfBrowserPromise && pdfBrowserLastUsedAt && Date.now() - pdfBrowserLastUsedAt > idleMs) {
+    try {
+      const b = await pdfBrowserPromise;
+      if (b && typeof b.close === "function") await b.close();
+    } catch {}
+    pdfBrowserPromise = null;
+  }
+
+  if (!pdfBrowserPromise) {
+    pdfBrowserPromise = (async () => {
+      const launchWithTimeout = async (label: string, fn: () => Promise<any>) => {
+        opts.log?.(`${label} start`);
+        const started = Date.now();
+        try {
+          const browser = await Promise.race([
+            fn(),
+            new Promise<any>((_resolve, reject) =>
+              setTimeout(() => reject(new Error(`${label} timed out after ${opts.timeoutMs}ms`)), opts.timeoutMs),
+            ),
+          ]);
+          opts.log?.(`${label} done`, { ms: Date.now() - started });
+          return browser;
+        } catch (e: any) {
+          opts.log?.(`${label} failed`, { ms: Date.now() - started, error: String(e?.message || e) });
+          throw e;
+        }
+      };
+
+      // Prefer Puppeteer's resolved executable if available; fall back to env
+      const resolvedExec = typeof puppeteer.executablePath === "function" ? puppeteer.executablePath() : undefined;
+      const execPath = resolvedExec || process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
+
+      try {
+        return await launchWithTimeout("puppeteer.launch(primary)", async () =>
+          puppeteer.launch({
+            headless: true,
+            ignoreHTTPSErrors: true,
+            args: [
+              "--no-sandbox",
+              "--disable-setuid-sandbox",
+              "--disable-dev-shm-usage",
+              "--disable-gpu",
+              "--no-zygote",
+            ],
+            executablePath: execPath,
+          }),
+        );
+      } catch (primaryErr: any) {
+        // Fallback to Sparticuz Chromium which bundles a compatible binary for serverless/container envs
+        opts.log?.("primary launch failed; falling back", { error: String(primaryErr?.message || primaryErr) });
+        const chromium = require("@sparticuz/chromium");
+        const execPath2 = await getChromiumExecPathWithCache({ timeoutMs: opts.timeoutMs, log: opts.log });
+        return await launchWithTimeout("puppeteer.launch(chromium)", async () =>
+          puppeteer.launch({
+            headless: chromium.headless !== undefined ? chromium.headless : true,
+            args: chromium.args ?? ["--no-sandbox", "--disable-setuid-sandbox"],
+            executablePath: execPath2,
+            defaultViewport: chromium.defaultViewport ?? { width: 1280, height: 800 },
+            ignoreHTTPSErrors: true,
+          }),
+        );
+      }
+    })();
+  }
+
+  const browser = await pdfBrowserPromise;
+  pdfBrowserLastUsedAt = Date.now();
+  return browser;
+}
+
 /**
  * GET /quotes/:id/files/:fileId/signed-any
  * Returns a signed URL for any file attached to the quote (not just supplier files).
@@ -3302,58 +3407,20 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     const filename = `${truncatedName}.pdf`;
     const filepath = path.join(UPLOAD_DIR, `${Date.now()}__${filename}`);
 
+    const launchTimeoutMs = Math.max(20_000, Number(process.env.PDF_BROWSER_LAUNCH_TIMEOUT_MS || 120_000));
     let browser: any;
-    let firstLaunchError: any;
     try {
-      // Prefer Puppeteer's resolved executable if available; fall back to env
-      const resolvedExec =
-        typeof puppeteer.executablePath === "function"
-          ? puppeteer.executablePath()
-          : undefined;
-      const execPath = resolvedExec || process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
-      browser = await puppeteer.launch({
-        headless: true,
-        ignoreHTTPSErrors: true,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-gpu",
-          "--no-zygote",
-        ],
-        executablePath: execPath,
+      browser = await getPdfBrowser(puppeteer, {
+        timeoutMs: launchTimeoutMs,
+        log: (msg, extra) => logStage(msg, extra),
       });
     } catch (err: any) {
-      firstLaunchError = err;
-      console.warn(
-        "[/quotes/:id/render-pdf] puppeteer launch failed; trying @sparticuz/chromium fallback:",
-        err?.message || err,
-      );
-      try {
-        // Lazy-load Sparticuz Chromium which bundles a compatible binary for serverless/container envs
-        const chromium = require("@sparticuz/chromium");
-        const execPath2 = await chromium.executablePath();
-        browser = await puppeteer.launch({
-          headless: chromium.headless !== undefined ? chromium.headless : true,
-          args: chromium.args ?? ["--no-sandbox", "--disable-setuid-sandbox"],
-          executablePath: execPath2,
-          defaultViewport: chromium.defaultViewport ?? { width: 1280, height: 800 },
-          ignoreHTTPSErrors: true,
-        });
-      } catch (fallbackErr: any) {
-        console.error(
-          "[/quotes/:id/render-pdf] chromium fallback launch failed:",
-          fallbackErr?.message || fallbackErr,
-        );
-        return res.status(500).json({
-          error: "render_failed",
-          reason: "puppeteer_launch_failed",
-          detail: {
-            primary: String(firstLaunchError?.message || firstLaunchError || "unknown"),
-            fallback: String(fallbackErr?.message || fallbackErr || "unknown"),
-          },
-        });
-      }
+      console.error("[/quotes/:id/render-pdf] browser launch failed:", err?.message || err);
+      return res.status(500).json({
+        error: "render_failed",
+        reason: "puppeteer_launch_failed",
+        detail: String(err?.message || err || "unknown"),
+      });
     }
     let pdfSizeBytes = 0;
     let pdfUsedStream = false;
@@ -3419,9 +3486,7 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
       try {
         if (page) await page.close();
       } catch {}
-      try {
-        if (browser) await browser.close();
-      } catch {}
+      // Intentionally do not close the browser: we reuse it across PDF requests.
     }
 
     const fileRow = await prisma.uploadedFile.create({
