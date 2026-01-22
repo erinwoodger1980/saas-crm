@@ -107,6 +107,21 @@ export function ProposalEditor({
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const getSignedUrlForFileId = useCallback(async (fileId: string): Promise<string | null> => {
+    const id = String(fileId || "").trim();
+    if (!quoteId || !id) return null;
+    const cached = signedUrlCacheRef.current.get(id);
+    if (cached) return cached;
+
+    const resp = await apiFetch<{ ok: boolean; url?: string }>(
+      `/quotes/${encodeURIComponent(quoteId)}/files/${encodeURIComponent(id)}/signed-any`,
+      { method: "GET" },
+    );
+    const url = resp?.url ? String(resp.url) : null;
+    if (url) signedUrlCacheRef.current.set(id, url);
+    return url;
+  }, [quoteId]);
+
   const defaults = useMemo(() => {
     const blocks = initialMeta?.proposalBlocks || {};
 
@@ -151,7 +166,7 @@ export function ProposalEditor({
     setProposalTemplate((initialMeta?.proposalTemplate || "soho") as any);
     setHeroFileId(initialMeta?.proposalHeroImageFileId ?? null);
     setCcImageFileIds(initialMeta?.proposalChristchurchImageFileIds || {});
-  }, [initialMeta?.proposalTemplate, initialMeta?.proposalHeroImageFileId]);
+  }, [initialMeta?.proposalTemplate, initialMeta?.proposalHeroImageFileId, initialMeta?.proposalChristchurchImageFileIds]);
 
   useEffect(() => {
     let cancelled = false;
@@ -182,21 +197,6 @@ export function ProposalEditor({
       cancelled = true;
     };
   }, [ccImageFileIds, getSignedUrlForFileId]);
-
-  const getSignedUrlForFileId = useCallback(async (fileId: string): Promise<string | null> => {
-    const id = String(fileId || "").trim();
-    if (!quoteId || !id) return null;
-    const cached = signedUrlCacheRef.current.get(id);
-    if (cached) return cached;
-
-    const resp = await apiFetch<{ ok: boolean; url?: string }>(
-      `/quotes/${encodeURIComponent(quoteId)}/files/${encodeURIComponent(id)}/signed-any`,
-      { method: "GET" },
-    );
-    const url = resp?.url ? String(resp.url) : null;
-    if (url) signedUrlCacheRef.current.set(id, url);
-    return url;
-  }, [quoteId]);
 
   const hydrateEditorImages = useCallback(async (editor: any) => {
     if (!editor) return;
