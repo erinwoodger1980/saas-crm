@@ -381,15 +381,14 @@ export function buildChristchurchProposalHtml(opts: {
 
           <div class="ovGrid">
             <div class="ovBlock">
-              <img src="${img.fensa}" alt="FENSA" />
+              <h3 class="ovSubTitle">Key Details</h3>
               <div class="kv">
-                <h4>FENSA Approved Installer</h4>
                 ${kvRow("Project", displayProjectRef)}
                 ${kvRow("Job Number", jobNumber)}
                 ${deliveryAddress ? kvRow("Delivery Address", deliveryAddress) : ""}
                 ${surveyTeam ? kvRow("Survey Team", surveyTeam) : ""}
                 ${kvRow("Date", when)}
-              <img src="${img.pas24}" alt="PAS 24" />
+              </div>
             </div>
 
             <div class="ovBlock">
@@ -397,7 +396,7 @@ export function buildChristchurchProposalHtml(opts: {
               <div class="kv highlights">
                 <ul>
                   <li><strong>Timber:</strong> ${escapeHtml(timber)}</li>
-              <img src="${img.fsc}" alt="FSC" />
+                  <li><strong>Finish:</strong> ${escapeHtml(finish)}</li>
                   <li><strong>Glazing:</strong> ${escapeHtml(glazing)}</li>
                   <li><strong>Hardware/Fittings:</strong> ${escapeHtml(fittings)}</li>
                   <li><strong>Ventilation:</strong> ${escapeHtml(ventilation)}</li>
@@ -405,7 +404,7 @@ export function buildChristchurchProposalHtml(opts: {
               </div>
             </div>
           </div>
-              <img src="${img.ggf}" alt="GGF" />
+
           <div class="ovScope">
             <h3 class="ovSubTitle">Project Scope</h3>
             <div class="para">${scopeHtml}</div>
@@ -603,28 +602,28 @@ export function buildChristchurchProposalHtml(opts: {
 
         <div class="certGrid">
           <div class="cert">
-            <img src="${img.badge2}" alt="Certification" />
+            <img src="${img.fensa}" alt="FENSA" />
             <div>
               <h4>FENSA Certified</h4>
               <p>Ensuring compliance with all building regulations for replacement windows and doors, focusing on energy efficiency and structural integrity.</p>
             </div>
           </div>
           <div class="cert">
-            <img src="${img.badge2}" alt="Certification" />
+            <img src="${img.pas24}" alt="PAS 24" />
             <div>
               <h4>PAS 24 Security Compliance</h4>
               <p>Meeting police-preferred standards for enhanced security performance, providing robust protection for your property.</p>
             </div>
           </div>
           <div class="cert">
-            <img src="${img.badge2}" alt="Certification" />
+            <img src="${img.fsc}" alt="FSC" />
             <div>
               <h4>FSC Chain of Custody</h4>
               <p>Verification of sustainable timber sourcing, demonstrating our commitment to environmental responsibility and ethical practices.</p>
             </div>
           </div>
           <div class="cert">
-            <img src="${img.badge2}" alt="Certification" />
+            <img src="${img.ggf}" alt="GGF" />
             <div>
               <h4>Glass & Glazing Federation (GGF)</h4>
               <p>Adherence to industry best practices and professional standards for glazing, guaranteeing superior product quality and installation.</p>

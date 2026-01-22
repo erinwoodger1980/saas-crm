@@ -3189,8 +3189,8 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     }
     const proposalAssetUrlMap = await fetchQuoteFileUrls(proposalAssetIds, tenantId);
     
-    // Convert logo URL to base64 data URL for embedding in PDF
-    const logoDataUrl = ts?.logoUrl ? await imageUrlToDataUrl(ts.logoUrl) : undefined;
+    // Avoid base64-inlining large logos (can OOM on Render). Puppeteer can load normal URLs.
+    const logoDataUrl = ts?.logoUrl ? String(ts.logoUrl) : undefined;
     
     // 🔹 Build Soho-style multi-page proposal HTML via shared helper
     const html = await buildQuoteProposalHtml({
@@ -3215,12 +3215,12 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
       const execPath = resolvedExec || process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
       browser = await puppeteer.launch({
         headless: true,
+        ignoreHTTPSErrors: true,
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
           "--disable-dev-shm-usage",
           "--disable-gpu",
-          "--single-process",
           "--no-zygote",
         ],
         executablePath: execPath,
@@ -3259,8 +3259,9 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     }
 
     let pdfBuffer: Buffer;
+    let page: any;
     try {
-      const page = await browser.newPage();
+      page = await browser.newPage();
       const pdfDebug = shouldEnablePdfDebug(req);
       if (pdfDebug) {
         attachPuppeteerDebug(page, { route: "render-pdf", tenantId, quoteId: quote.id });
@@ -3306,11 +3307,8 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
           sizeBytes: pdfBuffer?.length || 0,
         });
       }
-      await browser.close();
     } catch (err: any) {
-      try {
-        if (browser) await browser.close();
-      } catch {}
+      // fall through to finally for cleanup
       console.error(
         "[/quotes/:id/render-pdf] pdf generation failed:",
         err?.message || err,
@@ -3318,6 +3316,13 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
       return res
         .status(500)
         .json({ error: "render_failed", reason: "pdf_generation_failed" });
+    } finally {
+      try {
+        if (page) await page.close();
+      } catch {}
+      try {
+        if (browser) await browser.close();
+      } catch {}
     }
 
     const filenameSafe = (title || `Quote ${quote.id}`).replace(/[^\w.\-]+/g, "_");
@@ -3491,8 +3496,8 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
     }
     const proposalAssetUrlMap = await fetchQuoteFileUrls(proposalAssetIds, tenantId);
     
-    // Convert logo URL to base64 data URL for embedding in PDF
-    const logoDataUrl = ts?.logoUrl ? await imageUrlToDataUrl(ts.logoUrl) : undefined;
+    // Avoid base64-inlining large logos (can OOM on Render). Puppeteer can load normal URLs.
+    const logoDataUrl = ts?.logoUrl ? String(ts.logoUrl) : undefined;
     
     const html = await buildQuoteProposalHtml({
       quote,
@@ -3515,12 +3520,12 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
       const execPath = resolvedExec || process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
       browser = await puppeteer.launch({
         headless: true,
+        ignoreHTTPSErrors: true,
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
           "--disable-dev-shm-usage",
           "--disable-gpu",
-          "--single-process",
           "--no-zygote",
         ],
         executablePath: execPath,
@@ -3558,8 +3563,9 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
     }
 
     let pdfBuffer: Buffer;
+    let page: any;
     try {
-      const page = await browser.newPage();
+      page = await browser.newPage();
       const pdfDebug = shouldEnablePdfDebug(req);
       if (pdfDebug) {
         attachPuppeteerDebug(page, { route: "render-proposal", tenantId, quoteId: quote.id });
@@ -3605,11 +3611,8 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
           sizeBytes: pdfBuffer?.length || 0,
         });
       }
-      await browser.close();
     } catch (err: any) {
-      try {
-        if (browser) await browser.close();
-      } catch {}
+      // fall through to finally for cleanup
       console.error(
         "[/quotes/:id/render-proposal] pdf generation failed:",
         err?.message || err,
@@ -3617,6 +3620,13 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
       return res
         .status(500)
         .json({ error: "render_failed", reason: "pdf_generation_failed" });
+    } finally {
+      try {
+        if (page) await page.close();
+      } catch {}
+      try {
+        if (browser) await browser.close();
+      } catch {}
     }
 
     const filenameSafe = (title || `Quote ${quote.id}`).replace(/[^\w.\-]+/g, "_");
@@ -3771,7 +3781,8 @@ router.get("/:id/proposal/html", requireAuth, async (req: any, res) => {
     }
     const proposalAssetUrlMap = await fetchQuoteFileUrls(proposalAssetIds, tenantId);
 
-    const logoDataUrl = ts?.logoUrl ? await imageUrlToDataUrl(ts.logoUrl) : undefined;
+    // Avoid base64-inlining large logos for live preview (can OOM on Render).
+    const logoDataUrl = ts?.logoUrl ? String(ts.logoUrl) : undefined;
 
     const html = await buildQuoteProposalHtml({
       quote,
