@@ -5,6 +5,7 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 import { Readable } from "stream";
+import { pipeline } from "stream/promises";
 import { prisma } from "../prisma";
 import { Prisma, FileKind } from "@prisma/client";
 import jwt from "jsonwebtoken";
@@ -712,6 +713,22 @@ async function writePuppeteerPdfToFile(
     margin: { top: string; bottom: string; left: string; right: string };
   },
 ): Promise<{ sizeBytes: number; usedStream: boolean }> {
+  const timeoutMs = Math.max(10_000, Number(process.env.PDF_RENDER_TIMEOUT_MS || 120_000));
+
+  const withTimeout = async <T,>(promise: Promise<T>, label: string): Promise<T> => {
+    let t: NodeJS.Timeout | null = null;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_resolve, reject) => {
+          t = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (t) clearTimeout(t);
+    }
+  };
+
   const anyPage: any = page as any;
   if (typeof anyPage?.createPDFStream === "function") {
     const pdfStreamRaw = await anyPage.createPDFStream(options);
@@ -724,19 +741,25 @@ async function writePuppeteerPdfToFile(
     if (!pdfStream) {
       throw new Error("createPDFStream returned an unsupported stream type");
     }
-    await new Promise<void>((resolve, reject) => {
-      const out = fs.createWriteStream(filepath);
-      pdfStream.on("error", reject);
-      out.on("error", reject);
-      out.on("finish", resolve);
-      pdfStream.pipe(out);
-    });
+
+    const out = fs.createWriteStream(filepath);
+    try {
+      await withTimeout(pipeline(pdfStream, out), "createPDFStream->file pipeline");
+    } catch (e) {
+      try {
+        if (typeof pdfStream?.destroy === "function") pdfStream.destroy();
+      } catch {}
+      try {
+        out.destroy();
+      } catch {}
+      throw e;
+    }
     const stat = fs.statSync(filepath);
     return { sizeBytes: stat.size, usedStream: true };
   }
 
   // Fallback: ask Puppeteer to write to a path. Note: Puppeteer may still buffer internally.
-  await page.pdf({ ...options, path: filepath });
+  await withTimeout(page.pdf({ ...options, path: filepath }), "page.pdf(path)");
   const stat = fs.statSync(filepath);
   return { sizeBytes: stat.size, usedStream: false };
 }
@@ -3150,6 +3173,22 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     const renderStartedAt = Date.now();
     console.log("[/quotes/:id/render-pdf] start", { tenantId, quoteId: quote.id });
 
+    const logStage = (stage: string, extra?: Record<string, any>) => {
+      try {
+        const mem = process.memoryUsage();
+        console.log(`[render-pdf] ${stage}`, {
+          tenantId,
+          quoteId: quote.id,
+          ms: Date.now() - renderStartedAt,
+          rssMB: Math.round(mem.rss / 1024 / 1024),
+          heapUsedMB: Math.round(mem.heapUsed / 1024 / 1024),
+          ...(extra || {}),
+        });
+      } catch {
+        console.log(`[render-pdf] ${stage}`, { tenantId, quoteId: quote.id, ms: Date.now() - renderStartedAt, ...(extra || {}) });
+      }
+    };
+
     const ts = await prisma.tenantSettings.findUnique({ where: { tenantId } });
     const validation = validateQuoteForPdf(quote);
     if (validation.issues.length) {
@@ -3251,6 +3290,12 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
       publicAssetBaseUrl: API_BASE,
     });
 
+    logStage("html built", {
+      htmlChars: html.length,
+      htmlBytes: Buffer.byteLength(html, "utf8"),
+      lineCount: quote.lines.length,
+    });
+
     const filenameSafe = (title || `Quote ${quote.id}`).replace(/[^\w.\-]+/g, "_");
     // Truncate filename to prevent ENAMETOOLONG errors (max 100 chars before extension)
     const truncatedName = filenameSafe.length > 100 ? filenameSafe.substring(0, 100) : filenameSafe;
@@ -3342,13 +3387,7 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
         await page.setContent(html, { waitUntil: "load", timeout: 60_000 });
       }
 
-      if (pdfDebug) {
-        console.log("[/quotes/:id/render-pdf] setContent done", {
-          tenantId,
-          quoteId: quote.id,
-          ms: Date.now() - setContentStartedAt,
-        });
-      }
+      logStage("setContent done", { msSetContent: Date.now() - setContentStartedAt });
 
       const pdfStartedAt = Date.now();
       const out = await writePuppeteerPdfToFile(page, filepath, {
@@ -3359,15 +3398,11 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
       pdfSizeBytes = out.sizeBytes;
       pdfUsedStream = out.usedStream;
 
-      if (pdfDebug) {
-        console.log("[/quotes/:id/render-pdf] page.pdf done", {
-          tenantId,
-          quoteId: quote.id,
-          ms: Date.now() - pdfStartedAt,
-          sizeBytes: pdfSizeBytes,
-          usedStream: pdfUsedStream,
-        });
-      }
+      logStage("pdf written", {
+        msPdf: Date.now() - pdfStartedAt,
+        sizeBytes: pdfSizeBytes,
+        usedStream: pdfUsedStream,
+      });
     } catch (err: any) {
       // fall through to finally for cleanup
       console.error(
@@ -3401,6 +3436,8 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
       },
     });
 
+    logStage("uploadedFile created", { fileId: fileRow.id, sizeBytes: pdfSizeBytes });
+
     // Generate signed URL for the PDF
     const token = jwt.sign({ t: tenantId, q: quote.id }, env.APP_JWT_SECRET, { expiresIn: "7d" });
     const proposalPdfUrl = `${API_BASE}/files/${encodeURIComponent(fileRow.id)}?jwt=${encodeURIComponent(token)}`;
@@ -3417,6 +3454,8 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
         } as any,
       } as any,
     });
+
+    logStage("quote updated", { fileId: fileRow.id });
 
     console.log("[/quotes/:id/render-pdf] done", {
       tenantId,
