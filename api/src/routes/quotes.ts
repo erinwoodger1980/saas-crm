@@ -3884,7 +3884,9 @@ function buildQuoteProposalHtml(opts: {
   const leadCustom: any = (quote.lead?.custom as any) || {};
   const jobNumber = (leadCustom?.refId as string) || ref;
   const projectReference = typeof leadCustom?.projectReference === "string" ? leadCustom.projectReference : "";
+  const surveyTeam = typeof leadCustom?.surveyTeam === "string" ? String(leadCustom.surveyTeam) : "";
   const deliveryAddress = (leadCustom?.address as string) || "";
+  const DEFAULT_COMPLIANCE_NOTE = "PAS 24 / Part Q: Glazing to GGF guidelines.";
   
   // Extract specifications
   const quoteMeta: any = (quote.meta as any) || {};
@@ -3897,12 +3899,15 @@ function buildQuoteProposalHtml(opts: {
   // Rich text (WYSIWYG) blocks stored on the quote
   const proposalBlocks: any = (quoteMeta?.proposalBlocks as any) || {};
   const specifications = quoteMeta?.specifications || {};
-  const timber = specifications.timber || quoteDefaults?.defaultTimber || "Engineered timber";
-  const finish = specifications.finish || quoteDefaults?.defaultFinish || "Factory finished";
-  const glazing = specifications.glazing || quoteDefaults?.defaultGlazing || "Low-energy double glazing";
-  const fittings = specifications.fittings || quoteDefaults?.defaultFittings || "";
-  const ventilation = specifications.ventilation || "";
-  const compliance = specifications.compliance || quoteDefaults?.compliance || "Industry standards";
+  const fallbackTimber = specifications.timber || quoteDefaults?.defaultTimber || "Engineered timber";
+  const fallbackFinish = specifications.finish || quoteDefaults?.defaultFinish || "Factory finished";
+  const fallbackGlazing = specifications.glazing || quoteDefaults?.defaultGlazing || "Low-energy double glazing";
+  const fallbackFittings = specifications.fittings || quoteDefaults?.defaultFittings || "";
+  const fallbackVentilation = specifications.ventilation || "";
+  const compliance =
+    (typeof leadCustom?.compliance === "string" && String(leadCustom.compliance).trim())
+      ? String(leadCustom.compliance).trim()
+      : (specifications.compliance || quoteDefaults?.compliance || DEFAULT_COMPLIANCE_NOTE);
 
   const blocks = {
     introHtml: sanitizeRichTextHtml(String(proposalBlocks?.introHtml || "")),
@@ -4018,6 +4023,67 @@ function buildQuoteProposalHtml(opts: {
     
     return { description, qty, unit: sellUnit, total, dimensions, imageUrl };
   });
+
+  const toNonEmptyStr = (v: any): string => {
+    if (v == null) return "";
+    if (typeof v === "string") return v.trim();
+    if (typeof v === "number" || typeof v === "boolean") return String(v);
+    return "";
+  };
+
+  const collectLineMetaValues = (keys: string[]): string[] => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const ln of quote.lines || []) {
+      const metaAny: any = (ln?.meta as any) || {};
+      for (const k of keys) {
+        const raw = metaAny?.[k];
+        if (Array.isArray(raw)) {
+          for (const item of raw) {
+            const s = toNonEmptyStr(item);
+            const norm = s.toLowerCase();
+            if (s && !seen.has(norm)) {
+              seen.add(norm);
+              out.push(s);
+            }
+          }
+          continue;
+        }
+        const s = toNonEmptyStr(raw);
+        const norm = s.toLowerCase();
+        if (s && !seen.has(norm)) {
+          seen.add(norm);
+          out.push(s);
+        }
+      }
+    }
+    return out;
+  };
+
+  const timberValues = collectLineMetaValues(["wood", "timber", "timberSpecies", "material"]).slice(0, 3);
+  const finishValues = collectLineMetaValues(["finish", "paintFinish", "colour", "color"]).slice(0, 3);
+  const glazingValues = collectLineMetaValues(["glass", "glazing"]).slice(0, 3);
+  const fittingsValues = collectLineMetaValues(["fittings", "hardware", "ironmongery"]).slice(0, 4);
+  const ventilationValues = collectLineMetaValues(["ventilation", "vents", "trickleVent"]).slice(0, 3);
+
+  const timber = timberValues.length ? timberValues.join(" / ") : String(fallbackTimber);
+  const finish = finishValues.length ? finishValues.join(" / ") : String(fallbackFinish);
+  const glazing = glazingValues.length ? glazingValues.join(" / ") : String(fallbackGlazing);
+  const fittings = fittingsValues.length ? fittingsValues.join(", ") : String(fallbackFittings || "");
+  const ventilation = ventilationValues.length ? ventilationValues.join(" / ") : String(fallbackVentilation || "");
+
+  const uniqueItemNames = Array.from(
+    new Set(
+      rows
+        .map((r: any) => String(r?.description || "").trim())
+        .filter(Boolean)
+        .map((s: string) => s.replace(/\s+/g, " "))
+        .slice(0, 12),
+    ),
+  );
+  const scopeText = uniqueItemNames.length
+    ? `Supply of ${uniqueItemNames.slice(0, 8).join(", ")}${uniqueItemNames.length > 8 ? " and related joinery items" : ""}.`
+    : "Supply of bespoke timber joinery products manufactured to your specifications.";
   
   const showLineItems = quoteDefaults?.showLineItems !== false;
   
@@ -4234,6 +4300,84 @@ function buildQuoteProposalHtml(opts: {
       .project-scope { 
         font-size: 11px; 
         color: #475569; 
+        line-height: 1.7;
+      }
+
+      /* Page 2: Project Overview (photo + summary) */
+      .overview-page {
+        padding: 0;
+        min-height: 297mm;
+        display: flex;
+        flex-direction: row;
+      }
+      .overview-photo {
+        width: 42%;
+        background: #f8fafc;
+        border-right: 1px solid #e2e8f0;
+        overflow: hidden;
+      }
+      .overview-photo img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .overview-main {
+        flex: 1;
+        padding: 28px 36px;
+      }
+      .overview-title {
+        font-size: 28px;
+        font-weight: 800;
+        color: #0ea5e9;
+        letter-spacing: -0.6px;
+        margin-bottom: 16px;
+      }
+      .overview-columns {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 28px;
+        margin-top: 8px;
+      }
+      .overview-block h3 {
+        font-size: 16px;
+        font-weight: 800;
+        color: #0ea5e9;
+        margin-bottom: 10px;
+        letter-spacing: -0.2px;
+      }
+      .kv {
+        font-size: 12px;
+        color: #334155;
+        line-height: 1.6;
+      }
+      .kv strong { font-weight: 800; color: #0f172a; }
+      .spec-list {
+        margin: 0;
+        padding-left: 16px;
+        font-size: 12px;
+        color: #334155;
+        line-height: 1.6;
+      }
+      .spec-list li { margin-bottom: 6px; }
+      .overview-scope {
+        margin-top: 18px;
+      }
+      .overview-scope h3 {
+        font-size: 18px;
+        font-weight: 800;
+        color: #0ea5e9;
+        margin-bottom: 10px;
+      }
+      .overview-scope p {
+        font-size: 12px;
+        color: #334155;
+        line-height: 1.8;
+      }
+      .compliance-note {
+        margin-top: 10px;
+        font-size: 12px;
+        color: #334155;
         line-height: 1.7;
       }
       
@@ -4629,8 +4773,46 @@ function buildQuoteProposalHtml(opts: {
         </div>
       </div>
 
-      <!-- Page 2+: Existing proposal content -->
-      <div class="page page-break-before">
+      <!-- Page 2: Project Overview (matches the provided layout) -->
+      <div class="page overview-page page-break-before page-break-after">
+        <div class="overview-photo">
+          ${proposalHeroImageUrl ? `<img src="${proposalHeroImageUrl}" alt="Project photo" />` : ""}
+        </div>
+        <div class="overview-main">
+          <div class="overview-title">Project Overview</div>
+
+          <div class="overview-columns">
+            <div class="overview-block">
+              <h3>Client Details</h3>
+              <div class="kv"><strong>Client:</strong> ${escapeHtml(client)}</div>
+              ${projectReference ? `<div class="kv"><strong>Project ref:</strong> ${escapeHtml(projectReference)}</div>` : ""}
+              ${deliveryAddress ? `<div class="kv"><strong>Delivery Address:</strong> ${escapeHtml(deliveryAddress)}</div>` : ""}
+              ${surveyTeam ? `<div class="kv"><strong>Survey Team:</strong> ${escapeHtml(surveyTeam)}</div>` : ""}
+              <div class="kv"><strong>Date:</strong> ${when}</div>
+            </div>
+
+            <div class="overview-block">
+              <h3>Specification Highlights</h3>
+              <ul class="spec-list">
+                <li><strong>Timber:</strong> ${escapeHtml(timber)}</li>
+                <li><strong>Finish:</strong> ${escapeHtml(finish)}</li>
+                <li><strong>Glazing:</strong> ${escapeHtml(glazing)}</li>
+                ${fittings ? `<li><strong>Hardware/Fittings:</strong> ${escapeHtml(fittings)}</li>` : ""}
+                ${ventilation ? `<li><strong>Ventilation:</strong> ${escapeHtml(ventilation)}</li>` : ""}
+              </ul>
+            </div>
+          </div>
+
+          <div class="overview-scope">
+            <h3>Project Scope</h3>
+            <p>${escapeHtml(scopeText)}</p>
+            <div class="compliance-note"><strong>Compliance Note:</strong> ${escapeHtml(compliance)}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Page 3+: Detailed Quotation -->
+      <div class="page">
         <header class="header">
           <div class="header-left">
             <div class="brand">
@@ -4655,39 +4837,6 @@ function buildQuoteProposalHtml(opts: {
           </div>
         ` : ""}
 
-        <!-- Project Overview Grid -->
-        <div class="overview-grid">
-          <div class="overview-section">
-            <h3>Client Details</h3>
-            <div class="detail-line"><strong>Client:</strong> ${escapeHtml(client)}</div>
-            <div class="detail-line"><strong>Project:</strong> ${escapeHtml(projectName)}</div>
-            ${leadCustom?.phone ? `<div class="detail-line"><strong>Phone:</strong> ${escapeHtml(leadCustom.phone)}</div>` : ""}
-            ${quote.lead?.email ? `<div class="detail-line"><strong>Email:</strong> ${escapeHtml(quote.lead.email)}</div>` : ""}
-            ${projectReference ? `<div class="detail-line"><strong>Project ref:</strong> ${escapeHtml(projectReference)}</div>` : ""}
-            <div class="detail-line"><strong>Job Number:</strong> ${escapeHtml(jobNumber)}</div>
-            <div class="detail-line"><strong>Date:</strong> ${when}</div>
-            <div class="detail-line"><strong>Valid Until:</strong> ${validUntil}</div>
-            ${deliveryAddress ? `<div class="detail-line"><strong>Site:</strong> ${escapeHtml(deliveryAddress)}</div>` : ""}
-          </div>
-          
-          <div class="overview-section">
-            <h3>Specification Summary</h3>
-            <div class="detail-line"><strong>Timber:</strong> ${escapeHtml(timber)}</div>
-            <div class="detail-line"><strong>Finish:</strong> ${escapeHtml(finish)}</div>
-            <div class="detail-line"><strong>Glazing:</strong> ${escapeHtml(glazing)}</div>
-            ${fittings ? `<div class="detail-line"><strong>Fittings:</strong> ${escapeHtml(fittings)}</div>` : ""}
-            ${ventilation ? `<div class="detail-line"><strong>Ventilation:</strong> ${escapeHtml(ventilation)}</div>` : ""}
-            <div class="detail-line"><strong>Compliance:</strong> ${escapeHtml(compliance)}</div>
-            <div class="detail-line"><strong>Currency:</strong> ${cur}</div>
-          </div>
-          
-          <div class="overview-section">
-            <h3>Project Scope</h3>
-            <div class="project-scope">${scopeHtml || ""}</div>
-          </div>
-        </div>
-
-        <!-- Page 2: Detailed Quotation -->
         <h2 class="section-title">Detailed Quotation</h2>
         <p class="quotation-intro">
           Following the technical specifications outlined above, this section provides a comprehensive 
