@@ -507,6 +507,27 @@ export default function QuoteBuilderPage() {
     void runSupplierProcessing();
   }, [quoteId, isParsing, runSupplierProcessing]);
 
+  const handlePreviewSupplierFile = useCallback(
+    async (fileId: string) => {
+      if (!quoteId || !fileId) return;
+      setSupplierPreviewFileId(fileId);
+      setSupplierPreviewLoading(true);
+      setSupplierPreviewUrl(null);
+      try {
+        const signed = await apiFetch<{ url: string }>(
+          `/quotes/${encodeURIComponent(quoteId)}/files/${encodeURIComponent(fileId)}/signed`,
+        );
+        setSupplierPreviewUrl(signed?.url || null);
+      } catch (err: any) {
+        toast({ title: "Unable to preview file", description: err?.message || "Missing file", variant: "destructive" });
+        setSupplierPreviewUrl(null);
+      } finally {
+        setSupplierPreviewLoading(false);
+      }
+    },
+    [quoteId, toast],
+  );
+
   const handleUploadFiles = useCallback(
     async (files: FileList | null) => {
       if (!quoteId || !files || files.length === 0) return;
@@ -634,27 +655,6 @@ export default function QuoteBuilderPage() {
         setOwnQuotePreviewUrl(null);
       } finally {
         setOwnQuotePreviewLoading(false);
-      }
-    },
-    [quoteId, toast],
-  );
-
-  const handlePreviewSupplierFile = useCallback(
-    async (fileId: string) => {
-      if (!quoteId || !fileId) return;
-      setSupplierPreviewFileId(fileId);
-      setSupplierPreviewLoading(true);
-      setSupplierPreviewUrl(null);
-      try {
-        const signed = await apiFetch<{ url: string }>(
-          `/quotes/${encodeURIComponent(quoteId)}/files/${encodeURIComponent(fileId)}/signed`,
-        );
-        setSupplierPreviewUrl(signed?.url || null);
-      } catch (err: any) {
-        toast({ title: "Unable to preview file", description: err?.message || "Missing file", variant: "destructive" });
-        setSupplierPreviewUrl(null);
-      } finally {
-        setSupplierPreviewLoading(false);
       }
     },
     [quoteId, toast],
