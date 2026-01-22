@@ -10,6 +10,7 @@ import { TemplatePickerDialog } from "@/components/quotes/TemplatePickerDialog";
 import { LeadDetailsCard } from "@/components/quotes/LeadDetailsCard";
 import { ClientQuoteUploadCard } from "@/components/quotes/ClientQuoteUploadCard";
 import { UnifiedQuoteLineItems } from "@/components/quotes/UnifiedQuoteLineItems";
+import { ProposalEditor } from "@/components/quote/ProposalEditor";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
@@ -1337,7 +1338,7 @@ export default function QuoteBuilderPage() {
           </div>
         ) : (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-7 h-auto">
+            <TabsList className="grid w-full grid-cols-8 h-auto">
               <TabsTrigger value="details" className="flex flex-col gap-1 py-3">
                 <FileText className="h-4 w-4" />
                 <span className="text-xs">Details</span>
@@ -1361,6 +1362,10 @@ export default function QuoteBuilderPage() {
               <TabsTrigger value="quote-lines" className="flex flex-col gap-1 py-3">
                 <Edit3 className="h-4 w-4" />
                 <span className="text-xs">Quote Lines</span>
+              </TabsTrigger>
+              <TabsTrigger value="proposal" className="flex flex-col gap-1 py-3">
+                <Save className="h-4 w-4" />
+                <span className="text-xs">Proposal</span>
               </TabsTrigger>
               <TabsTrigger value="preview" className="flex flex-col gap-1 py-3">
                 <Eye className="h-4 w-4" />
@@ -2240,6 +2245,18 @@ export default function QuoteBuilderPage() {
                   </div>
                 </div>
               )}
+            </TabsContent>
+
+            <TabsContent value="proposal" className="space-y-6">
+              {quoteId ? (
+                <ProposalEditor
+                  quoteId={quoteId}
+                  initialMeta={((quote?.meta as any) || null) as any}
+                  onSaved={async () => {
+                    await mutateQuote();
+                  }}
+                />
+              ) : null}
             </TabsContent>
 
             <TabsContent value="preview" className="space-y-6">

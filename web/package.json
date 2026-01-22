@@ -38,6 +38,7 @@
     "@tanstack/react-table": "^8.20.5",
     "@tiptap/pm": "^3.10.2",
     "@tiptap/react": "^3.10.2",
+    "@tiptap/extension-image": "3.10.2",
     "@tiptap/starter-kit": "^3.10.2",
     "ag-grid-community": "^35.0.0",
     "ag-grid-react": "^35.0.0",

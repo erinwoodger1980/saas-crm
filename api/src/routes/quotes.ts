@@ -700,6 +700,38 @@ const storage = multer.diskStorage({
   },
 });
 
+/**
+ * GET /quotes/:id/files/:fileId/signed-any
+ * Returns a signed URL for any file attached to the quote (not just supplier files).
+ */
+router.get("/:id/files/:fileId/signed-any", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+    const quoteId = String(req.params.id);
+    const fileId = String(req.params.fileId);
+
+    const q = await prisma.quote.findFirst({ where: { id: quoteId, tenantId }, select: { id: true } });
+    if (!q) return res.status(404).json({ error: "not_found" });
+
+    const f = await prisma.uploadedFile.findFirst({ where: { id: fileId, tenantId, quoteId } });
+    if (!f) return res.status(404).json({ error: "file_not_found" });
+
+    const API_BASE = (
+      process.env.APP_API_URL ||
+      process.env.API_URL ||
+      process.env.RENDER_EXTERNAL_URL ||
+      `http://localhost:${process.env.PORT || 4000}`
+    ).replace(/\/$/, "");
+
+    const token = jwt.sign({ t: tenantId, f: f.id }, env.APP_JWT_SECRET, { expiresIn: "2h" });
+    const url = `${API_BASE}/files/${encodeURIComponent(f.id)}?jwt=${encodeURIComponent(token)}`;
+    return res.json({ ok: true, url, name: f.name, mimeType: f.mimeType });
+  } catch (e: any) {
+    console.error("[/quotes/:id/files/:fileId/signed-any] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
 function extractFirstDimensionsMm(text: string): { widthMm: number; heightMm: number } | null {
   const raw = String(text || "").toLowerCase();
   // Accept common separators and optional units
@@ -3079,6 +3111,14 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
 
     // Fetch image URLs for line items
     const imageUrlMap = await fetchLineImageUrls(quote.lines, tenantId);
+
+    // Fetch proposal asset URLs (e.g., hero images) referenced by quote.meta
+    const quoteMetaAny: any = (quote.meta as any) || {};
+    const proposalAssetIds: string[] = [];
+    if (typeof quoteMetaAny?.proposalHeroImageFileId === "string" && quoteMetaAny.proposalHeroImageFileId.trim()) {
+      proposalAssetIds.push(quoteMetaAny.proposalHeroImageFileId.trim());
+    }
+    const proposalAssetUrlMap = await fetchQuoteFileUrls(proposalAssetIds, tenantId);
     
     // Convert logo URL to base64 data URL for embedding in PDF
     const logoDataUrl = ts?.logoUrl ? await imageUrlToDataUrl(ts.logoUrl) : undefined;
@@ -3091,6 +3131,7 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
       currencySymbol: sym,
       totals: { subtotal, vatAmount, totalGBP, vatRate, showVat },
       imageUrlMap,
+      proposalAssetUrlMap,
       logoDataUrl,
     });
 
@@ -3304,6 +3345,14 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
 
     // Fetch image URLs for line items
     const imageUrlMap = await fetchLineImageUrls(quote.lines, tenantId);
+
+    // Fetch proposal asset URLs (e.g., hero images) referenced by quote.meta
+    const quoteMetaAny: any = (quote.meta as any) || {};
+    const proposalAssetIds: string[] = [];
+    if (typeof quoteMetaAny?.proposalHeroImageFileId === "string" && quoteMetaAny.proposalHeroImageFileId.trim()) {
+      proposalAssetIds.push(quoteMetaAny.proposalHeroImageFileId.trim());
+    }
+    const proposalAssetUrlMap = await fetchQuoteFileUrls(proposalAssetIds, tenantId);
     
     // Convert logo URL to base64 data URL for embedding in PDF
     const logoDataUrl = ts?.logoUrl ? await imageUrlToDataUrl(ts.logoUrl) : undefined;
@@ -3315,6 +3364,7 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
       currencySymbol: sym,
       totals: { subtotal, vatAmount, totalGBP, vatRate, showVat },
       imageUrlMap,
+      proposalAssetUrlMap,
       logoDataUrl,
     });
 
@@ -3627,6 +3677,7 @@ function buildQuoteProposalHtml(opts: {
   currencySymbol: string;
   totals: { subtotal: number; vatAmount: number; totalGBP: number; vatRate: number; showVat: boolean };
   imageUrlMap?: Record<string, string>;  // NEW: Map of imageFileId to signed URL
+  proposalAssetUrlMap?: Record<string, string>; // Map of proposal asset file IDs to signed URLs
   logoDataUrl?: string;  // Base64 encoded logo for embedding in PDF
 }): string {
   const { quote, tenantSettings: ts, currencyCode: cur, currencySymbol: sym, totals, logoDataUrl } = opts;
@@ -3655,6 +3706,14 @@ function buildQuoteProposalHtml(opts: {
   
   // Extract specifications
   const quoteMeta: any = (quote.meta as any) || {};
+  const templateRaw = String(quoteMeta?.proposalTemplate || "soho").trim().toLowerCase();
+  const proposalTemplate = templateRaw === "christchurch" ? "christchurch" : "soho";
+
+  const proposalHeroImageFileId = typeof quoteMeta?.proposalHeroImageFileId === "string" ? quoteMeta.proposalHeroImageFileId.trim() : "";
+  const proposalHeroImageUrl = proposalHeroImageFileId ? (opts.proposalAssetUrlMap || {})[proposalHeroImageFileId] : "";
+
+  // Rich text (WYSIWYG) blocks stored on the quote
+  const proposalBlocks: any = (quoteMeta?.proposalBlocks as any) || {};
   const specifications = quoteMeta?.specifications || {};
   const timber = specifications.timber || quoteDefaults?.defaultTimber || "Engineered timber";
   const finish = specifications.finish || quoteDefaults?.defaultFinish || "Factory finished";
@@ -3662,10 +3721,35 @@ function buildQuoteProposalHtml(opts: {
   const fittings = specifications.fittings || quoteDefaults?.defaultFittings || "";
   const ventilation = specifications.ventilation || "";
   const compliance = specifications.compliance || quoteDefaults?.compliance || "Industry standards";
-  
-  // Project scope
-  const scopeDescription = quoteMeta?.scopeDescription || 
-    `This project involves supplying bespoke timber joinery products crafted to meet your specifications. All products are manufactured to the highest standards and comply with ${compliance}.`;
+
+  const blocks = {
+    introHtml: sanitizeRichTextHtml(String(proposalBlocks?.introHtml || "")),
+    scopeHtml: sanitizeRichTextHtml(String(proposalBlocks?.scopeHtml || "")),
+    guaranteesHtml: sanitizeRichTextHtml(String(proposalBlocks?.guaranteesHtml || "")),
+    termsHtml: sanitizeRichTextHtml(String(proposalBlocks?.termsHtml || "")),
+  };
+
+  const templateVars = {
+    brand,
+    client,
+    projectName,
+    jobNumber,
+    date: when,
+    validUntil,
+    currency: cur,
+    total: `${sym}${totalGBP.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+  };
+
+  const introHtml = applyTemplateVariables(blocks.introHtml, templateVars);
+  const scopeHtml = applyTemplateVariables(
+    blocks.scopeHtml || escapeHtml(
+      quoteMeta?.scopeDescription ||
+        `This project involves supplying bespoke timber joinery products crafted to meet your specifications. All products are manufactured to the highest standards and comply with ${compliance}.`,
+    ),
+    templateVars,
+  );
+  const guaranteesHtml = applyTemplateVariables(blocks.guaranteesHtml, templateVars);
+  const termsHtml = applyTemplateVariables(blocks.termsHtml, templateVars);
   
   // Build rows for table - CRITICAL: Use meta.sellTotalGBP directly when available
   const marginDefault = Number(quote.markupDefault ?? quoteDefaults?.defaultMargin ?? 0.25);
@@ -4204,6 +4288,19 @@ function buildQuoteProposalHtml(opts: {
         text-align: center;
         line-height: 1.6;
       }
+
+      .powered-by {
+        margin-top: 10px;
+        font-size: 9px;
+        color: #94a3b8;
+      }
+
+      /* Christchurch variant tweaks */
+      body[data-template="christchurch"] .header { border-bottom-color: #111827; }
+      body[data-template="christchurch"] .project-title { color: #111827; }
+      body[data-template="christchurch"] .overview-grid { background: #ffffff; }
+      body[data-template="christchurch"] .section-title { border-bottom-color: #111827; }
+      body[data-template="christchurch"] .guarantee-section { background: #f8fafc; border-color: #e2e8f0; }
       
       /* Legacy sections from renderSections */
       .section { margin: 24px 0; page-break-inside: avoid; }
@@ -4216,7 +4313,7 @@ function buildQuoteProposalHtml(opts: {
   const html = `<!doctype html>
     <html>
     <head><meta charset="utf-8" />${styles}</head>
-    <body>
+    <body data-template="${proposalTemplate}">
       <div class="page">
         <!-- Page 1: Cover & Overview -->
         <header class="header">
@@ -4236,6 +4333,18 @@ function buildQuoteProposalHtml(opts: {
             ${address ? `<div style="margin-top:8px;">${escapeHtml(address)}</div>` : ""}
           </div>
         </header>
+
+        ${proposalHeroImageUrl ? `
+          <div style="margin: 18px 0; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+            <img src="${proposalHeroImageUrl}" alt="Project image" style="width:100%; max-height: 220px; object-fit: cover; display:block;" />
+          </div>
+        ` : ""}
+
+        ${introHtml ? `
+          <div style="margin: 12px 0; font-size: 12px; color: #475569; line-height: 1.7;">
+            ${introHtml}
+          </div>
+        ` : ""}
 
         <!-- Project Overview Grid -->
         <div class="overview-grid">
@@ -4264,7 +4373,7 @@ function buildQuoteProposalHtml(opts: {
           
           <div class="overview-section">
             <h3>Project Scope</h3>
-            <div class="project-scope">${escapeHtml(scopeDescription)}</div>
+            <div class="project-scope">${scopeHtml || ""}</div>
           </div>
         </div>
 
@@ -4330,14 +4439,18 @@ function buildQuoteProposalHtml(opts: {
         <!-- Guarantee Section -->
         <div class="guarantee-section">
           <h2>${escapeHtml(guaranteeTitle)}</h2>
-          <div class="guarantee-grid">
-            ${displayGuarantees.map((g: any) => `
-              <div class="guarantee-item">
-                <h4>${escapeHtml(g.title || "")}</h4>
-                <p>${escapeHtml(g.description || "")}</p>
-              </div>
-            `).join("")}
-          </div>
+          ${guaranteesHtml ? `
+            <div style="font-size: 11px; color: #475569; line-height: 1.8;">${guaranteesHtml}</div>
+          ` : `
+            <div class="guarantee-grid">
+              ${displayGuarantees.map((g: any) => `
+                <div class="guarantee-item">
+                  <h4>${escapeHtml(g.title || "")}</h4>
+                  <p>${escapeHtml(g.description || "")}</p>
+                </div>
+              `).join("")}
+            </div>
+          `}
         </div>
 
         <!-- Page 3: About & Testimonials/Certifications -->
@@ -4376,7 +4489,7 @@ function buildQuoteProposalHtml(opts: {
         <!-- Page 4: Terms & Conditions -->
         <div class="terms-section">
           <h3>Terms & Conditions</h3>
-          <p>${escapeHtml(terms)}</p>
+          ${termsHtml ? `<div style="font-size: 11px; color: #475569; line-height: 1.8;">${termsHtml}</div>` : `<p>${escapeHtml(terms)}</p>`}
           <div class="validity-note">
             <strong>Quotation Validity:</strong> This quotation is valid until ${validUntil}. 
             Prices are subject to confirmation and may vary based on site survey findings.
@@ -4400,12 +4513,64 @@ function buildQuoteProposalHtml(opts: {
           <div>Quote Reference: ${ref} • Valid until ${validUntil}</div>
           <div style="margin-top:4px;">Thank you for considering ${escapeHtml(brand)} for your project.</div>
           <div style="margin-top:8px;font-size:9px;">All prices in ${cur}. ${showVat ? "VAT included where applicable." : ""}</div>
+          <div class="powered-by">powered by joineryai.app</div>
         </footer>
       </div>
     </body>
     </html>`;
   
   return html;
+}
+
+function sanitizeRichTextHtml(html: string): string {
+  const raw = String(html || "").trim();
+  if (!raw) return "";
+
+  let out = raw;
+  out = out.replace(/<\s*script[^>]*>[\s\S]*?<\s*\/\s*script\s*>/gi, "");
+  out = out.replace(/<\s*style[^>]*>[\s\S]*?<\s*\/\s*style\s*>/gi, "");
+  out = out.replace(/<\s*link[^>]*>/gi, "");
+  out = out.replace(/on[a-z]+\s*=\s*"[^"]*"/gi, "");
+  out = out.replace(/on[a-z]+\s*=\s*'[^']*'/gi, "");
+  out = out.replace(/javascript:/gi, "");
+  out = out.replace(/<\s*iframe[^>]*>[\s\S]*?<\s*\/\s*iframe\s*>/gi, "");
+  return out;
+}
+
+function applyTemplateVariables(html: string, vars: Record<string, string>): string {
+  let out = String(html || "");
+  out = out.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, keyRaw) => {
+    const key = String(keyRaw || "");
+    return Object.prototype.hasOwnProperty.call(vars, key) ? String(vars[key]) : "";
+  });
+  return out;
+}
+
+async function fetchQuoteFileUrls(fileIds: string[], tenantId: string): Promise<Record<string, string>> {
+  const unique = Array.from(new Set((fileIds || []).filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim())));
+  if (!unique.length) return {};
+
+  const files = await prisma.uploadedFile.findMany({
+    where: {
+      tenantId,
+      id: { in: unique },
+    },
+    select: { id: true },
+  });
+
+  const API_BASE = (
+    process.env.APP_API_URL ||
+    process.env.API_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
+    `http://localhost:${process.env.PORT || 4000}`
+  ).replace(/\/$/, "");
+
+  const urlMap: Record<string, string> = {};
+  for (const f of files) {
+    const token = jwt.sign({ t: tenantId, f: f.id }, env.APP_JWT_SECRET, { expiresIn: "2h" });
+    urlMap[f.id] = `${API_BASE}/files/${encodeURIComponent(f.id)}?jwt=${encodeURIComponent(token)}`;
+  }
+  return urlMap;
 }
 
 /**
