@@ -803,6 +803,7 @@ async function getPdfBrowser(puppeteer: any, opts: {
   const idleMs = Math.max(60_000, Number(process.env.PDF_BROWSER_IDLE_CLOSE_MS || 10 * 60_000));
   const dumpio = process.env.PDF_PUPPETEER_DUMPIO === "true";
   const usePipe = process.env.PDF_PUPPETEER_PIPE === "false" ? false : true;
+  const forceSparticuz = process.env.PDF_FORCE_SPARTICUZ_CHROMIUM === "true";
 
   // If we have a browser and it's been idle too long, close it so we don't leak resources forever.
   if (pdfBrowserPromise && pdfBrowserLastUsedAt && Date.now() - pdfBrowserLastUsedAt > idleMs) {
@@ -833,11 +834,19 @@ async function getPdfBrowser(puppeteer: any, opts: {
         }
       };
 
-      // Prefer Puppeteer's resolved executable if available; fall back to env
+      // Prefer Puppeteer's resolved executable if available; fall back to env.
+      // On Render this path can point at a non-existent cache location, so validate it.
       const resolvedExec = typeof puppeteer.executablePath === "function" ? puppeteer.executablePath() : undefined;
-      const execPath = resolvedExec || process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
+      const candidateExecPath = resolvedExec || process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
+      const execPath = candidateExecPath && fs.existsSync(candidateExecPath) ? candidateExecPath : undefined;
+      if (candidateExecPath && !execPath) {
+        opts.log?.("primary executablePath missing; will fall back", { executablePath: candidateExecPath });
+      }
 
       try {
+        if (forceSparticuz) {
+          throw new Error("PDF_FORCE_SPARTICUZ_CHROMIUM enabled");
+        }
         return await launchWithTimeout("puppeteer.launch(primary)", async () =>
           puppeteer.launch({
             headless: true,
@@ -861,6 +870,17 @@ async function getPdfBrowser(puppeteer: any, opts: {
         opts.log?.("primary launch failed; falling back", { error: String(primaryErr?.message || primaryErr) });
         const chromium = require("@sparticuz/chromium");
         const execPath2 = await getChromiumExecPathWithCache({ timeoutMs: opts.timeoutMs, log: opts.log });
+
+        const baseArgs: string[] = Array.isArray(chromium.args) ? chromium.args : [];
+        const extraArgs = [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-gpu",
+          "--no-zygote",
+        ];
+        const args = Array.from(new Set([...baseArgs, ...extraArgs]));
+
         return await launchWithTimeout("puppeteer.launch(chromium)", async () =>
           puppeteer.launch({
             headless: chromium.headless !== undefined ? chromium.headless : true,
@@ -868,7 +888,7 @@ async function getPdfBrowser(puppeteer: any, opts: {
             protocolTimeout: opts.timeoutMs,
             pipe: usePipe,
             dumpio,
-            args: chromium.args ?? ["--no-sandbox", "--disable-setuid-sandbox"],
+            args,
             executablePath: execPath2,
             defaultViewport: chromium.defaultViewport ?? { width: 1280, height: 800 },
             ignoreHTTPSErrors: true,
@@ -3421,7 +3441,8 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     const filename = `${truncatedName}.pdf`;
     const filepath = path.join(UPLOAD_DIR, `${Date.now()}__${filename}`);
 
-    const launchTimeoutMs = Math.max(20_000, Number(process.env.PDF_BROWSER_LAUNCH_TIMEOUT_MS || 120_000));
+    // Render cold starts can exceed 30s; enforce a sane minimum.
+    const launchTimeoutMs = Math.max(120_000, Number(process.env.PDF_BROWSER_LAUNCH_TIMEOUT_MS || 120_000));
     let browser: any;
     try {
       browser = await getPdfBrowser(puppeteer, {
@@ -3698,7 +3719,8 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
     let browser: any;
     try {
       browser = await getPdfBrowser(puppeteer, {
-        timeoutMs: Math.max(15_000, Number(process.env.PDF_BROWSER_LAUNCH_TIMEOUT_MS || 75_000)),
+        // Render cold starts can exceed 30s; enforce a sane minimum.
+        timeoutMs: Math.max(120_000, Number(process.env.PDF_BROWSER_LAUNCH_TIMEOUT_MS || 120_000)),
         log: (msg, extra) => logStage(msg, extra),
       });
     } catch (err: any) {
