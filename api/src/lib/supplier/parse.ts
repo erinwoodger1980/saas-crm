@@ -125,6 +125,7 @@ function parseLineItemsFromTextLines(
   const parsedLines: SupplierParseResult["lines"] = [];
   const detectedTotals: SupplierParseResult["detected_totals"] = {};
   let supplier = supplierHint?.trim();
+  const seenLangRows = new Set<string>();
 
   const tryFixLeadingQtyConcatenation = (first: string, second: string): string => {
     // Common extraction glitch for some PDFs: "2798.52 1 2798.52" becomes "2798.5212798.52".
@@ -194,6 +195,8 @@ function parseLineItemsFromTextLines(
     if (/\bthank you\b/i.test(lower)) return true;
     if (/\bvalidity\b/i.test(lower)) return true;
     if (/\bdate\s+of\s+quotation\b/i.test(lower)) return true;
+    // Some PDFs include summary rows like "m2:" (area totals) that are not line items.
+    if (/^\s*m(?:2|\u00B2)\s*:\s*/i.test(lower)) return true;
     if (/^\s*notes?\s*:/i.test(text)) return true;
     if (/\byours\s+(sincerely|faithfully)\b/i.test(lower)) return true;
     if (/\bkind\s+regards\b/i.test(lower)) return true;
@@ -233,6 +236,9 @@ function parseLineItemsFromTextLines(
     if (!supplier && /\blangvalda\b/i.test(line)) supplier = "Langvalda";
     if (!supplier && /\bfenstercraft\b/i.test(line)) supplier = "Fenstercraft";
 
+    // Ignore stray unit labels that sometimes get extracted as their own line.
+    if (/^(?:m2|m\u00B2)\s*:?$/i.test(line)) continue;
+
     // Skip obvious headers.
     if (isHeaderOrMeta(line)) continue;
 
@@ -241,21 +247,33 @@ function parseLineItemsFromTextLines(
     // If detected, attach the nearest preceding WG* line as the description.
     const langRow = parseLangvaldaPriceRow(line);
     if (langRow) {
+      const langKey = `${langRow.dimensions}|${langRow.area}|${langRow.costUnit}|${langRow.lineTotal}`;
+      if (seenLangRows.has(langKey)) continue;
+      seenLangRows.add(langKey);
+
       let descIndex: number | null = null;
-      for (let off = 1; off <= 18; off += 1) {
+      for (let off = 1; off <= 80; off += 1) {
         const idx = i - off;
         if (idx < 0) break;
         const candidate = cleanedLines[idx];
         if (!candidate) continue;
-        if (/^wg\d+\b/i.test(candidate)) {
+
+        // Stop once we've reached a prior priced row so we don't steal the previous item's title.
+        if (parseLangvaldaPriceRow(candidate)) break;
+
+        if (/^(?:wg|wf)\d+\b/i.test(candidate)) {
           descIndex = idx;
           break;
         }
-        if (/^l\d+\b/i.test(candidate) && idx + 1 < cleanedLines.length && /^wg\d+\b/i.test(cleanedLines[idx + 1] || "")) {
+        if (
+          /^l\d+\b/i.test(candidate) &&
+          idx + 1 < cleanedLines.length &&
+          /^(?:wg|wf)\d+\b/i.test(cleanedLines[idx + 1] || "")
+        ) {
           descIndex = idx + 1;
           break;
         }
-        if (/^l\d+\s*:\s*wg\d+\b/i.test(candidate)) {
+        if (/^l\d+\s*:\s*(?:wg|wf)\d+\b/i.test(candidate)) {
           descIndex = idx;
           break;
         }
@@ -809,12 +827,15 @@ async function runStageB(
 ): Promise<StageBResult> {
   const stageStartedAt = Date.now();
 
-  const extractRawTextByPageForGate = async (): Promise<string[]> => {
+  const extractRawTextByPagePdfJs = async (maxPages?: number): Promise<string[]> => {
     try {
       // pdfjs-dist v4 ships ESM entrypoints. Use dynamic import so this file can remain CJS.
       const pdfjsLib: any = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
-      const data = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+      // IMPORTANT: pdfjs may transfer the Uint8Array to a worker, detaching the underlying
+      // ArrayBuffer. Create a fresh copy each time so repeated extractions (sample + full)
+      // work reliably.
+      const data = new Uint8Array(buffer);
       const standardFontDataUrl = (() => {
         try {
           const pkgPath = require.resolve("pdfjs-dist/package.json");
@@ -830,36 +851,44 @@ async function runStageB(
       });
       const doc = await loadingTask.promise;
       const pages: string[] = [];
-      const pageCount = Math.max(0, Math.min(2, Number(doc?.numPages || 0)));
+      const total = Math.max(0, Number(doc?.numPages || 0));
+      const cap = typeof maxPages === "number" && Number.isFinite(maxPages) ? Math.max(0, maxPages) : total;
+      const hardCap = 20;
+      const pageCount = Math.max(0, Math.min(total, cap, hardCap));
       for (let pageNum = 1; pageNum <= pageCount; pageNum += 1) {
-        const page = await doc.getPage(pageNum);
-        const tc = await page.getTextContent();
+        try {
+          const page = await doc.getPage(pageNum);
+          const tc = await page.getTextContent();
 
-        // Build line breaks by grouping items with similar Y coordinates.
-        const groups = new Map<number, { x: number; str: string }[]>();
-        for (const it of tc?.items || []) {
-          const s = String((it as any)?.str || "").trim();
-          if (!s) continue;
-          const t = (it as any)?.transform;
-          const x = Array.isArray(t) && typeof t[4] === "number" ? t[4] : 0;
-          const yRaw = Array.isArray(t) && typeof t[5] === "number" ? t[5] : 0;
-          const y = Math.round(yRaw);
-          const bucket = groups.get(y) || [];
-          bucket.push({ x, str: s });
-          groups.set(y, bucket);
+          // Build line breaks by grouping items with similar Y coordinates.
+          const groups = new Map<number, { x: number; str: string }[]>();
+          for (const it of tc?.items || []) {
+            const s = String((it as any)?.str || "").trim();
+            if (!s) continue;
+            const t = (it as any)?.transform;
+            const x = Array.isArray(t) && typeof t[4] === "number" ? t[4] : 0;
+            const yRaw = Array.isArray(t) && typeof t[5] === "number" ? t[5] : 0;
+            const y = Math.round(yRaw);
+            const bucket = groups.get(y) || [];
+            bucket.push({ x, str: s });
+            groups.set(y, bucket);
+          }
+
+          const ys = Array.from(groups.keys()).sort((a, b) => b - a);
+          const lines: string[] = [];
+          for (const y of ys) {
+            const parts = groups.get(y) || [];
+            parts.sort((a, b) => a.x - b.x);
+            const line = parts.map((p) => p.str).join(" ").replace(/\s{2,}/g, " ").trim();
+            if (!line) continue;
+            lines.push(line);
+          }
+
+          pages.push(lines.join("\n"));
+        } catch {
+          // Ignore per-page failures; keep partial extraction.
+          continue;
         }
-
-        const ys = Array.from(groups.keys()).sort((a, b) => b - a);
-        const lines: string[] = [];
-        for (const y of ys) {
-          const parts = groups.get(y) || [];
-          parts.sort((a, b) => a.x - b.x);
-          const line = parts.map((p) => p.str).join(" ").replace(/\s{2,}/g, " ").trim();
-          if (!line) continue;
-          lines.push(line);
-        }
-
-        pages.push(lines.join("\n"));
       }
       try {
         await doc.destroy();
@@ -873,8 +902,8 @@ async function runStageB(
   // OCR decision gate: only OCR when extracted text is not usable.
   // We use a lightweight page-text sample for scoring where possible; otherwise we fall back to
   // the extraction summary text.
-  const rawTextByPage: string[] = await extractRawTextByPageForGate();
-  const gate = explainShouldUseOcr(stageA.extraction, rawTextByPage);
+  const rawTextByPageSample: string[] = await extractRawTextByPagePdfJs(2);
+  const gate = explainShouldUseOcr(stageA.extraction, rawTextByPageSample);
 
   const configuredOcrEnabled = (() => {
     if (typeof options?.ocrEnabled === "boolean") return options.ocrEnabled;
@@ -922,9 +951,10 @@ async function runStageB(
 
   // If Stage A found no line items but pdfjs indicates usable text, try a lightweight
   // deterministic recovery from the extracted pdfjs text (no OCR).
-  if (!ocrEnabled && stageA.parse.lines.length === 0 && !gate.useOcr && rawTextByPage.length) {
+  if (!ocrEnabled && stageA.parse.lines.length === 0 && !gate.useOcr && rawTextByPageSample.length) {
+    const rawTextByPageAll: string[] = await extractRawTextByPagePdfJs();
     const recovered = parseLineItemsFromTextLines(
-      rawTextByPage.join("\n").split(/\r?\n+/g),
+      (rawTextByPageAll.length ? rawTextByPageAll : rawTextByPageSample).join("\n").split(/\r?\n+/g),
       stageA.parse.supplier,
       stageA.parse.currency,
     );
