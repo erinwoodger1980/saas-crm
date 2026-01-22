@@ -3655,6 +3655,70 @@ router.get("/:id/proposal/signed", requireAuth, async (req: any, res) => {
   }
 });
 
+/**
+ * GET /quotes/:id/proposal/html
+ * Returns the proposal HTML for live preview (no PDF generation).
+ */
+router.get(":id/proposal/html", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+    const id = String(req.params.id);
+
+    const quote = await prisma.quote.findFirst({
+      where: { id, tenantId },
+      include: { lines: true, tenant: true, lead: true },
+    });
+    if (!quote) return res.status(404).json({ error: "not_found" });
+
+    const ts = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    const totals = recalculateQuoteTotals({ quote, tenantSettings: ts });
+    const { subtotal, vatAmount, totalGBP, vatRate, showVat } = totals;
+
+    const imageUrlMap = await fetchLineImageUrls(quote.lines, tenantId);
+
+    const quoteMetaAny: any = (quote.meta as any) || {};
+    const proposalAssetIds: string[] = [];
+    if (typeof quoteMetaAny?.proposalHeroImageFileId === "string" && quoteMetaAny.proposalHeroImageFileId.trim()) {
+      proposalAssetIds.push(quoteMetaAny.proposalHeroImageFileId.trim());
+    }
+    const ccAny: any = (quoteMetaAny?.proposalChristchurchImageFileIds as any) || {};
+    for (const k of ["logoMarkFileId", "logoWideFileId", "sidebarPhotoFileId", "badge1FileId", "badge2FileId"]) {
+      const v = typeof ccAny?.[k] === "string" ? String(ccAny[k]).trim() : "";
+      if (v) proposalAssetIds.push(v);
+    }
+
+    const proposalBlocksAny: any = (quoteMetaAny?.proposalBlocks as any) || {};
+    const proposalBlockHtmlCandidates: string[] = [
+      String(proposalBlocksAny?.introHtml || ""),
+      String(proposalBlocksAny?.scopeHtml || ""),
+      String(proposalBlocksAny?.guaranteesHtml || ""),
+      String(proposalBlocksAny?.termsHtml || ""),
+    ];
+    for (const html of proposalBlockHtmlCandidates) {
+      proposalAssetIds.push(...extractProposalAssetIdsFromHtml(html));
+    }
+    const proposalAssetUrlMap = await fetchQuoteFileUrls(proposalAssetIds, tenantId);
+
+    const logoDataUrl = ts?.logoUrl ? await imageUrlToDataUrl(ts.logoUrl) : undefined;
+
+    const html = buildQuoteProposalHtml({
+      quote,
+      tenantSettings: ts,
+      currencyCode: totals.currencyCode,
+      currencySymbol: totals.currencySymbol,
+      totals: { subtotal, vatAmount, totalGBP, vatRate, showVat },
+      imageUrlMap,
+      proposalAssetUrlMap,
+      logoDataUrl,
+    });
+
+    return res.json({ ok: true, html });
+  } catch (e: any) {
+    console.error("[/quotes/:id/proposal/html] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
 // Basic HTML escape for PDF content
 function escapeHtml(s: string) {
   return String(s)

@@ -225,6 +225,46 @@ export default function QuoteBuilderPage() {
   const quoteStatus = quote?.status ?? null;
   const proposalPdfUrl = (quote?.meta as any)?.proposalPdfUrl ?? quote?.proposalPdfUrl ?? null;
 
+  const [proposalPreviewHtml, setProposalPreviewHtml] = useState<string | null>(null);
+  const [proposalPreviewLoading, setProposalPreviewLoading] = useState(false);
+  const [proposalPreviewError, setProposalPreviewError] = useState<string | null>(null);
+  const [proposalPreviewRevision, setProposalPreviewRevision] = useState(0);
+  const proposalPreviewAbortRef = useRef<AbortController | null>(null);
+
+  const refreshProposalPreview = useCallback(async () => {
+    if (!quoteId) return;
+    proposalPreviewAbortRef.current?.abort();
+    const controller = new AbortController();
+    proposalPreviewAbortRef.current = controller;
+
+    setProposalPreviewLoading(true);
+    setProposalPreviewError(null);
+    try {
+      const resp = await apiFetch<{ ok: boolean; html?: string }>(
+        `/quotes/${encodeURIComponent(quoteId)}/proposal/html`,
+        { method: "GET", signal: controller.signal },
+      );
+      setProposalPreviewHtml(typeof resp?.html === "string" ? resp.html : "");
+    } catch (err: any) {
+      // Ignore aborts during rapid updates
+      if (String(err?.name || "") === "AbortError") return;
+      setProposalPreviewError(err?.message || "Failed to load proposal preview");
+    } finally {
+      setProposalPreviewLoading(false);
+    }
+  }, [quoteId]);
+
+  useEffect(() => {
+    if (activeTab !== "proposal") return;
+    if (!quoteId) return;
+
+    const t = setTimeout(() => {
+      void refreshProposalPreview();
+    }, 500);
+
+    return () => clearTimeout(t);
+  }, [activeTab, quoteId, lineRevision, proposalPreviewRevision, refreshProposalPreview]);
+
   // Fetch recent material costs (tenant-scoped indirectly via server auth)
   const { data: recentMaterialCosts = [] } = useSWR<any[]>(
     quote ? ["recent-material-costs", quote.tenantId] : null,
@@ -2254,8 +2294,39 @@ export default function QuoteBuilderPage() {
                   initialMeta={((quote?.meta as any) || null) as any}
                   onSaved={async () => {
                     await mutateQuote();
+                    setProposalPreviewRevision((r) => r + 1);
                   }}
                 />
+              ) : null}
+
+              {quoteId ? (
+                <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h2 className="text-2xl font-semibold text-foreground mb-2">Live preview</h2>
+                      <p className="text-sm text-muted-foreground">
+                        Updates automatically as quote lines change.
+                      </p>
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {proposalPreviewLoading ? "Updating…" : null}
+                    </div>
+                  </div>
+
+                  {proposalPreviewError ? (
+                    <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                      {proposalPreviewError}
+                    </div>
+                  ) : null}
+
+                  <div className="relative w-full" style={{ height: "700px" }}>
+                    <iframe
+                      title="Proposal live preview"
+                      className="w-full h-full rounded-lg border bg-background"
+                      srcDoc={proposalPreviewHtml || ""}
+                    />
+                  </div>
+                </div>
               ) : null}
             </TabsContent>
 
