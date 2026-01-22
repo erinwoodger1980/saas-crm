@@ -1553,6 +1553,7 @@ model QuoteLine {
   supplier          String?
   sku               String?
   description       String
+  sortIndex         Int                @default(0)
   qty               Decimal            @default(1)
   unitPrice         Decimal            @default(0)
   currency          String             @default("GBP")
@@ -1571,6 +1572,7 @@ model QuoteLine {
   architectOpening  ArchitectOpening?  @relation("ArchitectOpening")
 
   @@index([quoteId])
+  @@index([quoteId, sortIndex])
 }
 
 model UploadedFile {

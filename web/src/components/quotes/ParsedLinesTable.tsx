@@ -84,11 +84,11 @@ export function ParsedLinesTable({
   ) {
     const base = drafts[line.id] ?? {
       qty: normalizeNumber(line.qty),
-      unitPrice: normalizeNumber(line.unitPrice),
+      unitPrice: normalizeMoney(line.unitPrice),
     };
     const resolved: DraftValues = {
       qty: next.qty !== undefined ? normalizeNumber(next.qty) : base.qty,
-      unitPrice: next.unitPrice !== undefined ? normalizeNumber(next.unitPrice) : base.unitPrice,
+      unitPrice: next.unitPrice !== undefined ? normalizeMoney(next.unitPrice) : base.unitPrice,
     };
     setDrafts((prev) => ({ ...prev, [line.id]: resolved }));
     if (options.schedule) {
@@ -110,7 +110,7 @@ export function ParsedLinesTable({
     if (!draft) return;
     setSaving((prev) => ({ ...prev, [lineId]: true }));
     try {
-      await onLineChange(lineId, { qty: draft.qty, unitPrice: draft.unitPrice });
+      await onLineChange(lineId, { qty: draft.qty, unitPrice: normalizeMoney(draft.unitPrice) });
     } catch (err) {
       console.warn("Failed to persist line", err);
     } finally {
@@ -231,7 +231,7 @@ export function ParsedLinesTable({
                 {(lines ?? []).map((line) => {
                   const draft = drafts[line.id];
                   const qty = draft?.qty ?? normalizeNumber(line.qty);
-                  const unitPrice = draft?.unitPrice ?? normalizeNumber(line.unitPrice);
+                  const unitPrice = draft?.unitPrice ?? normalizeMoney(line.unitPrice);
                   const sellUnit = normalizeNumber(line.meta?.sellUnitGBP ?? line.meta?.sell_unit ?? line.sellUnit);
                   const sellTotal = normalizeNumber(line.meta?.sellTotalGBP ?? line.meta?.sell_total ?? line.sellTotal);
                   const hasError = (qty != null && qty < 0) || (unitPrice != null && unitPrice < 0);
@@ -326,9 +326,14 @@ export function ParsedLinesTable({
                               const nextValue = event.target.value === "" ? null : Number(event.target.value);
                               updateDraft(line, { unitPrice: nextValue }, { schedule: true });
                             }}
-                            onBlur={() => flushSave(line.id)}
+                            onBlur={() => {
+                              updateDraft(line, { unitPrice }, { schedule: false });
+                              void flushSave(line.id);
+                            }}
                             onFocus={() => updateDraft(line, { unitPrice })}
                             className="h-9 text-right"
+                            step="0.01"
+                            min={0}
                             aria-label="Unit price"
                           />
                           <span className="absolute left-1 top-1 text-[10px] text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity">Unit price</span>
@@ -596,6 +601,12 @@ function computeTotals(lines?: ParsedLineDto[] | null) {
 function normalizeNumber(value: unknown): number | null {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function normalizeMoney(value: unknown): number | null {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n * 100) / 100;
 }
 
 function formatCurrency(value: number, currency?: string | null) {

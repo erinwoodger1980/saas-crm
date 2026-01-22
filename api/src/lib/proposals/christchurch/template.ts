@@ -20,8 +20,12 @@ export function buildChristchurchProposalHtml(opts: {
     logoWide?: string;
     coverHero?: string;
     sidebarPhoto?: string;
-    badge1?: string;
-    badge2?: string;
+    badge1?: string; // Accoya
+    badge2?: string; // PAS24 (legacy)
+    fensa?: string;
+    pas24?: string;
+    fsc?: string;
+    ggf?: string;
   };
   aiSummary?: {
     timber?: string;
@@ -36,6 +40,8 @@ export function buildChristchurchProposalHtml(opts: {
   const { quote, tenantSettings: ts, currencySymbol: sym } = opts;
   const quoteDefaults: any = (ts?.quoteDefaults as any) || {};
 
+  const TRANSPARENT_GIF = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+
   const img = {
     logoMark: String(opts.imageUrls?.logoMark || opts.logoDataUrl || CHRISTCHURCH_ASSETS.logoMark),
     logoWide: String(opts.imageUrls?.logoWide || CHRISTCHURCH_ASSETS.logoWide),
@@ -43,6 +49,10 @@ export function buildChristchurchProposalHtml(opts: {
     sidebarPhoto: String(opts.imageUrls?.sidebarPhoto || CHRISTCHURCH_ASSETS.sidebarPhoto),
     badge1: String(opts.imageUrls?.badge1 || CHRISTCHURCH_ASSETS.badge1),
     badge2: String(opts.imageUrls?.badge2 || CHRISTCHURCH_ASSETS.badge2),
+    fensa: String(opts.imageUrls?.fensa || TRANSPARENT_GIF),
+    pas24: String(opts.imageUrls?.pas24 || opts.imageUrls?.badge2 || CHRISTCHURCH_ASSETS.badge2),
+    fsc: String(opts.imageUrls?.fsc || TRANSPARENT_GIF),
+    ggf: String(opts.imageUrls?.ggf || TRANSPARENT_GIF),
   };
 
   const brand = (ts?.brandName || quote.tenant?.brandName || "Wealden Joinery Ltd").toString();
@@ -255,19 +265,19 @@ export function buildChristchurchProposalHtml(opts: {
       .detailHeader .h { font-size: 12pt; font-weight: 700; margin: 0; }
       .detailHeader .p { margin: 2mm auto 0 auto; max-width: 160mm; font-size: 9.8pt; color: #334155; line-height: 1.5; }
 
-      table { width: 100%; border-collapse: collapse; margin-top: 4mm; }
+      table { width: 100%; border-collapse: collapse; margin-top: 3mm; }
       thead th {
         font-size: 9pt;
         text-transform: none;
         text-align: left;
         color: #334155;
         border-bottom: 1px solid #cbd5e1;
-        padding: 2.5mm 2mm;
+        padding: 2mm 2mm;
       }
       tbody td {
         font-size: 9.6pt;
         border-bottom: 1px solid #e2e8f0;
-        padding: 2.5mm 2mm;
+        padding: 2mm 2mm;
         vertical-align: top;
       }
       .col-ref { width: 18mm; }
@@ -282,13 +292,13 @@ export function buildChristchurchProposalHtml(opts: {
       .totals .val { font-weight: 600; }
       .totals .grand { border-top: 1px solid #cbd5e1; margin-top: 2mm; padding-top: 2mm; }
 
-      .h2 { font-size: 14pt; font-weight: 800; margin: 0 0 4mm 0; text-align: center; }
+      .h2 { font-size: 14pt; font-weight: 800; margin: 0 0 4mm 0; text-align: center; color: #1e3a8a; }
       .para { font-size: 10pt; line-height: 1.6; color: #0f172a; }
 
       .triple { margin-top: 3mm; }
       .tripleGrid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6mm; margin-top: 4mm; }
-      .card { border: 1px solid #e2e8f0; border-radius: 6px; padding: 4mm; }
-      .card h4 { margin: 0 0 2mm 0; font-size: 10.5pt; }
+      .card { border: 1px solid #e2e8f0; border-radius: 6px; padding: 4mm; background: #f8fafc; }
+      .card h4 { margin: 0 0 2mm 0; font-size: 10.5pt; color: #1e3a8a; }
       .card p { margin: 0; font-size: 9.6pt; line-height: 1.55; color: #334155; }
 
       .warranty { margin-top: 6mm; }
@@ -306,20 +316,20 @@ export function buildChristchurchProposalHtml(opts: {
       .accoyaHead { text-align: center; margin-bottom: 3mm; }
       .accoyaHead img { max-height: 18mm; }
       .advGrid { display: grid; grid-template-columns: 1fr; gap: 4mm; }
-      .adv { border: 1px solid #e2e8f0; border-radius: 6px; padding: 4mm; }
-      .adv h4 { margin: 0 0 1.5mm 0; font-size: 10.5pt; }
+      .adv { border: 1px solid #e2e8f0; border-radius: 6px; padding: 4mm; background: #f8fafc; }
+      .adv h4 { margin: 0 0 1.5mm 0; font-size: 10.5pt; color: #1e3a8a; }
       .adv p { margin: 0; font-size: 9.6pt; line-height: 1.55; color: #334155; }
 
       .certGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm 8mm; margin-top: 6mm; }
-      .cert { display: flex; gap: 4mm; align-items: flex-start; }
-      .cert img { width: 22mm; height: auto; border-radius: 4px; }
-      .cert h4 { margin: 0; font-size: 10.5pt; }
+      .cert { display: flex; gap: 4mm; align-items: flex-start; border: 1px solid #e2e8f0; border-radius: 6px; padding: 3mm; background: #f8fafc; }
+      .cert img { width: 22mm; height: auto; border-radius: 4px; background: #ffffff; border: 1px solid #e2e8f0; }
+      .cert h4 { margin: 0; font-size: 10.5pt; color: #1e3a8a; }
       .cert p { margin: 1mm 0 0 0; font-size: 9.3pt; line-height: 1.5; color: #334155; }
 
       .termsGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm 10mm; }
-      .termCard { border: 1px solid #e2e8f0; border-radius: 6px; padding: 4mm; }
+      .termCard { border: 1px solid #e2e8f0; border-radius: 6px; padding: 4mm; background: #f8fafc; }
       .termTop { display: flex; gap: 3mm; align-items: baseline; margin-bottom: 2mm; }
-      .termNum { font-weight: 900; font-size: 12pt; color: #0f172a; }
+      .termNum { font-weight: 900; font-size: 12pt; color: #1e3a8a; }
       .termTitle { font-weight: 800; font-size: 10.5pt; }
       .termBody { font-size: 9.6pt; line-height: 1.55; color: #334155; }
 
@@ -371,15 +381,15 @@ export function buildChristchurchProposalHtml(opts: {
 
           <div class="ovGrid">
             <div class="ovBlock">
-              <h3 class="ovSubTitle">Client Details</h3>
+              <img src="${img.fensa}" alt="FENSA" />
               <div class="kv">
-                ${kvRow("Client", client)}
+                <h4>FENSA Approved Installer</h4>
                 ${kvRow("Project", displayProjectRef)}
                 ${kvRow("Job Number", jobNumber)}
                 ${deliveryAddress ? kvRow("Delivery Address", deliveryAddress) : ""}
                 ${surveyTeam ? kvRow("Survey Team", surveyTeam) : ""}
                 ${kvRow("Date", when)}
-              </div>
+              <img src="${img.pas24}" alt="PAS 24" />
             </div>
 
             <div class="ovBlock">
@@ -387,7 +397,7 @@ export function buildChristchurchProposalHtml(opts: {
               <div class="kv highlights">
                 <ul>
                   <li><strong>Timber:</strong> ${escapeHtml(timber)}</li>
-                  <li><strong>Finish:</strong> ${escapeHtml(finish)}</li>
+              <img src="${img.fsc}" alt="FSC" />
                   <li><strong>Glazing:</strong> ${escapeHtml(glazing)}</li>
                   <li><strong>Hardware/Fittings:</strong> ${escapeHtml(fittings)}</li>
                   <li><strong>Ventilation:</strong> ${escapeHtml(ventilation)}</li>
@@ -395,7 +405,7 @@ export function buildChristchurchProposalHtml(opts: {
               </div>
             </div>
           </div>
-
+              <img src="${img.ggf}" alt="GGF" />
           <div class="ovScope">
             <h3 class="ovSubTitle">Project Scope</h3>
             <div class="para">${scopeHtml}</div>

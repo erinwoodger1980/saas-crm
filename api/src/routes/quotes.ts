@@ -881,7 +881,7 @@ router.post("/:id/lines/fill-standard-from-parsed", requireAuth, async (req: any
     const quoteId = String(req.params.id);
     const quote = await prisma.quote.findFirst({
       where: { id: quoteId, tenantId },
-      include: { lines: true },
+      include: { lines: { orderBy: [{ sortIndex: "asc" }, { id: "asc" }] } },
     });
     if (!quote) return res.status(404).json({ error: "not_found" });
 
@@ -985,7 +985,7 @@ router.get("/:id/lines", requireAuth, async (req: any, res) => {
     const id = String(req.params.id);
     const lines = await prisma.quoteLine.findMany({
       where: { quote: { id, tenantId } },
-      orderBy: { id: "asc" },
+      orderBy: [{ sortIndex: "asc" }, { id: "asc" }],
     });
 
     const out = lines.map((ln: any) => ({
@@ -1042,11 +1042,19 @@ router.post("/:id/lines", requireAuth, async (req: any, res) => {
       return res.status(400).json({ error: "invalid_unit_price" });
     }
 
+    const last = await prisma.quoteLine.findFirst({
+      where: { quoteId },
+      orderBy: [{ sortIndex: "desc" }, { id: "desc" }],
+      select: { sortIndex: true },
+    });
+    const nextSortIndex = (last?.sortIndex ?? 0) + 1;
+
     // Create the line
     const line = await prisma.quoteLine.create({
       data: {
         quoteId,
         description,
+        sortIndex: nextSortIndex,
         qty: new Prisma.Decimal(quantity),
         unitPrice: new Prisma.Decimal(unitPrice),
         currency: quote.currency || "GBP",
@@ -1350,7 +1358,10 @@ router.post("/:id/lines/save-processed", requireAuth, async (req: any, res) => {
   try {
     const tenantId = req.auth.tenantId as string;
     const id = String(req.params.id);
-    const quote = await prisma.quote.findFirst({ where: { id, tenantId }, include: { lines: true } });
+    const quote = await prisma.quote.findFirst({
+      where: { id, tenantId },
+      include: { lines: { orderBy: [{ sortIndex: "asc" }, { id: "asc" }] } },
+    });
     if (!quote) return res.status(404).json({ error: "not_found" });
 
     await normaliseQuoteSourceTypeColumn(id);
@@ -1372,7 +1383,7 @@ router.post("/:id/lines/save-processed", requireAuth, async (req: any, res) => {
     }
 
     let created = 0;
-    for (const ln of clientQuote.lines as Array<any>) {
+    for (const [idx, ln] of (clientQuote.lines as Array<any>).entries()) {
       const description = String(ln.description || "Item");
       const qtyRaw = Number(ln.qty ?? 1);
       const qty = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : 1;
@@ -1408,6 +1419,7 @@ router.post("/:id/lines/save-processed", requireAuth, async (req: any, res) => {
           supplier: null as any,
           sku: undefined,
           description,
+          sortIndex: idx,
           qty,
           unitPrice: new Prisma.Decimal(Number.isFinite(supplierUnit) ? supplierUnit : 0),
           currency,
@@ -1707,11 +1719,19 @@ router.post("/:id/lines", requireAuth, async (req: any, res) => {
       return res.status(404).json({ error: "quote_not_found" });
     }
 
+    const last = await prisma.quoteLine.findFirst({
+      where: { quoteId },
+      orderBy: [{ sortIndex: "desc" }, { id: "desc" }],
+      select: { sortIndex: true },
+    });
+    const nextSortIndex = (last?.sortIndex ?? 0) + 1;
+
     // Create line item
     const line = await prisma.quoteLine.create({
       data: {
         quoteId,
         description: String(description),
+        sortIndex: nextSortIndex,
         qty: Number(quantity) || 1,
         unitPrice: new Prisma.Decimal(Number(unitPrice) || 0),
         currency: "GBP",
@@ -1800,7 +1820,7 @@ router.get("/:id", requireAuth, async (req: any, res) => {
     try {
       q = await prisma.quote.findFirst({
         where: { id, tenantId },
-        include: { lines: true, supplierFiles: { select: UPLOADED_FILE_SAFE_SELECT } },
+        include: { lines: { orderBy: [{ sortIndex: "asc" }, { id: "asc" }] }, supplierFiles: { select: UPLOADED_FILE_SAFE_SELECT } },
       });
     } catch (inner: any) {
       const msg = inner?.message || String(inner);
@@ -2397,6 +2417,18 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
         : null;
       const parsedLinesForDb: Prisma.ParsedSupplierLineCreateManyInput[] = [];
 
+      let sortIndexCursor = 0;
+      try {
+        const agg = await prisma.quoteLine.aggregate({
+          where: { quoteId: quote.id },
+          _max: { sortIndex: true },
+        });
+        sortIndexCursor = (agg._max.sortIndex ?? -1) + 1;
+      } catch (e: any) {
+        console.warn("[parse] failed to read max sortIndex; defaulting to 0:", e?.message || e);
+        sortIndexCursor = 0;
+      }
+
       const filesToParse = [...quote.supplierFiles]
         .filter((x: any) => x?.kind === "SUPPLIER_QUOTE")
         .filter((x) => /pdf$/i.test(x.mimeType || "") || /\.pdf$/i.test(x.name || ""))
@@ -2754,12 +2786,16 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
             area: typeof (ln as any)?.area === 'string' ? (ln as any).area : undefined,
           };
 
+          const nextSortIndex = sortIndexCursor;
+          sortIndexCursor += 1;
+
           const row = await prisma.quoteLine.create({
             data: {
               quoteId: quote.id,
               supplier: supplier as any,
               sku: undefined,
               description,
+              sortIndex: nextSortIndex,
               qty,
               unitPrice: new Prisma.Decimal(unitPrice),
               currency,
@@ -3069,7 +3105,7 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
 
     const quote = await prisma.quote.findFirst({
       where: { id, tenantId },
-      include: { lines: true, tenant: true, lead: true },
+      include: { lines: { orderBy: [{ sortIndex: "asc" }, { id: "asc" }] }, tenant: true, lead: true },
     });
     if (!quote) return res.status(404).json({ error: "not_found" });
     const renderStartedAt = Date.now();
@@ -3124,7 +3160,18 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     }
     // Christchurch template image overrides (stored as fileIds)
     const ccAny: any = (quoteMetaAny?.proposalChristchurchImageFileIds as any) || {};
-    for (const k of ["logoMarkFileId", "logoWideFileId", "sidebarPhotoFileId", "badge1FileId", "badge2FileId"]) {
+    for (const k of [
+      "logoMarkFileId",
+      "logoWideFileId",
+      "coverHeroFileId",
+      "sidebarPhotoFileId",
+      "badge1FileId",
+      "badge2FileId",
+      "fensaFileId",
+      "pas24FileId",
+      "fscFileId",
+      "ggfFileId",
+    ]) {
       const v = typeof ccAny?.[k] === "string" ? String(ccAny[k]).trim() : "";
       if (v) proposalAssetIds.push(v);
     }
@@ -3367,7 +3414,7 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
 
     const quote = await prisma.quote.findFirst({
       where: { id, tenantId },
-      include: { lines: true, tenant: true, lead: true },
+      include: { lines: { orderBy: [{ sortIndex: "asc" }, { id: "asc" }] }, tenant: true, lead: true },
     });
     if (!quote) return res.status(404).json({ error: "not_found" });
     const renderStartedAt = Date.now();
@@ -3415,7 +3462,18 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
     }
     // Christchurch template image overrides (stored as fileIds)
     const ccAny: any = (quoteMetaAny?.proposalChristchurchImageFileIds as any) || {};
-    for (const k of ["logoMarkFileId", "logoWideFileId", "sidebarPhotoFileId", "badge1FileId", "badge2FileId"]) {
+    for (const k of [
+      "logoMarkFileId",
+      "logoWideFileId",
+      "coverHeroFileId",
+      "sidebarPhotoFileId",
+      "badge1FileId",
+      "badge2FileId",
+      "fensaFileId",
+      "pas24FileId",
+      "fscFileId",
+      "ggfFileId",
+    ]) {
       const v = typeof ccAny?.[k] === "string" ? String(ccAny[k]).trim() : "";
       if (v) proposalAssetIds.push(v);
     }
@@ -3669,7 +3727,7 @@ router.get("/:id/proposal/html", requireAuth, async (req: any, res) => {
 
     const quote = await prisma.quote.findFirst({
       where: { id, tenantId },
-      include: { lines: true, tenant: true, lead: true },
+      include: { lines: { orderBy: [{ sortIndex: "asc" }, { id: "asc" }] }, tenant: true, lead: true },
     });
     if (!quote) return res.status(404).json({ error: "not_found" });
 
@@ -3685,7 +3743,18 @@ router.get("/:id/proposal/html", requireAuth, async (req: any, res) => {
       proposalAssetIds.push(quoteMetaAny.proposalHeroImageFileId.trim());
     }
     const ccAny: any = (quoteMetaAny?.proposalChristchurchImageFileIds as any) || {};
-    for (const k of ["logoMarkFileId", "logoWideFileId", "sidebarPhotoFileId", "badge1FileId", "badge2FileId"]) {
+    for (const k of [
+      "logoMarkFileId",
+      "logoWideFileId",
+      "coverHeroFileId",
+      "sidebarPhotoFileId",
+      "badge1FileId",
+      "badge2FileId",
+      "fensaFileId",
+      "pas24FileId",
+      "fscFileId",
+      "ggfFileId",
+    ]) {
       const v = typeof ccAny?.[k] === "string" ? String(ccAny[k]).trim() : "";
       if (v) proposalAssetIds.push(v);
     }
@@ -4064,6 +4133,10 @@ async function buildQuoteProposalHtml(opts: {
       sidebarPhoto: typeof ccAny?.sidebarPhotoFileId === "string" ? proposalAssets[String(ccAny.sidebarPhotoFileId).trim()] : undefined,
       badge1: typeof ccAny?.badge1FileId === "string" ? proposalAssets[String(ccAny.badge1FileId).trim()] : undefined,
       badge2: typeof ccAny?.badge2FileId === "string" ? proposalAssets[String(ccAny.badge2FileId).trim()] : undefined,
+      fensa: typeof ccAny?.fensaFileId === "string" ? proposalAssets[String(ccAny.fensaFileId).trim()] : undefined,
+      pas24: typeof ccAny?.pas24FileId === "string" ? proposalAssets[String(ccAny.pas24FileId).trim()] : undefined,
+      fsc: typeof ccAny?.fscFileId === "string" ? proposalAssets[String(ccAny.fscFileId).trim()] : undefined,
+      ggf: typeof ccAny?.ggfFileId === "string" ? proposalAssets[String(ccAny.ggfFileId).trim()] : undefined,
     };
 
     return buildChristchurchProposalHtml({
@@ -5321,7 +5394,10 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
   try {
     const tenantId = await getTenantId(req);
     const id = String(req.params.id);
-    const quote = await prisma.quote.findFirst({ where: { id, tenantId }, include: { lines: true, tenant: true, lead: true } });
+    const quote = await prisma.quote.findFirst({
+      where: { id, tenantId },
+      include: { lines: { orderBy: [{ sortIndex: "asc" }, { id: "asc" }] }, tenant: true, lead: true },
+    });
     if (!quote) return res.status(404).json({ error: "not_found" });
     const method = String(req.body?.method || "margin");
     const margin = Number(req.body?.margin ?? quote.markupDefault ?? 0.25);
@@ -5837,7 +5913,10 @@ router.post("/:id/delivery", requireAuth, async (req: any, res) => {
   try {
     const tenantId = req.auth.tenantId as string;
     const id = String(req.params.id);
-    const quote = await prisma.quote.findFirst({ where: { id, tenantId }, include: { lines: true } });
+    const quote = await prisma.quote.findFirst({
+      where: { id, tenantId },
+      include: { lines: { orderBy: [{ sortIndex: "asc" }, { id: "asc" }] } },
+    });
     if (!quote) return res.status(404).json({ error: "not_found" });
 
     const amountGBP = safeNumber(req.body?.amountGBP);
@@ -6574,6 +6653,11 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
         lineTotalComputedGBP: line.unitPrice * line.qty,
       },
     }));
+
+    const linesToSaveWithSortIndex = linesToSave.map((line, idx) => ({
+      ...line,
+      sortIndex: idx,
+    }));
     
     // Delete existing lines and insert new ones
     await prisma.quoteLine.deleteMany({
@@ -6581,7 +6665,7 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
     });
     
     await prisma.quoteLine.createMany({
-      data: linesToSave,
+      data: linesToSaveWithSortIndex,
     });
 
     // Auto-fill lineStandard fields (width/height/timber/finish/ironmongery/glazing/productType)
@@ -6680,6 +6764,7 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
     // Fetch updated lines
     const updatedLines = await prisma.quoteLine.findMany({
       where: { quoteId: quote.id },
+      orderBy: [{ sortIndex: "asc" }, { id: "asc" }],
     });
 
     // Record deterministic pricing overrides from the parsed quote so "same answers => same price"

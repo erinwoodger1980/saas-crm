@@ -192,6 +192,7 @@ export default function QuoteBuilderPage() {
   const [markupDelivery, setMarkupDelivery] = useState<boolean>(false);
   const [amalgamateDelivery, setAmalgamateDelivery] = useState<boolean>(true);
   const [clientDeliveryCharge, setClientDeliveryCharge] = useState<number>(0);
+  const [clientInstallationCharge, setClientInstallationCharge] = useState<number>(0);
   const [lineRevision, setLineRevision] = useState(0);
   const [estimatedLineRevision, setEstimatedLineRevision] = useState<number | null>(null);
   const lastLineSnapshotRef = useRef<string | null>(null);
@@ -227,6 +228,8 @@ export default function QuoteBuilderPage() {
   const [proposalPreviewError, setProposalPreviewError] = useState<string | null>(null);
   const [proposalPreviewRevision, setProposalPreviewRevision] = useState(0);
   const proposalPreviewAbortRef = useRef<AbortController | null>(null);
+
+  const [proposalEditorOpen, setProposalEditorOpen] = useState(false);
 
   const refreshProposalPreview = useCallback(async () => {
     if (!quoteId) return;
@@ -961,6 +964,52 @@ export default function QuoteBuilderPage() {
       window.open(pdfUrl, "_blank");
     }
   }, [quote?.meta, quote?.proposalPdfUrl]);
+
+  const ensureProposalPdfUrl = useCallback(async (): Promise<string | null> => {
+    if (!quoteId) return null;
+    const existing = (quote?.meta as any)?.proposalPdfUrl ?? quote?.proposalPdfUrl ?? null;
+    if (existing) return existing;
+
+    setIsGeneratingPdf(true);
+    try {
+      await apiFetch(`/quotes/${encodeURIComponent(quoteId)}/render-pdf`, { method: "POST" });
+      await mutateQuote();
+      const next = (quote?.meta as any)?.proposalPdfUrl ?? quote?.proposalPdfUrl ?? null;
+      return next;
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  }, [quoteId, quote?.meta, quote?.proposalPdfUrl, mutateQuote]);
+
+  const handleSavePdfFromProposalTab = useCallback(async () => {
+    const url = await ensureProposalPdfUrl();
+    if (url) window.open(url, "_blank");
+  }, [ensureProposalPdfUrl]);
+
+  const handlePrintPdfFromProposalTab = useCallback(async () => {
+    const url = await ensureProposalPdfUrl();
+    if (!url) return;
+    const iframe = document.createElement("iframe");
+    iframe.style.display = "none";
+    iframe.src = url;
+    document.body.appendChild(iframe);
+    iframe.onload = () => {
+      iframe.contentWindow?.print();
+    };
+  }, [ensureProposalPdfUrl]);
+
+  const handleEmailPdfFromProposalTab = useCallback(async () => {
+    const url = await ensureProposalPdfUrl();
+    if (!url) {
+      toast({
+        title: "No PDF to send",
+        description: "Generate a PDF first",
+        variant: "destructive",
+      });
+      return;
+    }
+    await handleEmailToClient();
+  }, [ensureProposalPdfUrl, handleEmailToClient, toast]);
 
   const handlePrintPdf = useCallback(() => {
     const pdfUrl = (quote?.meta as any)?.proposalPdfUrl ?? quote?.proposalPdfUrl ?? null;
@@ -1796,6 +1845,33 @@ export default function QuoteBuilderPage() {
                     </div>
                   )}
 
+                  {(quote?.supplierFiles ?? []).length > 0 && (
+                    <div className="rounded-xl border bg-muted/20 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-foreground">Pricing controls</div>
+                          <div className="text-xs text-muted-foreground">
+                            Set markup, VAT, delivery, and optional installation when converting.
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          className="gap-2"
+                          onClick={() => {
+                            if (!selectedFileId) {
+                              const firstId = (quote?.supplierFiles ?? [])[0]?.id ?? null;
+                              setSelectedFileId(firstId);
+                            }
+                            setProcessDialogOpen(true);
+                          }}
+                          disabled={isProcessingSupplier}
+                        >
+                          Convert to client quote…
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
                   {(supplierPreviewLoading || supplierPreviewUrl) && (
                     <div className="space-y-2">
                       <h4 className="text-sm font-medium">Preview</h4>
@@ -2335,17 +2411,6 @@ export default function QuoteBuilderPage() {
 
             <TabsContent value="proposal" className="space-y-6">
               {quoteId ? (
-                <ProposalEditor
-                  quoteId={quoteId}
-                  initialMeta={((quote?.meta as any) || null) as any}
-                  onSaved={async () => {
-                    await mutateQuote();
-                    setProposalPreviewRevision((r) => r + 1);
-                  }}
-                />
-              ) : null}
-
-              {quoteId ? (
                 <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
@@ -2355,6 +2420,37 @@ export default function QuoteBuilderPage() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
+                      <Button
+                        onClick={handleSavePdfFromProposalTab}
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        disabled={isGeneratingPdf}
+                      >
+                        {isGeneratingPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                        Save PDF
+                      </Button>
+                      <Button
+                        onClick={handlePrintPdfFromProposalTab}
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        disabled={isGeneratingPdf}
+                      >
+                        <Printer className="h-4 w-4" />
+                        Print
+                      </Button>
+                      <Button
+                        onClick={handleEmailPdfFromProposalTab}
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        disabled={isSendingEmail || isGeneratingPdf}
+                      >
+                        {isSendingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                        Email PDF
+                      </Button>
+
                       <Button variant="outline" size="sm" asChild>
                         <Link href="/settings#business-details">Edit business details</Link>
                       </Button>
@@ -2377,6 +2473,39 @@ export default function QuoteBuilderPage() {
                       srcDoc={proposalPreviewHtml || ""}
                     />
                   </div>
+                </div>
+              ) : null}
+
+              {quoteId ? (
+                <div className="rounded-2xl border bg-card p-4 shadow-sm">
+                  <button
+                    type="button"
+                    className="w-full flex items-center justify-between gap-3"
+                    onClick={() => setProposalEditorOpen((v) => !v)}
+                  >
+                    <div className="text-left">
+                      <div className="text-sm font-medium">Proposal editor</div>
+                      <div className="text-xs text-muted-foreground">Expand to edit scope and upload template images</div>
+                    </div>
+                    {proposalEditorOpen ? (
+                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </button>
+
+                  {proposalEditorOpen ? (
+                    <div className="mt-4">
+                      <ProposalEditor
+                        quoteId={quoteId}
+                        initialMeta={((quote?.meta as any) || null) as any}
+                        onSaved={async () => {
+                          await mutateQuote();
+                          setProposalPreviewRevision((r) => r + 1);
+                        }}
+                      />
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </TabsContent>
@@ -2572,6 +2701,19 @@ export default function QuoteBuilderPage() {
                 />
               </div>
             </div>
+
+            <div>
+              <label className="block text-sm font-medium">Client installation charge</label>
+              <input
+                type="number"
+                className="w-full rounded-md border bg-background p-2 text-sm"
+                value={clientInstallationCharge}
+                onChange={(e) => setClientInstallationCharge(Number(e.target.value) || 0)}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Added as a separate line item (ex VAT) when converting.
+              </p>
+            </div>
             <div className="flex items-center justify-end gap-2">
               <button
                 className="inline-flex items-center rounded-md border bg-background px-3 py-2 text-sm"
@@ -2602,7 +2744,31 @@ export default function QuoteBuilderPage() {
                     setProcessDialogOpen(false);
                     
                     if ((resp as any)?.quote_type === "supplier" && (resp as any)?.client_quote?.grand_total != null) {
-                      const gt = (resp as any).client_quote.grand_total as number;
+                      const baseClientQuote = (resp as any).client_quote as any;
+                      const installGBP = clientInstallationCharge > 0 ? clientInstallationCharge : 0;
+                      const vatRate = Math.max(0, Number(vatPercent) || 0) / 100;
+
+                      const clientQuote = installGBP > 0
+                        ? {
+                            ...baseClientQuote,
+                            lines: [
+                              ...(Array.isArray(baseClientQuote?.lines) ? baseClientQuote.lines : []),
+                              {
+                                description: "Installation",
+                                qty: 1,
+                                unit_price: 0,
+                                total: 0,
+                                unit_price_marked_up: installGBP,
+                                total_marked_up: installGBP,
+                              },
+                            ],
+                            subtotal: Number(baseClientQuote?.subtotal ?? 0) + installGBP,
+                            vat_amount: Number(baseClientQuote?.vat_amount ?? 0) + (installGBP * vatRate),
+                            grand_total: Number(baseClientQuote?.grand_total ?? 0) + (installGBP * (1 + vatRate)),
+                          }
+                        : baseClientQuote;
+
+                      const gt = Number(clientQuote?.grand_total ?? 0);
                       
                       // Step 2: Auto-save the lines
                       toast({
@@ -2610,7 +2776,7 @@ export default function QuoteBuilderPage() {
                         description: `Saving lines and generating proposal...`,
                       });
                       
-                      await saveClientQuoteLines(quoteId, (resp as any).client_quote, { replace: true });
+                      await saveClientQuoteLines(quoteId, clientQuote, { replace: true });
                       await Promise.all([mutateQuote(), mutateLines()]);
                       
                       // Step 3: Auto-render the proposal PDF
