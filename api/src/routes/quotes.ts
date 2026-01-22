@@ -6102,37 +6102,56 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
             typeof (parseResult as any)?.confidence === "number" && Number.isFinite((parseResult as any).confidence)
               ? (parseResult as any).confidence
               : null;
-          
-          for (const ln of parseResult.lines) {
-            const description = String(ln.description || (ln as any).desc || "Item");
+
+          const candidates = (parseResult.lines || []).map((ln: any) => {
+            const description = String(ln?.description || ln?.desc || "Item");
             const pickedQty = pickQty(ln);
             const qty = Number.isFinite(Number(pickedQty)) && Number(pickedQty) > 0 ? Number(pickedQty) : 1;
-            
+
             let unitPrice = pickUnitCost(ln);
-            let lineTotalParsed = pickLineTotal(ln);
-            
+            const lineTotalParsed = pickLineTotal(ln);
             if ((unitPrice == null || !(unitPrice > 0)) && lineTotalParsed != null && qty > 0) {
               unitPrice = lineTotalParsed / qty;
             }
             if (unitPrice == null || !Number.isFinite(unitPrice) || unitPrice < 0) {
               unitPrice = 0;
             }
-            
-            // Quality filtering to remove gibberish OCR lines
+
             const desc = String(description || "").trim();
             const quality = descriptionQualityScore(desc);
-            const isGibberish = quality < 0.5;
-            if (isGibberish) {
-              // Skip but record a sample for diagnostics (limit meta array growth)
-              if (skippedGibberishSamples.length < 5) {
-                skippedGibberishSamples.push(desc.slice(0, 140));
-              }
-              gibberishCount += 1;
-              continue;
-            }
+            return { ln, desc, qty, unitPrice, quality };
+          });
 
-            // Persist a normalised ParsedSupplierLine row so the raw-parse view and ML features
-            // can use the same stored representation as /parse.
+          const acceptWithThreshold = (minQuality: number) => candidates.filter((c) => c.desc && c.quality >= minQuality);
+          let accepted = acceptWithThreshold(0.5);
+          let rejected = candidates.filter((c) => !c.desc || c.quality < 0.5);
+
+          // If we would drop everything, relax the filter. Some PDFs have valid but "non-joinery" descriptions.
+          if (!accepted.length && candidates.length) {
+            parseWarnings.add("All parsed lines flagged low-quality; relaxing quality filter");
+            accepted = acceptWithThreshold(0.25);
+            rejected = candidates.filter((c) => !c.desc || c.quality < 0.25);
+          }
+
+          // Last resort: keep unfiltered lines (better than returning 400/no_lines_parsed).
+          if (!accepted.length && candidates.length) {
+            parseWarnings.add("All parsed lines flagged low-quality; using unfiltered parse output");
+            accepted = candidates.filter((c) => c.desc);
+            rejected = [];
+          }
+
+          for (const c of rejected) {
+            const sample = String(c?.desc || "").trim();
+            if (sample) {
+              if (skippedGibberishSamples.length < 5) skippedGibberishSamples.push(sample.slice(0, 140));
+              gibberishCount += 1;
+            }
+          }
+
+          for (const c of accepted) {
+            const ln = c.ln;
+            const desc = c.desc;
+
             parsedLinesForDb.push({
               tenantId,
               quoteId: quote.id,
@@ -6161,15 +6180,15 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
 
             parsedLines.push({
               description: desc,
-              qty,
-              unitPrice,
+              qty: c.qty,
+              unitPrice: c.unitPrice,
               fileId: f.id,
               sourceCurrency,
               currency: sourceCurrency,
               meta: {
                 source: "supplier-parser",
                 raw: ln,
-                qualityScore: quality,
+                qualityScore: c.quality,
               },
             });
           }

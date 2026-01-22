@@ -44,6 +44,9 @@ export function buildChristchurchProposalHtml(opts: {
   const leadCustom: any = (quote.lead?.custom as any) || {};
   const ref = `Q-${quote.id.slice(0, 8).toUpperCase()}`;
   const jobNumber = (leadCustom?.refId as string) || ref;
+  const projectReference = typeof leadCustom?.projectReference === "string" ? String(leadCustom.projectReference).trim() : "";
+  const surveyTeam = typeof leadCustom?.surveyTeam === "string" ? String(leadCustom.surveyTeam).trim() : "";
+  const DEFAULT_COMPLIANCE_NOTE = "PAS 24 / Part Q: Glazing to GGF guidelines.";
   const deliveryAddress = (leadCustom?.deliveryAddress as string) || (leadCustom?.address as string) || "";
 
   const today = new Date();
@@ -52,12 +55,64 @@ export function buildChristchurchProposalHtml(opts: {
   const validUntil = formatDateGB(new Date(today.getTime() + Math.max(0, validDays) * 86400000));
 
   const specifications = ((quote.meta as any) || {})?.specifications || {};
-  const timber = (specifications.timber || quoteDefaults?.defaultTimber || "Engineered Redwood").toString();
-  const finish = (specifications.finish || quoteDefaults?.defaultFinish || "RAL 9016 White (painted)").toString();
-  const glazing = (specifications.glazing || quoteDefaults?.defaultGlazing || "Low-energy double glazing (Ug 1.1–1.2)").toString();
-  const fittings = (specifications.fittings || quoteDefaults?.defaultFittings || "Polished chrome heritage fittings").toString();
-  const ventilation = (specifications.ventilation || "Trickle vents").toString();
-  const compliance = (specifications.compliance || quoteDefaults?.compliance || "PAS 24 / Part Q: glazing to GGF guidelines").toString();
+  const fallbackTimber = (specifications.timber || quoteDefaults?.defaultTimber || "Engineered Redwood").toString();
+  const fallbackFinish = (specifications.finish || quoteDefaults?.defaultFinish || "RAL 9016 White (painted)").toString();
+  const fallbackGlazing = (specifications.glazing || quoteDefaults?.defaultGlazing || "Low-energy double glazing (Ug 1.1–1.2)").toString();
+  const fallbackFittings = (specifications.fittings || quoteDefaults?.defaultFittings || "Polished chrome heritage fittings").toString();
+  const fallbackVentilation = (specifications.ventilation || "Trickle vents").toString();
+  const compliance = (
+    (typeof leadCustom?.compliance === "string" && String(leadCustom.compliance).trim())
+      ? String(leadCustom.compliance).trim()
+      : (specifications.compliance || quoteDefaults?.compliance || DEFAULT_COMPLIANCE_NOTE)
+  ).toString();
+
+  const toNonEmptyStr = (v: any): string => {
+    if (v == null) return "";
+    if (typeof v === "string") return v.trim();
+    if (typeof v === "number" || typeof v === "boolean") return String(v);
+    return "";
+  };
+
+  const collectLineMetaValues = (keys: string[]): string[] => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const ln of quote.lines || []) {
+      const metaAny: any = (ln?.meta as any) || {};
+      for (const k of keys) {
+        const raw = metaAny?.[k];
+        if (Array.isArray(raw)) {
+          for (const item of raw) {
+            const s = toNonEmptyStr(item);
+            const norm = s.toLowerCase();
+            if (s && !seen.has(norm)) {
+              seen.add(norm);
+              out.push(s);
+            }
+          }
+          continue;
+        }
+        const s = toNonEmptyStr(raw);
+        const norm = s.toLowerCase();
+        if (s && !seen.has(norm)) {
+          seen.add(norm);
+          out.push(s);
+        }
+      }
+    }
+    return out;
+  };
+
+  const timberValues = collectLineMetaValues(["wood", "timber", "timberSpecies", "material"]).slice(0, 3);
+  const finishValues = collectLineMetaValues(["finish", "paintFinish", "colour", "color"]).slice(0, 3);
+  const glazingValues = collectLineMetaValues(["glass", "glazing"]).slice(0, 3);
+  const fittingsValues = collectLineMetaValues(["fittings", "hardware", "ironmongery"]).slice(0, 4);
+  const ventilationValues = collectLineMetaValues(["ventilation", "vents", "trickleVent"]).slice(0, 3);
+
+  const timber = timberValues.length ? timberValues.join(" / ") : fallbackTimber;
+  const finish = finishValues.length ? finishValues.join(" / ") : fallbackFinish;
+  const glazing = glazingValues.length ? glazingValues.join(" / ") : fallbackGlazing;
+  const fittings = fittingsValues.length ? fittingsValues.join(", ") : fallbackFittings;
+  const ventilation = ventilationValues.length ? ventilationValues.join(" / ") : fallbackVentilation;
 
   const scopeHtml = String(opts.scopeHtml || "").trim() || `<p>${escapeHtml(
     ((quote.meta as any) || {})?.scopeDescription ||
@@ -113,6 +168,17 @@ export function buildChristchurchProposalHtml(opts: {
       .titleBlock { margin: 6mm 0 4mm 0; text-align: center; }
       .titleBlock .title { font-size: 18pt; font-weight: 700; margin: 0; }
       .titleBlock .sub { margin-top: 2mm; font-size: 10.5pt; color: #334155; }
+
+      /* Updated cover page (more visual) */
+      .coverHero { width: 100%; height: 82mm; overflow: hidden; border-radius: 8px; border: 1px solid #e2e8f0; }
+      .coverHero img { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .coverLogos { display:flex; justify-content:center; align-items:center; gap:8mm; margin: 8mm 0 4mm 0; }
+      .coverTitle { text-align:center; font-size: 20pt; font-weight: 800; margin: 0; }
+      .coverProject { text-align:center; margin-top: 2mm; font-size: 13pt; color: #334155; }
+      .coverMeta { text-align:center; margin-top: 2mm; font-size: 10.5pt; color: #334155; }
+      .coverFooter { margin-top: 10mm; border-top: 1px solid #e2e8f0; padding-top: 5mm; display:flex; justify-content: space-between; gap: 10mm; }
+      .coverFooter .left { font-size: 9.5pt; color: #334155; line-height: 1.5; }
+      .coverFooter .right { font-size: 9.5pt; color: #334155; line-height: 1.5; text-align:right; }
 
       .overviewWrap { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; }
 
@@ -221,27 +287,28 @@ export function buildChristchurchProposalHtml(opts: {
 
   const coverPage = `
     <div class="page">
-      <div class="header">
-        <div class="brand">
-          <div>
-            <h1>${escapeHtml(brand)}</h1>
-            <div class="tagline">${escapeHtml(tagline)}</div>
-          </div>
+      <div class="coverHero">
+        <img src="${img.sidebarPhoto}" alt="Project" />
+      </div>
+
+      <div class="coverLogos">
+        <img src="${img.logoMark}" alt="Logo" style="height:14mm;" />
+        <img src="${img.logoWide}" alt="${escapeHtml(brand)}" style="height:16mm;" />
+      </div>
+      <p class="coverTitle">Project Quotation</p>
+      <div class="coverProject">${escapeHtml(projectName)}</div>
+      <div class="coverMeta">Client: ${escapeHtml(client)} • ${escapeHtml(when)}</div>
+
+      <div class="coverFooter">
+        <div class="left">
+          <strong>${escapeHtml(brand)}</strong><br/>
+          ${escapeHtml(tagline)}
         </div>
-        <div class="contact">
+        <div class="right">
           ${phone ? `Telephone: ${escapeHtml(phone)}<br/>` : ""}
           ${email ? `Email: ${escapeHtml(email)}<br/>` : ""}
           ${address ? `Address: ${escapeHtml(address)}` : ""}
         </div>
-      </div>
-
-      <div class="titleBlock">
-        <div style="display:flex; justify-content:center; align-items:center; gap:8mm; margin-bottom:3mm;">
-          <img src="${img.logoMark}" alt="Logo" style="height:14mm;" />
-          <img src="${img.logoWide}" alt="${escapeHtml(brand)}" style="height:16mm;" />
-        </div>
-        <p class="title">Project Quotation – ${escapeHtml(projectName)}</p>
-        <div class="sub">Client: ${escapeHtml(client)} • ${escapeHtml(when)}</div>
       </div>
     </div>
   `;
@@ -270,11 +337,9 @@ export function buildChristchurchProposalHtml(opts: {
             <h3>Client Details</h3>
             <div class="kv">
               ${kvRow("Client", client)}
-              ${kvRow("Property", pickPropertyName(projectName, leadCustom) || "")}
-              ${kvRow("Project", projectName)}
-              ${kvRow("Job Number", jobNumber)}
+              ${projectReference ? kvRow("Project ref", projectReference) : ""}
               ${kvRow("Delivery Address", deliveryAddress)}
-              ${kvRow("Survey Team", String(leadCustom?.surveyTeam || quoteDefaults?.surveyTeam || ""))}
+              ${surveyTeam ? kvRow("Survey Team", surveyTeam) : ""}
               ${kvRow("Date", when)}
             </div>
           </div>
