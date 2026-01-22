@@ -150,8 +150,11 @@ function parseLineItemsFromTextLines(
     const decimals = withoutArea.match(/\d{1,6}\.\d{2}/g) || [];
     if (decimals.length < 2) return null;
 
-    const unitRaw = decimals[0];
-    const totalRaw = tryFixLeadingQtyConcatenation(unitRaw, decimals[decimals.length - 1]);
+    const unitRaw = decimals[0] ?? "";
+    const lastRaw = decimals[decimals.length - 1] ?? "";
+    if (!unitRaw || !lastRaw) return null;
+
+    const totalRaw = tryFixLeadingQtyConcatenation(unitRaw, lastRaw);
 
     const unit = Number(unitRaw.replace(/,/g, ""));
     const total = Number(totalRaw.replace(/,/g, ""));
@@ -283,12 +286,14 @@ function parseLineItemsFromTextLines(
         .replace(/\s{2,}/g, " ")
         .trim();
 
+      const rawText = [descBase, ...details, line].join("\n");
+
       parsedLines.push({
         description: desc,
         qty: langRow.qty,
         costUnit: langRow.costUnit,
         lineTotal: langRow.lineTotal,
-        rawText: [descBase, ...details, line].join("\n"),
+        ...(rawText ? { rawText } : {}),
         meta: { sourceLine: line, detailLines: details, dimensions: langRow.dimensions, area: langRow.area } as any,
       });
       continue;
