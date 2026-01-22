@@ -801,6 +801,8 @@ async function getPdfBrowser(puppeteer: any, opts: {
   log?: (msg: string, extra?: Record<string, any>) => void;
 }): Promise<any> {
   const idleMs = Math.max(60_000, Number(process.env.PDF_BROWSER_IDLE_CLOSE_MS || 10 * 60_000));
+  const dumpio = process.env.PDF_PUPPETEER_DUMPIO === "true";
+  const usePipe = process.env.PDF_PUPPETEER_PIPE === "false" ? false : true;
 
   // If we have a browser and it's been idle too long, close it so we don't leak resources forever.
   if (pdfBrowserPromise && pdfBrowserLastUsedAt && Date.now() - pdfBrowserLastUsedAt > idleMs) {
@@ -840,6 +842,10 @@ async function getPdfBrowser(puppeteer: any, opts: {
           puppeteer.launch({
             headless: true,
             ignoreHTTPSErrors: true,
+            timeout: opts.timeoutMs,
+            protocolTimeout: opts.timeoutMs,
+            pipe: usePipe,
+            dumpio,
             args: [
               "--no-sandbox",
               "--disable-setuid-sandbox",
@@ -858,6 +864,10 @@ async function getPdfBrowser(puppeteer: any, opts: {
         return await launchWithTimeout("puppeteer.launch(chromium)", async () =>
           puppeteer.launch({
             headless: chromium.headless !== undefined ? chromium.headless : true,
+            timeout: opts.timeoutMs,
+            protocolTimeout: opts.timeoutMs,
+            pipe: usePipe,
+            dumpio,
             args: chromium.args ?? ["--no-sandbox", "--disable-setuid-sandbox"],
             executablePath: execPath2,
             defaultViewport: chromium.defaultViewport ?? { width: 1280, height: 800 },
