@@ -126,6 +126,10 @@ function parseLineItemsFromTextLines(
   const detectedTotals: SupplierParseResult["detected_totals"] = {};
   let supplier = supplierHint?.trim();
   const seenLangRows = new Set<string>();
+  const warnings = new Set<string>();
+  let langvaldaDetected = 0;
+  let langvaldaAdded = 0;
+  let langvaldaDeduped = 0;
 
   const tryFixLeadingQtyConcatenation = (first: string, second: string): string => {
     // Common extraction glitch for some PDFs: "2798.52 1 2798.52" becomes "2798.5212798.52".
@@ -247,9 +251,7 @@ function parseLineItemsFromTextLines(
     // If detected, attach the nearest preceding WG* line as the description.
     const langRow = parseLangvaldaPriceRow(line);
     if (langRow) {
-      const langKey = `${langRow.dimensions}|${langRow.area}|${langRow.costUnit}|${langRow.lineTotal}`;
-      if (seenLangRows.has(langKey)) continue;
-      seenLangRows.add(langKey);
+      langvaldaDetected += 1;
 
       let descIndex: number | null = null;
       for (let off = 1; off <= 80; off += 1) {
@@ -280,6 +282,16 @@ function parseLineItemsFromTextLines(
       }
 
       const descBase = descIndex != null ? cleanText(cleanedLines[descIndex]).trim() : "Joinery item";
+
+      // De-dupe using the nearest WG/WF header + the priced row values.
+      // This avoids dropping distinct items that coincidentally share the same dimensions/prices.
+      const descKey = cleanText(descBase).replace(/\s+/g, " ").trim().toUpperCase();
+      const langKey = `${descKey}|${langRow.dimensions}|${langRow.area}|${langRow.costUnit}|${langRow.lineTotal}`;
+      if (seenLangRows.has(langKey)) {
+        langvaldaDeduped += 1;
+        continue;
+      }
+      seenLangRows.add(langKey);
 
       const detailLines: string[] = [];
       const detailStart = descIndex != null ? descIndex + 1 : Math.max(0, i - 12);
@@ -314,6 +326,7 @@ function parseLineItemsFromTextLines(
         ...(rawText ? { rawText } : {}),
         meta: { sourceLine: line, detailLines: details, dimensions: langRow.dimensions, area: langRow.area } as any,
       });
+      langvaldaAdded += 1;
       continue;
     }
 
@@ -502,12 +515,38 @@ function parseLineItemsFromTextLines(
 
   if (!parsedLines.length) return null;
 
+  if (langvaldaDetected > 0 && langvaldaAdded > 0 && langvaldaAdded < langvaldaDetected) {
+    warnings.add(
+      `Sanity check: detected ${langvaldaDetected} priced rows but only parsed ${langvaldaAdded} (possible missing line items)`,
+    );
+  }
+  if (langvaldaDeduped > 0) {
+    warnings.add(`Sanity check: removed ${langvaldaDeduped} duplicate priced rows`);
+  }
+
+  // Totals sense check: if the PDF exposes a subtotal/total, compare it to the sum of parsed rows.
+  const sumLineTotals = parsedLines
+    .map((l) => (typeof l.lineTotal === "number" && Number.isFinite(l.lineTotal) ? l.lineTotal : 0))
+    .reduce((acc, v) => acc + v, 0);
+  const expectedTotal =
+    (typeof detectedTotals.subtotal === "number" && Number.isFinite(detectedTotals.subtotal) ? detectedTotals.subtotal : null) ??
+    (typeof detectedTotals.estimated_total === "number" && Number.isFinite(detectedTotals.estimated_total) ? detectedTotals.estimated_total : null);
+  if (expectedTotal != null && sumLineTotals > 0) {
+    const diff = Math.abs(sumLineTotals - expectedTotal);
+    const threshold = Math.max(5, expectedTotal * 0.02);
+    if (diff > threshold) {
+      warnings.add(
+        `Sanity check: sum of line totals (${sumLineTotals.toFixed(2)}) differs from detected total (${expectedTotal.toFixed(2)}) by ${diff.toFixed(2)}`,
+      );
+    }
+  }
+
   return {
     supplier,
     currency: currency || "GBP",
     lines: parsedLines,
     detected_totals: Object.keys(detectedTotals).length ? detectedTotals : undefined,
-    warnings: ["Recovered line items from pdfjs text"],
+    warnings: unique(["Recovered line items from pdfjs text", ...warnings]),
   };
 }
 
