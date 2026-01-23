@@ -189,8 +189,9 @@ export function buildChristchurchProposalHtml(opts: {
 
   // For Christchurch we want delivery broken out explicitly (matches the reference PDF).
   const deliveryExVat = safeMoney(quote.deliveryCost);
+  const installationExVat = safeMoney((((quote.meta as any) || {}) as any)?.installationCostGBP);
   const subtotalExVat = safeMoney(opts.totals.subtotal);
-  const totalExVat = subtotalExVat + deliveryExVat;
+  const totalExVat = subtotalExVat + deliveryExVat + installationExVat;
   const vatRate = Number.isFinite(Number(opts.totals.vatRate)) ? Number(opts.totals.vatRate) : 0.2;
   const showVat = opts.totals.showVat !== false;
   const vatAmount = showVat ? totalExVat * vatRate : 0;
@@ -276,6 +277,8 @@ export function buildChristchurchProposalHtml(opts: {
 
       .pageBody { flex: 1 1 auto; min-height: 0; }
 
+      .page.hasFooter .pageBody { padding-bottom: 28mm; box-sizing: border-box; }
+
       .page.page-bleed { padding: 0; }
 
       .header {
@@ -319,12 +322,22 @@ export function buildChristchurchProposalHtml(opts: {
       .coverFooter { position: absolute; left: 16mm; right: 16mm; bottom: 18mm; text-align: center; font-size: 9.8pt; color: #334155; line-height: 1.55; }
       .poweredByCover { margin-top: 4mm; font-size: 8.8pt; color: #94a3b8; }
 
-      .footer { margin-top: auto; padding-top: 6mm; border-top: 1px solid #e2e8f0; text-align: center; }
+      .footer {
+        position: absolute;
+        left: 16mm;
+        right: 16mm;
+        bottom: 12mm;
+        padding-top: 3mm;
+        border-top: 1px solid #e2e8f0;
+        text-align: center;
+        background: #ffffff;
+      }
       .footerName { font-size: 11pt; font-weight: 800; margin: 0; color: #0f172a; }
       .footerTagline { margin-top: 1mm; font-size: 9.5pt; color: #475569; }
       .footerContact { margin-top: 2mm; font-size: 9.5pt; color: #334155; line-height: 1.4; }
       .footer .poweredBy { margin-top: 2mm; font-size: 8.8pt; color: #94a3b8; }
-      .page.page-bleed .footer { padding: 0 16mm 10mm 16mm; border-top: 0; }
+      .page.page-bleed.hasFooter .pageBody { padding-bottom: 32mm; }
+      .page.page-bleed .footer { bottom: 10mm; }
 
       /* Overview page (page 2) */
       .overviewBleed { width: 210mm; flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 78mm 1fr; }
@@ -488,7 +501,7 @@ export function buildChristchurchProposalHtml(opts: {
   `;
 
   const overviewPage = `
-    <div class="page page-bleed">
+    <div class="page page-bleed hasFooter">
       <div class="pageBody">
         <div class="overviewBleed">
           <img src="${img.sidebarPhoto}" alt="Project" class="photo" />
@@ -537,7 +550,7 @@ export function buildChristchurchProposalHtml(opts: {
 
   const quotationPages = parts.map((chunk, partIndex) => {
     return `
-      <div class="page">
+      <div class="page hasFooter">
         <div class="pageBody">
           <div class="header">
             <div class="brand">
@@ -563,7 +576,7 @@ export function buildChristchurchProposalHtml(opts: {
   });
 
   const totalsPage = `
-    <div class="page">
+    <div class="page hasFooter">
       <div class="pageBody">
         <div class="header">
           <div class="brand">
@@ -580,6 +593,7 @@ export function buildChristchurchProposalHtml(opts: {
           currencySymbol: sym,
           subtotalExVat,
           deliveryExVat,
+          installationExVat,
           vatAmount,
           vatRate,
           grandTotal,
@@ -592,7 +606,7 @@ export function buildChristchurchProposalHtml(opts: {
   `;
 
   const guaranteeAndTestimonialsPage = `
-    <div class="page">
+    <div class="page hasFooter">
       <div class="pageBody">
         <div class="header">
           <div class="brand">
@@ -680,7 +694,7 @@ export function buildChristchurchProposalHtml(opts: {
   `;
 
   const excellencePage = `
-    <div class="page">
+    <div class="page hasFooter">
       <div class="pageBody">
         <div class="header">
           <div class="brand">
@@ -755,7 +769,7 @@ export function buildChristchurchProposalHtml(opts: {
   `;
 
   const termsAndContactPage = `
-    <div class="page">
+    <div class="page hasFooter">
       <div class="pageBody">
         <div class="header">
           <div class="brand">
@@ -879,18 +893,21 @@ function renderTotals(opts: {
   currencySymbol: string;
   subtotalExVat: number;
   deliveryExVat: number;
+  installationExVat: number;
   vatAmount: number;
   vatRate: number;
   grandTotal: number;
   showVat: boolean;
 }): string {
-  const { currencySymbol: sym, subtotalExVat, deliveryExVat, vatAmount, vatRate, grandTotal, showVat } = opts;
-  const totalExVat = subtotalExVat + deliveryExVat;
+  const { currencySymbol: sym, subtotalExVat, deliveryExVat, installationExVat, vatAmount, vatRate, grandTotal, showVat } = opts;
+  const totalExVat = subtotalExVat + deliveryExVat + installationExVat;
+  const showInstallation = installationExVat > 0;
 
   return `
     <div class="totals">
       <div class="r"><div class="label">Subtotal (ex VAT):</div><div class="val">${sym}${formatMoney(subtotalExVat)}</div></div>
       <div class="r"><div class="label">Delivery (ex VAT):</div><div class="val">${sym}${formatMoney(deliveryExVat)}</div></div>
+      ${showInstallation ? `<div class="r"><div class="label">Installation (ex VAT):</div><div class="val">${sym}${formatMoney(installationExVat)}</div></div>` : ""}
       <div class="r"><div class="label">Total ex VAT:</div><div class="val">${sym}${formatMoney(totalExVat)}</div></div>
       ${showVat ? `<div class="r"><div class="label">VAT (${Math.round(vatRate * 100)}%):</div><div class="val">${sym}${formatMoney(vatAmount)}</div></div>` : ""}
       <div class="r grand"><div class="label">Grand Total (inc VAT):</div><div class="val">${sym}${formatMoney(grandTotal)}</div></div>
@@ -959,8 +976,25 @@ function pickLineSellTotal(ln: QuoteLine, metaAny: any, qty: number): number {
 }
 
 function safeMoney(value: any): number {
-  const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : 0;
-  return Number.isFinite(n) ? n : 0;
+  if (value == null) return 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "string") {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+  }
+  if (typeof value === "object") {
+    const anyVal: any = value as any;
+    if (typeof anyVal?.toNumber === "function") {
+      const n = anyVal.toNumber();
+      return Number.isFinite(n) ? n : 0;
+    }
+    if (typeof anyVal?.toString === "function") {
+      const n = Number(anyVal.toString());
+      return Number.isFinite(n) ? n : 0;
+    }
+  }
+  const fallback = Number(value);
+  return Number.isFinite(fallback) ? fallback : 0;
 }
 
 function formatMoney(value: number): string {

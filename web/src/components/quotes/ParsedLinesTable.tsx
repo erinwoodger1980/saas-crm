@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Wand2, FileText, Download, Image as ImageIcon, AlertTriangle, Edit3, ChevronDown, Box, Sparkles } from "lucide-react";
+import { Loader2, FileText, Download, Image as ImageIcon, AlertTriangle, Edit3, ChevronDown, Box, Sparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -156,20 +156,6 @@ export function ParsedLinesTable({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {parseMeta?.warnings && parseMeta.warnings.length > 0 && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-amber-700">
-              <Wand2 className="h-4 w-4" /> Parser warnings
-            </div>
-            <ul className="mt-2 space-y-1">
-              {parseMeta.warnings.map((warning, index) => (
-                <li key={index} className="text-xs text-amber-700">
-                  {warning}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
 
         {showLowQualityNotice && (
           <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">

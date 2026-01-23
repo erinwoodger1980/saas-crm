@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { API_BASE } from '@/lib/api';
 
 type PortalData = {
   ok: boolean;
@@ -146,7 +147,7 @@ export default function QuotePortalPage() {
       try {
         setLoading(true);
         setError(null);
-        const r = await fetch(`/public/quote-portal/${encodeURIComponent(token)}`, { cache: 'no-store' });
+        const r = await fetch(`${API_BASE}/public/quote-portal/${encodeURIComponent(token)}`, { cache: 'no-store' });
         if (!r.ok) throw new Error(`Failed to load portal (${r.status})`);
         const json = (await r.json()) as PortalData;
         if (cancelled) return;
@@ -176,7 +177,7 @@ export default function QuotePortalPage() {
   const handleSaveClient = async () => {
     try {
       setError(null);
-      const r = await fetch(`/public/quote-portal/${encodeURIComponent(token)}/client`, {
+      const r = await fetch(`${API_BASE}/public/quote-portal/${encodeURIComponent(token)}/client`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -192,7 +193,7 @@ export default function QuotePortalPage() {
       const j = await r.json().catch(() => null);
       if (!r.ok) throw new Error(j?.message || 'Failed to save details');
       // refresh
-      const refreshed = await fetch(`/public/quote-portal/${encodeURIComponent(token)}`, { cache: 'no-store' });
+      const refreshed = await fetch(`${API_BASE}/public/quote-portal/${encodeURIComponent(token)}`, { cache: 'no-store' });
       const refreshedJson = (await refreshed.json()) as PortalData;
       setData(refreshedJson);
     } catch (e: any) {
@@ -206,7 +207,7 @@ export default function QuotePortalPage() {
     if (!ok) return;
     try {
       setError(null);
-      const r = await fetch(`/public/quote-portal/${encodeURIComponent(token)}/accept`, {
+      const r = await fetch(`${API_BASE}/public/quote-portal/${encodeURIComponent(token)}/accept`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -216,7 +217,7 @@ export default function QuotePortalPage() {
       });
       const j = await r.json().catch(() => null);
       if (!r.ok) throw new Error(j?.message || 'Failed to accept quote');
-      const refreshed = await fetch(`/public/quote-portal/${encodeURIComponent(token)}`, { cache: 'no-store' });
+      const refreshed = await fetch(`${API_BASE}/public/quote-portal/${encodeURIComponent(token)}`, { cache: 'no-store' });
       const refreshedJson = (await refreshed.json()) as PortalData;
       setData(refreshedJson);
     } catch (e: any) {
