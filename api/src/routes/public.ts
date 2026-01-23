@@ -1420,6 +1420,12 @@ router.get("/quote-portal/:token", async (req, res) => {
     const accountId = quote.clientAccountId || lead?.clientAccountId || null;
     const clientId = lead?.clientId || null;
 
+    const quoteMetaAny: any = (quote.meta as any) || {};
+    const proposalFileId =
+      typeof quoteMetaAny?.proposalFileId === "string" && quoteMetaAny.proposalFileId.trim()
+        ? String(quoteMetaAny.proposalFileId).trim()
+        : null;
+
     const relatedQuotes = await prisma.quote.findMany({
       where: {
         tenantId,
@@ -1557,6 +1563,7 @@ router.get("/quote-portal/:token", async (req, res) => {
         totalGBP: quote.totalGBP,
         leadId: quote.leadId || null,
         clientAccountId: quote.clientAccountId || lead?.clientAccountId || null,
+        proposalFileId,
       },
       quotes: relatedQuotes,
       orders: relatedOrders,

@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { API_BASE } from '@/lib/api';
 
 type PortalData = {
@@ -37,6 +38,7 @@ type PortalData = {
     status: 'DRAFT' | 'SENT' | 'ACCEPTED' | 'REJECTED' | string;
     currency: string;
     totalGBP: any;
+    proposalFileId?: string | null;
   };
   quotes: Array<{
     id: string;
@@ -140,6 +142,11 @@ export default function QuotePortalPage() {
   });
 
   const bookingUrl = useMemo(() => firstUrlFromLinks(data?.tenant?.links), [data?.tenant?.links]);
+  const proposalSrc = useMemo(() => {
+    const fileId = data?.quote?.proposalFileId;
+    if (!fileId) return null;
+    return `${API_BASE}/files/${encodeURIComponent(fileId)}?jwt=${encodeURIComponent(token)}`;
+  }, [data?.quote?.proposalFileId, token]);
 
   useEffect(() => {
     let cancelled = false;
@@ -286,169 +293,195 @@ export default function QuotePortalPage() {
           ) : null}
         </header>
 
-        <div className="mt-8 grid gap-6">
-          <section className="rounded-lg border p-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-sm font-medium">Quote</div>
-                <div className="mt-1 text-lg font-semibold">{data.quote.title}</div>
-                <div className="mt-1 text-xs text-muted-foreground">Status: {data.quote.status}</div>
-              </div>
-              <div className="text-right">
-                <div className="text-sm text-muted-foreground">Total</div>
-                <div className="text-lg font-semibold">£{Number(data.quote.totalGBP || 0).toFixed(2)}</div>
-                {data.quote.status !== 'ACCEPTED' ? (
-                  <Button className="mt-2" onClick={handleAcceptQuote}>
-                    Accept quote
-                  </Button>
-                ) : (
-                  <div className="mt-2 text-xs text-muted-foreground">Accepted</div>
-                )}
-              </div>
-            </div>
-            <div className="mt-4 text-sm text-muted-foreground">
-              Required info: please confirm your details below.
-            </div>
-          </section>
+        <Tabs defaultValue="proposal" className="mt-8">
+          <TabsList>
+            <TabsTrigger value="proposal">Proposal</TabsTrigger>
+            <TabsTrigger value="quotes">Quotes</TabsTrigger>
+            <TabsTrigger value="orders">Orders</TabsTrigger>
+          </TabsList>
 
-          <section className="rounded-lg border p-4">
-            <div className="text-sm font-medium">Your details</div>
-            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div>
-                <div className="text-xs text-muted-foreground">Name</div>
-                <Input value={clientForm.name} onChange={(e) => setClientForm((p) => ({ ...p, name: e.target.value }))} />
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Email</div>
-                <Input value={clientForm.email} onChange={(e) => setClientForm((p) => ({ ...p, email: e.target.value }))} />
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Phone</div>
-                <Input value={clientForm.phone} onChange={(e) => setClientForm((p) => ({ ...p, phone: e.target.value }))} />
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Postcode</div>
-                <Input value={clientForm.postcode} onChange={(e) => setClientForm((p) => ({ ...p, postcode: e.target.value }))} />
-              </div>
-              <div className="md:col-span-2">
-                <div className="text-xs text-muted-foreground">Address</div>
-                <Textarea value={clientForm.address} onChange={(e) => setClientForm((p) => ({ ...p, address: e.target.value }))} />
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">City</div>
-                <Input value={clientForm.city} onChange={(e) => setClientForm((p) => ({ ...p, city: e.target.value }))} />
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Country</div>
-                <Input value={clientForm.country} onChange={(e) => setClientForm((p) => ({ ...p, country: e.target.value }))} />
-              </div>
-            </div>
-            <div className="mt-4 flex items-center justify-between gap-3">
-              <div className="text-xs text-muted-foreground">Source: {data.client.source}</div>
-              <Button onClick={handleSaveClient}>Save details</Button>
-            </div>
-            {error ? <div className="mt-3 text-xs text-destructive">{error}</div> : null}
-          </section>
-
-          {primaryOrder ? (
+          <TabsContent value="proposal" className="mt-6 grid gap-6">
             <section className="rounded-lg border p-4">
-              <div className="text-sm font-medium">Progress & key dates</div>
-              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div className="text-sm"><span className="text-muted-foreground">Start:</span> {formatDate(primaryOrder.startDate)}</div>
-                <div className="text-sm"><span className="text-muted-foreground">Delivery:</span> {formatDate(primaryOrder.deliveryDate)}</div>
-                <div className="text-sm"><span className="text-muted-foreground">Installation start:</span> {formatDate(primaryOrder.installationStartDate)}</div>
-                <div className="text-sm"><span className="text-muted-foreground">Installation end:</span> {formatDate(primaryOrder.installationEndDate)}</div>
-              </div>
-              <div className="mt-4 text-xs text-muted-foreground">Material tracking</div>
-              <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
-                <div className="text-sm">Timber: {primaryOrder.timberNotApplicable ? 'N/A' : `${formatDate(primaryOrder.timberOrderedAt)} → ${formatDate(primaryOrder.timberExpectedAt)} → ${formatDate(primaryOrder.timberReceivedAt)}`}</div>
-                <div className="text-sm">Glass: {primaryOrder.glassNotApplicable ? 'N/A' : `${formatDate(primaryOrder.glassOrderedAt)} → ${formatDate(primaryOrder.glassExpectedAt)} → ${formatDate(primaryOrder.glassReceivedAt)}`}</div>
-                <div className="text-sm">Ironmongery: {primaryOrder.ironmongeryNotApplicable ? 'N/A' : `${formatDate(primaryOrder.ironmongeryOrderedAt)} → ${formatDate(primaryOrder.ironmongeryExpectedAt)} → ${formatDate(primaryOrder.ironmongeryReceivedAt)}`}</div>
-                <div className="text-sm">Paint: {primaryOrder.paintNotApplicable ? 'N/A' : `${formatDate(primaryOrder.paintOrderedAt)} → ${formatDate(primaryOrder.paintExpectedAt)} → ${formatDate(primaryOrder.paintReceivedAt)}`}</div>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-sm font-medium">Quote</div>
+                  <div className="mt-1 text-lg font-semibold">{data.quote.title}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">Status: {data.quote.status}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm text-muted-foreground">Total</div>
+                  <div className="text-lg font-semibold">£{Number(data.quote.totalGBP || 0).toFixed(2)}</div>
+                  {data.quote.status !== 'ACCEPTED' ? (
+                    <Button className="mt-2" onClick={handleAcceptQuote}>
+                      Accept quote
+                    </Button>
+                  ) : (
+                    <div className="mt-2 text-xs text-muted-foreground">Accepted</div>
+                  )}
+                </div>
               </div>
             </section>
-          ) : null}
 
-          <section className="rounded-lg border p-4">
-            <div className="text-sm font-medium">Quotes</div>
-            <div className="mt-3 grid gap-4">
-              {Object.entries(quotesByStatus).map(([status, items]) => (
-                <div key={status}>
-                  <div className="text-xs font-medium text-muted-foreground">{status}</div>
-                  <div className="mt-2 grid gap-2">
-                    {items.map((q) => (
-                      <div key={q.id} className="rounded border px-3 py-2 text-sm">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="font-medium">{q.title || 'Quote'}</div>
-                          <div>£{Number(q.totalGBP || 0).toFixed(2)}</div>
-                        </div>
-                        <div className="mt-1 text-xs text-muted-foreground">Updated {formatDate(q.updatedAt)}</div>
-                      </div>
-                    ))}
+            <section className="rounded-lg border p-4">
+              <div className="text-sm font-medium">Proposal</div>
+              <div className="mt-3">
+                {proposalSrc ? (
+                  <iframe
+                    title="Proposal"
+                    src={proposalSrc}
+                    className="h-[80vh] w-full rounded-md border bg-background"
+                  />
+                ) : (
+                  <div className="text-sm text-muted-foreground">
+                    Proposal not available yet.
                   </div>
-                </div>
-              ))}
-            </div>
-          </section>
+                )}
+              </div>
+            </section>
 
-          <section className="rounded-lg border p-4">
-            <div className="text-sm font-medium">Orders</div>
-            <div className="mt-3 grid gap-4">
-              {Object.keys(ordersByStage).length === 0 ? (
-                <div className="text-sm text-muted-foreground">No orders yet.</div>
-              ) : (
-                Object.entries(ordersByStage).map(([stage, items]) => (
-                  <div key={stage}>
-                    <div className="text-xs font-medium text-muted-foreground">{stage}</div>
+            <section className="rounded-lg border p-4">
+              <div className="text-sm font-medium">Your details</div>
+              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <div className="text-xs text-muted-foreground">Name</div>
+                  <Input value={clientForm.name} onChange={(e) => setClientForm((p) => ({ ...p, name: e.target.value }))} />
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Email</div>
+                  <Input value={clientForm.email} onChange={(e) => setClientForm((p) => ({ ...p, email: e.target.value }))} />
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Phone</div>
+                  <Input value={clientForm.phone} onChange={(e) => setClientForm((p) => ({ ...p, phone: e.target.value }))} />
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Postcode</div>
+                  <Input value={clientForm.postcode} onChange={(e) => setClientForm((p) => ({ ...p, postcode: e.target.value }))} />
+                </div>
+                <div className="md:col-span-2">
+                  <div className="text-xs text-muted-foreground">Address</div>
+                  <Textarea value={clientForm.address} onChange={(e) => setClientForm((p) => ({ ...p, address: e.target.value }))} />
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">City</div>
+                  <Input value={clientForm.city} onChange={(e) => setClientForm((p) => ({ ...p, city: e.target.value }))} />
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Country</div>
+                  <Input value={clientForm.country} onChange={(e) => setClientForm((p) => ({ ...p, country: e.target.value }))} />
+                </div>
+              </div>
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <div className="text-xs text-muted-foreground">Source: {data.client.source}</div>
+                <Button onClick={handleSaveClient}>Save details</Button>
+              </div>
+              {error ? <div className="mt-3 text-xs text-destructive">{error}</div> : null}
+            </section>
+          </TabsContent>
+
+          <TabsContent value="quotes" className="mt-6">
+            <section className="rounded-lg border p-4">
+              <div className="text-sm font-medium">Quotes</div>
+              <div className="mt-3 grid gap-4">
+                {Object.entries(quotesByStatus).map(([status, items]) => (
+                  <div key={status}>
+                    <div className="text-xs font-medium text-muted-foreground">{status}</div>
                     <div className="mt-2 grid gap-2">
-                      {items.map((o) => (
-                        <div key={o.id} className="rounded border px-3 py-2 text-sm">
-                          <div className="font-medium">{o.title || 'Order'}</div>
-                          <div className="mt-1 text-xs text-muted-foreground">Delivery {formatDate(o.deliveryDate)}</div>
+                      {items.map((q) => (
+                        <div key={q.id} className="rounded border px-3 py-2 text-sm">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="font-medium">{q.title || 'Quote'}</div>
+                            <div>£{Number(q.totalGBP || 0).toFixed(2)}</div>
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">Updated {formatDate(q.updatedAt)}</div>
                         </div>
                       ))}
                     </div>
                   </div>
-                ))
-              )}
-            </div>
-          </section>
+                ))}
+              </div>
+            </section>
+          </TabsContent>
 
-          <section className="rounded-lg border p-4">
-            <div className="text-sm font-medium">Invoices</div>
-            <div className="mt-3 grid gap-2">
-              {(data.invoices || []).length === 0 ? (
-                <div className="text-sm text-muted-foreground">No invoices available.</div>
-              ) : (
-                data.invoices.map((inv) => {
-                  const due = inv.dueDate ? new Date(inv.dueDate) : null;
-                  const isOverdue = due ? due.getTime() < Date.now() : false;
-                  return (
-                    <div key={inv.id} className="rounded border px-3 py-2 text-sm">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="font-medium">
-                          {inv.documentNumber || inv.referenceText || inv.externalType}
-                        </div>
-                        <div>
-                          {inv.currency} {Number(inv.total || 0).toFixed(2)}
-                        </div>
-                      </div>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        Issued {formatDate(inv.issueDate)} · Due {formatDate(inv.dueDate)}
-                        {isOverdue ? <span className="text-destructive"> · Overdue</span> : null}
-                        {inv.status ? <span> · {inv.status}</span> : null}
+          <TabsContent value="orders" className="mt-6 grid gap-6">
+            {primaryOrder ? (
+              <section className="rounded-lg border p-4">
+                <div className="text-sm font-medium">Progress & key dates</div>
+                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="text-sm"><span className="text-muted-foreground">Start:</span> {formatDate(primaryOrder.startDate)}</div>
+                  <div className="text-sm"><span className="text-muted-foreground">Delivery:</span> {formatDate(primaryOrder.deliveryDate)}</div>
+                  <div className="text-sm"><span className="text-muted-foreground">Installation start:</span> {formatDate(primaryOrder.installationStartDate)}</div>
+                  <div className="text-sm"><span className="text-muted-foreground">Installation end:</span> {formatDate(primaryOrder.installationEndDate)}</div>
+                </div>
+                <div className="mt-4 text-xs text-muted-foreground">Material tracking</div>
+                <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+                  <div className="text-sm">Timber: {primaryOrder.timberNotApplicable ? 'N/A' : `${formatDate(primaryOrder.timberOrderedAt)} → ${formatDate(primaryOrder.timberExpectedAt)} → ${formatDate(primaryOrder.timberReceivedAt)}`}</div>
+                  <div className="text-sm">Glass: {primaryOrder.glassNotApplicable ? 'N/A' : `${formatDate(primaryOrder.glassOrderedAt)} → ${formatDate(primaryOrder.glassExpectedAt)} → ${formatDate(primaryOrder.glassReceivedAt)}`}</div>
+                  <div className="text-sm">Ironmongery: {primaryOrder.ironmongeryNotApplicable ? 'N/A' : `${formatDate(primaryOrder.ironmongeryOrderedAt)} → ${formatDate(primaryOrder.ironmongeryExpectedAt)} → ${formatDate(primaryOrder.ironmongeryReceivedAt)}`}</div>
+                  <div className="text-sm">Paint: {primaryOrder.paintNotApplicable ? 'N/A' : `${formatDate(primaryOrder.paintOrderedAt)} → ${formatDate(primaryOrder.paintExpectedAt)} → ${formatDate(primaryOrder.paintReceivedAt)}`}</div>
+                </div>
+              </section>
+            ) : null}
+
+            <section className="rounded-lg border p-4">
+              <div className="text-sm font-medium">Orders</div>
+              <div className="mt-3 grid gap-4">
+                {Object.keys(ordersByStage).length === 0 ? (
+                  <div className="text-sm text-muted-foreground">No orders yet.</div>
+                ) : (
+                  Object.entries(ordersByStage).map(([stage, items]) => (
+                    <div key={stage}>
+                      <div className="text-xs font-medium text-muted-foreground">{stage}</div>
+                      <div className="mt-2 grid gap-2">
+                        {items.map((o) => (
+                          <div key={o.id} className="rounded border px-3 py-2 text-sm">
+                            <div className="font-medium">{o.title || 'Order'}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">Delivery {formatDate(o.deliveryDate)}</div>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  );
-                })
-              )}
-            </div>
-          </section>
+                  ))
+                )}
+              </div>
+            </section>
 
-          <footer className="pt-2 text-xs text-muted-foreground">
-            Powered by joineryai.app
-          </footer>
-        </div>
+            <section className="rounded-lg border p-4">
+              <div className="text-sm font-medium">Invoices</div>
+              <div className="mt-3 grid gap-2">
+                {(data.invoices || []).length === 0 ? (
+                  <div className="text-sm text-muted-foreground">No invoices available.</div>
+                ) : (
+                  data.invoices.map((inv) => {
+                    const due = inv.dueDate ? new Date(inv.dueDate) : null;
+                    const isOverdue = due ? due.getTime() < Date.now() : false;
+                    return (
+                      <div key={inv.id} className="rounded border px-3 py-2 text-sm">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="font-medium">
+                            {inv.documentNumber || inv.referenceText || inv.externalType}
+                          </div>
+                          <div>
+                            {inv.currency} {Number(inv.total || 0).toFixed(2)}
+                          </div>
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          Issued {formatDate(inv.issueDate)} · Due {formatDate(inv.dueDate)}
+                          {isOverdue ? <span className="text-destructive"> · Overdue</span> : null}
+                          {inv.status ? <span> · {inv.status}</span> : null}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </section>
+          </TabsContent>
+        </Tabs>
+
+        <footer className="pt-6 text-xs text-muted-foreground">
+          Powered by joineryai.app
+        </footer>
       </div>
     </div>
   );

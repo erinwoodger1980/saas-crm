@@ -197,7 +197,8 @@ export function buildChristchurchProposalHtml(opts: {
   const vatAmount = showVat ? totalExVat * vatRate : 0;
   const grandTotal = totalExVat + vatAmount;
 
-  const parts = chunkLines(quote.lines, 8);
+  // Slightly fewer rows per page to ensure content never collides with the fixed footer.
+  const parts = chunkLines(quote.lines, 7);
   const totalParts = Math.max(1, parts.length);
 
   const defaultGuarantees: Array<{ title: string; description: string; icon: string }> = [
@@ -267,7 +268,8 @@ export function buildChristchurchProposalHtml(opts: {
         width: 210mm;
         height: 297mm;
         box-sizing: border-box;
-        padding: 18mm 16mm;
+        /* Reserve a fixed footer area at the bottom of every page. */
+        padding: 18mm 16mm 42mm 16mm;
         background: #ffffff;
         overflow: hidden;
         position: relative;
@@ -275,11 +277,10 @@ export function buildChristchurchProposalHtml(opts: {
         flex-direction: column;
       }
 
-      .pageBody { flex: 1 1 auto; min-height: 0; }
+      /* Prevent any content from spilling under the footer. */
+      .pageBody { flex: 1 1 auto; min-height: 0; overflow: hidden; }
 
-      .page.hasFooter .pageBody { padding-bottom: 28mm; box-sizing: border-box; }
-
-      .page.page-bleed { padding: 0; }
+      .page.page-bleed { padding: 0 0 42mm 0; }
 
       .header {
         display: flex;
@@ -331,12 +332,12 @@ export function buildChristchurchProposalHtml(opts: {
         border-top: 1px solid #e2e8f0;
         text-align: center;
         background: #ffffff;
+        z-index: 10;
       }
       .footerName { font-size: 11pt; font-weight: 800; margin: 0; color: #0f172a; }
       .footerTagline { margin-top: 1mm; font-size: 9.5pt; color: #475569; }
       .footerContact { margin-top: 2mm; font-size: 9.5pt; color: #334155; line-height: 1.4; }
       .footer .poweredBy { margin-top: 2mm; font-size: 8.8pt; color: #94a3b8; }
-      .page.page-bleed.hasFooter .pageBody { padding-bottom: 32mm; }
       .page.page-bleed .footer { bottom: 10mm; }
 
       /* Overview page (page 2) */
