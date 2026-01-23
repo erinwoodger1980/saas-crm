@@ -918,6 +918,37 @@ function LeadsPageContent() {
 
     const s = decoded.trim();
     if (/^message:/i.test(s)) return s;
+    if (/^ms365:/i.test(s)) return s;
+
+    // New Outlook / Outlook Web often provides a deeplink URL for the message.
+    // Example: https://outlook.office.com/mail/deeplink/read/<graphMessageId>
+    // We'll convert this into a ms365:<graphMessageId> ref for the server to resolve.
+    const outlookUrlMatch = s.match(/^https?:\/\/[^\s]+$/i);
+    if (outlookUrlMatch) {
+      try {
+        const u = new URL(s);
+        const host = (u.hostname || "").toLowerCase();
+        const isOutlookHost =
+          host.endsWith("outlook.office.com") ||
+          host.endsWith("outlook.office365.com") ||
+          host.endsWith("outlook.live.com") ||
+          host.endsWith("office.com") ||
+          host.endsWith("microsoft.com");
+
+        if (isOutlookHost) {
+          const path = u.pathname || "";
+          const m1 = path.match(/\/deeplink\/read\/([^\/\?#]+)/i);
+          const m2 = path.match(/\/(?:inbox|mail)\/id\/([^\/\?#]+)/i);
+          const m3 = path.match(/\/(?:message|read)\/([^\/\?#]+)/i);
+          const candidate = (m1?.[1] || m2?.[1] || m3?.[1] || "").trim();
+          if (candidate && candidate.length >= 10 && !/\s/.test(candidate)) {
+            return `ms365:${candidate}`;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
     return null;
   }
 
@@ -1115,7 +1146,8 @@ function LeadsPageContent() {
 
     toast({
       title: "Nothing to import",
-      description: "No email file was detected in that drag-drop. Try saving the email as a .eml file and dropping it, or use Browse Files.",
+      description:
+        "No email file was detected in that drag-drop. On Windows Outlook, the browser often can’t access the email directly — try dragging the email to your Desktop first (it becomes a .msg file) then drag that .msg into JoineryAI, or use Browse Files / Save As (.msg or .eml).",
       variant: "destructive",
     });
   }

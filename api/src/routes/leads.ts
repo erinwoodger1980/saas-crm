@@ -2893,6 +2893,26 @@ function extractInternetMessageIdFromRef(ref: string): string | null {
   return null;
 }
 
+function extractMs365GraphMessageIdFromRef(ref: string): string | null {
+  const raw = String(ref || "").trim();
+  if (!raw) return null;
+  const decoded = (() => {
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  })().trim();
+
+  // Expected patterns:
+  // - ms365:<graphMessageId>
+  const m = decoded.match(/^ms365:(.+)$/i);
+  if (!m?.[1]) return null;
+  const id = m[1].trim();
+  if (!id || id.length > 2000 || /\s/.test(id)) return null;
+  return id;
+}
+
 async function fetchMs365MessageIdByInternetMessageId(accessToken: string, internetMessageId: string): Promise<string | null> {
   // Escape single quotes for OData
   const escaped = internetMessageId.replace(/'/g, "''");
@@ -3172,8 +3192,10 @@ router.post("/parse-email-ref", async (req, res) => {
 
   try {
     const { ref, provider } = req.body || {};
-    const internetMessageId = extractInternetMessageIdFromRef(String(ref || ""));
-    if (!internetMessageId) return res.status(400).json({ error: "invalid_ref" });
+    const rawRef = String(ref || "");
+    const ms365GraphId = extractMs365GraphMessageIdFromRef(rawRef);
+    const internetMessageId = extractInternetMessageIdFromRef(rawRef);
+    if (!ms365GraphId && !internetMessageId) return res.status(400).json({ error: "invalid_ref" });
 
     // Try MS365 first (Apple Mail often uses Outlook accounts)
     let raw: Buffer | null = null;
@@ -3182,15 +3204,19 @@ router.post("/parse-email-ref", async (req, res) => {
 
     try {
       const { accessToken } = await getMs365TokenForUser(userId);
-      const graphMessageId = await fetchMs365MessageIdByInternetMessageId(accessToken, internetMessageId);
-      if (graphMessageId) {
-        raw = await fetchMs365MessageRaw(accessToken, graphMessageId);
+      if (ms365GraphId) {
+        raw = await fetchMs365MessageRaw(accessToken, ms365GraphId);
+      } else if (internetMessageId) {
+        const graphMessageId = await fetchMs365MessageIdByInternetMessageId(accessToken, internetMessageId);
+        if (graphMessageId) {
+          raw = await fetchMs365MessageRaw(accessToken, graphMessageId);
+        }
       }
     } catch (e) {
       // ignore and try gmail
     }
 
-    if (!raw) {
+    if (!raw && internetMessageId) {
       try {
         const { accessToken } = await getGmailTokenForUser(userId);
         const gmailId = await fetchGmailMessageIdByRfc822MsgId(accessToken, internetMessageId);
