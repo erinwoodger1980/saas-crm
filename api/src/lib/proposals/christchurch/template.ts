@@ -134,34 +134,51 @@ export function buildChristchurchProposalHtml(opts: {
   const fittingsValues = collectLineMetaValues(["fittings", "hardware", "ironmongery"]).slice(0, 4);
   const ventilationValues = collectLineMetaValues(["ventilation", "vents", "trickleVent"]).slice(0, 3);
 
+  // Prefer explicit user-entered specs from quote.meta over AI summaries.
   const timber =
-    (typeof opts.aiSummary?.timber === "string" && opts.aiSummary.timber.trim())
-      ? opts.aiSummary.timber.trim()
-      : (timberValues.length ? timberValues.join(" / ") : fallbackTimber);
+    (typeof specifications?.timber === "string" && String(specifications.timber).trim())
+      ? String(specifications.timber).trim()
+      : ((typeof opts.aiSummary?.timber === "string" && opts.aiSummary.timber.trim())
+          ? opts.aiSummary.timber.trim()
+          : (timberValues.length ? timberValues.join(" / ") : fallbackTimber));
   const finish =
-    (typeof opts.aiSummary?.finish === "string" && opts.aiSummary.finish.trim())
-      ? opts.aiSummary.finish.trim()
-      : (finishValues.length ? finishValues.join(" / ") : fallbackFinish);
+    (typeof specifications?.finish === "string" && String(specifications.finish).trim())
+      ? String(specifications.finish).trim()
+      : ((typeof opts.aiSummary?.finish === "string" && opts.aiSummary.finish.trim())
+          ? opts.aiSummary.finish.trim()
+          : (finishValues.length ? finishValues.join(" / ") : fallbackFinish));
   const glazing =
-    (typeof opts.aiSummary?.glazing === "string" && opts.aiSummary.glazing.trim())
-      ? opts.aiSummary.glazing.trim()
-      : (glazingValues.length ? glazingValues.join(" / ") : fallbackGlazing);
+    (typeof specifications?.glazing === "string" && String(specifications.glazing).trim())
+      ? String(specifications.glazing).trim()
+      : ((typeof opts.aiSummary?.glazing === "string" && opts.aiSummary.glazing.trim())
+          ? opts.aiSummary.glazing.trim()
+          : (glazingValues.length ? glazingValues.join(" / ") : fallbackGlazing));
   const fittings =
-    (typeof opts.aiSummary?.fittings === "string" && opts.aiSummary.fittings.trim())
-      ? opts.aiSummary.fittings.trim()
-      : (fittingsValues.length ? fittingsValues.join(", ") : fallbackFittings);
+    (typeof specifications?.fittings === "string" && String(specifications.fittings).trim())
+      ? String(specifications.fittings).trim()
+      : ((typeof opts.aiSummary?.fittings === "string" && opts.aiSummary.fittings.trim())
+          ? opts.aiSummary.fittings.trim()
+          : (fittingsValues.length ? fittingsValues.join(", ") : fallbackFittings));
   const ventilation =
-    (typeof opts.aiSummary?.ventilation === "string" && opts.aiSummary.ventilation.trim())
-      ? opts.aiSummary.ventilation.trim()
-      : (ventilationValues.length ? ventilationValues.join(" / ") : fallbackVentilation);
+    (typeof specifications?.ventilation === "string" && String(specifications.ventilation).trim())
+      ? String(specifications.ventilation).trim()
+      : ((typeof opts.aiSummary?.ventilation === "string" && opts.aiSummary.ventilation.trim())
+          ? opts.aiSummary.ventilation.trim()
+          : (ventilationValues.length ? ventilationValues.join(" / ") : fallbackVentilation));
+
+  // Prefer explicit user-entered scope from quote.meta over AI scope.
+  const scopeFromMeta = (typeof ((quote.meta as any) || {})?.scopeDescription === "string")
+    ? String(((quote.meta as any) || {})?.scopeDescription).trim()
+    : "";
 
   const scopeHtml =
-    (typeof opts.aiSummary?.scopeHtml === "string" && opts.aiSummary.scopeHtml.trim())
-      ? opts.aiSummary.scopeHtml.trim()
-      : (String(opts.scopeHtml || "").trim() || `<p>${escapeHtml(
-          ((quote.meta as any) || {})?.scopeDescription ||
-            `Supply of bespoke timber joinery manufactured to specification, factory finished, glazed, and supplied with appropriate ironmongery and ventilation.`,
-        )}</p>`);
+    scopeFromMeta
+      ? `<p>${escapeHtml(scopeFromMeta)}</p>`
+      : ((typeof opts.aiSummary?.scopeHtml === "string" && opts.aiSummary.scopeHtml.trim())
+          ? opts.aiSummary.scopeHtml.trim()
+          : (String(opts.scopeHtml || "").trim() || `<p>${escapeHtml(
+              `Supply of bespoke timber joinery manufactured to specification, factory finished, glazed, and supplied with appropriate ironmongery and ventilation.`,
+            )}</p>`));
 
   // For Christchurch we want delivery broken out explicitly (matches the reference PDF).
   const deliveryExVat = safeMoney(quote.deliveryCost);
