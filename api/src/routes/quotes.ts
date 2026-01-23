@@ -205,6 +205,24 @@ function currencySymbol(code: string | undefined): string {
 
 function safeNumber(value: any): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
+  // Prisma Decimal / decimal.js objects
+  if (value && typeof value === "object") {
+    try {
+      const anyVal = value as any;
+      if (typeof anyVal.toNumber === "function") {
+        const n = anyVal.toNumber();
+        return typeof n === "number" && Number.isFinite(n) ? n : null;
+      }
+      if (typeof anyVal.toString === "function") {
+        const s = String(anyVal.toString()).trim();
+        if (!s) return null;
+        const n = Number(s);
+        return Number.isFinite(n) ? n : null;
+      }
+    } catch {
+      // fall through
+    }
+  }
   if (typeof value === "string") {
     const trimmed = value.trim();
     if (!trimmed) return null;
@@ -5708,13 +5726,16 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
         if (isOverridden) {
           skippedCount += 1;
           // Keep existing sell values for overridden lines
-          const existingSellTotal = Number(lineMeta?.sellTotalGBP ?? ln.lineTotalGBP ?? 0);
+          const existingSellTotal =
+            safeNumber(lineMeta?.sellTotalGBP) ??
+            safeNumber((ln as any).lineTotalGBP) ??
+            0;
           totalGBP += existingSellTotal;
           continue;
         }
         // Be resilient: if unitPrice wasn't set (older parses), derive from stored raw totals when available.
-        const parsedQty = Math.max(1, Number(ln.qty || 1));
-        let unitCostBase = Number(ln.unitPrice || 0);
+        const parsedQty = Math.max(1, safeNumber(ln.qty) ?? 1);
+        let unitCostBase = safeNumber((ln as any).unitPrice) ?? 0;
         if (!(unitCostBase > 0)) {
           const raw = (lineMeta?.raw as any) || {};
           const altUnit = pickUnitCost(raw);

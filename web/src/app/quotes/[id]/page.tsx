@@ -1203,6 +1203,29 @@ export default function QuoteBuilderPage() {
     }
   }, [quoteId, quote?.meta, quote?.proposalPdfUrl, mutateQuote]);
 
+  const handlePushToClientPortal = useCallback(async () => {
+    if (!quoteId) return;
+    // Open immediately to preserve user gesture and avoid popup blockers.
+    const popup = window.open("about:blank", "_blank");
+    try {
+      // Always re-render so the portal shows the latest PDF.
+      await apiFetch(`/quotes/${encodeURIComponent(quoteId)}/render-pdf`, { method: "POST" });
+      await mutateQuote();
+      const resp = await apiFetch<{ ok: boolean; portalUrl?: string }>(
+        `/quotes/${encodeURIComponent(quoteId)}/portal-url`,
+        { method: "GET" },
+      );
+      const url = typeof resp?.portalUrl === "string" ? resp.portalUrl : null;
+      if (!url) throw new Error("Portal link unavailable");
+      if (popup) popup.location.href = url;
+      else window.open(url, "_blank");
+      toast({ title: "Portal updated", description: "Proposal PDF refreshed and portal opened." });
+    } catch (err: any) {
+      if (popup) popup.close();
+      toast({ title: "Failed to push to portal", description: err?.message || "Please try again." });
+    }
+  }, [quoteId, mutateQuote, toast]);
+
   const handleSavePdfFromProposalTab = useCallback(async () => {
     // Open immediately to keep the user gesture and avoid popup blockers.
     const popup = window.open("about:blank", "_blank");
@@ -1330,17 +1353,11 @@ export default function QuoteBuilderPage() {
   }, [ensureProposalPdfUrl]);
 
   const handleEmailPdfFromProposalTab = useCallback(async () => {
-    const url = await ensureProposalPdfUrl();
-    if (!url) {
-      toast({
-        title: "No PDF to send",
-        description: "Generate a PDF first",
-        variant: "destructive",
-      });
-      return;
-    }
+    // Ensure the PDF is freshly generated before sending, so the portal link and attachment are current.
+    await apiFetch(`/quotes/${encodeURIComponent(quoteId)}/render-pdf`, { method: "POST" });
+    await mutateQuote();
     await handleEmailToClient();
-  }, [ensureProposalPdfUrl, handleEmailToClient, toast]);
+  }, [quoteId, mutateQuote, handleEmailToClient]);
 
   const handlePrintPdf = useCallback(() => {
     const pdfUrl = (quote?.meta as any)?.proposalPdfUrl ?? quote?.proposalPdfUrl ?? null;
@@ -2860,6 +2877,16 @@ export default function QuoteBuilderPage() {
                       >
                         {isGeneratingPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                         Save PDF
+                      </Button>
+                      <Button
+                        onClick={handlePushToClientPortal}
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        disabled={isGeneratingPdf}
+                      >
+                        <FileText className="h-4 w-4" />
+                        Push to portal
                       </Button>
                       <Button
                         onClick={handlePrintPdfFromProposalTab}
