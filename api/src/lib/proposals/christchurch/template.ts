@@ -261,11 +261,15 @@ export function buildChristchurchProposalHtml(opts: {
         width: 210mm;
         height: 297mm;
         box-sizing: border-box;
-        padding: 18mm 16mm 26mm 16mm;
+        padding: 18mm 16mm;
         background: #ffffff;
         overflow: hidden;
         position: relative;
+        display: flex;
+        flex-direction: column;
       }
+
+      .pageBody { flex: 1 1 auto; min-height: 0; }
 
       .page.page-bleed { padding: 0; }
 
@@ -310,12 +314,13 @@ export function buildChristchurchProposalHtml(opts: {
       .coverFooter { position: absolute; left: 16mm; right: 16mm; bottom: 18mm; text-align: center; font-size: 9.8pt; color: #334155; line-height: 1.55; }
       .poweredByCover { margin-top: 4mm; font-size: 8.8pt; color: #94a3b8; }
 
-      .poweredBy { position: absolute; left: 16mm; right: 16mm; bottom: 6mm; text-align: center; font-size: 8.8pt; color: #94a3b8; }
+      .poweredBy { margin-top: auto; padding-top: 4mm; text-align: center; font-size: 8.8pt; color: #94a3b8; }
+      .page.page-bleed .poweredBy { padding: 0 16mm 10mm 16mm; }
 
       /* Overview page (page 2) */
-      .overviewBleed { width: 210mm; height: 297mm; display: grid; grid-template-columns: 78mm 1fr; }
+      .overviewBleed { width: 210mm; flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 78mm 1fr; }
       .overviewBleed .photo { width: 100%; height: 100%; object-fit: cover; display: block; }
-      .overviewBleed .content { padding: 18mm 16mm 26mm 16mm; box-sizing: border-box; min-width: 0; }
+      .overviewBleed .content { padding: 18mm 16mm; box-sizing: border-box; min-width: 0; }
       .ovTitle { font-size: 18pt; font-weight: 900; color: #1e3a8a; margin: 0 0 8mm 0; }
       .ovGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; align-items: start; }
       .ovSubTitle { font-size: 12.5pt; font-weight: 900; color: #1e3a8a; margin: 0 0 4mm 0; }
@@ -462,41 +467,45 @@ export function buildChristchurchProposalHtml(opts: {
 
   const overviewPage = `
     <div class="page page-bleed">
-      <div class="overviewBleed">
-        <img src="${img.sidebarPhoto}" alt="Project" class="photo" />
-        <div class="content">
-          <h2 class="ovTitle">Project Overview</h2>
+      <div class="pageBody">
+        <div class="overviewBleed">
+          <img src="${img.sidebarPhoto}" alt="Project" class="photo" />
+          <div class="content">
+            <h2 class="ovTitle">Project Overview</h2>
 
-          <div class="ovGrid">
-            <div class="panel ovBlock">
-              <h3>Key Details</h3>
-              <div class="kv">
-                ${kvRow("Project", displayProjectRef)}
-                ${kvRow("Job Number", jobNumber)}
-                ${deliveryAddress ? kvRow("Delivery Address", deliveryAddress) : ""}
-                ${surveyTeam ? kvRow("Survey Team", surveyTeam) : ""}
-                ${kvRow("Date", when)}
+            <div class="ovGrid">
+              <div class="panel ovBlock">
+                <h3>Key Details</h3>
+                <div class="kv highlights">
+                  <ul>
+                    <li><strong>Project:</strong> ${escapeHtml(displayProjectRef || "")}</li>
+                    <li><strong>Job Number:</strong> ${escapeHtml(jobNumber || "")}</li>
+                    ${deliveryAddress ? `<li><strong>Delivery Address:</strong> ${escapeHtml(deliveryAddress)}</li>` : ""}
+                    ${surveyTeam ? `<li><strong>Survey Team:</strong> ${escapeHtml(surveyTeam)}</li>` : ""}
+                    <li><strong>Date:</strong> ${escapeHtml(when || "")}</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div class="panel ovBlock">
+                <h3>Specification Highlights</h3>
+                <div class="kv highlights">
+                  <ul>
+                    <li><strong>Timber:</strong> ${escapeHtml(timber)}</li>
+                    <li><strong>Finish:</strong> ${escapeHtml(finish)}</li>
+                    <li><strong>Glazing:</strong> ${escapeHtml(glazing)}</li>
+                    <li><strong>Hardware/Fittings:</strong> ${escapeHtml(fittings)}</li>
+                    <li><strong>Ventilation:</strong> ${escapeHtml(ventilation)}</li>
+                  </ul>
+                </div>
               </div>
             </div>
 
-            <div class="panel ovBlock">
-              <h3>Specification Highlights</h3>
-              <div class="kv highlights">
-                <ul>
-                  <li><strong>Timber:</strong> ${escapeHtml(timber)}</li>
-                  <li><strong>Finish:</strong> ${escapeHtml(finish)}</li>
-                  <li><strong>Glazing:</strong> ${escapeHtml(glazing)}</li>
-                  <li><strong>Hardware/Fittings:</strong> ${escapeHtml(fittings)}</li>
-                  <li><strong>Ventilation:</strong> ${escapeHtml(ventilation)}</li>
-                </ul>
-              </div>
+            <div class="ovScope">
+              <h3 class="ovSubTitle">Project Scope</h3>
+              <div class="para">${scopeHtml}</div>
+              <div class="note" style="margin-top: 4mm;"><strong>Compliance Note:</strong> ${escapeHtml(compliance)}</div>
             </div>
-          </div>
-
-          <div class="ovScope">
-            <h3 class="ovSubTitle">Project Scope</h3>
-            <div class="para">${scopeHtml}</div>
-            <div class="note" style="margin-top: 4mm;"><strong>Compliance Note:</strong> ${escapeHtml(compliance)}</div>
           </div>
         </div>
       </div>
@@ -507,6 +516,38 @@ export function buildChristchurchProposalHtml(opts: {
   const quotationPages = parts.map((chunk, partIndex) => {
     return `
       <div class="page">
+        <div class="pageBody">
+          <div class="header">
+            <div class="brand">
+              <div>
+                <h1>${escapeHtml(brand)}</h1>
+                <div class="tagline">${escapeHtml(tagline)}</div>
+              </div>
+            </div>
+            <div class="contact">
+              ${phone ? `Telephone: ${escapeHtml(phone)}<br/>` : ""}
+              ${email ? `Email: ${escapeHtml(email)}<br/>` : ""}
+              ${address ? `Address: ${escapeHtml(address)}` : ""}
+            </div>
+          </div>
+
+          ${renderQuotationPart({
+            partIndex,
+            totalParts,
+            lines: chunk,
+            includeIntro: partIndex === 0,
+            currencySymbol: sym,
+          })}
+        </div>
+
+        ${poweredByHtml}
+      </div>
+    `;
+  });
+
+  const totalsPage = `
+    <div class="page">
+      <div class="pageBody">
         <div class="header">
           <div class="brand">
             <div>
@@ -521,46 +562,18 @@ export function buildChristchurchProposalHtml(opts: {
           </div>
         </div>
 
-        ${renderQuotationPart({
-          partIndex,
-          totalParts,
-          lines: chunk,
-          includeIntro: partIndex === 0,
+        <div class="h2" style="margin-top: 6mm;">Total Project Investment</div>
+        <div class="para" style="text-align:center;">Summary of the proposed investment for the project.</div>
+        ${renderTotals({
           currencySymbol: sym,
+          subtotalExVat,
+          deliveryExVat,
+          vatAmount,
+          vatRate,
+          grandTotal,
+          showVat,
         })}
-
-        ${poweredByHtml}
       </div>
-    `;
-  });
-
-  const totalsPage = `
-    <div class="page">
-      <div class="header">
-        <div class="brand">
-          <div>
-            <h1>${escapeHtml(brand)}</h1>
-            <div class="tagline">${escapeHtml(tagline)}</div>
-          </div>
-        </div>
-        <div class="contact">
-          ${phone ? `Telephone: ${escapeHtml(phone)}<br/>` : ""}
-          ${email ? `Email: ${escapeHtml(email)}<br/>` : ""}
-          ${address ? `Address: ${escapeHtml(address)}` : ""}
-        </div>
-      </div>
-
-      <div class="h2" style="margin-top: 6mm;">Total Project Investment</div>
-      <div class="para" style="text-align:center;">Summary of the proposed investment for the project.</div>
-      ${renderTotals({
-        currencySymbol: sym,
-        subtotalExVat,
-        deliveryExVat,
-        vatAmount,
-        vatRate,
-        grandTotal,
-        showVat,
-      })}
 
       ${poweredByHtml}
     </div>
@@ -568,86 +581,88 @@ export function buildChristchurchProposalHtml(opts: {
 
   const guaranteeAndTestimonialsPage = `
     <div class="page">
-      <div class="header">
-        <div class="brand">
-          <div>
-            <h1>${escapeHtml(brand)}</h1>
-            <div class="tagline">${escapeHtml(tagline)}</div>
+      <div class="pageBody">
+        <div class="header">
+          <div class="brand">
+            <div>
+              <h1>${escapeHtml(brand)}</h1>
+              <div class="tagline">${escapeHtml(tagline)}</div>
+            </div>
+          </div>
+          <div class="contact">
+            ${phone ? `Telephone: ${escapeHtml(phone)}<br/>` : ""}
+            ${email ? `Email: ${escapeHtml(email)}<br/>` : ""}
+            ${address ? `Address: ${escapeHtml(address)}` : ""}
           </div>
         </div>
-        <div class="contact">
-          ${phone ? `Telephone: ${escapeHtml(phone)}<br/>` : ""}
-          ${email ? `Email: ${escapeHtml(email)}<br/>` : ""}
-          ${address ? `Address: ${escapeHtml(address)}` : ""}
+
+        <div class="h2">${escapeHtml(brand)} Triple Guarantee</div>
+        <div class="para">
+          When you choose ${escapeHtml(brand)} for your timber windows and doors, you receive more than exceptional craftsmanship. You gain complete peace of mind.
+          Every order is backed by our comprehensive Triple Guarantee, ensuring a seamless and reliable experience from start to finish:
         </div>
-      </div>
 
-      <div class="h2">${escapeHtml(brand)} Triple Guarantee</div>
-      <div class="para">
-        When you choose ${escapeHtml(brand)} for your timber windows and doors, you receive more than exceptional craftsmanship. You gain complete peace of mind.
-        Every order is backed by our comprehensive Triple Guarantee, ensuring a seamless and reliable experience from start to finish:
-      </div>
+        <div class="triple">
+          <div class="tripleGrid">
+            ${guaranteeItems
+              .map(
+                (g) => `
+                <div class="card">
+                  <div class="icon">${escapeHtml(g.icon || "✓")}</div>
+                  <h4>${escapeHtml(g.title)}</h4>
+                  <p>${escapeHtml(g.description)}</p>
+                </div>
+              `,
+              )
+              .join("")}
+          </div>
+        </div>
 
-      <div class="triple">
-        <div class="tripleGrid">
-          ${guaranteeItems
-            .map(
-              (g) => `
-              <div class="card">
-                <div class="icon">${escapeHtml(g.icon || "✓")}</div>
-                <h4>${escapeHtml(g.title)}</h4>
-                <p>${escapeHtml(g.description)}</p>
+        <div class="para" style="margin-top:4mm; text-align:center;">
+          This Triple Guarantee collectively ensures your project is delivered on time, within budget, and built to the highest standards of quality and compliance.
+        </div>
+
+        <div class="warranty">
+          <div class="h2" style="font-size: 12.5pt;">Comprehensive Warranty Coverage</div>
+          <div class="para" style="text-align:center;">Our commitment to quality extends far beyond delivery, with robust warranties designed to protect your investment for years to come:</div>
+          <div class="wGrid">
+            ${warrantyItems
+              .map(
+                (w) => `
+                <div class="wItem"><strong>${escapeHtml(w.years)}</strong> ${escapeHtml(w.label)}</div>
+              `,
+              )
+              .join("")}
+          </div>
+          <div class="smallNote">Conditions apply. Full warranty details are available upon request.</div>
+        </div>
+
+        <div style="margin-top: 8mm;">
+          <div class="h2" style="font-size: 12.5pt;">About ${escapeHtml(brand)} & Client Testimonials</div>
+
+          <div class="aboutGrid">
+            <div class="para">${escapeHtml(
+              String(
+                quoteDefaults?.overview ||
+                  `${brand} is a specialist in bespoke timber windows and doors, renowned for our commitment to traditional craftsmanship, innovative design, and exceptional customer service.`,
+              ),
+            )}</div>
+
+            <div>
+              <div class="quote">
+                <p>“I have been using Wealden Joinery since we started in 2007. The quality has always been high and the joinery has always been on time – even on the tightest deadlines.”</p>
+                <div class="by">– Tony Palmer, Harlequin Building Company, East Sussex</div>
               </div>
-            `,
-            )
-            .join("")}
-        </div>
-      </div>
 
-      <div class="para" style="margin-top:4mm; text-align:center;">
-        This Triple Guarantee collectively ensures your project is delivered on time, within budget, and built to the highest standards of quality and compliance.
-      </div>
+              <div class="quote">
+                <p>“I have already recommended Wealden Joinery to other people.”</p>
+                <div class="by">– Amy Whapham, Burwash</div>
+              </div>
 
-      <div class="warranty">
-        <div class="h2" style="font-size: 12.5pt;">Comprehensive Warranty Coverage</div>
-        <div class="para" style="text-align:center;">Our commitment to quality extends far beyond delivery, with robust warranties designed to protect your investment for years to come:</div>
-        <div class="wGrid">
-          ${warrantyItems
-            .map(
-              (w) => `
-              <div class="wItem"><strong>${escapeHtml(w.years)}</strong> ${escapeHtml(w.label)}</div>
-            `,
-            )
-            .join("")}
-        </div>
-        <div class="smallNote">Conditions apply. Full warranty details are available upon request.</div>
-      </div>
-
-      <div style="margin-top: 8mm;">
-        <div class="h2" style="font-size: 12.5pt;">About ${escapeHtml(brand)} & Client Testimonials</div>
-
-        <div class="aboutGrid">
-          <div class="para">${escapeHtml(
-            String(
-              quoteDefaults?.overview ||
-                `${brand} is a specialist in bespoke timber windows and doors, renowned for our commitment to traditional craftsmanship, innovative design, and exceptional customer service.`,
-            ),
-          )}</div>
-
-          <div>
-            <div class="quote">
-              <p>“I have been using Wealden Joinery since we started in 2007. The quality has always been high and the joinery has always been on time – even on the tightest deadlines.”</p>
-              <div class="by">– Tony Palmer, Harlequin Building Company, East Sussex</div>
-            </div>
-
-            <div class="quote">
-              <p>“I have already recommended Wealden Joinery to other people.”</p>
-              <div class="by">– Amy Whapham, Burwash</div>
-            </div>
-
-            <div class="quote" style="margin-bottom:0;">
-              <p>“We have been using Wealden Joinery since 1995. They have worked on most of the estate properties in Sussex and our London residence… the work has been carried out very well, on time and on budget. We will continue to use Wealden Joinery and would recommend them without hesitation.”</p>
-              <div class="by">– Michael Bates, Estate Manager, Mayfield</div>
+              <div class="quote" style="margin-bottom:0;">
+                <p>“We have been using Wealden Joinery since 1995. They have worked on most of the estate properties in Sussex and our London residence… the work has been carried out very well, on time and on budget. We will continue to use Wealden Joinery and would recommend them without hesitation.”</p>
+                <div class="by">– Michael Bates, Estate Manager, Mayfield</div>
+              </div>
             </div>
           </div>
         </div>
@@ -659,73 +674,75 @@ export function buildChristchurchProposalHtml(opts: {
 
   const excellencePage = `
     <div class="page">
-      <div class="header">
-        <div class="brand">
-          <div>
-            <h1>${escapeHtml(brand)}</h1>
-            <div class="tagline">${escapeHtml(tagline)}</div>
-          </div>
-        </div>
-        <div class="contact">
-          ${phone ? `Telephone: ${escapeHtml(phone)}<br/>` : ""}
-          ${email ? `Email: ${escapeHtml(email)}<br/>` : ""}
-          ${address ? `Address: ${escapeHtml(address)}` : ""}
-        </div>
-      </div>
-
-      <div class="h2">Unparalleled Quality & Certified Excellence</div>
-      <div class="para">
-        Wealden Joinery proudly uses Accoya wood, renowned for its superior durability, stability, and sustainability.
-        This commitment to high-performance timber joinery is matched by rigorous certifications and industry accreditations, ensuring every product meets the highest standards of performance, security, and environmental responsibility.
-      </div>
-
-      <div class="accoya">
-        <div class="accoyaHead">
-          <img src="${img.badge1}" alt="Accoya" />
-        </div>
-
-        <div class="advGrid">
-          <div class="adv">
-            <h4>Unrivaled Durability & Stability</h4>
-            <p>Accoya’s superior resistance to rot, insects, and dimensional changes ensures decades of beautiful performance, even in challenging environments.</p>
-          </div>
-          <div class="adv">
-            <h4>Long-Term Value & Low Maintenance</h4>
-            <p>A smart investment offering significant long-term value with minimal upkeep, guaranteeing lasting beauty and performance.</p>
-          </div>
-          <div class="adv">
-            <h4>Sustainability & Positive Environmental Impact</h4>
-            <p>Responsibly sourced and boasting an extended lifespan, Accoya is a truly sustainable choice.</p>
-          </div>
-        </div>
-
-        <div class="certGrid">
-          <div class="cert">
-            <img src="${img.fensa}" alt="FENSA" />
+      <div class="pageBody">
+        <div class="header">
+          <div class="brand">
             <div>
-              <h4>FENSA Certified</h4>
-              <p>Ensuring compliance with all building regulations for replacement windows and doors, focusing on energy efficiency and structural integrity.</p>
+              <h1>${escapeHtml(brand)}</h1>
+              <div class="tagline">${escapeHtml(tagline)}</div>
             </div>
           </div>
-          <div class="cert">
-            <img src="${img.pas24}" alt="PAS 24" />
-            <div>
-              <h4>PAS 24 Security Compliance</h4>
-              <p>Meeting police-preferred standards for enhanced security performance, providing robust protection for your property.</p>
+          <div class="contact">
+            ${phone ? `Telephone: ${escapeHtml(phone)}<br/>` : ""}
+            ${email ? `Email: ${escapeHtml(email)}<br/>` : ""}
+            ${address ? `Address: ${escapeHtml(address)}` : ""}
+          </div>
+        </div>
+
+        <div class="h2">Unparalleled Quality & Certified Excellence</div>
+        <div class="para">
+          Wealden Joinery proudly uses Accoya wood, renowned for its superior durability, stability, and sustainability.
+          This commitment to high-performance timber joinery is matched by rigorous certifications and industry accreditations, ensuring every product meets the highest standards of performance, security, and environmental responsibility.
+        </div>
+
+        <div class="accoya">
+          <div class="accoyaHead">
+            <img src="${img.badge1}" alt="Accoya" />
+          </div>
+
+          <div class="advGrid">
+            <div class="adv">
+              <h4>Unrivaled Durability & Stability</h4>
+              <p>Accoya’s superior resistance to rot, insects, and dimensional changes ensures decades of beautiful performance, even in challenging environments.</p>
+            </div>
+            <div class="adv">
+              <h4>Long-Term Value & Low Maintenance</h4>
+              <p>A smart investment offering significant long-term value with minimal upkeep, guaranteeing lasting beauty and performance.</p>
+            </div>
+            <div class="adv">
+              <h4>Sustainability & Positive Environmental Impact</h4>
+              <p>Responsibly sourced and boasting an extended lifespan, Accoya is a truly sustainable choice.</p>
             </div>
           </div>
-          <div class="cert">
-            <img src="${img.fsc}" alt="FSC" />
-            <div>
-              <h4>FSC Chain of Custody</h4>
-              <p>Verification of sustainable timber sourcing, demonstrating our commitment to environmental responsibility and ethical practices.</p>
+
+          <div class="certGrid">
+            <div class="cert">
+              <img src="${img.fensa}" alt="FENSA" />
+              <div>
+                <h4>FENSA Certified</h4>
+                <p>Ensuring compliance with all building regulations for replacement windows and doors, focusing on energy efficiency and structural integrity.</p>
+              </div>
             </div>
-          </div>
-          <div class="cert">
-            <img src="${img.ggf}" alt="GGF" />
-            <div>
-              <h4>Glass & Glazing Federation (GGF)</h4>
-              <p>Adherence to industry best practices and professional standards for glazing, guaranteeing superior product quality and installation.</p>
+            <div class="cert">
+              <img src="${img.pas24}" alt="PAS 24" />
+              <div>
+                <h4>PAS 24 Security Compliance</h4>
+                <p>Meeting police-preferred standards for enhanced security performance, providing robust protection for your property.</p>
+              </div>
+            </div>
+            <div class="cert">
+              <img src="${img.fsc}" alt="FSC" />
+              <div>
+                <h4>FSC Chain of Custody</h4>
+                <p>Verification of sustainable timber sourcing, demonstrating our commitment to environmental responsibility and ethical practices.</p>
+              </div>
+            </div>
+            <div class="cert">
+              <img src="${img.ggf}" alt="GGF" />
+              <div>
+                <h4>Glass & Glazing Federation (GGF)</h4>
+                <p>Adherence to industry best practices and professional standards for glazing, guaranteeing superior product quality and installation.</p>
+              </div>
             </div>
           </div>
         </div>
@@ -737,46 +754,48 @@ export function buildChristchurchProposalHtml(opts: {
 
   const termsAndContactPage = `
     <div class="page">
-      <div class="header">
-        <div class="brand">
-          <div>
-            <h1>${escapeHtml(brand)}</h1>
-            <div class="tagline">${escapeHtml(tagline)}</div>
+      <div class="pageBody">
+        <div class="header">
+          <div class="brand">
+            <div>
+              <h1>${escapeHtml(brand)}</h1>
+              <div class="tagline">${escapeHtml(tagline)}</div>
+            </div>
+          </div>
+          <div class="contact">
+            ${phone ? `Telephone: ${escapeHtml(phone)}<br/>` : ""}
+            ${email ? `Email: ${escapeHtml(email)}<br/>` : ""}
+            ${address ? `Address: ${escapeHtml(address)}` : ""}
           </div>
         </div>
-        <div class="contact">
-          ${phone ? `Telephone: ${escapeHtml(phone)}<br/>` : ""}
-          ${email ? `Email: ${escapeHtml(email)}<br/>` : ""}
-          ${address ? `Address: ${escapeHtml(address)}` : ""}
+
+        <div class="h2">Terms & Conditions</div>
+
+        <div class="termsGrid">
+          ${termCard(1, "Quotation Validity", `This comprehensive quotation remains valid for ${validDays} days from ${escapeHtml(when)}. This ensures you have adequate time to review the proposal, while protecting against material cost fluctuations in the current market environment.`)}
+          ${termCard(2, "Payment Structure", `A 50% deposit is required with confirmed order + drawings. The balance is due before delivery.`)}
+          ${termCard(3, "Delivery Location", `Delivery will be made to ${escapeHtml(pickPropertyName(projectName, leadCustom) || projectName)} at a cost of ${sym}${formatMoney(deliveryExVat)} + VAT.`)}
+          ${termCard(4, "Delivery Schedule", `Delivery will be a single batch delivery for all items ordered.`)}
+          ${termCard(5, "Installation Requirements", `Delivery and installation are contingent upon clear vehicular access to the property and adequate working space around window openings. Site conditions will be confirmed during our pre-installation survey.`)}
+          ${termCard(6, "Standard Conditions", `All work is undertaken according to ${escapeHtml(brand)}’s standard terms and conditions of sale. Copies are available upon request and will be provided with your order confirmation documentation.`)}
         </div>
-      </div>
 
-      <div class="h2">Terms & Conditions</div>
-
-      <div class="termsGrid">
-        ${termCard(1, "Quotation Validity", `This comprehensive quotation remains valid for ${validDays} days from ${escapeHtml(when)}. This ensures you have adequate time to review the proposal, while protecting against material cost fluctuations in the current market environment.`)}
-        ${termCard(2, "Payment Structure", `A 50% deposit is required with confirmed order + drawings. The balance is due before delivery.`)}
-        ${termCard(3, "Delivery Location", `Delivery will be made to ${escapeHtml(pickPropertyName(projectName, leadCustom) || projectName)} at a cost of ${sym}${formatMoney(deliveryExVat)} + VAT.`)}
-        ${termCard(4, "Delivery Schedule", `Delivery will be a single batch delivery for all items ordered.`)}
-        ${termCard(5, "Installation Requirements", `Delivery and installation are contingent upon clear vehicular access to the property and adequate working space around window openings. Site conditions will be confirmed during our pre-installation survey.`)}
-        ${termCard(6, "Standard Conditions", `All work is undertaken according to ${escapeHtml(brand)}’s standard terms and conditions of sale. Copies are available upon request and will be provided with your order confirmation documentation.`)}
-      </div>
-
-      <div style="margin-top: 8mm;">
-        <div class="h2" style="font-size: 12.5pt;">Contact Information</div>
-        <div class="contactGrid">
-          <div class="box">
-            <h4>General Inquiries</h4>
-            <p>${escapeHtml(brand)}<br/>
-              ${escapeHtml(address || "")}${address ? "<br/>" : ""}
-              ${phone ? `Phone: ${escapeHtml(phone)}<br/>` : ""}
-              ${email ? `Email: ${escapeHtml(email)}` : ""}
-            </p>
-          </div>
-          <div class="box">
-            <h4>Business Hours</h4>
-            <p>Monday – Friday: 9:00 AM – 5:00 PM<br/>
-               Saturday – Sunday: Closed</p>
+        <div style="margin-top: 8mm;">
+          <div class="h2" style="font-size: 12.5pt;">Contact Information</div>
+          <div class="contactGrid">
+            <div class="box">
+              <h4>General Inquiries</h4>
+              <p>${escapeHtml(brand)}<br/>
+                ${escapeHtml(address || "")}${address ? "<br/>" : ""}
+                ${phone ? `Phone: ${escapeHtml(phone)}<br/>` : ""}
+                ${email ? `Email: ${escapeHtml(email)}` : ""}
+              </p>
+            </div>
+            <div class="box">
+              <h4>Business Hours</h4>
+              <p>Monday – Friday: 9:00 AM – 5:00 PM<br/>
+                 Saturday – Sunday: Closed</p>
+            </div>
           </div>
         </div>
       </div>
