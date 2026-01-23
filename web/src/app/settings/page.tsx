@@ -496,7 +496,7 @@ export default function SettingsPage() {
     }
   }
 
-  async function saveProfile() {
+  async function saveProfile(opts?: { silent?: boolean }) {
     if (!user) return;
     setSavingProfile(true);
     try {
@@ -516,13 +516,76 @@ export default function SettingsPage() {
           // Not fatal — show a toast but keep profile updated
           toast({ title: "Profile updated (owner name not saved)", description: String((err as any)?.message || "") });
         }
-      toast({ title: "Profile updated" });
+      if (!opts?.silent) {
+        toast({ title: "Profile updated" });
+      }
     } catch (e: any) {
       toast({ title: "Couldn’t update profile", description: e?.message, variant: "destructive" });
     } finally {
       setSavingProfile(false);
     }
   }
+
+  const businessAutosaveLastRef = useRef<string>("");
+  const [businessAutosaving, setBusinessAutosaving] = useState(false);
+
+  const buildBusinessSnapshot = useCallback((settings: Settings) => {
+    return JSON.stringify({
+      brandName: settings.brandName ?? "",
+      website: settings.website ?? "",
+      phone: settings.phone ?? "",
+      logoUrl: settings.logoUrl ?? "",
+      reviewScore: settings.reviewScore ?? null,
+      reviewCount: settings.reviewCount ?? null,
+      reviewSourceLabel: settings.reviewSourceLabel ?? "",
+      serviceArea: settings.serviceArea ?? "",
+      quoteDefaults: settings.quoteDefaults ?? {},
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!s) return;
+    // Initialize to avoid autosaving immediately on first blur.
+    if (!businessAutosaveLastRef.current) {
+      businessAutosaveLastRef.current = buildBusinessSnapshot(s);
+    }
+  }, [s, buildBusinessSnapshot]);
+
+  const saveBusinessSettings = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!s) return;
+      const snapshot = buildBusinessSnapshot(s);
+      if (snapshot === businessAutosaveLastRef.current) return;
+      if (businessAutosaving) return;
+
+      setBusinessAutosaving(true);
+      try {
+        const payload: any = {
+          brandName: s.brandName,
+          website: s.website,
+          phone: s.phone,
+          logoUrl: s.logoUrl,
+          reviewScore: s.reviewScore,
+          reviewCount: s.reviewCount,
+          reviewSourceLabel: s.reviewSourceLabel,
+          serviceArea: s.serviceArea,
+          quoteDefaults: s.quoteDefaults,
+        };
+
+        const updated = await apiFetch<Settings>("/tenant/settings", { method: "PATCH", json: payload });
+        setS(updated);
+        businessAutosaveLastRef.current = buildBusinessSnapshot(updated);
+        if (!opts?.silent) {
+          toast({ title: "Settings saved" });
+        }
+      } catch (e: any) {
+        toast({ title: "Failed to save", description: e?.message || "", variant: "destructive" });
+      } finally {
+        setBusinessAutosaving(false);
+      }
+    },
+    [s, buildBusinessSnapshot, businessAutosaving, toast],
+  );
 
   // keep profile fields synced if user changes externally
   useEffect(() => {
@@ -611,6 +674,7 @@ export default function SettingsPage() {
         reviewCount: s.reviewCount,
         reviewSourceLabel: s.reviewSourceLabel,
         serviceArea: s.serviceArea,
+        quoteDefaults: s.quoteDefaults,
         inbox,
         questionnaire: serializeQuestionnaire(qFields),
         taskPlaybook: playbook,
@@ -1354,6 +1418,7 @@ export default function SettingsPage() {
             className="w-full rounded-2xl border bg-white px-4 py-2 text-sm"
             value={s.website ?? ""}
             onChange={(e) => setS((prev) => (prev ? { ...prev, website: e.target.value } : prev))}
+            onBlur={() => void saveBusinessSettings({ silent: true })}
             placeholder="https://yourcompany.com"
           />
           <Button 
@@ -1432,6 +1497,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
           value={s.brandName ?? ""}
           onChange={(e) => setS((prev) => (prev ? { ...prev, brandName: e.target.value } : prev))}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
         />
       </Field>
       <Field label="Website">
@@ -1439,6 +1505,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
           value={s.website ?? ""}
           onChange={(e) => setS((prev) => (prev ? { ...prev, website: e.target.value } : prev))}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
           placeholder="https://yourcompany.com"
         />
       </Field>
@@ -1447,6 +1514,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
           value={s.phone ?? ""}
           onChange={(e) => setS((prev) => (prev ? { ...prev, phone: e.target.value } : prev))}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
         />
       </Field>
       <Field label="Quote Email" required hint="Contact email shown on proposals">
@@ -1454,6 +1522,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
           value={s.quoteDefaults?.email ?? ""}
           onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, email: e.target.value } } : prev)}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
           placeholder="quotes@company.com"
         />
       </Field>
@@ -1462,6 +1531,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
           value={profileFirstName}
           onChange={(e) => setProfileFirstName(e.target.value)}
+          onBlur={() => void saveProfile({ silent: true })}
         />
       </Field>
       <Field label="Owner last name">
@@ -1469,6 +1539,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
           value={profileLastName}
           onChange={(e) => setProfileLastName(e.target.value)}
+          onBlur={() => void saveProfile({ silent: true })}
         />
       </Field>
       <Field label="Logo URL" hint="Auto-populated from website import or upload your own">
@@ -1477,6 +1548,7 @@ export default function SettingsPage() {
             className="flex-1 rounded-2xl border bg-white/95 px-4 py-2 text-sm"
             value={s.logoUrl ?? ""}
             onChange={(e) => setS((prev) => (prev ? { ...prev, logoUrl: e.target.value } : prev))}
+            onBlur={() => void saveBusinessSettings({ silent: true })}
             placeholder="https://example.com/logo.png"
           />
           <label className="inline-flex items-center gap-2 rounded-2xl border bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 cursor-pointer">
@@ -1507,6 +1579,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
           value={s.quoteDefaults?.tagline ?? ""}
           onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, tagline: e.target.value } } : prev)}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
           placeholder="Timber Joinery Specialists"
         />
       </Field>
@@ -1515,6 +1588,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm min-h-[60px]"
           value={s.quoteDefaults?.address ?? ""}
           onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, address: e.target.value } } : prev)}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
           placeholder="123 Business Street, City, Postcode"
         />
       </Field>
@@ -1523,6 +1597,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
           value={s.quoteDefaults?.businessHours ?? ""}
           onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, businessHours: e.target.value } } : prev)}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
           placeholder="Monday-Friday 9am-5pm"
         />
       </Field>
@@ -1531,6 +1606,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm min-h-[100px]"
           value={s.quoteDefaults?.overview ?? ""}
           onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, overview: e.target.value } } : prev)}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
           placeholder="We are a specialist in bespoke timber joinery..."
         />
       </Field>
@@ -1546,6 +1622,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
           value={s.reviewScore == null ? "" : s.reviewScore}
           onChange={(e) => setS((prev) => prev ? { ...prev, reviewScore: e.target.value === "" ? null : Number(e.target.value) } : prev)}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
           placeholder="4.9"
         />
       </Field>
@@ -1555,6 +1632,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
           value={s.reviewCount == null ? "" : s.reviewCount}
           onChange={(e) => setS((prev) => prev ? { ...prev, reviewCount: e.target.value === "" ? null : Number(e.target.value) } : prev)}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
           placeholder="182"
         />
       </Field>
@@ -1563,6 +1641,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
           value={s.reviewSourceLabel ?? ""}
           onChange={(e) => setS((prev) => prev ? { ...prev, reviewSourceLabel: e.target.value } : prev)}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
           placeholder="Google Reviews"
         />
       </Field>
@@ -1571,6 +1650,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
           value={s.serviceArea ?? ""}
           onChange={(e) => setS((prev) => prev ? { ...prev, serviceArea: e.target.value } : prev)}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
           placeholder="London • Surrey • Kent"
         />
       </Field>
@@ -1584,6 +1664,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
           value={s.quoteDefaults?.currency ?? "GBP"}
           onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, currency: e.target.value } } : prev)}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
           placeholder="GBP"
         />
       </Field>
@@ -1594,6 +1675,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
           value={s.quoteDefaults?.defaultMargin ?? 0.25}
           onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, defaultMargin: Number(e.target.value) } } : prev)}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
         />
       </Field>
       <Field label="VAT Rate %" hint="e.g., 0.20 for 20%">
@@ -1603,6 +1685,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
           value={s.quoteDefaults?.vatRate ?? 0.2}
           onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, vatRate: Number(e.target.value) } } : prev)}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
         />
       </Field>
       <Field label="Valid for (days)">
@@ -1611,6 +1694,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
           value={s.quoteDefaults?.validDays ?? 30}
           onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, validDays: Number(e.target.value) } } : prev)}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
         />
       </Field>
       <Field label="Delivery Info">
@@ -1618,6 +1702,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
           value={s.quoteDefaults?.delivery ?? ""}
           onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, delivery: e.target.value } } : prev)}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
           placeholder="6-8 weeks"
         />
       </Field>
@@ -1626,6 +1711,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
           value={s.quoteDefaults?.installation ?? ""}
           onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, installation: e.target.value } } : prev)}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
           placeholder="Professional installation available"
         />
       </Field>
@@ -1636,6 +1722,7 @@ export default function SettingsPage() {
           type="checkbox"
           checked={s.quoteDefaults?.showVat !== false}
           onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, showVat: e.target.checked } } : prev)}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
         />
         Show VAT on quotes
       </label>
@@ -1644,6 +1731,7 @@ export default function SettingsPage() {
           type="checkbox"
           checked={s.quoteDefaults?.showLineItems !== false}
           onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, showLineItems: e.target.checked } } : prev)}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
         />
         Show individual line item prices
       </label>
@@ -1657,6 +1745,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
           value={s.quoteDefaults?.defaultTimber ?? ""}
           onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, defaultTimber: e.target.value } } : prev)}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
           placeholder="Engineered timber"
         />
       </Field>
@@ -1665,6 +1754,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
           value={s.quoteDefaults?.defaultFinish ?? ""}
           onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, defaultFinish: e.target.value } } : prev)}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
           placeholder="Factory finished"
         />
       </Field>
@@ -1673,6 +1763,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
           value={s.quoteDefaults?.defaultGlazing ?? ""}
           onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, defaultGlazing: e.target.value } } : prev)}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
           placeholder="Low-energy double glazing"
         />
       </Field>
@@ -1681,6 +1772,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
           value={s.quoteDefaults?.defaultFittings ?? ""}
           onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, defaultFittings: e.target.value } } : prev)}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
           placeholder="Premium hardware"
         />
       </Field>
@@ -1689,6 +1781,7 @@ export default function SettingsPage() {
           className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
           value={s.quoteDefaults?.compliance ?? ""}
           onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, compliance: e.target.value } } : prev)}
+          onBlur={() => void saveBusinessSettings({ silent: true })}
           placeholder="Industry standards"
         />
       </Field>
@@ -1701,6 +1794,7 @@ export default function SettingsPage() {
         className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm min-h-[120px]"
         value={s.quoteDefaults?.terms ?? ""}
         onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, terms: e.target.value } } : prev)}
+        onBlur={() => void saveBusinessSettings({ silent: true })}
         placeholder="Prices are valid for 30 days and subject to site survey. Payment terms: 50% upfront, 50% on delivery..."
       />
     </Field>
@@ -1712,6 +1806,7 @@ export default function SettingsPage() {
         className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm mb-3"
         value={s.quoteDefaults?.guaranteeTitle ?? ""}
         onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, guaranteeTitle: e.target.value } } : prev)}
+        onBlur={() => void saveBusinessSettings({ silent: true })}
         placeholder="Our Guarantee"
       />
     </Field>
@@ -1727,6 +1822,7 @@ export default function SettingsPage() {
               updated[idx] = { ...updated[idx], title: e.target.value };
               setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, guarantees: updated } } : prev);
             }}
+            onBlur={() => void saveBusinessSettings({ silent: true })}
           />
           <input
             className="flex-[2] rounded-2xl border bg-white/95 px-3 py-2 text-sm"
@@ -1737,6 +1833,7 @@ export default function SettingsPage() {
               updated[idx] = { ...updated[idx], description: e.target.value };
               setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, guarantees: updated } } : prev);
             }}
+            onBlur={() => void saveBusinessSettings({ silent: true })}
           />
           <Button
             size="sm"
@@ -1744,6 +1841,7 @@ export default function SettingsPage() {
             onClick={() => {
               const updated = (s.quoteDefaults?.guarantees || []).filter((_, i) => i !== idx);
               setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, guarantees: updated } } : prev);
+              void saveBusinessSettings({ silent: true });
             }}
           >
             Remove
@@ -1756,6 +1854,7 @@ export default function SettingsPage() {
         onClick={() => {
           const updated = [...(s.quoteDefaults?.guarantees || []), { title: "", description: "" }];
           setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, guarantees: updated } } : prev);
+          void saveBusinessSettings({ silent: true });
         }}
       >
         Add Guarantee
@@ -1788,6 +1887,7 @@ export default function SettingsPage() {
                 updated[idx] = { ...updated[idx], quote: e.target.value };
                 setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, testimonials: updated } } : prev);
               }}
+              onBlur={() => void saveBusinessSettings({ silent: true })}
             />
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1800,6 +1900,7 @@ export default function SettingsPage() {
                 updated[idx] = { ...updated[idx], client: e.target.value };
                 setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, testimonials: updated } } : prev);
               }}
+              onBlur={() => void saveBusinessSettings({ silent: true })}
             />
             <input
               className="flex-1 rounded-2xl border bg-white/95 px-3 py-2 text-sm"
@@ -1810,6 +1911,7 @@ export default function SettingsPage() {
                 updated[idx] = { ...updated[idx], role: e.target.value };
                 setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, testimonials: updated } } : prev);
               }}
+              onBlur={() => void saveBusinessSettings({ silent: true })}
             />
             <label className="inline-flex items-center gap-2 text-xs font-medium">
               <input
@@ -1861,6 +1963,7 @@ export default function SettingsPage() {
               onClick={() => {
                 const updated = (s.quoteDefaults?.testimonials || []).filter((_, i) => i !== idx);
                 setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, testimonials: updated } } : prev);
+                void saveBusinessSettings({ silent: true });
               }}
             >
               Remove
@@ -1898,6 +2001,7 @@ export default function SettingsPage() {
           onClick={() => {
             const updated = [...(s.quoteDefaults?.testimonials || []), { quote: "", client: "", role: "" }];
             setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, testimonials: updated } } : prev);
+            void saveBusinessSettings({ silent: true });
           }}
         >
           Add Testimonial
@@ -1912,6 +2016,7 @@ export default function SettingsPage() {
               { quote: 'Professional, responsive, and superb finish.', client: 'Helen T.', role: 'Homeowner' },
             ];
             setS(prev => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, testimonials: updated } } : prev);
+            void saveBusinessSettings({ silent: true });
           }}
         >
           Reset Placeholders

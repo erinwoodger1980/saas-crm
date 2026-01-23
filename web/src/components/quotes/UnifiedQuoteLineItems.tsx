@@ -52,6 +52,7 @@ interface UnifiedQuoteLineItemsProps {
   onPhotoUpload?: (file: File, lineId?: string) => Promise<void>;
   onAIGenerate?: (description: string, dimensions: { widthMm: number; heightMm: number }) => Promise<void>;
   onPreview3d?: (lineId?: string, productOptionId?: string) => Promise<void>;
+  descriptionTextareaMinHeightClass?: string;
   currency?: string;
   isLoading?: boolean;
 }
@@ -65,6 +66,7 @@ export function UnifiedQuoteLineItems({
   onPhotoUpload,
   onAIGenerate,
   onPreview3d,
+  descriptionTextareaMinHeightClass,
   currency = 'GBP',
   isLoading = false,
 }: UnifiedQuoteLineItemsProps) {
@@ -174,6 +176,7 @@ export function UnifiedQuoteLineItems({
   };
 
   const numberInputClass = 'text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none';
+  const descriptionTextareaClass = `text-sm ${descriptionTextareaMinHeightClass ?? 'min-h-[80px]'}`;
 
   return (
     <div className="space-y-4">
@@ -332,7 +335,7 @@ export function UnifiedQuoteLineItems({
                     placeholder="e.g., Oak door"
                     value={newLine.description}
                     onChange={(e) => setNewLine({ ...newLine, description: e.target.value })}
-                    className="text-sm min-h-[60px]"
+                    className={descriptionTextareaClass}
                   />
                 </td>
                 <td className="px-4 py-3 text-center">
@@ -517,7 +520,7 @@ export function UnifiedQuoteLineItems({
                 <Textarea
                   value={editingLine.description}
                   onChange={(e) => setEditingLine({ ...editingLine, description: e.target.value })}
-                  className="min-h-[80px]"
+                  className={descriptionTextareaClass}
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">

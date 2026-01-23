@@ -2565,6 +2565,50 @@ router.patch("/:id/preference", requireAuth, async (req: any, res) => {
     return res.status(500).json({ error: "internal_error" });
   }
 });
+
+/**
+ * GET /quotes/:id/portal-url
+ * Returns a tenant-scoped, JWT-based portal URL for the given quote.
+ */
+router.get("/:id/portal-url", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+    const id = String(req.params.id);
+
+    const quote = await prisma.quote.findFirst({
+      where: { id, tenantId },
+      include: { tenant: true },
+    });
+    if (!quote) return res.status(404).json({ error: "not_found" });
+
+    const tenantSettings = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+
+    const raw = String(process.env.WEB_ORIGIN || "").trim();
+    const parts = raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const withScheme = parts.find((p) => /^https?:\/\//i.test(p));
+    let base =
+      withScheme ||
+      parts[0] ||
+      String(process.env.APP_URL || process.env.WEB_APP_URL || "").trim();
+    if (!base) base = "https://www.joineryai.app";
+    if (!/^https?:\/\//i.test(base)) base = `https://${base}`;
+    const webOrigin = base.replace(/\/+$/, "");
+
+    const slug = (tenantSettings as any)?.slug || (quote.tenant as any)?.slug || `tenant-${tenantId.slice(0, 6)}`;
+    const portalToken = jwt.sign({ scope: "quote-portal", t: tenantId, q: quote.id }, env.APP_JWT_SECRET, {
+      expiresIn: "180d",
+    });
+    const portalUrl = `${webOrigin}/portal/${encodeURIComponent(slug)}/${encodeURIComponent(portalToken)}`;
+
+    return res.json({ ok: true, portalUrl });
+  } catch (e: any) {
+    console.error("[/quotes/:id/portal-url] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
 /**
  * POST /quotes/:id/parse
  * For each supplier file, generate a signed download URL and forward to /ml/parse-quote.

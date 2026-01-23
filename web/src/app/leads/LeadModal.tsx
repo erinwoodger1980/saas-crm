@@ -5325,8 +5325,8 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                     onAddLine={handleAddQuoteLine}
                     onUpdateLine={handleUpdateQuoteLine}
                     onDeleteLine={handleDeleteQuoteLine}
-                    onPhotoUpload={handlePhotoUpload}
                     onPreview3d={handlePreview3d}
+                    descriptionTextareaMinHeightClass="min-h-[220px]"
                     isLoading={saving}
                   />
                 </section>

@@ -73,7 +73,14 @@ export function buildChristchurchProposalHtml(opts: {
   const projectReference = typeof leadCustom?.projectReference === "string" ? String(leadCustom.projectReference).trim() : "";
   const surveyTeam = typeof leadCustom?.surveyTeam === "string" ? String(leadCustom.surveyTeam).trim() : "";
   const DEFAULT_COMPLIANCE_NOTE = "PAS 24 / Part Q: Glazing to GGF guidelines.";
-  const deliveryAddress = (leadCustom?.deliveryAddress as string) || (leadCustom?.address as string) || "";
+  const leadAny: any = quote.lead as any;
+  const leadAddressParts = [leadAny?.address, leadAny?.city, leadAny?.postcode]
+    .map((v) => String(v || "").trim())
+    .filter(Boolean);
+  const projectAddress =
+    String((leadCustom?.deliveryAddress as string) || "").trim() ||
+    String((leadCustom?.address as string) || "").trim() ||
+    leadAddressParts.join(", ");
 
   const today = new Date();
   const when = formatDateGB(today);
@@ -191,8 +198,6 @@ export function buildChristchurchProposalHtml(opts: {
 
   const parts = chunkLines(quote.lines, 8);
   const totalParts = Math.max(1, parts.length);
-
-  const poweredByHtml = `<div class="poweredBy">Powered by joineryai.app</div>`;
 
   const defaultGuarantees: Array<{ title: string; description: string; icon: string }> = [
     {
@@ -314,8 +319,12 @@ export function buildChristchurchProposalHtml(opts: {
       .coverFooter { position: absolute; left: 16mm; right: 16mm; bottom: 18mm; text-align: center; font-size: 9.8pt; color: #334155; line-height: 1.55; }
       .poweredByCover { margin-top: 4mm; font-size: 8.8pt; color: #94a3b8; }
 
-      .poweredBy { margin-top: auto; padding-top: 4mm; text-align: center; font-size: 8.8pt; color: #94a3b8; }
-      .page.page-bleed .poweredBy { padding: 0 16mm 10mm 16mm; }
+      .footer { margin-top: auto; padding-top: 6mm; border-top: 1px solid #e2e8f0; text-align: center; }
+      .footerName { font-size: 11pt; font-weight: 800; margin: 0; color: #0f172a; }
+      .footerTagline { margin-top: 1mm; font-size: 9.5pt; color: #475569; }
+      .footerContact { margin-top: 2mm; font-size: 9.5pt; color: #334155; line-height: 1.4; }
+      .footer .poweredBy { margin-top: 2mm; font-size: 8.8pt; color: #94a3b8; }
+      .page.page-bleed .footer { padding: 0 16mm 10mm 16mm; border-top: 0; }
 
       /* Overview page (page 2) */
       .overviewBleed { width: 210mm; flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 78mm 1fr; }
@@ -439,6 +448,19 @@ export function buildChristchurchProposalHtml(opts: {
   const email = (quoteDefaults?.email || "").toString();
   const address = (quoteDefaults?.address || "").toString();
 
+  const footerHtml = `
+    <div class="footer">
+      <div class="footerName">${escapeHtml(brand)}</div>
+      <div class="footerTagline">${escapeHtml(tagline)}</div>
+      <div class="footerContact">
+        ${phone ? `Telephone: ${escapeHtml(phone)}<br/>` : ""}
+        ${email ? `Email: ${escapeHtml(email)}<br/>` : ""}
+        ${address ? `Address: ${escapeHtml(address)}` : ""}
+      </div>
+      <div class="poweredBy">Powered by joineryai.app</div>
+    </div>
+  `;
+
   const displayProjectRef = projectReference || projectName || jobNumber;
 
   const coverPage = `
@@ -480,7 +502,7 @@ export function buildChristchurchProposalHtml(opts: {
                   <ul>
                     <li><strong>Project:</strong> ${escapeHtml(displayProjectRef || "")}</li>
                     <li><strong>Job Number:</strong> ${escapeHtml(jobNumber || "")}</li>
-                    ${deliveryAddress ? `<li><strong>Delivery Address:</strong> ${escapeHtml(deliveryAddress)}</li>` : ""}
+                    ${projectAddress ? `<li><strong>Project Address:</strong> ${escapeHtml(projectAddress)}</li>` : ""}
                     ${surveyTeam ? `<li><strong>Survey Team:</strong> ${escapeHtml(surveyTeam)}</li>` : ""}
                     <li><strong>Date:</strong> ${escapeHtml(when || "")}</li>
                   </ul>
@@ -509,7 +531,7 @@ export function buildChristchurchProposalHtml(opts: {
           </div>
         </div>
       </div>
-      ${poweredByHtml}
+      ${footerHtml}
     </div>
   `;
 
@@ -524,11 +546,6 @@ export function buildChristchurchProposalHtml(opts: {
                 <div class="tagline">${escapeHtml(tagline)}</div>
               </div>
             </div>
-            <div class="contact">
-              ${phone ? `Telephone: ${escapeHtml(phone)}<br/>` : ""}
-              ${email ? `Email: ${escapeHtml(email)}<br/>` : ""}
-              ${address ? `Address: ${escapeHtml(address)}` : ""}
-            </div>
           </div>
 
           ${renderQuotationPart({
@@ -540,7 +557,7 @@ export function buildChristchurchProposalHtml(opts: {
           })}
         </div>
 
-        ${poweredByHtml}
+        ${footerHtml}
       </div>
     `;
   });
@@ -554,11 +571,6 @@ export function buildChristchurchProposalHtml(opts: {
               <h1>${escapeHtml(brand)}</h1>
               <div class="tagline">${escapeHtml(tagline)}</div>
             </div>
-          </div>
-          <div class="contact">
-            ${phone ? `Telephone: ${escapeHtml(phone)}<br/>` : ""}
-            ${email ? `Email: ${escapeHtml(email)}<br/>` : ""}
-            ${address ? `Address: ${escapeHtml(address)}` : ""}
           </div>
         </div>
 
@@ -575,7 +587,7 @@ export function buildChristchurchProposalHtml(opts: {
         })}
       </div>
 
-      ${poweredByHtml}
+      ${footerHtml}
     </div>
   `;
 
@@ -588,11 +600,6 @@ export function buildChristchurchProposalHtml(opts: {
               <h1>${escapeHtml(brand)}</h1>
               <div class="tagline">${escapeHtml(tagline)}</div>
             </div>
-          </div>
-          <div class="contact">
-            ${phone ? `Telephone: ${escapeHtml(phone)}<br/>` : ""}
-            ${email ? `Email: ${escapeHtml(email)}<br/>` : ""}
-            ${address ? `Address: ${escapeHtml(address)}` : ""}
           </div>
         </div>
 
@@ -668,7 +675,7 @@ export function buildChristchurchProposalHtml(opts: {
         </div>
       </div>
 
-      ${poweredByHtml}
+      ${footerHtml}
     </div>
   `;
 
@@ -681,11 +688,6 @@ export function buildChristchurchProposalHtml(opts: {
               <h1>${escapeHtml(brand)}</h1>
               <div class="tagline">${escapeHtml(tagline)}</div>
             </div>
-          </div>
-          <div class="contact">
-            ${phone ? `Telephone: ${escapeHtml(phone)}<br/>` : ""}
-            ${email ? `Email: ${escapeHtml(email)}<br/>` : ""}
-            ${address ? `Address: ${escapeHtml(address)}` : ""}
           </div>
         </div>
 
@@ -748,7 +750,7 @@ export function buildChristchurchProposalHtml(opts: {
         </div>
       </div>
 
-      ${poweredByHtml}
+      ${footerHtml}
     </div>
   `;
 
@@ -761,11 +763,6 @@ export function buildChristchurchProposalHtml(opts: {
               <h1>${escapeHtml(brand)}</h1>
               <div class="tagline">${escapeHtml(tagline)}</div>
             </div>
-          </div>
-          <div class="contact">
-            ${phone ? `Telephone: ${escapeHtml(phone)}<br/>` : ""}
-            ${email ? `Email: ${escapeHtml(email)}<br/>` : ""}
-            ${address ? `Address: ${escapeHtml(address)}` : ""}
           </div>
         </div>
 
@@ -800,7 +797,7 @@ export function buildChristchurchProposalHtml(opts: {
         </div>
       </div>
 
-      ${poweredByHtml}
+      ${footerHtml}
     </div>
   `;
 

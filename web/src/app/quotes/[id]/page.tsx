@@ -58,6 +58,8 @@ export default function QuoteBuilderPage() {
   const { toast } = useToast();
 
   const proposalBasicsInitRef = useRef(false);
+  const proposalBasicsLastSavedRef = useRef<string>("");
+  const proposalBasicsAutosaveTimerRef = useRef<number | null>(null);
   const [proposalBasicsOpen, setProposalBasicsOpen] = useState(true);
   const [proposalScopeDraft, setProposalScopeDraft] = useState<string>("");
   const [proposalSpecsDraft, setProposalSpecsDraft] = useState<{ timber: string; finish: string; glazing: string; fittings: string; ventilation: string }>({
@@ -170,12 +172,12 @@ export default function QuoteBuilderPage() {
       const pricingMode = ((quote?.meta as any)?.pricingMode === "ml" ? "ml" : "margin") as "ml" | "margin";
       await apiFetch(`/quotes/${quoteId}/preference`, {
         method: "PATCH",
-        body: { pricingMode, margin },
+        json: { pricingMode, margin },
       });
       // Re-price lines so sell totals update.
       await apiFetch(`/quotes/${quoteId}/price`, {
         method: "POST",
-        body: { method: "margin", margin },
+        json: { method: "margin", margin },
       });
       await mutateLines();
       await mutateQuote();
@@ -198,7 +200,7 @@ export default function QuoteBuilderPage() {
     try {
       await apiFetch(`/quotes/${quoteId}/delivery`, {
         method: "POST",
-        body: { amountGBP: amount, method: "spread" },
+        json: { amountGBP: amount, method: "spread" },
       });
       await mutateLines();
       await mutateQuote();
@@ -222,7 +224,7 @@ export default function QuoteBuilderPage() {
     try {
       await apiFetch(`/quotes/${quoteId}`, {
         method: "PATCH",
-        body: { meta: { vatRateOverride: vatRate } },
+        json: { meta: { vatRateOverride: vatRate } },
       });
       await mutateQuote();
     } catch (e: any) {
@@ -244,7 +246,7 @@ export default function QuoteBuilderPage() {
     try {
       await apiFetch(`/quotes/${quoteId}`, {
         method: "PATCH",
-        body: { meta: { installationCostGBP: amount } },
+        json: { meta: { installationCostGBP: amount } },
       });
       await mutateQuote();
     } catch (e: any) {
@@ -336,7 +338,6 @@ export default function QuoteBuilderPage() {
   const [isPricing, setIsPricing] = useState(false);
   const [questionnaireSaving, setQuestionnaireSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [rawParseOpen, setRawParseOpen] = useState(false);
   const [processDialogOpen, setProcessDialogOpen] = useState(false);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
@@ -476,32 +477,23 @@ export default function QuoteBuilderPage() {
     if (lastParse) {
       setParseMeta(lastParse);
       const templateMeta = lastParse?.template ?? null;
-      if (lastParse?.message) {
-        setNotice(lastParse.message);
-      } else if (Array.isArray(lastParse?.warnings) && lastParse.warnings.length > 0) {
-        setNotice(lastParse.warnings.join(" \u2022 "));
-      } else if (templateMeta?.method === "template_failed") {
-        setNotice("Saved layout template didn't match this PDF, so we used the fallback parser.");
-      } else if (templateMeta?.method === "template") {
-        const matched = typeof templateMeta?.matchedRows === "number" ? templateMeta.matchedRows : null;
-        const label = templateMeta?.name || "layout template";
-        setNotice(
-          matched && matched > 0
-            ? `${label} matched ${matched} rows automatically.`
-            : `${label} was applied successfully.`
-        );
-      } else if (
-        typeof lastParse?.fallbackScored?.discarded === "number" &&
-        ((typeof lastParse?.fallbackScored?.kept === "number" &&
-          lastParse.fallbackScored.discarded > lastParse.fallbackScored.kept) ||
-          lastParse.fallbackScored.discarded > 10)
-      ) {
-        setNotice("We discarded a lot of dubious rows from this PDF parse. Review the remaining lines carefully.");
-      } else if (lastParse?.quality === "poor") {
-        setNotice("Parser flagged this quote as low quality. Review extracted lines before sending.");
-      } else {
-        setNotice(null);
-      }
+      const msg =
+        (typeof lastParse?.message === "string" && lastParse.message.trim())
+          ? lastParse.message.trim()
+          : (Array.isArray(lastParse?.warnings) && lastParse.warnings.length > 0)
+            ? lastParse.warnings.join(" \u2022 ")
+            : (templateMeta?.method === "template_failed")
+              ? "Saved layout template didn't match this PDF, so we used the fallback parser."
+              : (typeof lastParse?.fallbackScored?.discarded === "number" &&
+                ((typeof lastParse?.fallbackScored?.kept === "number" &&
+                  lastParse.fallbackScored.discarded > lastParse.fallbackScored.kept) ||
+                  lastParse.fallbackScored.discarded > 10))
+                ? "We discarded a lot of dubious rows from this PDF parse. Review the remaining lines carefully."
+                : (lastParse?.quality === "poor")
+                  ? "Parser flagged this quote as low quality. Review extracted lines before sending."
+                  : null;
+
+      if (msg) console.warn("[quote-builder parse]", msg, lastParse);
     }
     const lastEstimate = (quote?.meta as any)?.lastEstimate ?? null;
     if (lastEstimate && !estimate) {
@@ -537,6 +529,11 @@ export default function QuoteBuilderPage() {
     if (!quote) return null;
     return normalizeQuoteDraft({ quote, lead, tenantSettings });
   }, [quote, lead, tenantSettings]);
+
+  useEffect(() => {
+    if (!quoteDraft?.warnings?.length) return;
+    console.warn("[quote-builder warnings]", quoteDraft.warnings);
+  }, [quoteDraft?.warnings]);
 
   useEffect(() => {
     if (tenantSettings?.productTypes && Array.isArray(tenantSettings.productTypes)) {
@@ -1081,6 +1078,25 @@ export default function QuoteBuilderPage() {
     }
   }, [quoteId, lines, mutateQuote, toast]);
 
+  const handleOpenClientPortal = useCallback(async () => {
+    if (!quoteId) return;
+    // Open immediately to preserve user gesture and avoid popup blockers.
+    const popup = window.open("about:blank", "_blank");
+    try {
+      const resp = await apiFetch<{ ok: boolean; portalUrl?: string }>(
+        `/quotes/${encodeURIComponent(quoteId)}/portal-url`,
+        { method: "GET" },
+      );
+      const url = typeof resp?.portalUrl === "string" ? resp.portalUrl : null;
+      if (!url) throw new Error("Portal link unavailable");
+      if (popup) popup.location.href = url;
+      else window.open(url, "_blank");
+    } catch (err: any) {
+      if (popup) popup.close();
+      toast({ title: "Failed to open client portal", description: err?.message || "Please try again." });
+    }
+  }, [quoteId, toast]);
+
   const handleEmailToClient = useCallback(async () => {
     if (!quoteId || !lead?.email) {
       toast({
@@ -1197,7 +1213,7 @@ export default function QuoteBuilderPage() {
     }
   }, [ensureProposalPdfUrl]);
 
-  const handleSaveProposalBasics = useCallback(async () => {
+  const handleSaveProposalBasics = useCallback(async (opts?: { silent?: boolean }) => {
     if (!quoteId) return;
     setIsSavingProposalBasics(true);
     try {
@@ -1225,13 +1241,25 @@ export default function QuoteBuilderPage() {
 
       await mutateQuote();
       setProposalPreviewRevision((r) => r + 1);
-      toast({ title: "Saved", description: "Scope and project details updated for the proposal." });
+      proposalBasicsLastSavedRef.current = JSON.stringify({
+        scope: proposalScopeDraft,
+        specs: {
+          timber: proposalSpecsDraft.timber,
+          finish: proposalSpecsDraft.finish,
+          glazing: proposalSpecsDraft.glazing,
+          fittings: proposalSpecsDraft.fittings,
+          ventilation: proposalSpecsDraft.ventilation,
+        },
+      });
+      if (!opts?.silent) {
+        toast({ title: "Saved", description: "Scope and project details updated for the proposal." });
+      }
     } catch (err: any) {
       toast({ title: "Save failed", description: err?.message || "Unable to save proposal details", variant: "destructive" });
     } finally {
       setIsSavingProposalBasics(false);
     }
-  }, [quoteId, mutateQuote, proposalScopeDraft, proposalSpecsDraft, toast, quote]);
+  }, [quoteId, mutateQuote, proposalScopeDraft, proposalSpecsDraft, toast, quote, proposalBasicsLastSavedRef]);
 
   // Initialize proposal basics drafts from quote.meta (only once per quote load).
   useEffect(() => {
@@ -1242,16 +1270,52 @@ export default function QuoteBuilderPage() {
     if (!quote || proposalBasicsInitRef.current) return;
     const metaAny: any = (quote as any)?.meta || {};
     const specsAny: any = metaAny?.specifications || {};
-    setProposalScopeDraft(typeof metaAny?.scopeDescription === "string" ? metaAny.scopeDescription : "");
-    setProposalSpecsDraft({
+    const initScope = typeof metaAny?.scopeDescription === "string" ? metaAny.scopeDescription : "";
+    setProposalScopeDraft(initScope);
+    const initSpecs = {
       timber: typeof specsAny?.timber === "string" ? specsAny.timber : "",
       finish: typeof specsAny?.finish === "string" ? specsAny.finish : "",
       glazing: typeof specsAny?.glazing === "string" ? specsAny.glazing : "",
       fittings: typeof specsAny?.fittings === "string" ? specsAny.fittings : "",
       ventilation: typeof specsAny?.ventilation === "string" ? specsAny.ventilation : "",
+    };
+    setProposalSpecsDraft({
+      ...initSpecs,
     });
+    proposalBasicsLastSavedRef.current = JSON.stringify({ scope: initScope, specs: initSpecs });
     proposalBasicsInitRef.current = true;
   }, [quoteId, quote]);
+
+  useEffect(() => {
+    if (!proposalBasicsInitRef.current) return;
+    if (!quoteId) return;
+    if (isSavingProposalBasics) return;
+
+    const snapshot = JSON.stringify({
+      scope: proposalScopeDraft,
+      specs: {
+        timber: proposalSpecsDraft.timber,
+        finish: proposalSpecsDraft.finish,
+        glazing: proposalSpecsDraft.glazing,
+        fittings: proposalSpecsDraft.fittings,
+        ventilation: proposalSpecsDraft.ventilation,
+      },
+    });
+    if (snapshot === proposalBasicsLastSavedRef.current) return;
+
+    if (proposalBasicsAutosaveTimerRef.current) {
+      window.clearTimeout(proposalBasicsAutosaveTimerRef.current);
+    }
+    proposalBasicsAutosaveTimerRef.current = window.setTimeout(() => {
+      void handleSaveProposalBasics({ silent: true });
+    }, 800);
+
+    return () => {
+      if (proposalBasicsAutosaveTimerRef.current) {
+        window.clearTimeout(proposalBasicsAutosaveTimerRef.current);
+      }
+    };
+  }, [quoteId, proposalScopeDraft, proposalSpecsDraft, handleSaveProposalBasics, isSavingProposalBasics]);
 
   const handlePrintPdfFromProposalTab = useCallback(async () => {
     const url = await ensureProposalPdfUrl();
@@ -1617,9 +1681,6 @@ export default function QuoteBuilderPage() {
   const errorBanner = error ? (
     <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 shadow-sm">{error}</div>
   ) : null;
-  const noticeBanner = notice ? (
-    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-sm">{notice}</div>
-  ) : null;
 
   const rawSummaries = parseMeta?.summaries ?? [];
 
@@ -1681,7 +1742,6 @@ export default function QuoteBuilderPage() {
 
         {/* Notices */}
         {errorBanner}
-        {noticeBanner}
 
         {quoteLoading || linesLoading ? (
           <div className="space-y-6">
@@ -1723,11 +1783,16 @@ export default function QuoteBuilderPage() {
 
             <TabsContent value="details" className="space-y-6">
               <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
-                <div>
-                  <h2 className="text-2xl font-semibold text-foreground mb-2">Client & project details</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Core information about the client and project requirements
-                  </p>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-2xl font-semibold text-foreground mb-2">Client & project details</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Core information about the client and project requirements
+                    </p>
+                  </div>
+                  <Button variant="outline" onClick={handleOpenClientPortal}>
+                    Client Portal
+                  </Button>
                 </div>
 
                 {quoteDraft && (
@@ -1757,13 +1822,6 @@ export default function QuoteBuilderPage() {
                       </div>
                     </div>
 
-                    {quoteDraft.warnings.length > 0 && (
-                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                        {quoteDraft.warnings.map((warning) => (
-                          <div key={warning}>⚠️ {warning}</div>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -2555,6 +2613,7 @@ export default function QuoteBuilderPage() {
                           <Textarea
                             value={proposalScopeDraft}
                             onChange={(e) => setProposalScopeDraft(e.target.value)}
+                            onBlur={() => void handleSaveProposalBasics({ silent: true })}
                             placeholder="Describe the overall scope shown in the proposal…"
                           />
                         </div>
@@ -2562,31 +2621,44 @@ export default function QuoteBuilderPage() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-1">
                             <div className="text-xs font-medium text-muted-foreground">Timber</div>
-                            <Input value={proposalSpecsDraft.timber} onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, timber: e.target.value }))} />
+                            <Input
+                              value={proposalSpecsDraft.timber}
+                              onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, timber: e.target.value }))}
+                              onBlur={() => void handleSaveProposalBasics({ silent: true })}
+                            />
                           </div>
                           <div className="space-y-1">
                             <div className="text-xs font-medium text-muted-foreground">Finish</div>
-                            <Input value={proposalSpecsDraft.finish} onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, finish: e.target.value }))} />
+                            <Input
+                              value={proposalSpecsDraft.finish}
+                              onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, finish: e.target.value }))}
+                              onBlur={() => void handleSaveProposalBasics({ silent: true })}
+                            />
                           </div>
                           <div className="space-y-1">
                             <div className="text-xs font-medium text-muted-foreground">Glazing</div>
-                            <Input value={proposalSpecsDraft.glazing} onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, glazing: e.target.value }))} />
+                            <Input
+                              value={proposalSpecsDraft.glazing}
+                              onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, glazing: e.target.value }))}
+                              onBlur={() => void handleSaveProposalBasics({ silent: true })}
+                            />
                           </div>
                           <div className="space-y-1">
                             <div className="text-xs font-medium text-muted-foreground">Hardware / fittings</div>
-                            <Input value={proposalSpecsDraft.fittings} onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, fittings: e.target.value }))} />
+                            <Input
+                              value={proposalSpecsDraft.fittings}
+                              onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, fittings: e.target.value }))}
+                              onBlur={() => void handleSaveProposalBasics({ silent: true })}
+                            />
                           </div>
                           <div className="space-y-1 md:col-span-2">
                             <div className="text-xs font-medium text-muted-foreground">Ventilation</div>
-                            <Input value={proposalSpecsDraft.ventilation} onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, ventilation: e.target.value }))} />
+                            <Input
+                              value={proposalSpecsDraft.ventilation}
+                              onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, ventilation: e.target.value }))}
+                              onBlur={() => void handleSaveProposalBasics({ silent: true })}
+                            />
                           </div>
-                        </div>
-
-                        <div className="flex items-center justify-end">
-                          <Button onClick={handleSaveProposalBasics} disabled={isSavingProposalBasics} className="gap-2">
-                            {isSavingProposalBasics ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                            Save proposal details
-                          </Button>
                         </div>
                       </div>
                     ) : null}
@@ -2673,26 +2745,6 @@ export default function QuoteBuilderPage() {
                         Review and edit line items from all sources (supplier PDFs, ML estimates, manual entry)
                       </p>
                     </div>
-
-                    {/* Generate PDF button */}
-                    <Button
-                      onClick={handleGenerateQuotePdf}
-                      disabled={isGeneratingPdf}
-                      size="lg"
-                      className="gap-2"
-                    >
-                      {isGeneratingPdf ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Generating...
-                        </>
-                      ) : (
-                        <>
-                          <FileText className="h-4 w-4" />
-                          Generate PDF quote
-                        </>
-                      )}
-                    </Button>
                   </div>
 
                   <div className="rounded-2xl border bg-card p-4 shadow-sm">
