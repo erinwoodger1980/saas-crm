@@ -102,6 +102,7 @@ export default function QuoteBuilderPage() {
   const [emailDraftRecipientName, setEmailDraftRecipientName] = useState<string | undefined>(undefined);
   const [emailDraftSubject, setEmailDraftSubject] = useState<string>("");
   const [emailDraftBody, setEmailDraftBody] = useState<string>("");
+  const [emailIncludeAttachment, setEmailIncludeAttachment] = useState<boolean>(true);
 
 
   const {
@@ -1097,6 +1098,7 @@ export default function QuoteBuilderPage() {
     setEmailPreviewLoading(true);
     setEmailDraftTo(to);
     setEmailDraftRecipientName(lead?.contactName || undefined);
+    setEmailIncludeAttachment(true);
 
     try {
       const preview = await apiFetch<any>(`/quotes/${encodeURIComponent(quoteId)}/send-email`, {
@@ -1140,7 +1142,7 @@ export default function QuoteBuilderPage() {
             to: emailDraftTo,
             subject: editedSubject,
             body: editedBody,
-            includeAttachment: true,
+            includeAttachment: emailIncludeAttachment,
           },
         });
 
@@ -1157,7 +1159,7 @@ export default function QuoteBuilderPage() {
         setIsSendingEmail(false);
       }
     },
-    [quoteId, emailDraftTo, mutateQuote, toast],
+    [quoteId, emailDraftTo, emailIncludeAttachment, mutateQuote, toast],
   );
 
   const handleDownloadPdf = useCallback(() => {
@@ -3111,6 +3113,14 @@ export default function QuoteBuilderPage() {
         to={emailDraftTo}
         recipientName={emailDraftRecipientName}
         loading={emailPreviewLoading || isSendingEmail}
+        includeAttachment={emailIncludeAttachment}
+        onIncludeAttachmentChange={setEmailIncludeAttachment}
+        note={
+          <>
+            This email includes a secure portal link for the client to view progress, invoices, and accept the quote.
+            <span className="block">Powered by joineryai.app</span>
+          </>
+        }
       />
 
     </div>

@@ -1,7 +1,7 @@
 // web/src/components/EmailPreviewModal.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, ReactNode } from "react";
 import { Button } from "./ui/button";
 
 interface EmailPreviewModalProps {
@@ -13,6 +13,9 @@ interface EmailPreviewModalProps {
   to: string;
   recipientName?: string;
   loading?: boolean;
+  note?: ReactNode;
+  includeAttachment?: boolean;
+  onIncludeAttachmentChange?: (next: boolean) => void;
 }
 
 export function EmailPreviewModal({
@@ -24,6 +27,9 @@ export function EmailPreviewModal({
   to,
   recipientName,
   loading = false,
+  note,
+  includeAttachment,
+  onIncludeAttachmentChange,
 }: EmailPreviewModalProps) {
   const [sending, setSending] = useState(false);
   const [editedSubject, setEditedSubject] = useState(subject);
@@ -93,6 +99,24 @@ export function EmailPreviewModal({
               disabled={sending}
             />
           </div>
+
+          {/* Options */}
+          {(typeof includeAttachment === "boolean" || note) && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              {typeof includeAttachment === "boolean" && (
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={includeAttachment}
+                    onChange={(e) => onIncludeAttachmentChange?.(e.target.checked)}
+                    disabled={sending}
+                  />
+                  Attach PDF
+                </label>
+              )}
+              {note && <div className="mt-1 text-xs text-slate-500">{note}</div>}
+            </div>
+          )}
 
           {/* Body */}
           <div>

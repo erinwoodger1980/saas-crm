@@ -22,6 +22,46 @@ import { calibrateConfidence, combineConfidence } from '../services/vision/calib
 import { buildAiTelemetry, getPersistedVisionTelemetry } from '../services/vision/telemetry';
 import { CHRISTCHURCH_ASSETS } from "../lib/proposals/christchurch/assets";
 
+type QuotePortalClaims = {
+  scope: "quote-portal";
+  t: string; // tenantId
+  q: string; // quoteId
+  iat?: number;
+  exp?: number;
+};
+
+function verifyQuotePortalToken(token: string): QuotePortalClaims {
+  const raw = jwt.verify(String(token || ""), env.APP_JWT_SECRET);
+  if (!raw || typeof raw !== "object") throw new Error("invalid_token");
+  const claims = raw as any;
+  if (claims.scope !== "quote-portal") throw new Error("invalid_scope");
+  if (typeof claims.t !== "string" || typeof claims.q !== "string") throw new Error("invalid_claims");
+  return claims as QuotePortalClaims;
+}
+
+function pickWebOrigin(): string {
+  const raw = String(process.env.WEB_ORIGIN || "").trim();
+  const parts = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const withScheme = parts.find((p) => /^https?:\/\//i.test(p));
+  let base =
+    withScheme ||
+    parts[0] ||
+    String(process.env.APP_URL || process.env.WEB_APP_URL || "").trim();
+  if (!base) base = "https://www.joineryai.app";
+  if (!/^https?:\/\//i.test(base)) base = `https://${base}`;
+  return base.replace(/\/+$/, "");
+}
+
+function safeString(value: any, maxLen = 255): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, maxLen);
+}
+
 function decodeDataUrlToBuffer(dataUrl: string): { buf: Buffer; mimeType: string } {
   const raw = String(dataUrl || "");
   const m = raw.match(/^data:([^;]+);base64,(.*)$/);
@@ -1337,6 +1377,311 @@ router.post("/interactions", async (req, res) => {
   } catch (e: any) {
     console.error("[public interactions] create failed:", e);
     return res.status(500).json({ error: e?.message || "failed to track interaction" });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* PUBLIC: Quote portal (JWT link)                                     */
+/* ------------------------------------------------------------------ */
+
+// GET /public/quote-portal/:token
+router.get("/quote-portal/:token", async (req, res) => {
+  try {
+    const token = String(req.params.token || "").trim();
+    const claims = verifyQuotePortalToken(token);
+    const tenantId = claims.t;
+    const quoteId = claims.q;
+
+    const quote = await prisma.quote.findFirst({
+      where: { id: quoteId, tenantId },
+      include: {
+        tenant: true,
+        lines: true,
+        lead: {
+          include: {
+            client: true,
+            opportunity: true,
+            clientAccount: true,
+          },
+        },
+        clientAccount: true,
+      },
+    });
+
+    if (!quote) return res.status(404).json({ ok: false, error: "not_found" });
+
+    const tenantSettings = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    const slug = tenantSettings?.slug || quote.tenant?.slug || `tenant-${tenantId.slice(0, 6)}`;
+    const webOrigin = pickWebOrigin();
+    const portalUrl = `${webOrigin}/portal/${encodeURIComponent(slug)}/${encodeURIComponent(token)}`;
+
+    const lead = quote.lead || null;
+    const client = lead?.client || null;
+    const accountId = quote.clientAccountId || lead?.clientAccountId || null;
+    const clientId = lead?.clientId || null;
+
+    const relatedQuotes = await prisma.quote.findMany({
+      where: {
+        tenantId,
+        OR: accountId
+          ? [{ clientAccountId: accountId }, { lead: { clientAccountId: accountId } }]
+          : clientId
+            ? [{ lead: { clientId } }]
+            : [{ id: quote.id }],
+      },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        totalGBP: true,
+        currency: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+
+    const orderOr = accountId
+      ? [{ clientAccountId: accountId }, ...(clientId ? [{ clientId }] : [])]
+      : clientId
+        ? [{ clientId }]
+        : lead?.id
+          ? [{ leadId: lead.id }]
+          : null;
+
+    const relatedOrders = orderOr
+      ? await prisma.opportunity.findMany({
+          where: {
+            tenantId,
+            OR: orderOr,
+          },
+          select: {
+            id: true,
+            title: true,
+            stage: true,
+            startDate: true,
+            deliveryDate: true,
+            installationStartDate: true,
+            installationEndDate: true,
+            timberOrderedAt: true,
+            timberExpectedAt: true,
+            timberReceivedAt: true,
+            timberNotApplicable: true,
+            glassOrderedAt: true,
+            glassExpectedAt: true,
+            glassReceivedAt: true,
+            glassNotApplicable: true,
+            ironmongeryOrderedAt: true,
+            ironmongeryExpectedAt: true,
+            ironmongeryReceivedAt: true,
+            ironmongeryNotApplicable: true,
+            paintOrderedAt: true,
+            paintExpectedAt: true,
+            paintReceivedAt: true,
+            paintNotApplicable: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: "desc" },
+          take: 50,
+        })
+      : [];
+
+    const invoiceOr: Array<{ linkedEntityType: string; linkedEntityId: string }> = [];
+    if (lead?.id) invoiceOr.push({ linkedEntityType: "lead", linkedEntityId: lead.id });
+    if (lead?.opportunity?.id) invoiceOr.push({ linkedEntityType: "opportunity", linkedEntityId: lead.opportunity.id });
+    const invoices = invoiceOr.length
+      ? await prisma.accountingDocument.findMany({
+          where: { tenantId, OR: invoiceOr },
+          select: {
+            id: true,
+            provider: true,
+            externalType: true,
+            documentNumber: true,
+            referenceText: true,
+            contactName: true,
+            currency: true,
+            total: true,
+            net: true,
+            tax: true,
+            issueDate: true,
+            dueDate: true,
+            status: true,
+          },
+          orderBy: { issueDate: "desc" },
+          take: 100,
+        })
+      : [];
+
+    return res.json({
+      ok: true,
+      portalUrl,
+      tenant: {
+        id: tenantId,
+        slug,
+        name: tenantSettings?.brandName || quote.tenant?.name || "JoineryAI",
+        logoUrl: (tenantSettings as any)?.logoUrl || null,
+        website: (tenantSettings as any)?.website || null,
+        phone: (tenantSettings as any)?.phone || null,
+        links: (tenantSettings as any)?.links || null,
+        quoteDefaults: (tenantSettings as any)?.quoteDefaults || null,
+      },
+      client: client
+        ? {
+            id: client.id,
+            source: "client" as const,
+            name: client.name,
+            email: client.email,
+            phone: client.phone,
+            address: client.address,
+            city: client.city,
+            postcode: client.postcode,
+            country: client.country,
+          }
+        : {
+            id: lead?.id || null,
+            source: "lead" as const,
+            name: lead?.contactName || null,
+            email: lead?.email || null,
+            phone: lead?.phone || null,
+            address: lead?.address || null,
+            city: null,
+            postcode: null,
+            country: null,
+          },
+      quote: {
+        id: quote.id,
+        title: quote.title,
+        status: quote.status,
+        currency: quote.currency,
+        totalGBP: quote.totalGBP,
+        leadId: quote.leadId || null,
+        clientAccountId: quote.clientAccountId || lead?.clientAccountId || null,
+      },
+      quotes: relatedQuotes,
+      orders: relatedOrders,
+      invoices,
+      opportunity: lead?.opportunity || null,
+    });
+  } catch (e: any) {
+    const msg = String(e?.message || "");
+    if (msg.includes("invalid_")) {
+      return res.status(401).json({ ok: false, error: "unauthorized" });
+    }
+    console.error("[/public quote-portal] failed:", e);
+    return res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
+// PATCH /public/quote-portal/:token/client
+router.patch("/quote-portal/:token/client", async (req, res) => {
+  try {
+    const token = String(req.params.token || "").trim();
+    const claims = verifyQuotePortalToken(token);
+    const tenantId = claims.t;
+    const quoteId = claims.q;
+
+    const quote = await prisma.quote.findFirst({
+      where: { id: quoteId, tenantId },
+      include: { lead: { include: { client: true } } },
+    });
+    if (!quote) return res.status(404).json({ ok: false, error: "not_found" });
+    const lead = quote.lead || null;
+
+    const nextName = safeString(req.body?.name);
+    const nextEmail = safeString(req.body?.email);
+    const nextPhone = safeString(req.body?.phone);
+    const nextAddress = safeString(req.body?.address, 500);
+    const nextCity = safeString(req.body?.city);
+    const nextPostcode = safeString(req.body?.postcode);
+    const nextCountry = safeString(req.body?.country);
+
+    if (lead?.client) {
+      const updated = await prisma.client.update({
+        where: { id: lead.client.id },
+        data: {
+          ...(nextName ? { name: nextName } : {}),
+          ...(nextEmail !== null ? { email: nextEmail } : {}),
+          ...(nextPhone !== null ? { phone: nextPhone } : {}),
+          ...(nextAddress !== null ? { address: nextAddress } : {}),
+          ...(nextCity !== null ? { city: nextCity } : {}),
+          ...(nextPostcode !== null ? { postcode: nextPostcode } : {}),
+          ...(nextCountry !== null ? { country: nextCountry } : {}),
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          address: true,
+          city: true,
+          postcode: true,
+          country: true,
+        },
+      });
+      return res.json({ ok: true, source: "client", client: updated });
+    }
+
+    if (!lead) return res.status(400).json({ ok: false, error: "no_lead" });
+    const updatedLead = await prisma.lead.update({
+      where: { id: lead.id },
+      data: {
+        ...(nextName ? { contactName: nextName } : {}),
+        ...(nextEmail !== null ? { email: nextEmail } : {}),
+        ...(nextPhone !== null ? { phone: nextPhone } : {}),
+        ...(nextAddress !== null ? { address: nextAddress } : {}),
+      },
+      select: { id: true, contactName: true, email: true, phone: true, address: true },
+    });
+    return res.json({ ok: true, source: "lead", lead: updatedLead });
+  } catch (e: any) {
+    const msg = String(e?.message || "");
+    if (msg.includes("invalid_")) {
+      return res.status(401).json({ ok: false, error: "unauthorized" });
+    }
+    console.error("[/public quote-portal/client] failed:", e);
+    return res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
+// POST /public/quote-portal/:token/accept
+router.post("/quote-portal/:token/accept", async (req, res) => {
+  try {
+    const token = String(req.params.token || "").trim();
+    const claims = verifyQuotePortalToken(token);
+    const tenantId = claims.t;
+    const quoteId = claims.q;
+
+    const quote = await prisma.quote.findFirst({ where: { id: quoteId, tenantId } });
+    if (!quote) return res.status(404).json({ ok: false, error: "not_found" });
+
+    const acceptedByName = safeString(req.body?.name);
+    const acceptedByEmail = safeString(req.body?.email);
+    const prevMeta = ((quote.meta as any) || {}) as Record<string, any>;
+    const acceptedAt = new Date().toISOString();
+
+    const updated = await prisma.quote.update({
+      where: { id: quote.id },
+      data: {
+        status: "ACCEPTED",
+        meta: {
+          ...prevMeta,
+          portalAcceptedAt: acceptedAt,
+          portalAcceptedByName: acceptedByName || prevMeta.portalAcceptedByName || null,
+          portalAcceptedByEmail: acceptedByEmail || prevMeta.portalAcceptedByEmail || null,
+        },
+      },
+      select: { id: true, status: true, updatedAt: true, meta: true },
+    });
+
+    return res.json({ ok: true, quote: updated });
+  } catch (e: any) {
+    const msg = String(e?.message || "");
+    if (msg.includes("invalid_")) {
+      return res.status(401).json({ ok: false, error: "unauthorized" });
+    }
+    console.error("[/public quote-portal/accept] failed:", e);
+    return res.status(500).json({ ok: false, error: "server_error" });
   }
 });
 

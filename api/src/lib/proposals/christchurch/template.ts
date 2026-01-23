@@ -218,7 +218,6 @@ export function buildChristchurchProposalHtml(opts: {
   const guaranteeItems: Array<{ title: string; description: string; icon: string }> =
     guaranteeItemsRaw && guaranteeItemsRaw.length
       ? guaranteeItemsRaw
-          .slice(0, 3)
           .map((g: any, i: number) => ({
             title: String(g?.title || g?.name || defaultGuarantees[i]?.title || "Guarantee"),
             description: String(g?.description || g?.text || defaultGuarantees[i]?.description || ""),
@@ -262,7 +261,7 @@ export function buildChristchurchProposalHtml(opts: {
         width: 210mm;
         height: 297mm;
         box-sizing: border-box;
-        padding: 18mm 16mm;
+        padding: 18mm 16mm 26mm 16mm;
         background: #ffffff;
         overflow: hidden;
         position: relative;
@@ -316,7 +315,7 @@ export function buildChristchurchProposalHtml(opts: {
       /* Overview page (page 2) */
       .overviewBleed { width: 210mm; height: 297mm; display: grid; grid-template-columns: 78mm 1fr; }
       .overviewBleed .photo { width: 100%; height: 100%; object-fit: cover; display: block; }
-      .overviewBleed .content { padding: 18mm 16mm; box-sizing: border-box; }
+      .overviewBleed .content { padding: 18mm 16mm 26mm 16mm; box-sizing: border-box; min-width: 0; }
       .ovTitle { font-size: 18pt; font-weight: 900; color: #1e3a8a; margin: 0 0 8mm 0; }
       .ovGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; align-items: start; }
       .ovSubTitle { font-size: 12.5pt; font-weight: 900; color: #1e3a8a; margin: 0 0 4mm 0; }
@@ -327,7 +326,7 @@ export function buildChristchurchProposalHtml(opts: {
       .overviewWrap { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; }
 
       .panel { border: 1px solid #e2e8f0; border-radius: 6px; padding: 5mm; }
-      .panel h3 { margin: 0 0 3mm 0; font-size: 11pt; border-bottom: 1px solid #e2e8f0; padding-bottom: 2mm; }
+      .panel h3 { margin: 0 0 2mm 0; font-size: 11pt; font-weight: 800; border-bottom: 1px solid #e2e8f0; padding-bottom: 1.5mm; }
 
       @media print {
         /* Make PDF pagination deterministic */
@@ -335,9 +334,9 @@ export function buildChristchurchProposalHtml(opts: {
       }
 
       .kv { font-size: 9.8pt; line-height: 1.45; }
-      .kv .row { display: grid; grid-template-columns: 40mm 1fr; gap: 4mm; margin: 1.5mm 0; }
+      .kv .row { display: grid; grid-template-columns: 40mm 1fr; gap: 3mm; margin: 1mm 0; min-width: 0; }
       .kv .k { color: #475569; }
-      .kv .v { color: #0f172a; }
+      .kv .v { color: #0f172a; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
 
       .highlights ul { margin: 0; padding-left: 16px; }
       .highlights li { margin: 1.2mm 0; }
@@ -383,11 +382,11 @@ export function buildChristchurchProposalHtml(opts: {
       .para { font-size: 10pt; line-height: 1.6; color: #0f172a; }
 
       .triple { margin-top: 3mm; }
-      .tripleGrid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6mm; margin-top: 4mm; }
-      .card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 4.5mm; background: #f8fafc; }
+      .tripleGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6mm; margin-top: 4mm; align-items: start; }
+      .card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 4.5mm; background: #f8fafc; min-width: 0; }
       .card .icon { width: 10mm; height: 10mm; border-radius: 999px; background: #92400e; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 12pt; margin-bottom: 3mm; }
       .card h4 { margin: 0 0 2mm 0; font-size: 10.5pt; color: #0f172a; font-weight: 900; }
-      .card p { margin: 0; font-size: 9.6pt; line-height: 1.55; color: #334155; }
+      .card p { margin: 0; font-size: 9.6pt; line-height: 1.55; color: #334155; overflow-wrap: anywhere; word-break: break-word; }
 
       .warranty { margin-top: 6mm; }
       .wGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm 8mm; margin-top: 4mm; }

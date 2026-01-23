@@ -7241,11 +7241,36 @@ router.post("/:id/send-email", requireAuth, async (req: any, res) => {
     const tenantSettings = await prisma.tenantSettings.findUnique({
       where: { tenantId },
     });
+
+    // Build a public portal link for this quote (JWT scoped)
+    const pickWebOrigin = () => {
+      const raw = String(process.env.WEB_ORIGIN || "").trim();
+      const parts = raw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const withScheme = parts.find((p) => /^https?:\/\//i.test(p));
+      let base =
+        withScheme ||
+        parts[0] ||
+        String(process.env.APP_URL || process.env.WEB_APP_URL || "").trim();
+      if (!base) base = "https://www.joineryai.app";
+      if (!/^https?:\/\//i.test(base)) base = `https://${base}`;
+      return base.replace(/\/+$/, "");
+    };
+
+    const webOrigin = pickWebOrigin();
+    const slug = (tenantSettings as any)?.slug || quote.tenant?.slug || `tenant-${tenantId.slice(0, 6)}`;
+    const portalToken = jwt.sign({ scope: "quote-portal", t: tenantId, q: quote.id }, env.APP_JWT_SECRET, {
+      expiresIn: "180d",
+    });
+    const portalUrl = `${webOrigin}/portal/${encodeURIComponent(slug)}/${encodeURIComponent(portalToken)}`;
     
     const payload = buildQuoteEmailPayload({
       quote,
       tenantSettings,
       recipientEmail,
+      portalUrl,
     });
     const subject = req.body?.subject || payload.subject;
 

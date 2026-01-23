@@ -12,6 +12,7 @@ export type QuoteEmailPayload = {
   subject: string;
   bodyText: string;
   bodyHtml: string;
+  portalUrl?: string | null;
   summary: {
     total: number;
     currencySymbol: string;
@@ -25,8 +26,9 @@ export function buildQuoteEmailPayload(params: {
   quote: QuoteWithLines;
   tenantSettings?: TenantSettings | null;
   recipientEmail: string;
+  portalUrl?: string | null;
 }): QuoteEmailPayload {
-  const { quote, tenantSettings, recipientEmail } = params;
+  const { quote, tenantSettings, recipientEmail, portalUrl } = params;
   const totals = recalculateQuoteTotals({ quote, tenantSettings });
   const quoteDefaults: any = (tenantSettings?.quoteDefaults as any) || {};
   const tenantName = quote.tenant?.name || tenantSettings?.brandName || "JoineryAI";
@@ -39,10 +41,16 @@ export function buildQuoteEmailPayload(params: {
   const leadTimeLine = leadTime ? `- Lead time: ${leadTime}\n` : "";
   const leadTimeHtml = leadTime ? `<li><strong>Lead time:</strong> ${leadTime}</li>` : "";
 
+  const portalLine = portalUrl ? `\nView, review, and accept your quote online: ${portalUrl}\n` : "";
+  const portalHtml = portalUrl
+    ? `<p><strong>View, review, and accept your quote online:</strong><br/><a href="${portalUrl}">${portalUrl}</a></p>`
+    : "";
+
   const bodyText = `
 Hi ${clientName},
 
 Thank you for your enquiry. Please find your quotation from ${tenantName} attached.
+${portalLine}
 
 Quote summary:
 - Total: ${totals.currencySymbol}${totals.totalGBP.toFixed(2)}
@@ -58,6 +66,7 @@ ${tenantName}
   const bodyHtml = `
     <p>Hi ${clientName},</p>
     <p>Thank you for your enquiry. Please find your quotation from ${tenantName} attached.</p>
+    ${portalHtml}
     <h3>Quote summary:</h3>
     <ul>
       <li><strong>Total:</strong> ${totals.currencySymbol}${totals.totalGBP.toFixed(2)}</li>
@@ -73,6 +82,7 @@ ${tenantName}
     subject,
     bodyText,
     bodyHtml,
+    portalUrl: portalUrl || null,
     summary: {
       total: totals.totalGBP,
       currencySymbol: totals.currencySymbol,
