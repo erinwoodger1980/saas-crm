@@ -731,8 +731,6 @@ export default function QuoteBuilderPage() {
       if (signed?.url) {
         if (popup) popup.location.href = signed.url;
         else window.open(signed.url, "_blank");
-      } else {
-        if (popup) popup.close();
       }
       toast({ title: "Proposal generated", description: "Proposal PDF opened in a new tab." });
     } catch (err: any) {
@@ -995,9 +993,11 @@ export default function QuoteBuilderPage() {
     setIsGeneratingPdf(true);
     try {
       await apiFetch(`/quotes/${encodeURIComponent(quoteId)}/render-pdf`, { method: "POST" });
-      await mutateQuote();
-      const next = (quote?.meta as any)?.proposalPdfUrl ?? quote?.proposalPdfUrl ?? null;
-      return next;
+      // Don't rely on in-memory quote state updating synchronously after mutate.
+      // Fetch the signed URL directly so the PDF can be opened immediately.
+      const signed = await apiFetch<{ url: string }>(`/quotes/${encodeURIComponent(quoteId)}/proposal/signed`);
+      void mutateQuote();
+      return signed?.url ?? null;
     } finally {
       setIsGeneratingPdf(false);
     }
@@ -1010,8 +1010,6 @@ export default function QuoteBuilderPage() {
     if (url) {
       if (popup) popup.location.href = url;
       else window.open(url, "_blank");
-    } else {
-      if (popup) popup.close();
     }
   }, [ensureProposalPdfUrl]);
 
