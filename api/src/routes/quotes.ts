@@ -1257,8 +1257,8 @@ router.get("/:id/lines", requireAuth, async (req: any, res) => {
     const out = lines.map((ln: any) => ({
       id: ln.id,
       description: ln.description,
-      qty: Number(ln.qty),
-      unitPrice: Number(ln.unitPrice),
+      qty: safeNumber(ln.qty) ?? 0,
+      unitPrice: safeNumber(ln.unitPrice),
       currency: ln.currency,
       supplier: ln.supplier,
       sku: ln.sku,
@@ -1266,8 +1266,8 @@ router.get("/:id/lines", requireAuth, async (req: any, res) => {
       lineStandard: (ln as any)?.lineStandard ?? null,
       sellUnit: (ln.meta as any)?.sellUnitGBP ?? null,
       sellTotal: (ln.meta as any)?.sellTotalGBP ?? null,
-      lineTotalGBP: Number(ln.lineTotalGBP),
-      deliveryShareGBP: Number(ln.deliveryShareGBP),
+      lineTotalGBP: safeNumber(ln.lineTotalGBP),
+      deliveryShareGBP: safeNumber(ln.deliveryShareGBP),
       surchargeGBP: (ln.meta as any)?.surchargeGBP ?? null,
     }));
 
