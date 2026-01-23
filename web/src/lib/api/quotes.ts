@@ -27,6 +27,8 @@ export type QuoteDto = {
   tenant?: { name?: string | null } | null;
   tenantId?: string | null;
   leadId?: string | null;
+  deliveryCost?: number | null;
+  markupDefault?: number | null;
   totalGBP?: number | null;
   currency?: string | null;
   meta?: Record<string, any> | null;

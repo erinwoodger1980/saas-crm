@@ -30,6 +30,10 @@ export type ParsedLinesTableProps = {
   onDownloadCsv: () => void;
   imageUrlMap?: Record<string, string>;
   tenantId?: string;
+  extraCostsGBP?: {
+    delivery?: number | null;
+    installation?: number | null;
+  };
 };
 
 const SAVE_DEBOUNCE_MS = 500;
@@ -48,6 +52,7 @@ export function ParsedLinesTable({
   onDownloadCsv,
   imageUrlMap = {},
   tenantId,
+  extraCostsGBP,
 }: ParsedLinesTableProps) {
   const [drafts, setDrafts] = useState<Record<string, DraftValues>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
@@ -75,7 +80,7 @@ export function ParsedLinesTable({
   const showDiscardedWarning =
     keptRows != null && discardedRows != null ? discardedRows > keptRows : discardedRows != null && discardedRows > 10;
 
-  const totals = useMemo(() => computeTotals(lines), [lines]);
+  const totals = useMemo(() => computeTotals(lines, extraCostsGBP), [lines, extraCostsGBP]);
 
   function updateDraft(
     line: ParsedLineDto,
@@ -214,7 +219,7 @@ export function ParsedLinesTable({
         )}
 
         <div className="overflow-hidden rounded-2xl border">
-          <div className="max-h-[520px] overflow-auto">
+          <div className="max-h-[70vh] overflow-auto">
             <table className="min-w-full text-sm">
               <thead className="sticky top-0 z-20 bg-muted/80 text-xs uppercase tracking-wide text-muted-foreground backdrop-blur shadow">
                 <tr>
@@ -521,11 +526,28 @@ export function ParsedLinesTable({
               {(lines ?? []).length > 0 && (
                 <tfoot>
                   <tr className="bg-muted/40 text-sm font-medium">
-                    <td className="px-4 py-3 text-right" colSpan={4}>
-                      Totals
+                    <td className="px-4 py-3" colSpan={7}>
+                      <div className="flex flex-wrap items-center justify-end gap-x-8 gap-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">Total cost</span>
+                          <span>{totals.costTotal != null ? formatCurrency(totals.costTotal, currency) : "—"}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">Total sell</span>
+                          <span>{totals.sellTotal != null ? formatCurrency(totals.sellTotal, currency) : "—"}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">Total profit</span>
+                          <span>{totals.profit != null ? formatCurrency(totals.profit, currency) : "—"}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">Profit margin</span>
+                          <span>
+                            {totals.profitMargin != null ? `${Math.round(totals.profitMargin * 1000) / 10}%` : "—"}
+                          </span>
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-4 py-3 text-right">{totals.sellUnit != null ? formatCurrency(totals.sellUnit, currency) : "—"}</td>
-                    <td className="px-4 py-3 text-right">{totals.sellTotal != null ? formatCurrency(totals.sellTotal, currency) : "—"}</td>
                   </tr>
                 </tfoot>
               )}
@@ -576,26 +598,66 @@ type DraftValues = {
   unitPrice: number | null;
 };
 
-function computeTotals(lines?: ParsedLineDto[] | null) {
+type ParsedLinesTotals = {
+  costTotal: number | null;
+  sellTotal: number | null;
+  profit: number | null;
+  profitMargin: number | null;
+};
+
+function computeTotals(lines?: ParsedLineDto[] | null): ParsedLinesTotals;
+function computeTotals(
+  lines?: ParsedLineDto[] | null,
+  extraCostsGBP?: { delivery?: number | null; installation?: number | null },
+): ParsedLinesTotals;
+function computeTotals(
+  lines?: ParsedLineDto[] | null,
+  extraCostsGBP?: { delivery?: number | null; installation?: number | null },
+): ParsedLinesTotals {
   if (!Array.isArray(lines) || lines.length === 0) {
-    return { sellUnit: null, sellTotal: null };
+    return { costTotal: null, sellTotal: null, profit: null, profitMargin: null };
   }
-  let sellUnit = 0;
+
+  let costTotal = 0;
   let sellTotal = 0;
-  let count = 0;
+  let hasAnyCost = false;
+  let hasAnySell = false;
+
   for (const line of lines) {
-    const unit = normalizeNumber(line.meta?.sellUnitGBP ?? line.meta?.sell_unit ?? line.sellUnit);
-    const total = normalizeNumber(line.meta?.sellTotalGBP ?? line.meta?.sell_total ?? line.sellTotal);
-    if (unit != null) {
-      sellUnit += unit;
-      count += 1;
+    const qty = normalizeNumber(line.qty) ?? 1;
+    const unitCost = normalizeMoney(line.unitPrice);
+    if (unitCost != null) {
+      costTotal += qty * unitCost;
+      hasAnyCost = true;
     }
-    if (total != null) sellTotal += total;
+
+    const sellTotalLine = normalizeNumber(line.meta?.sellTotalGBP ?? line.meta?.sell_total ?? line.sellTotal);
+    if (sellTotalLine != null) {
+      sellTotal += sellTotalLine;
+      hasAnySell = true;
+    } else {
+      const sellUnit = normalizeNumber(line.meta?.sellUnitGBP ?? line.meta?.sell_unit ?? line.sellUnit);
+      if (sellUnit != null) {
+        sellTotal += sellUnit * qty;
+        hasAnySell = true;
+      }
+    }
   }
-  return {
-    sellUnit: count > 0 ? sellUnit / count : null,
-    sellTotal: sellTotal > 0 ? sellTotal : null,
-  };
+
+  const delivery = normalizeMoney(extraCostsGBP?.delivery);
+  const installation = normalizeMoney(extraCostsGBP?.installation);
+  const extraCostTotal = (delivery ?? 0) + (installation ?? 0);
+  if (delivery != null || installation != null) {
+    costTotal += extraCostTotal;
+    hasAnyCost = true;
+  }
+
+  const costTotalOut = hasAnyCost ? Math.round(costTotal * 100) / 100 : null;
+  const sellTotalOut = hasAnySell ? Math.round(sellTotal * 100) / 100 : null;
+  const profit = sellTotalOut != null && costTotalOut != null ? Math.round((sellTotalOut - costTotalOut) * 100) / 100 : null;
+  const profitMargin = profit != null && sellTotalOut != null && sellTotalOut !== 0 ? profit / sellTotalOut : null;
+
+  return { costTotal: costTotalOut, sellTotal: sellTotalOut, profit, profitMargin };
 }
 
 function normalizeNumber(value: unknown): number | null {

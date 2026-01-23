@@ -61,7 +61,12 @@ export function recalculateQuoteTotals(params: {
   const quoteDefaults: any = (tenantSettings?.quoteDefaults as any) || {};
   const currencyCode = normalizeCurrency(quote.currency || quoteDefaults?.currency || "GBP");
   const currencySymbolValue = currencySymbol(currencyCode);
-  const vatRate = Number(quoteDefaults?.vatRate ?? 0.2);
+  const vatRateOverrideRaw = safeNumber(((quote.meta as any) || {})?.vatRateOverride);
+  const vatRateOverride =
+    vatRateOverrideRaw != null && Number.isFinite(vatRateOverrideRaw)
+      ? Math.min(1, Math.max(0, vatRateOverrideRaw))
+      : null;
+  const vatRate = vatRateOverride ?? Number(quoteDefaults?.vatRate ?? 0.2);
   const showVat = quoteDefaults?.showVat !== false;
   const marginDefault = Number(
     quote.markupDefault ?? quoteDefaults?.defaultMargin ?? 0.25,

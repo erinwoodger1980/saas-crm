@@ -5162,8 +5162,13 @@ async function buildQuoteProposalHtml(opts: {
         line-height: 1.6;
       }
 
-      .powered-by {
-        margin-top: 10px;
+      /* Rendered on every PDF page (Chrome print repeats fixed elements per page) */
+      .poweredByFixed {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 10px;
+        text-align: center;
         font-size: 9px;
         color: #94a3b8;
       }
@@ -5187,6 +5192,7 @@ async function buildQuoteProposalHtml(opts: {
     <html>
     <head><meta charset="utf-8" />${styles}</head>
     <body data-template="${proposalTemplate}">
+      <div class="poweredByFixed">Powered by joineryai.app</div>
       <!-- Page 1: Cover (matches the provided style) -->
       <div class="page cover-page page-break-after">
         <div class="cover-hero">
@@ -5411,7 +5417,6 @@ async function buildQuoteProposalHtml(opts: {
           <div>Quote Reference: ${ref} • Valid until ${validUntil}</div>
           <div style="margin-top:4px;">Thank you for considering ${escapeHtml(brand)} for your project.</div>
           <div style="margin-top:8px;font-size:9px;">All prices in ${cur}. ${showVat ? "VAT included where applicable." : ""}</div>
-          <div class="powered-by">powered by joineryai.app</div>
         </footer>
       </div>
     </body>
@@ -7201,7 +7206,7 @@ router.post("/:id/send-email", requireAuth, async (req: any, res) => {
     const quote = await prisma.quote.findFirst({
       where: { id: quoteId, tenantId },
       include: {
-        lead: true,
+        lead: { include: { client: true } },
         tenant: true,
         lines: true,
       },
@@ -7244,6 +7249,20 @@ router.post("/:id/send-email", requireAuth, async (req: any, res) => {
     });
     const subject = req.body?.subject || payload.subject;
 
+    const overrideBodyText = typeof req.body?.body === "string" ? req.body.body : null;
+    const overrideBodyHtml = typeof req.body?.html === "string" ? req.body.html : null;
+
+    const bodyTextToSend = overrideBodyText ?? payload.bodyText;
+    const bodyHtmlToSend =
+      overrideBodyHtml ??
+      (overrideBodyText
+        ? `<div style="white-space: pre-wrap;">${String(overrideBodyText)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/\"/g, "&quot;")}</div>`
+        : payload.bodyHtml);
+
     const attachments = [];
     if (includeAttachment && proposalFileId) {
       const file = await prisma.uploadedFile.findFirst({
@@ -7263,12 +7282,18 @@ router.post("/:id/send-email", requireAuth, async (req: any, res) => {
 
     const isDryRun = req.body?.dryRun === true;
 
+    const clientAssignedUserId = (quote as any)?.lead?.client?.userId ? String((quote as any).lead.client.userId) : null;
+    const senderUserId = clientAssignedUserId || userId || null;
+    const senderMode = clientAssignedUserId ? "client_assigned_user" : userId ? "request_user" : "tenant_fallback";
+
     console.log("[/quotes/:id/send-email] attempt", {
       tenantId,
       quoteId: quote.id,
       recipientEmail,
       dryRun: isDryRun,
       includeAttachment,
+      senderMode,
+      senderUserId,
     });
 
     if (isDryRun) {
@@ -7278,23 +7303,49 @@ router.post("/:id/send-email", requireAuth, async (req: any, res) => {
         payload,
         attachmentCount: attachments.length,
         warnings: emailValidation.warnings,
+        senderMode,
+        senderUserId,
       });
     }
     
     // Send email using existing email service
     const { sendEmailViaUser, sendEmailViaTenant } = require("../services/email-sender");
 
-    const sendFn = userId ? sendEmailViaUser : sendEmailViaTenant;
-    const sendArgs = userId ? [userId] : [tenantId];
-    
-    await sendFn(...sendArgs, {
-      to: recipientEmail,
-      subject,
-      body: payload.bodyText,
-      html: payload.bodyHtml,
-      fromName: quote.tenant?.name || "JoineryAI",
-      attachments: attachments.length ? attachments : undefined,
-    });
+    try {
+      if (senderUserId) {
+        await sendEmailViaUser(senderUserId, {
+          to: recipientEmail,
+          subject,
+          body: bodyTextToSend,
+          html: bodyHtmlToSend,
+          fromName: quote.tenant?.name || "JoineryAI",
+          attachments: attachments.length ? attachments : undefined,
+        });
+      } else {
+        await sendEmailViaTenant(tenantId, {
+          to: recipientEmail,
+          subject,
+          body: bodyTextToSend,
+          html: bodyHtmlToSend,
+          fromName: quote.tenant?.name || "JoineryAI",
+          attachments: attachments.length ? attachments : undefined,
+        });
+      }
+    } catch (sendErr: any) {
+      const message = String(sendErr?.message || "");
+      if (message.toLowerCase().includes("no email provider configured")) {
+        return res.status(400).json({
+          error: "no_email_provider",
+          message:
+            senderMode === "client_assigned_user"
+              ? "The client’s assigned user has no Gmail/Microsoft 365 connection configured. Assign a different user or connect their email in Settings."
+              : "Your user has no Gmail/Microsoft 365 connection configured. Connect your email in Settings to send emails from the CRM.",
+          senderMode,
+          senderUserId,
+        });
+      }
+      throw sendErr;
+    }
     
     // TODO: Log activity when proper activity model is available
     // Could use ActivityLog or create a QuoteActivity record
@@ -7304,6 +7355,8 @@ router.post("/:id/send-email", requireAuth, async (req: any, res) => {
       quoteId: quote.id,
       recipientEmail,
       attachmentCount: attachments.length,
+      senderMode,
+      senderUserId,
     });
 
     // Update quote status if this is first send

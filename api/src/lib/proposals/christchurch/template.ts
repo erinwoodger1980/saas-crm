@@ -192,9 +192,65 @@ export function buildChristchurchProposalHtml(opts: {
   const parts = chunkLines(quote.lines, 8);
   const totalParts = Math.max(1, parts.length);
 
+  const poweredByHtml = `<div class="poweredBy">Powered by joineryai.app</div>`;
+
+  const defaultGuarantees: Array<{ title: string; description: string; icon: string }> = [
+    {
+      title: "Delivered when we say we will.",
+      description:
+        "We commit to delivering your order to your site when we say we will. Our meticulous production planning ensures your project remains on schedule, free from costly delays.",
+      icon: "⏱",
+    },
+    {
+      title: "No hidden extras",
+      description:
+        "The price presented in your quotation is the final price you pay. All costs are transparently agreed upon upfront, eliminating surprise charges or unexpected add-ons.",
+      icon: "🧾",
+    },
+    {
+      title: "Always to scope and meeting regulations",
+      description:
+        "Each unit is meticulously crafted to your agreed specification and fully compliant with PAS 24, Part Q, and all relevant Building Regulations. You can be confident your joinery is safe, secure, and perfectly fit for purpose.",
+      icon: "🛡",
+    },
+  ];
+  const guaranteeItemsRaw = Array.isArray(quoteDefaults?.guarantees) ? quoteDefaults.guarantees : null;
+  const guaranteeItems: Array<{ title: string; description: string; icon: string }> =
+    guaranteeItemsRaw && guaranteeItemsRaw.length
+      ? guaranteeItemsRaw
+          .slice(0, 3)
+          .map((g: any, i: number) => ({
+            title: String(g?.title || g?.name || defaultGuarantees[i]?.title || "Guarantee"),
+            description: String(g?.description || g?.text || defaultGuarantees[i]?.description || ""),
+            icon: String(g?.icon || defaultGuarantees[i]?.icon || "✓"),
+          }))
+      : defaultGuarantees;
+
+  const defaultWarranties: Array<{ years: string; label: string }> = [
+    { years: "10 years", label: "on manufacturing defects" },
+    { years: "30 years", label: "on timber rot and decay" },
+    { years: "10 years", label: "on paint finish" },
+    { years: "5 years", label: "on hardware" },
+  ];
+  const warrantyItemsRaw =
+    Array.isArray(quoteDefaults?.warranties)
+      ? quoteDefaults.warranties
+      : Array.isArray(quoteDefaults?.warrantyItems)
+        ? quoteDefaults.warrantyItems
+        : null;
+  const warrantyItems: Array<{ years: string; label: string }> =
+    warrantyItemsRaw && warrantyItemsRaw.length
+      ? warrantyItemsRaw.slice(0, 6).map((w: any) => ({
+          years: String(w?.years || w?.duration || w?.title || ""),
+          label: String(w?.label || w?.description || w?.text || ""),
+        }))
+      : defaultWarranties;
+
   const styles = `
     <style>
-      @page { size: A4 portrait; margin: 18mm 16mm; }
+      /* We control margins via .page padding; keep @page margin at 0 to avoid double-margins
+         (which can cause content to visually overlap between pages in PDF output). */
+      @page { size: A4 portrait; margin: 0; }
       html, body { margin: 0; padding: 0; background: #ffffff; }
       body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; color: #0f172a; }
 
@@ -253,13 +309,16 @@ export function buildChristchurchProposalHtml(opts: {
       .coverTitle { text-align:center; font-size: 21pt; font-weight: 900; margin: 10mm 0 0 0; }
       .coverMeta { text-align:center; margin-top: 4mm; font-size: 10.5pt; color: #334155; }
       .coverFooter { position: absolute; left: 16mm; right: 16mm; bottom: 18mm; text-align: center; font-size: 9.8pt; color: #334155; line-height: 1.55; }
+      .poweredByCover { margin-top: 4mm; font-size: 8.8pt; color: #94a3b8; }
+
+      .poweredBy { position: absolute; left: 16mm; right: 16mm; bottom: 6mm; text-align: center; font-size: 8.8pt; color: #94a3b8; }
 
       /* Overview page (page 2) */
       .overviewBleed { width: 210mm; height: 297mm; display: grid; grid-template-columns: 78mm 1fr; }
       .overviewBleed .photo { width: 100%; height: 100%; object-fit: cover; display: block; }
       .overviewBleed .content { padding: 18mm 16mm; box-sizing: border-box; }
       .ovTitle { font-size: 18pt; font-weight: 900; color: #1e3a8a; margin: 0 0 8mm 0; }
-      .ovGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10mm; }
+      .ovGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; align-items: start; }
       .ovSubTitle { font-size: 12.5pt; font-weight: 900; color: #1e3a8a; margin: 0 0 4mm 0; }
       .ovBlock { margin-bottom: 8mm; }
       .ovScope { margin-top: 6mm; }
@@ -269,6 +328,11 @@ export function buildChristchurchProposalHtml(opts: {
 
       .panel { border: 1px solid #e2e8f0; border-radius: 6px; padding: 5mm; }
       .panel h3 { margin: 0 0 3mm 0; font-size: 11pt; border-bottom: 1px solid #e2e8f0; padding-bottom: 2mm; }
+
+      @media print {
+        /* Make PDF pagination deterministic */
+        .page { overflow: hidden; }
+      }
 
       .kv { font-size: 9.8pt; line-height: 1.45; }
       .kv .row { display: grid; grid-template-columns: 40mm 1fr; gap: 4mm; margin: 1.5mm 0; }
@@ -320,14 +384,15 @@ export function buildChristchurchProposalHtml(opts: {
 
       .triple { margin-top: 3mm; }
       .tripleGrid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6mm; margin-top: 4mm; }
-      .card { border: 1px solid #e2e8f0; border-radius: 6px; padding: 4mm; background: #f8fafc; }
-      .card h4 { margin: 0 0 2mm 0; font-size: 10.5pt; color: #1e3a8a; }
+      .card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 4.5mm; background: #f8fafc; }
+      .card .icon { width: 10mm; height: 10mm; border-radius: 999px; background: #92400e; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 12pt; margin-bottom: 3mm; }
+      .card h4 { margin: 0 0 2mm 0; font-size: 10.5pt; color: #0f172a; font-weight: 900; }
       .card p { margin: 0; font-size: 9.6pt; line-height: 1.55; color: #334155; }
 
       .warranty { margin-top: 6mm; }
-      .wGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm 10mm; margin-top: 3mm; }
-      .wItem { font-size: 10pt; }
-      .wItem strong { font-weight: 800; }
+      .wGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm 8mm; margin-top: 4mm; }
+      .wItem { font-size: 10pt; border: 1px solid #e2e8f0; border-left: 4px solid #f97316; border-radius: 8px; background: #ffffff; padding: 3.5mm 4mm; }
+      .wItem strong { font-weight: 900; }
       .smallNote { margin-top: 2mm; font-size: 9pt; color: #64748b; text-align: center; }
 
       .aboutGrid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 10mm; }
@@ -391,6 +456,7 @@ export function buildChristchurchProposalHtml(opts: {
         ${phone ? `Telephone: ${escapeHtml(phone)}<br/>` : ""}
         ${email ? `Email: ${escapeHtml(email)}<br/>` : ""}
         ${address ? `Address: ${escapeHtml(address)}` : ""}
+        <div class="poweredByCover">Powered by joineryai.app</div>
       </div>
     </div>
   `;
@@ -403,8 +469,8 @@ export function buildChristchurchProposalHtml(opts: {
           <h2 class="ovTitle">Project Overview</h2>
 
           <div class="ovGrid">
-            <div class="ovBlock">
-              <h3 class="ovSubTitle">Key Details</h3>
+            <div class="panel ovBlock">
+              <h3>Key Details</h3>
               <div class="kv">
                 ${kvRow("Project", displayProjectRef)}
                 ${kvRow("Job Number", jobNumber)}
@@ -414,8 +480,8 @@ export function buildChristchurchProposalHtml(opts: {
               </div>
             </div>
 
-            <div class="ovBlock">
-              <h3 class="ovSubTitle">Specification Highlights</h3>
+            <div class="panel ovBlock">
+              <h3>Specification Highlights</h3>
               <div class="kv highlights">
                 <ul>
                   <li><strong>Timber:</strong> ${escapeHtml(timber)}</li>
@@ -435,6 +501,7 @@ export function buildChristchurchProposalHtml(opts: {
           </div>
         </div>
       </div>
+      ${poweredByHtml}
     </div>
   `;
 
@@ -462,6 +529,8 @@ export function buildChristchurchProposalHtml(opts: {
           includeIntro: partIndex === 0,
           currencySymbol: sym,
         })}
+
+        ${poweredByHtml}
       </div>
     `;
   });
@@ -493,6 +562,8 @@ export function buildChristchurchProposalHtml(opts: {
         grandTotal,
         showVat,
       })}
+
+      ${poweredByHtml}
     </div>
   `;
 
@@ -512,26 +583,25 @@ export function buildChristchurchProposalHtml(opts: {
         </div>
       </div>
 
-      <div class="h2">Wealden Joinery Triple Guarantee</div>
+      <div class="h2">${escapeHtml(brand)} Triple Guarantee</div>
       <div class="para">
-        When you choose Wealden Joinery for your timber windows and doors, you receive more than exceptional craftsmanship. You gain complete peace of mind.
+        When you choose ${escapeHtml(brand)} for your timber windows and doors, you receive more than exceptional craftsmanship. You gain complete peace of mind.
         Every order is backed by our comprehensive Triple Guarantee, ensuring a seamless and reliable experience from start to finish:
       </div>
 
       <div class="triple">
         <div class="tripleGrid">
-          <div class="card">
-            <h4>Delivered when we say we will.</h4>
-            <p>We commit to delivering your order to your site when we say we will. Our meticulous production planning ensures your project remains on schedule, free from costly delays.</p>
-          </div>
-          <div class="card">
-            <h4>No hidden extras</h4>
-            <p>The price presented in your quotation is the final price you pay. All costs are transparently agreed upon upfront, eliminating surprise charges or unexpected add-ons.</p>
-          </div>
-          <div class="card">
-            <h4>Always to scope and meeting regulations</h4>
-            <p>Each unit is meticulously crafted to your agreed specification and fully compliant with PAS 24, Part Q, and all relevant Building Regulations. You can be confident your joinery is safe, secure, and perfectly fit for purpose.</p>
-          </div>
+          ${guaranteeItems
+            .map(
+              (g) => `
+              <div class="card">
+                <div class="icon">${escapeHtml(g.icon || "✓")}</div>
+                <h4>${escapeHtml(g.title)}</h4>
+                <p>${escapeHtml(g.description)}</p>
+              </div>
+            `,
+            )
+            .join("")}
         </div>
       </div>
 
@@ -543,22 +613,27 @@ export function buildChristchurchProposalHtml(opts: {
         <div class="h2" style="font-size: 12.5pt;">Comprehensive Warranty Coverage</div>
         <div class="para" style="text-align:center;">Our commitment to quality extends far beyond delivery, with robust warranties designed to protect your investment for years to come:</div>
         <div class="wGrid">
-          <div class="wItem"><strong>10 years</strong> on manufacturing defects</div>
-          <div class="wItem"><strong>30 years</strong> on timber rot and decay</div>
-          <div class="wItem"><strong>10 years</strong> on paint finish</div>
-          <div class="wItem"><strong>5 years</strong> on hardware</div>
+          ${warrantyItems
+            .map(
+              (w) => `
+              <div class="wItem"><strong>${escapeHtml(w.years)}</strong> ${escapeHtml(w.label)}</div>
+            `,
+            )
+            .join("")}
         </div>
         <div class="smallNote">Conditions apply. Full warranty details are available upon request.</div>
       </div>
 
       <div style="margin-top: 8mm;">
-        <div class="h2" style="font-size: 12.5pt;">About Wealden Joinery & Client Testimonials</div>
+        <div class="h2" style="font-size: 12.5pt;">About ${escapeHtml(brand)} & Client Testimonials</div>
 
         <div class="aboutGrid">
-          <div class="para">
-            Wealden Joinery is a leading specialist in bespoke timber windows and doors, renowned for our unwavering commitment to traditional craftsmanship, innovative design, and exceptional customer service.
-            With over 30 years of experience, we pride ourselves on creating high-quality, durable joinery solutions that enhance the beauty and integrity of every property we work on, from historical renovations to modern constructions.
-          </div>
+          <div class="para">${escapeHtml(
+            String(
+              quoteDefaults?.overview ||
+                `${brand} is a specialist in bespoke timber windows and doors, renowned for our commitment to traditional craftsmanship, innovative design, and exceptional customer service.`,
+            ),
+          )}</div>
 
           <div>
             <div class="quote">
@@ -578,6 +653,8 @@ export function buildChristchurchProposalHtml(opts: {
           </div>
         </div>
       </div>
+
+      ${poweredByHtml}
     </div>
   `;
 
@@ -654,6 +731,8 @@ export function buildChristchurchProposalHtml(opts: {
           </div>
         </div>
       </div>
+
+      ${poweredByHtml}
     </div>
   `;
 
@@ -681,7 +760,7 @@ export function buildChristchurchProposalHtml(opts: {
         ${termCard(3, "Delivery Location", `Delivery will be made to ${escapeHtml(pickPropertyName(projectName, leadCustom) || projectName)} at a cost of ${sym}${formatMoney(deliveryExVat)} + VAT.`)}
         ${termCard(4, "Delivery Schedule", `Delivery will be a single batch delivery for all items ordered.`)}
         ${termCard(5, "Installation Requirements", `Delivery and installation are contingent upon clear vehicular access to the property and adequate working space around window openings. Site conditions will be confirmed during our pre-installation survey.`)}
-        ${termCard(6, "Standard Conditions", `All work is undertaken according to Wealden Joinery’s standard terms and conditions of sale. Copies are available upon request and will be provided with your order confirmation documentation.`)}
+        ${termCard(6, "Standard Conditions", `All work is undertaken according to ${escapeHtml(brand)}’s standard terms and conditions of sale. Copies are available upon request and will be provided with your order confirmation documentation.`)}
       </div>
 
       <div style="margin-top: 8mm;">
@@ -702,6 +781,8 @@ export function buildChristchurchProposalHtml(opts: {
           </div>
         </div>
       </div>
+
+      ${poweredByHtml}
     </div>
   `;
 

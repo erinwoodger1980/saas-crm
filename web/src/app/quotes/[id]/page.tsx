@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { Loader2, Sparkles, Printer, ChevronDown, ChevronRight, Download, FileText, Building2, Cpu, Edit3, Eye, FileUp, Mail, Save, Box, Wand2, X } from "lucide-react";
 import { TypeSelectorModal } from "@/components/TypeSelectorModal";
 import { AIComponentConfigurator } from "@/components/configurator/AIComponentConfigurator";
@@ -46,6 +47,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { deriveLineMaterialAlerts, groupAlerts, type GroupedAlert } from "@/lib/materialAlerts";
 import { InstantQuoteGenerator } from "@/components/instant-quote/InstantQuoteGenerator";
 import { normalizeQuoteDraft } from "@/lib/quoteDraft";
+import { EmailPreviewModal } from "@/components/EmailPreviewModal";
 
 // Material cost alert types imported from helper; interface here intentionally omitted.
 
@@ -87,6 +89,20 @@ export default function QuoteBuilderPage() {
     mutate: mutateQuote,
   } = useSWR<QuoteDto>(quoteId ? ["quote", quoteId] : null, () => fetchQuote(quoteId), { revalidateOnFocus: false });
 
+  const pricingInitRef = useRef(false);
+  const [markupPercentDraft, setMarkupPercentDraft] = useState<string>("");
+  const [vatPercentDraft, setVatPercentDraft] = useState<string>("");
+  const [deliveryCostDraft, setDeliveryCostDraft] = useState<string>("");
+  const [installationCostDraft, setInstallationCostDraft] = useState<string>("");
+  const [pricingSaving, setPricingSaving] = useState<{ markup?: boolean; vat?: boolean; delivery?: boolean; installation?: boolean }>({});
+
+  const [emailPreviewOpen, setEmailPreviewOpen] = useState(false);
+  const [emailPreviewLoading, setEmailPreviewLoading] = useState(false);
+  const [emailDraftTo, setEmailDraftTo] = useState<string>("");
+  const [emailDraftRecipientName, setEmailDraftRecipientName] = useState<string | undefined>(undefined);
+  const [emailDraftSubject, setEmailDraftSubject] = useState<string>("");
+  const [emailDraftBody, setEmailDraftBody] = useState<string>("");
+
 
   const {
     data: linesData,
@@ -101,6 +117,141 @@ export default function QuoteBuilderPage() {
   
   const lines = linesData?.lines ?? [];
   const imageUrlMap = linesData?.imageUrlMap ?? {};
+
+  const installationCostGBP = useMemo(() => {
+    const raw = (quote?.meta as any)?.installationCostGBP;
+    const n = typeof raw === "number" ? raw : Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }, [quote?.meta]);
+
+  const vatRateOverride = useMemo(() => {
+    const raw = (quote?.meta as any)?.vatRateOverride;
+    const n = typeof raw === "number" ? raw : Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }, [quote?.meta]);
+
+  useEffect(() => {
+    if (!quote || pricingInitRef.current) return;
+
+    const margin = typeof (quote as any).markupDefault === "number" ? (quote as any).markupDefault : Number((quote as any).markupDefault);
+    const marginSafe = Number.isFinite(margin) ? margin : 0.25;
+    setMarkupPercentDraft(String(Math.round(marginSafe * 1000) / 10));
+
+    const delivery = typeof (quote as any).deliveryCost === "number" ? (quote as any).deliveryCost : Number((quote as any).deliveryCost);
+    setDeliveryCostDraft(Number.isFinite(delivery) && delivery > 0 ? String(Math.round(delivery * 100) / 100) : "");
+
+    const vatRate = vatRateOverride ?? 0.2;
+    setVatPercentDraft(String(Math.round(vatRate * 1000) / 10));
+
+    setInstallationCostDraft(installationCostGBP != null && installationCostGBP > 0 ? String(Math.round(installationCostGBP * 100) / 100) : "");
+
+    pricingInitRef.current = true;
+  }, [quote, vatRateOverride, installationCostGBP]);
+
+  const parseOptionalNumber = (raw: string): number | null => {
+    const trimmed = String(raw ?? "").trim();
+    if (!trimmed) return null;
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const persistMarkup = useCallback(async () => {
+    if (!quoteId) return;
+    const pct = parseOptionalNumber(markupPercentDraft);
+    if (pct == null) return;
+    const margin = pct / 100;
+    if (!Number.isFinite(margin) || margin < 0 || margin > 5) {
+      toast({ title: "Invalid markup", description: "Enter a percentage between 0 and 500." });
+      return;
+    }
+    setPricingSaving((p) => ({ ...p, markup: true }));
+    try {
+      const pricingMode = ((quote?.meta as any)?.pricingMode === "ml" ? "ml" : "margin") as "ml" | "margin";
+      await apiFetch(`/quotes/${quoteId}/preference`, {
+        method: "PATCH",
+        body: { pricingMode, margin },
+      });
+      // Re-price lines so sell totals update.
+      await apiFetch(`/quotes/${quoteId}/price`, {
+        method: "POST",
+        body: { method: "margin", margin },
+      });
+      await mutateLines();
+      await mutateQuote();
+    } catch (e: any) {
+      toast({ title: "Failed to update markup", description: e?.message || "Please try again." });
+    } finally {
+      setPricingSaving((p) => ({ ...p, markup: false }));
+    }
+  }, [quoteId, markupPercentDraft, quote?.meta, mutateLines, mutateQuote, toast]);
+
+  const persistDelivery = useCallback(async () => {
+    if (!quoteId) return;
+    const amount = parseOptionalNumber(deliveryCostDraft);
+    if (amount == null) return;
+    if (amount < 0) {
+      toast({ title: "Invalid delivery", description: "Delivery must be 0 or greater." });
+      return;
+    }
+    setPricingSaving((p) => ({ ...p, delivery: true }));
+    try {
+      await apiFetch(`/quotes/${quoteId}/delivery`, {
+        method: "POST",
+        body: { amountGBP: amount, method: "spread" },
+      });
+      await mutateLines();
+      await mutateQuote();
+    } catch (e: any) {
+      toast({ title: "Failed to update delivery", description: e?.message || "Please try again." });
+    } finally {
+      setPricingSaving((p) => ({ ...p, delivery: false }));
+    }
+  }, [quoteId, deliveryCostDraft, mutateLines, mutateQuote, toast]);
+
+  const persistVat = useCallback(async () => {
+    if (!quoteId) return;
+    const pct = parseOptionalNumber(vatPercentDraft);
+    if (pct == null) return;
+    const vatRate = pct / 100;
+    if (!Number.isFinite(vatRate) || vatRate < 0 || vatRate > 1) {
+      toast({ title: "Invalid VAT", description: "Enter a percentage between 0 and 100." });
+      return;
+    }
+    setPricingSaving((p) => ({ ...p, vat: true }));
+    try {
+      await apiFetch(`/quotes/${quoteId}`, {
+        method: "PATCH",
+        body: { meta: { vatRateOverride: vatRate } },
+      });
+      await mutateQuote();
+    } catch (e: any) {
+      toast({ title: "Failed to update VAT", description: e?.message || "Please try again." });
+    } finally {
+      setPricingSaving((p) => ({ ...p, vat: false }));
+    }
+  }, [quoteId, vatPercentDraft, mutateQuote, toast]);
+
+  const persistInstallation = useCallback(async () => {
+    if (!quoteId) return;
+    const amount = parseOptionalNumber(installationCostDraft);
+    if (amount == null) return;
+    if (amount < 0) {
+      toast({ title: "Invalid installation", description: "Installation must be 0 or greater." });
+      return;
+    }
+    setPricingSaving((p) => ({ ...p, installation: true }));
+    try {
+      await apiFetch(`/quotes/${quoteId}`, {
+        method: "PATCH",
+        body: { meta: { installationCostGBP: amount } },
+      });
+      await mutateQuote();
+    } catch (e: any) {
+      toast({ title: "Failed to update installation", description: e?.message || "Please try again." });
+    } finally {
+      setPricingSaving((p) => ({ ...p, installation: false }));
+    }
+  }, [quoteId, installationCostDraft, mutateQuote, toast]);
 
   const {
     data: questionnaireFields = [],
@@ -915,8 +1066,8 @@ export default function QuoteBuilderPage() {
         description: "Quote PDF is ready for preview",
       });
 
-      // Auto-navigate to preview tab
-      setActiveTab("preview");
+      // Auto-navigate to proposal tab (preview is embedded there)
+      setActiveTab("proposal");
     } catch (err: any) {
       setError(err?.message || "Failed to generate PDF");
       toast({
@@ -939,44 +1090,75 @@ export default function QuoteBuilderPage() {
       return;
     }
 
-    const pdfUrl = (quote?.meta as any)?.proposalPdfUrl ?? quote?.proposalPdfUrl ?? null;
-    if (!pdfUrl) {
-      toast({
-        title: "No PDF to send",
-        description: "Generate a PDF first from the Quote Lines tab",
-        variant: "destructive",
-      });
-      return;
-    }
+    const to = lead.email;
+    const defaultSubject = `Quotation – ${quote?.title || "Your project"} (${tenantName || "JoineryAI"})`;
 
-    setIsSendingEmail(true);
+    setEmailPreviewOpen(true);
+    setEmailPreviewLoading(true);
+    setEmailDraftTo(to);
+    setEmailDraftRecipientName(lead?.contactName || undefined);
 
     try {
-      await apiFetch(`/quotes/${encodeURIComponent(quoteId)}/send-email`, {
+      const preview = await apiFetch<any>(`/quotes/${encodeURIComponent(quoteId)}/send-email`, {
         method: "POST",
         json: {
-          to: lead.email,
-          subject: `Your quote from ${tenantName || 'us'}`,
+          to,
+          subject: defaultSubject,
           includeAttachment: true,
+          dryRun: true,
         },
       });
 
-      toast({
-        title: "Email sent",
-        description: `Quote sent to ${lead.email}`,
-      });
+      const payload = preview?.payload || {};
+      const subject = typeof defaultSubject === "string" ? defaultSubject : payload?.subject;
+      const body = typeof payload?.bodyText === "string" ? payload.bodyText : "";
 
-      await mutateQuote();
+      setEmailDraftSubject(subject || payload?.subject || "");
+      setEmailDraftBody(body);
     } catch (err: any) {
+      setEmailPreviewOpen(false);
       toast({
-        title: "Email failed",
-        description: err?.message || "Unable to send email",
+        title: "Cannot prepare email",
+        description: err?.message || "Unable to generate email preview",
         variant: "destructive",
       });
     } finally {
-      setIsSendingEmail(false);
+      setEmailPreviewLoading(false);
     }
-  }, [quoteId, lead, quote?.meta, quote?.proposalPdfUrl, tenantName, mutateQuote, toast]);
+  }, [quoteId, lead, quote?.title, tenantName, toast]);
+
+  const handleSendPreviewEmail = useCallback(
+    async (editedSubject: string, editedBody: string) => {
+      if (!quoteId) return;
+      if (!emailDraftTo) throw new Error("Missing recipient email");
+
+      setIsSendingEmail(true);
+      try {
+        await apiFetch(`/quotes/${encodeURIComponent(quoteId)}/send-email`, {
+          method: "POST",
+          json: {
+            to: emailDraftTo,
+            subject: editedSubject,
+            body: editedBody,
+            includeAttachment: true,
+          },
+        });
+
+        toast({ title: "Email sent", description: `Quote sent to ${emailDraftTo}` });
+        await mutateQuote();
+      } catch (err: any) {
+        toast({
+          title: "Email failed",
+          description: err?.message || "Unable to send email",
+          variant: "destructive",
+        });
+        throw err;
+      } finally {
+        setIsSendingEmail(false);
+      }
+    },
+    [quoteId, emailDraftTo, mutateQuote, toast],
+  );
 
   const handleDownloadPdf = useCallback(() => {
     const pdfUrl = (quote?.meta as any)?.proposalPdfUrl ?? quote?.proposalPdfUrl ?? null;
@@ -1506,7 +1688,7 @@ export default function QuoteBuilderPage() {
           </div>
         ) : (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-8 h-auto">
+            <TabsList className="grid w-full grid-cols-7 h-auto">
               <TabsTrigger value="details" className="flex flex-col gap-1 py-3">
                 <FileText className="h-4 w-4" />
                 <span className="text-xs">Details</span>
@@ -1534,10 +1716,6 @@ export default function QuoteBuilderPage() {
               <TabsTrigger value="proposal" className="flex flex-col gap-1 py-3">
                 <Save className="h-4 w-4" />
                 <span className="text-xs">Proposal</span>
-              </TabsTrigger>
-              <TabsTrigger value="preview" className="flex flex-col gap-1 py-3">
-                <Eye className="h-4 w-4" />
-                <span className="text-xs">Preview</span>
               </TabsTrigger>
             </TabsList>
 
@@ -2515,6 +2693,60 @@ export default function QuoteBuilderPage() {
                     </Button>
                   </div>
 
+                  <div className="rounded-2xl border bg-card p-4 shadow-sm">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Markup (%)</Label>
+                        <Input
+                          type="number"
+                          inputMode="decimal"
+                          value={markupPercentDraft}
+                          onChange={(e) => setMarkupPercentDraft(e.target.value)}
+                          onBlur={persistMarkup}
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">VAT (%)</Label>
+                        <Input
+                          type="number"
+                          inputMode="decimal"
+                          value={vatPercentDraft}
+                          onChange={(e) => setVatPercentDraft(e.target.value)}
+                          onBlur={persistVat}
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Delivery (GBP)</Label>
+                        <Input
+                          type="number"
+                          inputMode="decimal"
+                          value={deliveryCostDraft}
+                          onChange={(e) => setDeliveryCostDraft(e.target.value)}
+                          onBlur={persistDelivery}
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Installation (GBP)</Label>
+                        <Input
+                          type="number"
+                          inputMode="decimal"
+                          value={installationCostDraft}
+                          onChange={(e) => setInstallationCostDraft(e.target.value)}
+                          onBlur={persistInstallation}
+                        />
+                      </div>
+                    </div>
+
+                    {(pricingSaving.markup || pricingSaving.vat || pricingSaving.delivery || pricingSaving.installation) && (
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        Saving pricing…
+                      </div>
+                    )}
+                  </div>
+
                   <ParsedLinesTable
                     lines={lines}
                     questionnaireFields={questionnaireFields}
@@ -2532,6 +2764,7 @@ export default function QuoteBuilderPage() {
                     onDownloadCsv={handleDownloadCsv}
                     imageUrlMap={imageUrlMap}
                     tenantId={quote?.tenantId || ''}
+                    extraCostsGBP={{ delivery: quote?.deliveryCost ?? null, installation: installationCostGBP }}
                   />
                 </div>
               ) : (
@@ -2654,110 +2887,6 @@ export default function QuoteBuilderPage() {
               ) : null}
             </TabsContent>
 
-            <TabsContent value="preview" className="space-y-6">
-              {proposalPdfUrl ? (
-                <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h2 className="text-2xl font-semibold text-foreground mb-2">Quote preview</h2>
-                      <p className="text-sm text-muted-foreground">
-                        Review the generated quote PDF before sending to client
-                      </p>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Button
-                        onClick={handleDownloadPdf}
-                        variant="outline"
-                        size="sm"
-                        className="gap-2"
-                      >
-                        <Download className="h-4 w-4" />
-                        Download
-                      </Button>
-                      <Button
-                        onClick={handlePrintPdf}
-                        variant="outline"
-                        size="sm"
-                        className="gap-2"
-                      >
-                        <Printer className="h-4 w-4" />
-                        Print
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* PDF Preview iframe */}
-                  <div className="relative w-full" style={{ height: "600px" }}>
-                    <iframe
-                      src={proposalPdfUrl}
-                      className="w-full h-full rounded-lg border"
-                      title="Quote PDF Preview"
-                    />
-                  </div>
-
-                  {/* Email section */}
-                  <div className="border-t pt-6">
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <h3 className="text-lg font-semibold text-foreground mb-1">Ready to send?</h3>
-                        <p className="text-sm text-muted-foreground">
-                          Send this quote to the client via email with PDF attachment
-                        </p>
-                      </div>
-                      <Button
-                        onClick={handleEmailToClient}
-                        disabled={isSendingEmail}
-                        size="lg"
-                        className="gap-2"
-                      >
-                        {isSendingEmail ? (
-                          <>
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Sending...
-                          </>
-                        ) : (
-                          <>
-                            <Mail className="h-4 w-4" />
-                            Email to client
-                          </>
-                        )}
-                      </Button>
-                    </div>
-
-                    {estimate && (
-                      <div className="grid grid-cols-3 gap-4 p-4 bg-muted/30 rounded-lg">
-                        <div>
-                          <div className="text-xs font-medium text-muted-foreground mb-1">Total</div>
-                          <div className="text-lg font-bold text-foreground">
-                            {formatCurrency(estimate.estimatedTotal, currency)}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-xs font-medium text-muted-foreground mb-1">Line items</div>
-                          <div className="text-lg font-bold text-foreground">{lines?.length ?? 0}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs font-medium text-muted-foreground mb-1">Status</div>
-                          <div className="text-sm font-medium text-foreground capitalize">{quoteStatus ?? "Draft"}</div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-2xl border bg-card p-8 shadow-sm">
-                  <div className="text-center text-muted-foreground py-12">
-                    <Eye className="h-12 w-12 mx-auto mb-4 opacity-40" />
-                    <h3 className="text-lg font-medium mb-2">No PDF generated yet</h3>
-                    <p className="text-sm mb-4">Generate a PDF from the Quote Lines tab to preview and send to client</p>
-                    <Button variant="outline" onClick={() => setActiveTab("quote-lines")}>
-                      Go to Quote Lines
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </TabsContent>
           </Tabs>
         )}
       </div>
@@ -2972,6 +3101,17 @@ export default function QuoteBuilderPage() {
           </pre>
         </DialogContent>
       </Dialog>
+
+      <EmailPreviewModal
+        isOpen={emailPreviewOpen}
+        onClose={() => setEmailPreviewOpen(false)}
+        onSend={handleSendPreviewEmail}
+        subject={emailDraftSubject}
+        body={emailDraftBody}
+        to={emailDraftTo}
+        recipientName={emailDraftRecipientName}
+        loading={emailPreviewLoading || isSendingEmail}
+      />
 
     </div>
   );
