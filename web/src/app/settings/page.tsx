@@ -1,6 +1,6 @@
 "use client";
 import { API_BASE, apiFetch, ensureDemoAuth } from "@/lib/api";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { useCurrentUser, type CurrentUser } from "@/lib/use-current-user";
