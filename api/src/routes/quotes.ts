@@ -4228,6 +4228,7 @@ type ChristchurchAiSummary = {
   ventilation: string;
   scope: string;
 };
+type ProposalBasicsAiSummary = ChristchurchAiSummary;
 
 function buildLineItemAiContext(lines: any[]): string {
   const chunks: string[] = [];
@@ -4324,6 +4325,66 @@ async function summarizeChristchurchFromLineItems(lines: any[]): Promise<Christc
     };
   } catch (err: any) {
     console.warn("[quotes] Christchurch AI spec summary failed; falling back:", err?.message || err);
+    return null;
+  }
+}
+
+async function summarizeProposalBasicsFromLineItems(lines: any[]): Promise<ProposalBasicsAiSummary | null> {
+  if (!env.OPENAI_API_KEY) return null;
+
+  try {
+    const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+    const ctx = buildLineItemAiContext(lines);
+
+    const resp = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.2,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are summarizing a joinery quotation for a proposal. Using ONLY the provided line items and their metadata, extract concise details. Do not guess or invent. If a field is not stated or cannot be inferred, return an empty string. Return JSON only.",
+        },
+        {
+          role: "user",
+          content:
+            `Extract these fields:\n- timber (species/material/engineering)\n- finish (paint/stain/color/system)\n- glazing (double/triple, coatings, Ug, etc)\n- fittings (hardware/ironmongery)\n- ventilation (vents/trickle vents)\n- scope (1-3 sentence overall scope summary, based on the line item descriptions)\n\n${ctx}`.slice(0, 12000),
+        },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "proposal_basics_summary",
+          schema: {
+            type: "object",
+            properties: {
+              timber: { type: "string" },
+              finish: { type: "string" },
+              glazing: { type: "string" },
+              fittings: { type: "string" },
+              ventilation: { type: "string" },
+              scope: { type: "string" },
+            },
+            required: ["timber", "finish", "glazing", "fittings", "ventilation", "scope"],
+            additionalProperties: false,
+          },
+        },
+      },
+    });
+
+    const content = resp.choices[0]?.message?.content || "{}";
+    const parsed = JSON.parse(content) as Partial<ProposalBasicsAiSummary>;
+
+    return {
+      timber: typeof parsed.timber === "string" ? parsed.timber.trim() : "",
+      finish: typeof parsed.finish === "string" ? parsed.finish.trim() : "",
+      glazing: typeof parsed.glazing === "string" ? parsed.glazing.trim() : "",
+      fittings: typeof parsed.fittings === "string" ? parsed.fittings.trim() : "",
+      ventilation: typeof parsed.ventilation === "string" ? parsed.ventilation.trim() : "",
+      scope: typeof parsed.scope === "string" ? parsed.scope.trim() : "",
+    };
+  } catch (err: any) {
+    console.warn("[quotes] Proposal basics AI summary failed; skipping:", err?.message || err);
     return null;
   }
 }
@@ -7042,11 +7103,47 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
     }
     
     // Update quote metadata
+    const fillIfBlank = (existing: unknown, next: unknown): string => {
+      const a = typeof existing === "string" ? existing.trim() : "";
+      if (a) return a;
+      const b = typeof next === "string" ? next.trim() : "";
+      return b;
+    };
+
+    let aiBasics: ProposalBasicsAiSummary | null = null;
+    // Only auto-fill from supplier quotes (not deterministic "own quote" imports).
+    if (!deterministicOnly && fileKind === "SUPPLIER_QUOTE" && env.OPENAI_API_KEY) {
+      try {
+        aiBasics = await withTimeout(
+          summarizeProposalBasicsFromLineItems(cleanedLines),
+          20_000,
+          "openai_proposal_basics",
+        );
+      } catch (err: any) {
+        console.warn("[process-supplier] proposal basics AI timed out/failed:", err?.message || err);
+      }
+    }
+
+    const existingMetaAny: any = (quote.meta as any) || {};
+    const existingSpecsAny: any = existingMetaAny?.specifications || {};
+
+    const nextScopeDescription = fillIfBlank(existingMetaAny?.scopeDescription, aiBasics?.scope);
+    const nextSpecifications = {
+      ...existingSpecsAny,
+      timber: fillIfBlank(existingSpecsAny?.timber, aiBasics?.timber),
+      finish: fillIfBlank(existingSpecsAny?.finish, aiBasics?.finish),
+      glazing: fillIfBlank(existingSpecsAny?.glazing, aiBasics?.glazing),
+      fittings: fillIfBlank(existingSpecsAny?.fittings, aiBasics?.fittings),
+      ventilation: fillIfBlank(existingSpecsAny?.ventilation, aiBasics?.ventilation),
+    };
+
     await prisma.quote.update({
       where: { id: quote.id },
       data: {
         meta: {
-          ...(quote.meta as any || {}),
+          ...(existingMetaAny || {}),
+          scopeDescription: nextScopeDescription,
+          specifications: nextSpecifications,
           lastProcessedAt: new Date().toISOString(),
           processedWithMarkup: applyMarkup,
           processedWithDeliveryDistribution: distributeDelivery,

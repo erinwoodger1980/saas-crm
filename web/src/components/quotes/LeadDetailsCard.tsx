@@ -43,6 +43,7 @@ export function LeadDetailsCard({ lead, questionnaireAnswers }: LeadDetailsCardP
   const contactEmail = lead.email || lead.contactEmail || null;
   const contactPhone = lead.phone || lead.contactPhone || null;
   const location = lead.location || lead.address || null;
+  const deliveryAddress = lead.deliveryAddress || null;
   const description = lead.description || lead.details || null;
   const capturedAt = lead.capturedAt || lead.createdAt;
 
@@ -86,6 +87,12 @@ export function LeadDetailsCard({ lead, questionnaireAnswers }: LeadDetailsCardP
             <div className="flex items-center gap-2 text-sm">
               <MapPin className="h-4 w-4 text-muted-foreground" />
               <span className="text-foreground">{location}</span>
+            </div>
+          )}
+          {deliveryAddress && (
+            <div className="flex items-center gap-2 text-sm">
+              <MapPin className="h-4 w-4 text-muted-foreground" />
+              <span className="text-foreground">Delivery: {deliveryAddress}</span>
             </div>
           )}
           {capturedAt && (

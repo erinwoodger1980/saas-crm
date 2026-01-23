@@ -185,7 +185,7 @@ function LeadsPageContent() {
   // modal
   const [open, setOpen] = useState(false);
   const [leadPreview, setLeadPreview] = useState<Lead | null>(null);
-  const [leadModalInitialStage, setLeadModalInitialStage] = useState<'client' | 'quote' | 'tasks'>('tasks');
+  const [leadModalInitialStage, setLeadModalInitialStage] = useState<'client' | 'quote' | 'tasks'>('client');
   const [leadModalScrollToNotes, setLeadModalScrollToNotes] = useState(false);
   const [csvImportOpen, setCsvImportOpen] = useState(false);
   const { toast } = useToast();
@@ -418,7 +418,7 @@ function LeadsPageContent() {
   function openLead(l: Lead, opts?: { stage?: 'client' | 'quote' | 'tasks'; scrollToNotes?: boolean }) {
     setLeadPreview(l);
     setLeadModalScrollToNotes(Boolean(opts?.scrollToNotes));
-    setLeadModalInitialStage(opts?.stage ?? (l.clientId ? 'client' : 'tasks'));
+    setLeadModalInitialStage(opts?.stage ?? 'client');
     setOpen(true);
   }
 
