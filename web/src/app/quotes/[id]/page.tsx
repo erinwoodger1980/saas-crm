@@ -92,6 +92,7 @@ export default function QuoteBuilderPage() {
   } = useSWR<QuoteDto>(quoteId ? ["quote", quoteId] : null, () => fetchQuote(quoteId), { revalidateOnFocus: false });
 
   const pricingInitRef = useRef(false);
+  const markupAutosaveTimerRef = useRef<number | null>(null);
   const [markupPercentDraft, setMarkupPercentDraft] = useState<string>("");
   const [vatPercentDraft, setVatPercentDraft] = useState<string>("");
   const [deliveryCostDraft, setDeliveryCostDraft] = useState<string>("");
@@ -158,9 +159,9 @@ export default function QuoteBuilderPage() {
     return Number.isFinite(n) ? n : null;
   };
 
-  const persistMarkup = useCallback(async () => {
+  const persistMarkup = useCallback(async (draftValue?: string) => {
     if (!quoteId) return;
-    const pct = parseOptionalNumber(markupPercentDraft);
+    const pct = parseOptionalNumber(draftValue ?? markupPercentDraft);
     if (pct == null) return;
     const margin = pct / 100;
     if (!Number.isFinite(margin) || margin < 0 || margin > 5) {
@@ -2772,8 +2773,24 @@ export default function QuoteBuilderPage() {
                           type="number"
                           inputMode="decimal"
                           value={markupPercentDraft}
-                          onChange={(e) => setMarkupPercentDraft(e.target.value)}
-                          onBlur={persistMarkup}
+                          onChange={(e) => {
+                            const next = e.target.value;
+                            setMarkupPercentDraft(next);
+                            if (markupAutosaveTimerRef.current) {
+                              window.clearTimeout(markupAutosaveTimerRef.current);
+                            }
+                            // Debounce so pricing updates dynamically while typing.
+                            markupAutosaveTimerRef.current = window.setTimeout(() => {
+                              void persistMarkup(next);
+                            }, 600);
+                          }}
+                          onBlur={() => {
+                            if (markupAutosaveTimerRef.current) {
+                              window.clearTimeout(markupAutosaveTimerRef.current);
+                              markupAutosaveTimerRef.current = null;
+                            }
+                            void persistMarkup(markupPercentDraft);
+                          }}
                         />
                       </div>
 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import {
   clearCustomerPortalToken,
@@ -10,6 +11,7 @@ import {
   getCustomerPortalToken,
 } from "@/lib/customer-portal-auth";
 import FireDoorSchedulePage from "@/app/fire-door-schedule/page";
+import { ArrowRight, FileText } from "lucide-react";
 
 type CustomerMe = {
   user: {
@@ -118,6 +120,26 @@ export default function CustomerPortalJobsPage() {
             </Button>
           </div>
         </div>
+
+        {/* Quotes entry */}
+        <Card className="mb-6 bg-white/70 backdrop-blur border-slate-200">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-blue-600" />
+              Your Quotes
+            </CardTitle>
+            <CardDescription>
+              Review client details, add product photos, and see pricing totals.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button className="w-full justify-between" onClick={() => router.push("/customer-portal/quotes")}
+            >
+              Open quotes
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </CardContent>
+        </Card>
 
         {/* Reuse the Fire Door Schedule component with client filter */}
         {clientAccountId && (

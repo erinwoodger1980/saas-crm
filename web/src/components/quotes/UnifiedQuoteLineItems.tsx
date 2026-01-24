@@ -238,7 +238,7 @@ export function UnifiedQuoteLineItems({
           <tbody className="divide-y">
             {lines.map((line, idx) => (
               <tr key={line.id || idx} className="hover:bg-slate-50">
-                <td className="px-4 py-3 max-w-xs truncate">{line.description}</td>
+                <td className="px-4 py-3 max-w-xs whitespace-normal break-words">{line.description}</td>
                 <td className="px-4 py-3 text-center">
                   {line.photoUrl ? (
                     <img src={line.photoUrl} alt="photo" className="h-10 w-10 rounded object-cover mx-auto" />
