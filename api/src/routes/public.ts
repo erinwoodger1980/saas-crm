@@ -2,6 +2,7 @@
 import { Router } from "express";
 import fs from "fs";
 import path from "path";
+import multer from "multer";
 import { normalizeQuestionnaire } from "../lib/questionnaire";
 import {
   extractGlobalSpecsFromAnswers,
@@ -21,6 +22,19 @@ import { redisGetJSON, redisSetJSON } from '../services/redis';
 import { calibrateConfidence, combineConfidence } from '../services/vision/calibration';
 import { buildAiTelemetry, getPersistedVisionTelemetry } from '../services/vision/telemetry';
 import { CHRISTCHURCH_ASSETS } from "../lib/proposals/christchurch/assets";
+
+const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
+    filename: (_req, file, cb) => {
+      const ts = Date.now();
+      const base = file.originalname.replace(/[^\w.\-]+/g, "_");
+      cb(null, `${ts}__${base}`);
+    },
+  }),
+});
 
 type QuotePortalClaims = {
   scope: "quote-portal";
@@ -1531,6 +1545,7 @@ router.get("/quote-portal/:token", async (req, res) => {
         phone: (tenantSettings as any)?.phone || null,
         links: (tenantSettings as any)?.links || null,
         quoteDefaults: (tenantSettings as any)?.quoteDefaults || null,
+        testimonials: (tenantSettings as any)?.testimonials || null,
       },
       client: client
         ? {
@@ -1564,6 +1579,17 @@ router.get("/quote-portal/:token", async (req, res) => {
         leadId: quote.leadId || null,
         clientAccountId: quote.clientAccountId || lead?.clientAccountId || null,
         proposalFileId,
+        meta: quote.meta || null,
+        lines: (quote.lines || []).map((ln: any) => ({
+          id: ln.id,
+          description: ln.description,
+          qty: ln.qty,
+          unitPrice: ln.unitPrice,
+          currency: ln.currency,
+          meta: ln.meta || null,
+          lineStandard: (ln as any).lineStandard || null,
+          sortIndex: ln.sortIndex ?? null,
+        })),
       },
       quotes: relatedQuotes,
       orders: relatedOrders,
@@ -1579,6 +1605,194 @@ router.get("/quote-portal/:token", async (req, res) => {
     return res.status(500).json({ ok: false, error: "server_error" });
   }
 });
+
+// PATCH /public/quote-portal/:token/lines/:lineId
+// Update customer-provided product details (no pricing edits).
+router.patch("/quote-portal/:token/lines/:lineId", async (req, res) => {
+  try {
+    const token = String(req.params.token || "").trim();
+    const claims = verifyQuotePortalToken(token);
+    const tenantId = claims.t;
+    const quoteId = claims.q;
+    const lineId = String(req.params.lineId || "").trim();
+    if (!lineId) return res.status(400).json({ ok: false, error: "line_id_required" });
+
+    const quote = await prisma.quote.findFirst({ where: { id: quoteId, tenantId } });
+    if (!quote) return res.status(404).json({ ok: false, error: "not_found" });
+
+    const existing = await prisma.quoteLine.findFirst({ where: { id: lineId, quoteId: quote.id } });
+    if (!existing) return res.status(404).json({ ok: false, error: "line_not_found" });
+
+    const patch: any = {};
+    if (req.body?.description !== undefined) {
+      const d = String(req.body.description || "").trim();
+      if (!d) return res.status(400).json({ ok: false, error: "invalid_description" });
+      patch.description = d;
+    }
+    if (req.body?.qty !== undefined) {
+      const q = Number(req.body.qty);
+      if (!Number.isFinite(q) || q <= 0) return res.status(400).json({ ok: false, error: "invalid_qty" });
+      patch.qty = q;
+    }
+    if (req.body?.lineStandard && typeof req.body.lineStandard === "object") {
+      const incoming = req.body.lineStandard as any;
+      const current = ((existing as any).lineStandard as any) || {};
+      patch.lineStandard = { ...current, ...incoming };
+    }
+
+    const metaCurrent: any = (existing as any).meta || {};
+    patch.meta = { ...metaCurrent, portalUpdatedAt: new Date().toISOString() };
+
+    const saved = await prisma.quoteLine.update({ where: { id: existing.id }, data: patch });
+    return res.json({ ok: true, line: saved });
+  } catch (e: any) {
+    const msg = String(e?.message || "");
+    if (msg.includes("invalid_")) {
+      return res.status(401).json({ ok: false, error: "unauthorized" });
+    }
+    console.error("[/public quote-portal/lines] failed:", e);
+    return res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
+// POST /public/quote-portal/:token/lines/:lineId/photo
+// multipart form-data: file
+router.post(
+  "/quote-portal/:token/lines/:lineId/photo",
+  upload.single("file"),
+  async (req: any, res) => {
+    try {
+      const token = String(req.params.token || "").trim();
+      const claims = verifyQuotePortalToken(token);
+      const tenantId = claims.t;
+      const quoteId = claims.q;
+      const lineId = String(req.params.lineId || "").trim();
+      if (!lineId) return res.status(400).json({ ok: false, error: "line_id_required" });
+
+      const quote = await prisma.quote.findFirst({ where: { id: quoteId, tenantId } });
+      if (!quote) return res.status(404).json({ ok: false, error: "not_found" });
+      const line = await prisma.quoteLine.findFirst({ where: { id: lineId, quoteId: quote.id } });
+      if (!line) return res.status(404).json({ ok: false, error: "line_not_found" });
+
+      const f = req.file as Express.Multer.File;
+      if (!f) return res.status(400).json({ ok: false, error: "no_file" });
+
+      const storeUploadsInDb = String(process.env.UPLOADS_STORE_IN_DB ?? "true").toLowerCase() !== "false";
+      const uploadsDbMaxBytes = (() => {
+        const raw = Number(process.env.UPLOADS_DB_MAX_BYTES);
+        if (Number.isFinite(raw) && raw > 0) return raw;
+        return 15 * 1024 * 1024;
+      })();
+
+      let contentToStore: Buffer | undefined = undefined;
+      if (storeUploadsInDb) {
+        try {
+          const buf = await fs.promises.readFile(f.path);
+          if (buf.length <= uploadsDbMaxBytes) contentToStore = buf;
+        } catch (e: any) {
+          console.warn("[public quote-portal line photo] Failed to read uploaded bytes:", e?.message || e);
+        }
+      }
+
+      const fileRow = await prisma.uploadedFile.create({
+        data: {
+          tenantId,
+          quoteId: quote.id,
+          kind: "LINE_IMAGE" as any,
+          name: (typeof f.originalname === "string" && f.originalname.trim()) ? f.originalname.trim() : "photo",
+          path: path.relative(process.cwd(), f.path),
+          content: contentToStore ? Uint8Array.from(contentToStore) : undefined,
+          mimeType: (typeof f.mimetype === "string" && f.mimetype.trim()) ? f.mimetype : "application/octet-stream",
+          sizeBytes: f.size,
+        },
+      });
+
+      const ls: any = (line as any).lineStandard || {};
+      const saved = await prisma.quoteLine.update({
+        where: { id: line.id },
+        data: { lineStandard: { ...ls, photoOutsideFileId: fileRow.id } } as any,
+      });
+
+      return res.json({ ok: true, file: fileRow, line: saved });
+    } catch (e: any) {
+      const msg = String(e?.message || "");
+      if (msg.includes("invalid_")) {
+        return res.status(401).json({ ok: false, error: "unauthorized" });
+      }
+      console.error("[/public quote-portal/lines/photo] failed:", e);
+      return res.status(500).json({ ok: false, error: "server_error" });
+    }
+  },
+);
+
+// POST /public/quote-portal/:token/moodboard
+// multipart form-data: files[]
+router.post(
+  "/quote-portal/:token/moodboard",
+  upload.array("files", 10),
+  async (req: any, res) => {
+    try {
+      const token = String(req.params.token || "").trim();
+      const claims = verifyQuotePortalToken(token);
+      const tenantId = claims.t;
+      const quoteId = claims.q;
+
+      const quote = await prisma.quote.findFirst({ where: { id: quoteId, tenantId } });
+      if (!quote) return res.status(404).json({ ok: false, error: "not_found" });
+
+      const incomingFiles = Array.isArray(req.files) ? (req.files as Express.Multer.File[]) : [];
+      if (!incomingFiles.length) return res.status(400).json({ ok: false, error: "no_files" });
+
+      const storeUploadsInDb = String(process.env.UPLOADS_STORE_IN_DB ?? "true").toLowerCase() !== "false";
+      const uploadsDbMaxBytes = (() => {
+        const raw = Number(process.env.UPLOADS_DB_MAX_BYTES);
+        if (Number.isFinite(raw) && raw > 0) return raw;
+        return 15 * 1024 * 1024;
+      })();
+
+      const savedFiles: any[] = [];
+      for (const f of incomingFiles) {
+        let contentToStore: Buffer | undefined = undefined;
+        if (storeUploadsInDb) {
+          try {
+            const buf = await fs.promises.readFile(f.path);
+            if (buf.length <= uploadsDbMaxBytes) contentToStore = buf;
+          } catch (e: any) {
+            console.warn("[public quote-portal moodboard] Failed to read uploaded bytes:", e?.message || e);
+          }
+        }
+
+        const fileRow = await prisma.uploadedFile.create({
+          data: {
+            tenantId,
+            quoteId: quote.id,
+            kind: "OTHER" as any,
+            name: (typeof f.originalname === "string" && f.originalname.trim()) ? f.originalname.trim() : "moodboard",
+            path: path.relative(process.cwd(), f.path),
+            content: contentToStore ? Uint8Array.from(contentToStore) : undefined,
+            mimeType: (typeof f.mimetype === "string" && f.mimetype.trim()) ? f.mimetype : "application/octet-stream",
+            sizeBytes: f.size,
+          },
+        });
+        savedFiles.push(fileRow);
+      }
+
+      const meta: any = (quote.meta as any) || {};
+      const prev: any[] = Array.isArray(meta.customerMoodboardFileIds) ? meta.customerMoodboardFileIds : [];
+      const nextIds = [...prev, ...savedFiles.map((f) => f.id)];
+      await prisma.quote.update({ where: { id: quote.id }, data: { meta: { ...meta, customerMoodboardFileIds: nextIds } } as any });
+
+      return res.json({ ok: true, files: savedFiles });
+    } catch (e: any) {
+      const msg = String(e?.message || "");
+      if (msg.includes("invalid_")) {
+        return res.status(401).json({ ok: false, error: "unauthorized" });
+      }
+      console.error("[/public quote-portal/moodboard] failed:", e);
+      return res.status(500).json({ ok: false, error: "server_error" });
+    }
+  },
+);
 
 // PATCH /public/quote-portal/:token/client
 router.patch("/quote-portal/:token/client", async (req, res) => {

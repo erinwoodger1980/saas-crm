@@ -159,6 +159,30 @@ export default function QuoteBuilderPage() {
     return Number.isFinite(n) ? n : null;
   };
 
+  const getMarginSafe = useCallback(
+    (draftValue?: string): number => {
+      const pct = parseOptionalNumber(draftValue ?? markupPercentDraft);
+      const parsedFromDraft = pct != null ? pct / 100 : null;
+      const fromQuote = typeof (quote as any)?.markupDefault === "number" ? (quote as any).markupDefault : Number((quote as any)?.markupDefault);
+      const margin = parsedFromDraft ?? (Number.isFinite(fromQuote) ? fromQuote : 0.25);
+      if (!Number.isFinite(margin) || margin < 0 || margin > 5) return 0.25;
+      return margin;
+    },
+    [markupPercentDraft, quote],
+  );
+
+  const repriceQuoteFromMargin = useCallback(
+    async (draftValue?: string) => {
+      if (!quoteId) return;
+      const margin = getMarginSafe(draftValue);
+      await apiFetch(`/quotes/${quoteId}/price`, {
+        method: "POST",
+        json: { method: "margin", margin },
+      });
+    },
+    [quoteId, getMarginSafe],
+  );
+
   const persistMarkup = useCallback(async (draftValue?: string) => {
     if (!quoteId) return;
     const pct = parseOptionalNumber(draftValue ?? markupPercentDraft);
@@ -176,10 +200,7 @@ export default function QuoteBuilderPage() {
         json: { pricingMode, margin },
       });
       // Re-price lines so sell totals update.
-      await apiFetch(`/quotes/${quoteId}/price`, {
-        method: "POST",
-        json: { method: "margin", margin },
-      });
+      await repriceQuoteFromMargin(draftValue ?? markupPercentDraft);
       await mutateLines();
       await mutateQuote();
     } catch (e: any) {
@@ -187,7 +208,7 @@ export default function QuoteBuilderPage() {
     } finally {
       setPricingSaving((p) => ({ ...p, markup: false }));
     }
-  }, [quoteId, markupPercentDraft, quote?.meta, mutateLines, mutateQuote, toast]);
+  }, [quoteId, markupPercentDraft, quote?.meta, mutateLines, mutateQuote, toast, repriceQuoteFromMargin]);
 
   const persistDelivery = useCallback(async () => {
     if (!quoteId) return;
@@ -1009,6 +1030,8 @@ export default function QuoteBuilderPage() {
       if (!quoteId) return;
       try {
         await updateQuoteLine(quoteId, lineId, payload);
+        // Ensure sell unit/total stays in sync with latest costs/qty.
+        await repriceQuoteFromMargin();
         await Promise.all([mutateQuote(), mutateLines()]);
         toast({ title: "Line updated", description: "Quote line saved." });
       } catch (err: any) {
@@ -1016,7 +1039,7 @@ export default function QuoteBuilderPage() {
         throw err;
       }
     },
-    [quoteId, mutateQuote, mutateLines, toast],
+    [quoteId, mutateQuote, mutateLines, toast, repriceQuoteFromMargin],
   );
 
   const handleDownloadCsv = useCallback(() => {
@@ -1592,7 +1615,8 @@ export default function QuoteBuilderPage() {
         }
         
         toast({ title: "Line item added", description: "New line item created successfully" });
-        await mutateLines();
+        await repriceQuoteFromMargin();
+        await Promise.all([mutateLines(), mutateQuote()]);
       } catch (err: any) {
         toast({
           title: "Failed to add line item",
@@ -1601,7 +1625,7 @@ export default function QuoteBuilderPage() {
         });
       }
     },
-    [quoteId, mutateLines, toast],
+    [quoteId, mutateLines, mutateQuote, toast, repriceQuoteFromMargin],
   );
 
   const handleUpdateLineItem = useCallback(
@@ -1651,7 +1675,8 @@ export default function QuoteBuilderPage() {
         
         await updateQuoteLine(quoteId, lineId, payload);
         toast({ title: "Line item updated", description: "Changes saved successfully" });
-        await mutateLines();
+        await repriceQuoteFromMargin();
+        await Promise.all([mutateLines(), mutateQuote()]);
       } catch (err: any) {
         toast({
           title: "Failed to update line item",
@@ -1660,7 +1685,7 @@ export default function QuoteBuilderPage() {
         });
       }
     },
-    [quoteId, mutateLines, toast],
+    [quoteId, mutateLines, mutateQuote, toast, repriceQuoteFromMargin],
   );
 
   const handleDeleteLineItem = useCallback(
