@@ -567,20 +567,32 @@ export default function QuotePortalPage() {
     <div className="min-h-screen bg-gradient-to-b from-background via-muted/20 to-muted/50">
       <div className="mx-auto max-w-5xl px-4 py-8">
         <header className="relative overflow-hidden rounded-3xl border bg-background/60 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/40">
-          {effectiveHeroUrl ? (
-            <div className="relative h-56 w-full md:h-80">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={effectiveHeroUrl} alt="" className="h-full w-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/40 to-transparent" />
-            </div>
-          ) : null}
+          <div className="relative h-56 w-full md:h-80">
+            {effectiveHeroUrl ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={effectiveHeroUrl} alt="" className="h-full w-full object-cover" />
+              </>
+            ) : (
+              <div className="h-full w-full bg-gradient-to-br from-primary/20 via-muted/10 to-background" />
+            )}
+            <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/40 to-transparent" />
 
-          <div className={effectiveHeroUrl ? 'absolute inset-x-0 bottom-0' : ''}>
-            <div className={effectiveHeroUrl ? 'px-4 pb-5' : 'p-5'}>
+            {!effectiveHeroUrl ? (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="rounded-2xl border bg-background/70 px-4 py-3 text-xs text-muted-foreground shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/50">
+                  Add photos in Product details to personalize this quote.
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <div className={effectiveHeroUrl ? 'absolute inset-x-0 bottom-0' : 'absolute inset-x-0 bottom-0'}>
+            <div className={effectiveHeroUrl ? 'px-4 pb-5' : 'px-4 pb-5'}>
               <div className={
                 effectiveHeroUrl
                   ? 'mx-auto max-w-5xl rounded-2xl border bg-background/85 p-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70 md:p-5'
-                  : 'rounded-2xl border bg-background/70 p-5'
+                  : 'mx-auto max-w-5xl rounded-2xl border bg-background/85 p-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70 md:p-5'
               }>
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div className="flex items-center gap-3">
@@ -711,29 +723,34 @@ export default function QuotePortalPage() {
             </div>
           </div>
 
-          {(galleryPreviewUrls.length || galleryUrls.length) ? (
-            <div className="rounded-3xl border bg-background/70 p-3 shadow-sm">
-              <div className="grid grid-cols-3 gap-2">
-                <div className="col-span-2 overflow-hidden rounded-2xl border bg-muted/20">
-                  {galleryUrls[0] ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={galleryUrls[0]} alt="Gallery" className="aspect-[16/11] h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex aspect-[16/11] items-center justify-center text-xs text-muted-foreground">Gallery</div>
-                  )}
-                </div>
-                <div className="grid gap-2">
-                  {galleryPreviewUrls.map((u) => (
+          <div className="rounded-3xl border bg-background/70 p-3 shadow-sm">
+            <div className="grid grid-cols-3 gap-2">
+              <div className="col-span-2 overflow-hidden rounded-2xl border bg-muted/20">
+                {galleryUrls[0] ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={galleryUrls[0]} alt="Gallery" className="aspect-[16/11] h-full w-full object-cover" />
+                ) : (
+                  <div className="flex aspect-[16/11] flex-col items-center justify-center gap-2 text-xs text-muted-foreground">
+                    <ImageIcon className="h-5 w-5" />
+                    <div>Project gallery</div>
+                  </div>
+                )}
+              </div>
+              <div className="grid gap-2">
+                {galleryPreviewUrls.length ? (
+                  galleryPreviewUrls.map((u) => (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img key={u} src={u} alt="Gallery" className="aspect-square w-full rounded-2xl border object-cover" />
-                  ))}
-                  {!galleryPreviewUrls.length ? (
-                    <div className="flex aspect-square items-center justify-center rounded-2xl border bg-muted/20 text-xs text-muted-foreground">Photos</div>
-                  ) : null}
-                </div>
+                  ))
+                ) : (
+                  <>
+                    <div className="flex aspect-square items-center justify-center rounded-2xl border bg-muted/20 text-xs text-muted-foreground">Details</div>
+                    <div className="flex aspect-square items-center justify-center rounded-2xl border bg-muted/20 text-xs text-muted-foreground">Materials</div>
+                  </>
+                )}
               </div>
             </div>
-          ) : null}
+          </div>
         </div>
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="mt-8">

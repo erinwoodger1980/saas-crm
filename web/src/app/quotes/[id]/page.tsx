@@ -48,6 +48,7 @@ import { deriveLineMaterialAlerts, groupAlerts, type GroupedAlert } from "@/lib/
 import { InstantQuoteGenerator } from "@/components/instant-quote/InstantQuoteGenerator";
 import { normalizeQuoteDraft } from "@/lib/quoteDraft";
 import { EmailPreviewModal } from "@/components/EmailPreviewModal";
+import { RefreshCw } from "lucide-react";
 
 // Material cost alert types imported from helper; interface here intentionally omitted.
 
@@ -70,6 +71,7 @@ export default function QuoteBuilderPage() {
     ventilation: "",
   });
   const [isSavingProposalBasics, setIsSavingProposalBasics] = useState(false);
+  const [isRefreshingProposalBasics, setIsRefreshingProposalBasics] = useState(false);
   
   // Product type picker state
   const [showTypeSelector, setShowTypeSelector] = useState(false);
@@ -1371,6 +1373,42 @@ export default function QuoteBuilderPage() {
     };
   }, [quoteId, proposalScopeDraft, proposalSpecsDraft, handleSaveProposalBasics, isSavingProposalBasics]);
 
+  const handleRefreshProposalBasics = useCallback(async () => {
+    if (!quoteId) return;
+    setIsRefreshingProposalBasics(true);
+    try {
+      const resp = await apiFetch<{ ok: boolean; basics?: { scope: string; timber: string; finish: string; glazing: string; fittings: string; ventilation: string }; error?: string }>(
+        `/quotes/${encodeURIComponent(quoteId)}/proposal-basics/refresh`,
+        { method: "POST" },
+      );
+
+      const b = resp?.basics;
+      if (!resp?.ok || !b) {
+        const msg = resp?.error === "openai_not_configured"
+          ? "OpenAI is not configured on the server"
+          : resp?.error === "no_ai_result"
+            ? "AI returned no result"
+            : "Unable to refresh proposal details";
+        throw new Error(msg);
+      }
+
+      setProposalScopeDraft(typeof b.scope === "string" ? b.scope : "");
+      setProposalSpecsDraft({
+        timber: typeof b.timber === "string" ? b.timber : "",
+        finish: typeof b.finish === "string" ? b.finish : "",
+        glazing: typeof b.glazing === "string" ? b.glazing : "",
+        fittings: typeof b.fittings === "string" ? b.fittings : "",
+        ventilation: typeof b.ventilation === "string" ? b.ventilation : "",
+      });
+
+      toast({ title: "Refreshed", description: "Updated scope and specs from the current line items." });
+    } catch (err: any) {
+      toast({ title: "Refresh failed", description: err?.message || "Please try again", variant: "destructive" });
+    } finally {
+      setIsRefreshingProposalBasics(false);
+    }
+  }, [quoteId, toast]);
+
   const handlePrintPdfFromProposalTab = useCallback(async () => {
     const url = await ensureProposalPdfUrl();
     if (!url) return;
@@ -2640,21 +2678,35 @@ export default function QuoteBuilderPage() {
               {lines && lines.length > 0 ? (
                 <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
                   <div className="rounded-xl border bg-muted/20 p-4">
-                    <button
-                      type="button"
-                      className="w-full flex items-center justify-between gap-3"
-                      onClick={() => setProposalBasicsOpen((v) => !v)}
-                    >
-                      <div className="text-left">
-                        <div className="text-sm font-medium">Scope & project details (proposal)</div>
-                        <div className="text-xs text-muted-foreground">Shown at the top of the proposal; edit here if AI didn’t fill it.</div>
-                      </div>
-                      {proposalBasicsOpen ? (
-                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                      )}
-                    </button>
+                    <div className="w-full flex items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        className="flex-1 flex items-center justify-between gap-3"
+                        onClick={() => setProposalBasicsOpen((v) => !v)}
+                      >
+                        <div className="text-left">
+                          <div className="text-sm font-medium">Scope & project details (proposal)</div>
+                          <div className="text-xs text-muted-foreground">Shown at the top of the proposal; edit here if AI didn’t fill it.</div>
+                        </div>
+                        {proposalBasicsOpen ? (
+                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </button>
+
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="gap-2"
+                        onClick={handleRefreshProposalBasics}
+                        disabled={isRefreshingProposalBasics}
+                      >
+                        <RefreshCw className={"h-4 w-4" + (isRefreshingProposalBasics ? " animate-spin" : "")} />
+                        Refresh
+                      </Button>
+                    </div>
 
                     {proposalBasicsOpen ? (
                       <div className="mt-4 space-y-4">

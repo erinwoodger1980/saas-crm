@@ -2627,6 +2627,58 @@ router.get("/:id/portal-url", requireAuth, async (req: any, res) => {
     return res.status(500).json({ error: "internal_error" });
   }
 });
+
+/**
+ * POST /quotes/:id/proposal-basics/refresh
+ * Re-runs the OpenAI summarizer over current line items to populate proposal basics.
+ * Returns suggested values; frontend autosave will persist them into quote.meta.
+ */
+router.post("/:id/proposal-basics/refresh", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+    const quoteId = String(req.params.id);
+
+    const quote = await prisma.quote.findFirst({ where: { id: quoteId, tenantId }, select: { id: true } });
+    if (!quote) return res.status(404).json({ ok: false, error: "not_found" });
+
+    const lines = await prisma.quoteLine.findMany({
+      where: { quoteId },
+      orderBy: [{ sortIndex: "asc" }, { id: "asc" }],
+      select: {
+        id: true,
+        description: true,
+        qty: true,
+        meta: true,
+        lineStandard: true,
+      },
+    });
+
+    const withTimeoutLocal = async <T>(promise: Promise<T>, ms: number): Promise<T> => {
+      let timeoutId: NodeJS.Timeout | null = null;
+      const timeout = new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error("timeout")), ms);
+      });
+      try {
+        return await Promise.race([promise, timeout]);
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+      }
+    };
+
+    const basics = env.OPENAI_API_KEY
+      ? await withTimeoutLocal(summarizeProposalBasicsFromLineItems(lines as any[]), 20_000)
+      : deterministicProposalBasicsFromLineItems(lines as any[]);
+
+    if (!basics) {
+      return res.status(200).json({ ok: false, error: "no_ai_result" });
+    }
+
+    return res.json({ ok: true, basics });
+  } catch (e: any) {
+    console.error("[/quotes/:id/proposal-basics/refresh] failed:", e?.message || e);
+    return res.status(500).json({ ok: false, error: "internal_error" });
+  }
+});
 /**
  * POST /quotes/:id/parse
  * For each supplier file, generate a signed download URL and forward to /ml/parse-quote.
@@ -4229,6 +4281,100 @@ type ChristchurchAiSummary = {
   scope: string;
 };
 type ProposalBasicsAiSummary = ChristchurchAiSummary;
+
+function deterministicProposalBasicsFromLineItems(lines: any[]): ProposalBasicsAiSummary {
+  const texts: string[] = [];
+  for (const ln of (lines || [])) {
+    const desc = String(ln?.description || "").replace(/\s+/g, " ").trim();
+    if (desc) texts.push(desc);
+    const metaAny: any = (ln?.meta as any) || {};
+    for (const v of Object.values(metaAny)) {
+      if (typeof v === "string") {
+        const s = v.replace(/\s+/g, " ").trim();
+        if (s && s.length <= 240) texts.push(s);
+      }
+    }
+  }
+
+  const corpus = texts.join(" \n").toLowerCase();
+  const pickFirst = (candidates: string[]) => candidates.find((c) => corpus.includes(c)) || "";
+
+  const timber = (() => {
+    const hits = [
+      "accoya",
+      "oak",
+      "sapele",
+      "idigo",
+      "mahogany",
+      "pine",
+      "redwood",
+      "hardwood",
+      "softwood",
+      "engineered timber",
+      "laminated timber",
+      "glulam",
+    ];
+    const h = pickFirst(hits);
+    return h ? (h === "glulam" ? "Glulam / engineered timber" : h.replace(/(^|\s)\w/g, (m) => m.toUpperCase())) : "";
+  })();
+
+  const finish = (() => {
+    const ralMatch = corpus.match(/\bral\s*\d{3,4}\b/);
+    if (ralMatch?.[0]) return ralMatch[0].toUpperCase().replace(/\s+/g, " ");
+    const hits = ["factory finished", "spray", "painted", "primed", "stained", "microporous", "finish"];
+    const h = pickFirst(hits);
+    return h ? (h === "spray" ? "Spray finish" : h.replace(/(^|\s)\w/g, (m) => m.toUpperCase())) : "";
+  })();
+
+  const glazing = (() => {
+    const hits = ["triple glazing", "triple glazed", "double glazing", "double glazed", "low-e", "low e", "argon", "warm edge", "laminated", "toughened", "ug"];
+    const h = pickFirst(hits);
+    if (!h) return "";
+    if (h === "low-e" || h === "low e") return "Low‑E glazing";
+    if (h === "ug") return "U‑value specified";
+    return h.replace(/(^|\s)\w/g, (m) => m.toUpperCase());
+  })();
+
+  const fittings = (() => {
+    const hits = ["ironmongery", "hinge", "hinges", "handle", "handles", "lock", "locks", "espagnolette", "restrictor", "hardware"];
+    const h = pickFirst(hits);
+    if (!h) return "";
+    if (h === "ironmongery") return "Ironmongery";
+    return "Hardware / fittings";
+  })();
+
+  const ventilation = (() => {
+    const hits = ["trickle vent", "trickle vents", "vent", "vents", "ventilation", "air inlet"];
+    const h = pickFirst(hits);
+    if (!h) return "";
+    if (h.includes("trickle")) return "Trickle vents";
+    return "Ventilation";
+  })();
+
+  const scope = (() => {
+    const productKeywords: Array<[string, string]> = [
+      ["sash", "sash windows"],
+      ["casement", "casement windows"],
+      ["window", "windows"],
+      ["front door", "front door"],
+      ["door", "doors"],
+      ["bifold", "bifold doors"],
+      ["bi-fold", "bifold doors"],
+      ["sliding", "sliding doors"],
+      ["screen", "screens"],
+      ["frame", "frames"],
+    ];
+    const types = new Set<string>();
+    for (const [k, label] of productKeywords) {
+      if (corpus.includes(k)) types.add(label);
+    }
+    const install = corpus.includes("install") || corpus.includes("fit ") || corpus.includes("fitting");
+    const what = types.size ? Array.from(types).slice(0, 3).join(", ") : "the items listed";
+    return `This quotation covers the ${install ? "supply and installation" : "supply"} of ${what} as described in the line items.`;
+  })();
+
+  return { timber, finish, glazing, fittings, ventilation, scope };
+}
 
 function buildLineItemAiContext(lines: any[]): string {
   const chunks: string[] = [];
@@ -7297,31 +7443,54 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
       return b;
     };
 
-    let aiBasics: ProposalBasicsAiSummary | null = null;
+    let proposalBasics: ProposalBasicsAiSummary | null = null;
     // Only auto-fill from supplier quotes (not deterministic "own quote" imports).
-    if (!deterministicOnly && fileKind === "SUPPLIER_QUOTE" && env.OPENAI_API_KEY) {
-      try {
-        aiBasics = await withTimeout(
-          summarizeProposalBasicsFromLineItems(cleanedLines),
-          20_000,
-          "openai_proposal_basics",
-        );
-      } catch (err: any) {
-        console.warn("[process-supplier] proposal basics AI timed out/failed:", err?.message || err);
+    if (!deterministicOnly && fileKind === "SUPPLIER_QUOTE") {
+      if (env.OPENAI_API_KEY) {
+        try {
+          proposalBasics = await withTimeout(
+            summarizeProposalBasicsFromLineItems(cleanedLines),
+            20_000,
+            "openai_proposal_basics",
+          );
+        } catch (err: any) {
+          console.warn("[process-supplier] proposal basics AI timed out/failed:", err?.message || err);
+        }
+      }
+
+      // Deterministic fallback when OpenAI is not configured or fails.
+      if (!proposalBasics) {
+        proposalBasics = deterministicProposalBasicsFromLineItems(cleanedLines);
       }
     }
 
     const existingMetaAny: any = (quote.meta as any) || {};
     const existingSpecsAny: any = existingMetaAny?.specifications || {};
 
-    const nextScopeDescription = fillIfBlank(existingMetaAny?.scopeDescription, aiBasics?.scope);
+    // When triggered by a new supplier PDF parse, overwrite proposal basics
+    // (matches the manual "Refresh" behavior in the quote builder).
+    // If fallback couldn't infer a field (empty string), keep the existing value.
+    const overwriteFromParse = !!proposalBasics;
+    const nextScopeDescription = overwriteFromParse
+      ? (String(proposalBasics?.scope || "").trim() || String(existingMetaAny?.scopeDescription || "").trim())
+      : fillIfBlank(existingMetaAny?.scopeDescription, proposalBasics?.scope);
     const nextSpecifications = {
       ...existingSpecsAny,
-      timber: fillIfBlank(existingSpecsAny?.timber, aiBasics?.timber),
-      finish: fillIfBlank(existingSpecsAny?.finish, aiBasics?.finish),
-      glazing: fillIfBlank(existingSpecsAny?.glazing, aiBasics?.glazing),
-      fittings: fillIfBlank(existingSpecsAny?.fittings, aiBasics?.fittings),
-      ventilation: fillIfBlank(existingSpecsAny?.ventilation, aiBasics?.ventilation),
+      timber: overwriteFromParse
+        ? (String(proposalBasics?.timber || "").trim() || String(existingSpecsAny?.timber || "").trim())
+        : fillIfBlank(existingSpecsAny?.timber, proposalBasics?.timber),
+      finish: overwriteFromParse
+        ? (String(proposalBasics?.finish || "").trim() || String(existingSpecsAny?.finish || "").trim())
+        : fillIfBlank(existingSpecsAny?.finish, proposalBasics?.finish),
+      glazing: overwriteFromParse
+        ? (String(proposalBasics?.glazing || "").trim() || String(existingSpecsAny?.glazing || "").trim())
+        : fillIfBlank(existingSpecsAny?.glazing, proposalBasics?.glazing),
+      fittings: overwriteFromParse
+        ? (String(proposalBasics?.fittings || "").trim() || String(existingSpecsAny?.fittings || "").trim())
+        : fillIfBlank(existingSpecsAny?.fittings, proposalBasics?.fittings),
+      ventilation: overwriteFromParse
+        ? (String(proposalBasics?.ventilation || "").trim() || String(existingSpecsAny?.ventilation || "").trim())
+        : fillIfBlank(existingSpecsAny?.ventilation, proposalBasics?.ventilation),
     };
 
     await prisma.quote.update({
