@@ -5762,11 +5762,13 @@ router.patch("/:id/lines/map", requireAuth, async (req: any, res) => {
  * Body: { method: "margin" | "ml", margin?: number }
  */
 router.post("/:id/price", requireAuth, async (req: any, res) => {
+  let stage = "init";
   try {
     const tenantId = await getTenantId(req);
     const id = String(req.params.id);
     let quote: any;
     try {
+      stage = "load_quote";
       quote = await prisma.quote.findFirst({
         where: { id, tenantId },
         // Keep this endpoint resilient: some environments may lag schema migrations
@@ -5794,10 +5796,15 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
     console.log("[/quotes/:id/price] start", { tenantId, quoteId: quote.id, method, margin });
 
     if (method === "margin") {
+      stage = "price_lines";
       // apply simple margin over supplier unitPrice, but skip lines with manual overrides
       let totalGBP = 0;
       let skippedCount = 0;
       for (const ln of quote.lines) {
+        if (!ln?.id) {
+          skippedCount += 1;
+          continue;
+        }
         const lineMeta: any = (ln.meta as any) || {};
         const isOverridden = lineMeta?.isOverridden === true;
         const existingSellUnit = safeNumber(lineMeta?.sellUnitGBP) ?? safeNumber(lineMeta?.sell_unit);
@@ -5843,32 +5850,91 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
           },
           timestamp: new Date().toISOString(),
         };
-        await prisma.quoteLine.update({
-          where: { id: ln.id },
-          data: {
-            meta: {
-              set: {
-                ...(lineMeta || {}),
-                sellUnitGBP: sellUnit,
-                sellTotalGBP: sellTotal,
-                pricingMethod: "margin",
-                margin,
-                pricingBreakdown,
+        stage = "update_line";
+        const nextMeta = {
+          ...(lineMeta || {}),
+          sellUnitGBP: sellUnit,
+          sellTotalGBP: sellTotal,
+          pricingMethod: "margin",
+          margin,
+          pricingBreakdown,
+        };
+        try {
+          await prisma.quoteLine.update({
+            where: { id: ln.id },
+            data: {
+              meta: {
+                set: nextMeta,
               },
-            },
-          } as any,
-        });
+            } as any,
+          });
+        } catch (e: any) {
+          // If the record disappeared (rare), skip it rather than failing the whole repricing.
+          if (e?.code === "P2025") {
+            console.warn("[/quotes/:id/price margin] quoteLine missing; skipping", { tenantId, quoteId: quote.id, lineId: ln.id });
+            skippedCount += 1;
+            continue;
+          }
+          // If schema drift prevents Prisma from updating JSON, fall back to a raw update.
+          if (shouldFallbackQuoteQuery(e)) {
+            console.warn("[/quotes/:id/price margin] Prisma schema mismatch on quoteLine.update; falling back", {
+              tenantId,
+              quoteId: quote.id,
+              lineId: ln.id,
+              code: e?.code,
+              message: e?.message,
+            });
+            await prisma.$executeRawUnsafe(
+              `UPDATE "QuoteLine" SET "meta" = $2::jsonb WHERE "id" = $1`,
+              ln.id,
+              JSON.stringify(nextMeta),
+            );
+            continue;
+          }
+          throw e;
+        }
       }
       if (!Number.isFinite(totalGBP)) {
         console.error("[/quotes/:id/price margin] totalGBP not finite", { tenantId, quoteId: quote.id, totalGBP, margin });
         return res.status(500).json({ ok: false, error: "pricing_failed", message: "Computed total was not a finite number." });
       }
 
-      const pricedSaved1 = await prisma.quote.update({
-        where: { id: quote.id },
-        data: { totalGBP: new Prisma.Decimal(totalGBP), markupDefault: new Prisma.Decimal(margin) },
-      });
+      stage = "update_quote";
+      let pricedSaved1: any;
       try {
+        pricedSaved1 = await prisma.quote.update({
+          where: { id: quote.id },
+          data: { totalGBP: new Prisma.Decimal(totalGBP), markupDefault: new Prisma.Decimal(margin) },
+        });
+      } catch (e: any) {
+        if (!shouldFallbackQuoteQuery(e)) throw e;
+        console.warn("[/quotes/:id/price margin] Prisma schema mismatch on quote.update; falling back", {
+          tenantId,
+          quoteId: quote.id,
+          code: e?.code,
+          message: e?.message,
+        });
+        // Try raw update with both columns; if markupDefault doesn't exist yet, retry with just totalGBP.
+        try {
+          await prisma.$executeRawUnsafe(
+            `UPDATE "Quote" SET "totalGBP" = $2::numeric, "markupDefault" = $3::numeric WHERE "id" = $1`,
+            quote.id,
+            totalGBP,
+            margin,
+          );
+          pricedSaved1 = { id: quote.id, totalGBP, markupDefault: margin };
+        } catch (e2: any) {
+          if (!shouldFallbackQuoteQuery(e2) && !/markupDefault/i.test(String(e2?.message || e2))) throw e2;
+          await prisma.$executeRawUnsafe(
+            `UPDATE "Quote" SET "totalGBP" = $2::numeric WHERE "id" = $1`,
+            quote.id,
+            totalGBP,
+          );
+          pricedSaved1 = { id: quote.id, totalGBP };
+        }
+      }
+      try {
+        stage = "field_link_sync";
         await completeTasksOnRecordChangeByLinks({
           tenantId,
           model: "Quote",
@@ -6298,7 +6364,8 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
     return res.status(400).json({ error: "invalid_method" });
   } catch (e: any) {
     console.error("[/quotes/:id/price] failed:", e?.message || e);
-    return res.status(500).json({ error: "internal_error" });
+    // Include a non-sensitive stage hint to speed up debugging.
+    return res.status(500).json({ error: "internal_error", stage: (typeof stage === "string" ? stage : undefined) });
   }
 });
 
