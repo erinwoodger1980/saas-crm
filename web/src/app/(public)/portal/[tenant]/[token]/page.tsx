@@ -198,6 +198,30 @@ function normalizeTestimonials(raw: any): Array<{ quote: string; client: string;
     .filter(Boolean) as Array<{ quote: string; client: string; role?: string; photoUrl?: string }>;
 }
 
+function normalizeCertifications(
+  raw: any,
+): Array<{ name: string; description?: string | null; logoUrl?: string | null; href?: string | null }> {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((c) => {
+      if (!c || typeof c !== 'object') return null;
+      const name = String((c as any).name ?? (c as any).title ?? (c as any).label ?? '').trim();
+      const description = String((c as any).description ?? (c as any).detail ?? '').trim();
+      const logoUrl = String(
+        (c as any).logoUrl ?? (c as any).imageUrl ?? (c as any).image ?? (c as any).logo ?? '',
+      ).trim();
+      const href = String((c as any).href ?? (c as any).url ?? (c as any).link ?? '').trim();
+      if (!name && !description && !logoUrl) return null;
+      return {
+        name: name || description || 'Certification',
+        description: name ? (description || null) : null,
+        logoUrl: logoUrl || null,
+        href: href || null,
+      };
+    })
+    .filter(Boolean) as Array<{ name: string; description?: string | null; logoUrl?: string | null; href?: string | null }>;
+}
+
 export default function QuotePortalPage() {
   const params = useParams();
   const token = params.token as string;
@@ -228,6 +252,43 @@ export default function QuotePortalPage() {
     (fileId: string) => `${API_BASE}/files/${encodeURIComponent(fileId)}?jwt=${encodeURIComponent(token)}`,
     [token],
   );
+
+  const christchurchCertificationLogos = useMemo(() => {
+    const cc: any = data?.quote?.meta?.proposalChristchurchImageFileIds || {};
+
+    const candidates: Array<{ key: string; name: string }> = [
+      { key: 'fensaFileId', name: 'FENSA' },
+      { key: 'pas24FileId', name: 'PAS 24' },
+      { key: 'fscFileId', name: 'FSC' },
+      { key: 'ggfFileId', name: 'GGF' },
+      { key: 'badge1FileId', name: 'Accreditation' },
+      { key: 'badge2FileId', name: 'Accreditation' },
+    ];
+
+    const picked = candidates
+      .map((c) => {
+        const fileId = String(cc?.[c.key] || '').trim();
+        if (!fileId) return null;
+        return {
+          name: c.name,
+          logoUrl: fileUrl(fileId),
+          href: null as string | null,
+          description: null as string | null,
+        };
+      })
+      .filter(Boolean) as Array<{ name: string; logoUrl: string; href: string | null; description: string | null }>;
+
+    // Remove duplicates if multiple keys point to same fileId.
+    const seen = new Set<string>();
+    const deduped: typeof picked = [];
+    for (const item of picked) {
+      if (seen.has(item.logoUrl)) continue;
+      seen.add(item.logoUrl);
+      deduped.push(item);
+    }
+
+    return deduped;
+  }, [data?.quote?.meta, fileUrl]);
 
   const quoteLines = useMemo(
     () => (data?.quote?.lines && Array.isArray(data.quote.lines) ? data.quote.lines : []),
@@ -436,18 +497,25 @@ export default function QuotePortalPage() {
     return normalizeTestimonials(data?.tenant?.testimonials);
   }, [data?.tenant?.quoteDefaults?.testimonials, data?.tenant?.testimonials]);
   const certifications = useMemo(() => {
-    const raw = data?.tenant?.quoteDefaults?.certifications;
-    return Array.isArray(raw)
-      ? raw
-          .map((c: any) => {
-            const name = String(c?.name ?? c?.title ?? '').trim();
-            const description = String(c?.description ?? '').trim();
-            if (!name && !description) return null;
-            return { name: name || description, description: name ? (description || null) : null };
-          })
-          .filter(Boolean)
-      : [];
+    return normalizeCertifications(data?.tenant?.quoteDefaults?.certifications);
   }, [data?.tenant?.quoteDefaults?.certifications]);
+
+  const certificationLogos = useMemo(
+    () => {
+      if (christchurchCertificationLogos.length) return christchurchCertificationLogos.slice(0, 8);
+      return certifications.filter((c) => typeof c.logoUrl === 'string' && c.logoUrl.trim()).slice(0, 8);
+    },
+    [certifications, christchurchCertificationLogos],
+  );
+
+  const certificationLabels = useMemo(
+    () => {
+      // If Christchurch uploaded logos exist, prefer the logo strip only.
+      if (christchurchCertificationLogos.length) return [];
+      return certifications.filter((c) => !c.logoUrl).slice(0, 8);
+    },
+    [certifications, christchurchCertificationLogos],
+  );
 
   const heroUrl = useMemo(() => {
     const url = String(data?.tenant?.heroImageUrl || '').trim();
@@ -543,6 +611,59 @@ export default function QuotePortalPage() {
               )}
             </div>
           </div>
+
+          {(certificationLogos.length || certificationLabels.length || guarantees.length) ? (
+            <div className="border-t bg-background/60 px-5 py-4">
+              <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground">Accreditations & guarantees</div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {certificationLogos.map((c, idx) => {
+                      const img = (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={String(c.logoUrl)}
+                          alt={c.name}
+                          className="h-8 w-auto max-w-[120px] object-contain"
+                        />
+                      );
+                      return (
+                        <div key={`logo-${idx}`} className="rounded-lg border bg-background px-2 py-1">
+                          {c.href ? (
+                            <a href={String(c.href)} target="_blank" rel="noreferrer" className="block">
+                              {img}
+                            </a>
+                          ) : (
+                            img
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {certificationLabels.map((c, idx) => (
+                      <div
+                        key={`label-${idx}`}
+                        className="rounded-lg border bg-background px-2 py-1 text-xs text-muted-foreground"
+                        title={c.description || undefined}
+                      >
+                        {c.name}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {guarantees.length ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {guarantees.slice(0, 3).map((g, idx) => (
+                      <div key={`g-chip-${idx}`} className="rounded-lg border bg-background px-2 py-1 text-xs">
+                        {g.title}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </header>
 
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
@@ -552,10 +673,15 @@ export default function QuotePortalPage() {
             <div className="mt-1 text-xs text-muted-foreground">Status: {data.quote.status}</div>
           </div>
           {galleryUrls.length ? (
-            <div className="grid grid-cols-3 gap-2">
-              {galleryUrls.slice(0, 3).map((u) => (
+            <div className="grid grid-cols-4 gap-2">
+              {galleryUrls.slice(0, 4).map((u) => (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img key={u} src={u} alt="Gallery" className="h-14 w-20 rounded-lg border object-cover" />
+                <img
+                  key={u}
+                  src={u}
+                  alt="Gallery"
+                  className="h-16 w-24 rounded-xl border object-cover md:h-20 md:w-28"
+                />
               ))}
             </div>
           ) : null}
