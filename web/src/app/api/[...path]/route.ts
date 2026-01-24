@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// Ensure Node.js runtime so we can safely forward cookies and stream bodies.
+export const runtime = "nodejs";
+
 function isAbortError(err: any): boolean {
   const name = String(err?.name || "");
   const msg = String(err?.message || "");
@@ -115,7 +118,8 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path?: string[] 
     upstream = await fetch(target.toString(), {
       method,
       headers,
-      body: body ? Buffer.from(body) : undefined,
+      // Use ArrayBuffer directly so this works in both Node and Edge runtimes.
+      body: body ? body : undefined,
       redirect: "manual",
       signal: controller.signal,
     });

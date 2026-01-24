@@ -88,12 +88,12 @@ export function ParsedLinesTable({
     options: { schedule?: boolean } = {},
   ) {
     const base = drafts[line.id] ?? {
-      qty: normalizeNumber(line.qty),
-      unitPrice: normalizeMoney(line.unitPrice),
+      qtyText: toNumericText(line.qty ?? 1),
+      unitPriceText: toNumericText(line.unitPrice),
     };
     const resolved: DraftValues = {
-      qty: next.qty !== undefined ? normalizeNumber(next.qty) : base.qty,
-      unitPrice: next.unitPrice !== undefined ? normalizeMoney(next.unitPrice) : base.unitPrice,
+      qtyText: next.qtyText !== undefined ? String(next.qtyText) : base.qtyText,
+      unitPriceText: next.unitPriceText !== undefined ? String(next.unitPriceText) : base.unitPriceText,
     };
     setDrafts((prev) => ({ ...prev, [line.id]: resolved }));
     if (options.schedule) {
@@ -115,7 +115,7 @@ export function ParsedLinesTable({
     if (!draft) return;
     setSaving((prev) => ({ ...prev, [lineId]: true }));
     try {
-      await onLineChange(lineId, { qty: draft.qty, unitPrice: normalizeMoney(draft.unitPrice) });
+      await onLineChange(lineId, { qty: parseNullableNumber(draft.qtyText), unitPrice: parseNullableMoney(draft.unitPriceText) });
     } catch (err) {
       console.warn("Failed to persist line", err);
     } finally {
@@ -221,8 +221,10 @@ export function ParsedLinesTable({
               <tbody className="divide-y">
                 {(lines ?? []).map((line) => {
                   const draft = drafts[line.id];
-                  const qty = draft?.qty ?? normalizeNumber(line.qty);
-                  const unitPrice = draft?.unitPrice ?? normalizeMoney(line.unitPrice);
+                  const qtyText = draft?.qtyText ?? toNumericText(line.qty ?? 1);
+                  const unitPriceText = draft?.unitPriceText ?? toNumericText(line.unitPrice);
+                  const qty = parseNullableNumber(qtyText) ?? 1;
+                  const unitPrice = parseNullableMoney(unitPriceText);
                   const sellUnit = normalizeNumber(line.meta?.sellUnitGBP ?? line.meta?.sell_unit ?? line.sellUnit);
                   const sellTotal = normalizeNumber(line.meta?.sellTotalGBP ?? line.meta?.sell_total ?? line.sellTotal);
                   const hasError = (qty != null && qty < 0) || (unitPrice != null && unitPrice < 0);
@@ -291,16 +293,14 @@ export function ParsedLinesTable({
                         <div className="relative group">
                           <Input
                             inputMode="decimal"
-                            type="number"
-                            value={qty ?? ""}
+                            type="text"
+                            value={qtyText}
                             onChange={(event) => {
-                              const nextValue = event.target.value === "" ? null : Number(event.target.value);
-                              updateDraft(line, { qty: nextValue }, { schedule: true });
+                              updateDraft(line, { qtyText: event.target.value }, { schedule: true });
                             }}
                             onBlur={() => flushSave(line.id)}
-                            onFocus={() => updateDraft(line, { qty })}
+                            onFocus={() => updateDraft(line, { qtyText })}
                             className="h-9 text-right"
-                            min={0}
                             aria-label="Quantity"
                           />
                           <span className="absolute left-1 top-1 text-[10px] text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity">Qty</span>
@@ -311,20 +311,17 @@ export function ParsedLinesTable({
                         <div className="relative group">
                           <Input
                             inputMode="decimal"
-                            type="number"
-                            value={unitPrice ?? ""}
+                            type="text"
+                            value={unitPriceText}
                             onChange={(event) => {
-                              const nextValue = event.target.value === "" ? null : Number(event.target.value);
-                              updateDraft(line, { unitPrice: nextValue }, { schedule: true });
+                              updateDraft(line, { unitPriceText: event.target.value }, { schedule: true });
                             }}
                             onBlur={() => {
-                              updateDraft(line, { unitPrice }, { schedule: false });
+                              updateDraft(line, { unitPriceText }, { schedule: false });
                               void flushSave(line.id);
                             }}
-                            onFocus={() => updateDraft(line, { unitPrice })}
+                            onFocus={() => updateDraft(line, { unitPriceText })}
                             className="h-9 text-right"
-                            step="0.01"
-                            min={0}
                             aria-label="Unit price"
                           />
                           <span className="absolute left-1 top-1 text-[10px] text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity">Unit price</span>
@@ -580,9 +577,28 @@ export function ParsedLinesTable({
 }
 
 type DraftValues = {
-  qty: number | null;
-  unitPrice: number | null;
+  qtyText: string;
+  unitPriceText: string;
 };
+
+function toNumericText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  const n = Number(value);
+  return Number.isFinite(n) ? String(n) : "";
+}
+
+function parseNullableNumber(text: string): number | null {
+  const trimmed = String(text ?? "").trim();
+  if (!trimmed) return null;
+  const n = Number(trimmed);
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseNullableMoney(text: string): number | null {
+  const n = parseNullableNumber(text);
+  if (n == null) return null;
+  return Math.round(n * 100) / 100;
+}
 
 type ParsedLinesTotals = {
   costTotal: number | null;
