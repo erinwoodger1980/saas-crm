@@ -5771,7 +5771,12 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
     });
     if (!quote) return res.status(404).json({ error: "not_found" });
     const method = String(req.body?.method || "margin");
-    const margin = Number(req.body?.margin ?? quote.markupDefault ?? 0.25);
+    const marginRaw = req.body?.margin ?? (quote as any).markupDefault ?? 0.25;
+    const marginParsed = safeNumber(marginRaw);
+    const margin = marginParsed != null && Number.isFinite(marginParsed) ? marginParsed : 0.25;
+    if (!Number.isFinite(margin) || margin < 0 || margin > 5) {
+      return res.status(400).json({ ok: false, error: "invalid_margin", margin: marginParsed });
+    }
     const pricingStartedAt = Date.now();
     console.log("[/quotes/:id/price] start", { tenantId, quoteId: quote.id, method, margin });
 
@@ -5841,6 +5846,11 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
           } as any,
         });
       }
+      if (!Number.isFinite(totalGBP)) {
+        console.error("[/quotes/:id/price margin] totalGBP not finite", { tenantId, quoteId: quote.id, totalGBP, margin });
+        return res.status(500).json({ ok: false, error: "pricing_failed", message: "Computed total was not a finite number." });
+      }
+
   const pricedSaved1 = await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP), markupDefault: new Prisma.Decimal(margin) } });
       try {
         await completeTasksOnRecordChangeByLinks({
