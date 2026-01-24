@@ -204,7 +204,14 @@ export default function QuoteBuilderPage() {
       await mutateLines();
       await mutateQuote();
     } catch (e: any) {
-      toast({ title: "Failed to update markup", description: e?.message || "Please try again." });
+      const stage = (e?.details && typeof e.details === "object") ? (e.details as any)?.stage : null;
+      const apiError = (e?.details && typeof e.details === "object") ? (e.details as any)?.error : null;
+      const apiMessage = (e?.details && typeof e.details === "object") ? (e.details as any)?.message : null;
+      const descriptionBase = apiMessage || apiError || e?.message || "Please try again.";
+      const description = stage ? `${descriptionBase} (stage: ${stage})` : descriptionBase;
+      // Useful for staging debugging: preserves response JSON/body in console.
+      console.error("[quote-builder] update markup failed", { stage, details: e?.details, status: e?.status, body: e?.body });
+      toast({ title: "Failed to update markup", description });
     } finally {
       setPricingSaving((p) => ({ ...p, markup: false }));
     }
