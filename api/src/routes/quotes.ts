@@ -5764,6 +5764,42 @@ router.patch("/:id/lines/map", requireAuth, async (req: any, res) => {
 router.post("/:id/price", requireAuth, async (req: any, res) => {
   let stage = "init";
   try {
+    const jsonSafe = (input: any): any => {
+      const seen = new WeakSet<object>();
+      const walk = (v: any): any => {
+        if (v === null || v === undefined) return v;
+        const t = typeof v;
+        if (t === "string" || t === "boolean") return v;
+        if (t === "number") return Number.isFinite(v) ? v : null;
+        if (t === "bigint") {
+          const asNum = Number(v);
+          return Number.isFinite(asNum) ? asNum : v.toString();
+        }
+        if (t !== "object") return null;
+
+        if (v instanceof Date) return v.toISOString();
+        if (Array.isArray(v)) return v.map(walk);
+
+        // Prisma Decimal / decimal.js
+        try {
+          const anyVal = v as any;
+          if (typeof anyVal.toNumber === "function") {
+            const n = anyVal.toNumber();
+            return typeof n === "number" && Number.isFinite(n) ? n : null;
+          }
+        } catch {}
+
+        if (seen.has(v)) return null;
+        seen.add(v);
+        const out: Record<string, any> = {};
+        for (const [k, val] of Object.entries(v)) {
+          out[k] = walk(val);
+        }
+        return out;
+      };
+      return walk(input);
+    };
+
     const tenantId = await getTenantId(req);
     const id = String(req.params.id);
     let quote: any;
@@ -5859,12 +5895,13 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
           margin,
           pricingBreakdown,
         };
+        const nextMetaSafe = jsonSafe(nextMeta);
         try {
           await prisma.quoteLine.update({
             where: { id: ln.id },
             data: {
               meta: {
-                set: nextMeta,
+                set: nextMetaSafe,
               },
             } as any,
           });
@@ -5887,7 +5924,7 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
             await prisma.$executeRawUnsafe(
               `UPDATE "QuoteLine" SET "meta" = $2::jsonb WHERE "id" = $1`,
               ln.id,
-              JSON.stringify(nextMeta),
+              JSON.stringify(nextMetaSafe),
             );
             continue;
           }
@@ -6365,7 +6402,13 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
   } catch (e: any) {
     console.error("[/quotes/:id/price] failed:", e?.message || e);
     // Include a non-sensitive stage hint to speed up debugging.
-    return res.status(500).json({ error: "internal_error", stage: (typeof stage === "string" ? stage : undefined) });
+    return res.status(500).json({
+      error: "internal_error",
+      stage: (typeof stage === "string" ? stage : undefined),
+      code: typeof e?.code === "string" ? e.code : undefined,
+      name: typeof e?.name === "string" ? e.name : undefined,
+      message: typeof e?.message === "string" ? e.message.slice(0, 300) : undefined,
+    });
   }
 });
 
