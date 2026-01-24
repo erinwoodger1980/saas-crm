@@ -113,10 +113,38 @@ type PortalData = {
   }>;
 };
 
+const FALLBACK_GALLERY_URLS = [
+  '/images/wealden/p1.jpg',
+  '/images/wealden/p2.jpg',
+  '/images/wealden/p3.jpg',
+  '/images/wealden/p4.jpg',
+];
+
 function normalizeNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function normalizeHexColor(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const raw = value.trim();
+  if (!raw) return null;
+  const hex = raw.startsWith('#') ? raw.slice(1) : raw;
+  if (![3, 6].includes(hex.length)) return null;
+  if (!/^[0-9a-fA-F]+$/.test(hex)) return null;
+  return `#${hex}`.toUpperCase();
+}
+
+function hexToRgba(hex: string, alpha: number): string | null {
+  const clean = hex.replace('#', '');
+  if (![3, 6].includes(clean.length)) return null;
+  const full = clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  if ([r, g, b].some((v) => Number.isNaN(v))) return null;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 function formatCurrency(value: number, currency?: string | null) {
@@ -319,6 +347,21 @@ export default function QuotePortalPage() {
     const sellTotal = sortedQuoteLines.reduce((sum, ln) => sum + (getSellTotal(ln) ?? 0), 0);
     return { currency, sellTotal: Number.isFinite(sellTotal) ? Math.round(sellTotal * 100) / 100 : 0 };
   }, [sortedQuoteLines, data?.quote?.currency]);
+
+  const brandColor = useMemo(() => {
+    const normalized = normalizeHexColor(data?.tenant?.primaryColor || undefined);
+    return normalized || '#2563EB';
+  }, [data?.tenant?.primaryColor]);
+
+  const brandSoft = useMemo(() => {
+    const fromTenant = normalizeHexColor(data?.tenant?.secondaryColor || undefined);
+    if (fromTenant) return fromTenant;
+    return hexToRgba(brandColor, 0.08) || 'rgba(37, 99, 235, 0.08)';
+  }, [data?.tenant?.secondaryColor, brandColor]);
+
+  const brandGlow = useMemo(() => hexToRgba(brandColor, 0.18) || 'rgba(37, 99, 235, 0.18)', [brandColor]);
+
+  const brandVars = useMemo(() => ({ ['--brand' as any]: brandColor }), [brandColor]);
 
   const refreshPortal = useCallback(async () => {
     const r = await fetch(`${API_BASE}/public/quote-portal/${encodeURIComponent(token)}`, { cache: 'no-store' });
@@ -525,7 +568,8 @@ export default function QuotePortalPage() {
 
   const galleryUrls = useMemo(() => {
     const raw = data?.tenant?.galleryImageUrls;
-    return Array.isArray(raw) ? raw.filter((u) => typeof u === 'string' && u.trim()) : [];
+    const filtered = Array.isArray(raw) ? raw.filter((u) => typeof u === 'string' && u.trim()) : [];
+    return filtered.length ? filtered : FALLBACK_GALLERY_URLS;
   }, [data?.tenant?.galleryImageUrls]);
 
   const effectiveHeroUrl = useMemo(() => {
@@ -565,9 +609,9 @@ export default function QuotePortalPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-muted/20 to-muted/50">
-      <div className="mx-auto max-w-5xl px-4 py-8">
-        <header className="relative overflow-hidden rounded-3xl border bg-background/60 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/40">
+    <div className="min-h-screen bg-gradient-to-b from-background via-muted/20 to-muted/50" style={{ backgroundColor: brandSoft }}>
+      <div className="mx-auto max-w-6xl px-4 py-10" style={brandVars}>
+        <header className="relative overflow-hidden rounded-3xl border bg-background/60 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/40" style={{ borderColor: `${brandColor}22` }}>
           <div className="relative h-56 w-full md:h-80">
             {effectiveHeroUrl ? (
               <>
@@ -575,7 +619,7 @@ export default function QuotePortalPage() {
                 <img src={effectiveHeroUrl} alt="" className="h-full w-full object-cover" />
               </>
             ) : (
-              <div className="h-full w-full bg-gradient-to-br from-primary/20 via-muted/10 to-background" />
+              <div className="h-full w-full" style={{ background: `linear-gradient(135deg, ${brandGlow}, rgba(255,255,255,0))` }} />
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/40 to-transparent" />
 
@@ -588,13 +632,11 @@ export default function QuotePortalPage() {
             ) : null}
           </div>
 
-          <div className={effectiveHeroUrl ? 'absolute inset-x-0 bottom-0' : 'absolute inset-x-0 bottom-0'}>
-            <div className={effectiveHeroUrl ? 'px-4 pb-5' : 'px-4 pb-5'}>
-              <div className={
-                effectiveHeroUrl
-                  ? 'mx-auto max-w-5xl rounded-2xl border bg-background/85 p-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70 md:p-5'
-                  : 'mx-auto max-w-5xl rounded-2xl border bg-background/85 p-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70 md:p-5'
-              }>
+          <div className="relative z-10 -mt-10 px-4 pb-6">
+            <div
+              className="mx-auto max-w-6xl rounded-2xl border bg-background/85 p-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70 md:p-5"
+              style={{ borderColor: `${brandColor}33`, boxShadow: `0 12px 40px -30px ${brandColor}` }}
+            >
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div className="flex items-center gap-3">
                     {data.tenant.logoUrl ? (
@@ -628,21 +670,22 @@ export default function QuotePortalPage() {
 
                   <div className="flex flex-wrap items-center gap-2">
                     {bookingUrl ? (
-                      <Button asChild variant="outline">
+                      <Button asChild variant="outline" style={{ borderColor: brandColor, color: brandColor }}>
                         <a href={bookingUrl} target="_blank" rel="noreferrer">Book an appointment</a>
                       </Button>
                     ) : null}
-                    <Button variant="outline" onClick={handleShare} disabled={!data.portalUrl}>
+                    <Button variant="outline" onClick={handleShare} disabled={!data.portalUrl} style={{ borderColor: brandColor, color: brandColor }}>
                       Share
                     </Button>
                     {data.quote.status !== 'ACCEPTED' ? (
-                      <Button onClick={handleAcceptQuote}>Accept quote</Button>
+                      <Button onClick={handleAcceptQuote} className="text-white" style={{ backgroundColor: brandColor }}>
+                        Accept quote
+                      </Button>
                     ) : (
                       <Button variant="secondary" disabled>Accepted</Button>
                     )}
                   </div>
                 </div>
-              </div>
             </div>
           </div>
 
@@ -705,7 +748,7 @@ export default function QuotePortalPage() {
         </header>
 
         <div className="mt-6 grid gap-4 md:grid-cols-[1.1fr_.9fr]">
-          <div className="rounded-3xl border bg-background/70 p-5 shadow-sm">
+          <div className="rounded-3xl border bg-background/70 p-5 shadow-sm" style={{ borderColor: `${brandColor}22` }}>
             <div className="text-xs font-medium text-muted-foreground">Your quote</div>
             <div className="mt-1 text-xl font-semibold leading-tight md:text-2xl">{data.quote.title}</div>
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -716,7 +759,9 @@ export default function QuotePortalPage() {
             <div className="mt-4 flex items-end justify-between gap-4">
               <div>
                 <div className="text-xs text-muted-foreground">Total</div>
-                <div className="text-2xl font-semibold md:text-3xl">{formatCurrency(totals.sellTotal, totals.currency)}</div>
+                <div className="text-2xl font-semibold md:text-3xl" style={{ color: brandColor }}>
+                  {formatCurrency(totals.sellTotal, totals.currency)}
+                </div>
               </div>
               <div className="text-right text-xs text-muted-foreground">
                 {data.quote.status !== 'ACCEPTED' ? 'Ready to proceed?' : 'Accepted'}
@@ -724,7 +769,7 @@ export default function QuotePortalPage() {
             </div>
           </div>
 
-          <div className="rounded-3xl border bg-background/70 p-3 shadow-sm">
+          <div className="rounded-3xl border bg-background/70 p-3 shadow-sm" style={{ borderColor: `${brandColor}22` }}>
             <div className="grid grid-cols-3 gap-2">
               <div className="col-span-2 overflow-hidden rounded-2xl border bg-muted/20">
                 {galleryUrls[0] ? (
@@ -755,10 +800,16 @@ export default function QuotePortalPage() {
         </div>
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="mt-8">
-          <TabsList className="grid w-full grid-cols-3 rounded-2xl border bg-background/70 p-1 shadow-sm">
-            <TabsTrigger value="client">Client details</TabsTrigger>
-            <TabsTrigger value="product">Product details</TabsTrigger>
-            <TabsTrigger value="quote">Quote details</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-3 rounded-2xl border bg-background/70 p-1 shadow-sm" style={{ borderColor: `${brandColor}22` }}>
+            <TabsTrigger value="client" className="data-[state=active]:bg-[var(--brand)] data-[state=active]:text-white data-[state=active]:shadow-sm">
+              Client details
+            </TabsTrigger>
+            <TabsTrigger value="product" className="data-[state=active]:bg-[var(--brand)] data-[state=active]:text-white data-[state=active]:shadow-sm">
+              Product details
+            </TabsTrigger>
+            <TabsTrigger value="quote" className="data-[state=active]:bg-[var(--brand)] data-[state=active]:text-white data-[state=active]:shadow-sm">
+              Quote details
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="client" className="mt-6 grid gap-6">
