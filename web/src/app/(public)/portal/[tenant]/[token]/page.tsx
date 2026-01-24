@@ -425,29 +425,11 @@ export default function QuotePortalPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background">
-        <div className="mx-auto max-w-5xl px-4 py-10">
-          <div className="text-sm text-muted-foreground">Loading…</div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !data?.ok) {
-    return (
-      <div className="min-h-screen bg-background">
-        <div className="mx-auto max-w-5xl px-4 py-10">
-          <h1 className="text-xl font-semibold">Portal</h1>
-          <p className="mt-2 text-sm text-destructive">{error || 'This link is invalid or expired.'}</p>
-          <div className="mt-8 text-xs text-muted-foreground">Powered by joineryai.app</div>
-        </div>
-      </div>
-    );
-  }
-
-  const guarantees = useMemo(() => normalizeGuarantees(data?.tenant?.quoteDefaults?.guarantees), [data?.tenant?.quoteDefaults?.guarantees]);
+  // Derived UI data must be defined before any early returns to keep hook order stable.
+  const guarantees = useMemo(
+    () => normalizeGuarantees(data?.tenant?.quoteDefaults?.guarantees),
+    [data?.tenant?.quoteDefaults?.guarantees],
+  );
   const testimonials = useMemo(() => {
     const fromQuoteDefaults = normalizeTestimonials(data?.tenant?.quoteDefaults?.testimonials);
     if (fromQuoteDefaults.length) return fromQuoteDefaults;
@@ -479,6 +461,28 @@ export default function QuotePortalPage() {
 
   const reviewScore = useMemo(() => normalizeNumber(data?.tenant?.reviewScore), [data?.tenant?.reviewScore]);
   const reviewCount = useMemo(() => normalizeNumber(data?.tenant?.reviewCount), [data?.tenant?.reviewCount]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="mx-auto max-w-5xl px-4 py-10">
+          <div className="text-sm text-muted-foreground">Loading…</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !data?.ok) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="mx-auto max-w-5xl px-4 py-10">
+          <h1 className="text-xl font-semibold">Portal</h1>
+          <p className="mt-2 text-sm text-destructive">{error || 'This link is invalid or expired.'}</p>
+          <div className="mt-8 text-xs text-muted-foreground">Powered by joineryai.app</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/40">
