@@ -5800,6 +5800,46 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
       return walk(input);
     };
 
+    const updateLinePricingMeta = async (params: {
+      lineId: string;
+      sellUnitGBP: number;
+      sellTotalGBP: number;
+      margin: number;
+      pricingBreakdown: any;
+      pricingMethod?: string;
+    }): Promise<number> => {
+      const pb = jsonSafe(params.pricingBreakdown);
+      // Update only the small pricing keys. This avoids re-sending/parsing the entire
+      // existing meta object, which can exceed Postgres JSON recursion limits on some records.
+      return prisma.$executeRawUnsafe(
+        `UPDATE "QuoteLine"
+         SET "meta" =
+           jsonb_set(
+             jsonb_set(
+               jsonb_set(
+                 jsonb_set(
+                   jsonb_set(
+                     COALESCE("meta", '{}'::jsonb),
+                     '{sellUnitGBP}', to_jsonb(($2)::numeric), true
+                   ),
+                   '{sellTotalGBP}', to_jsonb(($3)::numeric), true
+                 ),
+                 '{pricingMethod}', to_jsonb(($4)::text), true
+               ),
+               '{margin}', to_jsonb(($5)::numeric), true
+             ),
+             '{pricingBreakdown}', ($6)::jsonb, true
+           )
+         WHERE "id" = $1`,
+        params.lineId,
+        params.sellUnitGBP,
+        params.sellTotalGBP,
+        String(params.pricingMethod || "margin"),
+        params.margin,
+        JSON.stringify(pb),
+      );
+    };
+
     const tenantId = await getTenantId(req);
     const id = String(req.params.id);
     let quote: any;
@@ -5887,46 +5927,57 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
           timestamp: new Date().toISOString(),
         };
         stage = "update_line";
-        const nextMeta = {
-          ...(lineMeta || {}),
-          sellUnitGBP: sellUnit,
-          sellTotalGBP: sellTotal,
-          pricingMethod: "margin",
-          margin,
-          pricingBreakdown,
-        };
-        const nextMetaSafe = jsonSafe(nextMeta);
         try {
-          await prisma.quoteLine.update({
-            where: { id: ln.id },
-            data: {
-              meta: {
-                set: nextMetaSafe,
-              },
-            } as any,
+          const affected = await updateLinePricingMeta({
+            lineId: ln.id,
+            sellUnitGBP: sellUnit,
+            sellTotalGBP: sellTotal,
+            margin,
+            pricingBreakdown,
+            pricingMethod: "margin",
           });
-        } catch (e: any) {
-          // If the record disappeared (rare), skip it rather than failing the whole repricing.
-          if (e?.code === "P2025") {
-            console.warn("[/quotes/:id/price margin] quoteLine missing; skipping", { tenantId, quoteId: quote.id, lineId: ln.id });
+          if (!affected) {
+            console.warn("[/quotes/:id/price margin] quoteLine missing (0 rows affected); skipping", {
+              tenantId,
+              quoteId: quote.id,
+              lineId: ln.id,
+            });
             skippedCount += 1;
-            continue;
           }
-          // If schema drift prevents Prisma from updating JSON, fall back to a raw update.
+        } catch (e: any) {
+          // If schema drift breaks the raw query, fall back to Prisma update with a minimal meta.
           if (shouldFallbackQuoteQuery(e)) {
-            console.warn("[/quotes/:id/price margin] Prisma schema mismatch on quoteLine.update; falling back", {
+            console.warn("[/quotes/:id/price margin] raw meta update failed due to schema mismatch; falling back", {
               tenantId,
               quoteId: quote.id,
               lineId: ln.id,
               code: e?.code,
               message: e?.message,
             });
-            await prisma.$executeRawUnsafe(
-              `UPDATE "QuoteLine" SET "meta" = $2::jsonb WHERE "id" = $1`,
-              ln.id,
-              JSON.stringify(nextMetaSafe),
-            );
-            continue;
+            try {
+              await prisma.quoteLine.update({
+                where: { id: ln.id },
+                data: {
+                  meta: {
+                    set: {
+                      // Only set pricing keys; do not spread existing meta.
+                      sellUnitGBP: sellUnit,
+                      sellTotalGBP: sellTotal,
+                      pricingMethod: "margin",
+                      margin,
+                      pricingBreakdown: jsonSafe(pricingBreakdown),
+                    },
+                  },
+                } as any,
+              });
+              continue;
+            } catch (e2: any) {
+              if (e2?.code === "P2025") {
+                skippedCount += 1;
+                continue;
+              }
+              throw e2;
+            }
           }
           throw e;
         }
