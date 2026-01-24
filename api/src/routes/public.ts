@@ -1410,7 +1410,9 @@ router.get("/quote-portal/:token", async (req, res) => {
       where: { id: quoteId, tenantId },
       include: {
         tenant: true,
-        lines: true,
+        lines: {
+          orderBy: [{ sortIndex: "asc" }, { id: "asc" }],
+        },
         lead: {
           include: {
             client: true,
@@ -1533,6 +1535,14 @@ router.get("/quote-portal/:token", async (req, res) => {
         })
       : [];
 
+    const rawTenantTestimonials = (tenantSettings as any)?.testimonials;
+    const rawQuoteDefaultTestimonials = (tenantSettings as any)?.quoteDefaults?.testimonials;
+    const mergedTestimonials = Array.isArray(rawTenantTestimonials)
+      ? rawTenantTestimonials
+      : Array.isArray(rawQuoteDefaultTestimonials)
+        ? rawQuoteDefaultTestimonials
+        : null;
+
     return res.json({
       ok: true,
       portalUrl,
@@ -1545,7 +1555,14 @@ router.get("/quote-portal/:token", async (req, res) => {
         phone: (tenantSettings as any)?.phone || null,
         links: (tenantSettings as any)?.links || null,
         quoteDefaults: (tenantSettings as any)?.quoteDefaults || null,
-        testimonials: (tenantSettings as any)?.testimonials || null,
+        testimonials: mergedTestimonials,
+        heroImageUrl: (tenantSettings as any)?.heroImageUrl || null,
+        galleryImageUrls: (tenantSettings as any)?.galleryImageUrls || [],
+        reviewCount: (tenantSettings as any)?.reviewCount ?? null,
+        reviewScore: (tenantSettings as any)?.reviewScore ?? null,
+        reviewSourceLabel: (tenantSettings as any)?.reviewSourceLabel || null,
+        primaryColor: (tenantSettings as any)?.primaryColor || null,
+        secondaryColor: (tenantSettings as any)?.secondaryColor || null,
       },
       client: client
         ? {

@@ -5782,16 +5782,16 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
       for (const ln of quote.lines) {
         const lineMeta: any = (ln.meta as any) || {};
         const isOverridden = lineMeta?.isOverridden === true;
+        const existingSellUnit = safeNumber(lineMeta?.sellUnitGBP) ?? safeNumber(lineMeta?.sell_unit);
+        const existingSellTotal = safeNumber(lineMeta?.sellTotalGBP) ?? safeNumber(lineMeta?.sell_total);
         
-        // Skip lines with manual overrides
-        if (isOverridden) {
+        // Skip lines with manual overrides, but only when they already have sell values.
+        // Legacy data sometimes marked lines as overridden without persisting sell fields,
+        // which would otherwise leave sell prices permanently blank.
+        if (isOverridden && (existingSellUnit != null || existingSellTotal != null)) {
           skippedCount += 1;
           // Keep existing sell values for overridden lines
-          const existingSellTotal =
-            safeNumber(lineMeta?.sellTotalGBP) ??
-            safeNumber((ln as any).lineTotalGBP) ??
-            0;
-          totalGBP += existingSellTotal;
+          totalGBP += existingSellTotal ?? (existingSellUnit != null ? existingSellUnit * (safeNumber(ln.qty) ?? 1) : safeNumber((ln as any).lineTotalGBP) ?? 0);
           continue;
         }
         // Be resilient: if unitPrice wasn't set (older parses), derive from stored raw totals when available.

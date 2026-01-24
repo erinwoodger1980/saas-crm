@@ -16,6 +16,13 @@ type PortalData = {
     slug: string;
     name: string;
     logoUrl?: string | null;
+    heroImageUrl?: string | null;
+    galleryImageUrls?: string[] | null;
+    reviewCount?: number | null;
+    reviewScore?: any;
+    reviewSourceLabel?: string | null;
+    primaryColor?: string | null;
+    secondaryColor?: string | null;
     website?: string | null;
     phone?: string | null;
     links?: any;
@@ -49,6 +56,7 @@ type PortalData = {
       currency?: string | null;
       meta?: any;
       lineStandard?: any;
+      sortIndex?: number | null;
     }>;
   };
   quotes: Array<{
@@ -145,6 +153,51 @@ function firstUrlFromLinks(links: any): string | null {
   return null;
 }
 
+function normalizeSortIndex(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function normalizeGuarantees(raw: any): Array<{ title: string; description?: string | null }> {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((g) => {
+      if (typeof g === 'string') {
+        const t = g.trim();
+        return t ? { title: t } : null;
+      }
+      if (g && typeof g === 'object') {
+        const title = String((g as any).title ?? (g as any).name ?? (g as any).label ?? '').trim();
+        const description = String((g as any).description ?? (g as any).detail ?? (g as any).text ?? '').trim();
+        if (!title && !description) return null;
+        return { title: title || description, description: title ? (description || null) : null };
+      }
+      return null;
+    })
+    .filter(Boolean) as Array<{ title: string; description?: string | null }>;
+}
+
+function normalizeTestimonials(raw: any): Array<{ quote: string; client: string; role?: string; photoUrl?: string }> {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((t) => {
+      if (typeof t === 'string') {
+        const q = t.trim();
+        return q ? { quote: q, client: '' } : null;
+      }
+      if (t && typeof t === 'object') {
+        const quote = String((t as any).quote ?? (t as any).text ?? '').trim();
+        const client = String((t as any).client ?? (t as any).name ?? '').trim();
+        const role = String((t as any).role ?? '').trim();
+        const photoUrl = String((t as any).photoUrl ?? (t as any).photoDataUrl ?? '').trim();
+        if (!quote && !client) return null;
+        return { quote: quote || client, client: quote ? client : '', role: role || undefined, photoUrl: photoUrl || undefined };
+      }
+      return null;
+    })
+    .filter(Boolean) as Array<{ quote: string; client: string; role?: string; photoUrl?: string }>;
+}
+
 export default function QuotePortalPage() {
   const params = useParams();
   const token = params.token as string;
@@ -176,7 +229,24 @@ export default function QuotePortalPage() {
     [token],
   );
 
-  const quoteLines = useMemo(() => (data?.quote?.lines && Array.isArray(data.quote.lines) ? data.quote.lines : []), [data?.quote?.lines]);
+  const quoteLines = useMemo(
+    () => (data?.quote?.lines && Array.isArray(data.quote.lines) ? data.quote.lines : []),
+    [data?.quote?.lines],
+  );
+
+  const sortedQuoteLines = useMemo(() => {
+    const copy = [...quoteLines];
+    copy.sort((a: any, b: any) => {
+      const ai = normalizeSortIndex(a?.sortIndex);
+      const bi = normalizeSortIndex(b?.sortIndex);
+      if (ai !== bi) return ai - bi;
+      const ad = String(a?.description ?? '').toLowerCase();
+      const bd = String(b?.description ?? '').toLowerCase();
+      if (ad !== bd) return ad.localeCompare(bd);
+      return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
+    });
+    return copy;
+  }, [quoteLines]);
   const moodboardFileIds = useMemo(() => {
     const ids: any = data?.quote?.meta?.customerMoodboardFileIds;
     return Array.isArray(ids) ? (ids.filter((x) => typeof x === 'string' && x.trim()) as string[]) : [];
@@ -184,9 +254,9 @@ export default function QuotePortalPage() {
 
   const totals = useMemo(() => {
     const currency = data?.quote?.currency || 'GBP';
-    const sellTotal = quoteLines.reduce((sum, ln) => sum + (getSellTotal(ln) ?? 0), 0);
+    const sellTotal = sortedQuoteLines.reduce((sum, ln) => sum + (getSellTotal(ln) ?? 0), 0);
     return { currency, sellTotal: Number.isFinite(sellTotal) ? Math.round(sellTotal * 100) / 100 : 0 };
-  }, [quoteLines, data?.quote?.currency]);
+  }, [sortedQuoteLines, data?.quote?.currency]);
 
   const refreshPortal = useCallback(async () => {
     const r = await fetch(`${API_BASE}/public/quote-portal/${encodeURIComponent(token)}`, { cache: 'no-store' });
@@ -230,14 +300,14 @@ export default function QuotePortalPage() {
 
   useEffect(() => {
     const next: Record<string, { description: string; qty: string }> = {};
-    for (const ln of quoteLines) {
+    for (const ln of sortedQuoteLines) {
       next[ln.id] = {
         description: String(ln.description ?? '').trim(),
         qty: String(typeof ln.qty === 'number' ? ln.qty : (ln.qty == null ? 1 : Number(ln.qty) || 1)),
       };
     }
     setLineDrafts(next);
-  }, [data?.quote?.id, quoteLines.length]);
+  }, [data?.quote?.id, sortedQuoteLines.length]);
 
   const handleUpdateLine = async (lineId: string, patch: { description?: string; qty?: number }) => {
     try {
@@ -377,56 +447,114 @@ export default function QuotePortalPage() {
     );
   }
 
+  const guarantees = useMemo(() => normalizeGuarantees(data?.tenant?.quoteDefaults?.guarantees), [data?.tenant?.quoteDefaults?.guarantees]);
+  const testimonials = useMemo(() => {
+    const fromQuoteDefaults = normalizeTestimonials(data?.tenant?.quoteDefaults?.testimonials);
+    if (fromQuoteDefaults.length) return fromQuoteDefaults;
+    return normalizeTestimonials(data?.tenant?.testimonials);
+  }, [data?.tenant?.quoteDefaults?.testimonials, data?.tenant?.testimonials]);
+  const certifications = useMemo(() => {
+    const raw = data?.tenant?.quoteDefaults?.certifications;
+    return Array.isArray(raw)
+      ? raw
+          .map((c: any) => {
+            const name = String(c?.name ?? c?.title ?? '').trim();
+            const description = String(c?.description ?? '').trim();
+            if (!name && !description) return null;
+            return { name: name || description, description: name ? (description || null) : null };
+          })
+          .filter(Boolean)
+      : [];
+  }, [data?.tenant?.quoteDefaults?.certifications]);
+
+  const heroUrl = useMemo(() => {
+    const url = String(data?.tenant?.heroImageUrl || '').trim();
+    return url || null;
+  }, [data?.tenant?.heroImageUrl]);
+
+  const galleryUrls = useMemo(() => {
+    const raw = data?.tenant?.galleryImageUrls;
+    return Array.isArray(raw) ? raw.filter((u) => typeof u === 'string' && u.trim()) : [];
+  }, [data?.tenant?.galleryImageUrls]);
+
+  const reviewScore = useMemo(() => normalizeNumber(data?.tenant?.reviewScore), [data?.tenant?.reviewScore]);
+  const reviewCount = useMemo(() => normalizeNumber(data?.tenant?.reviewCount), [data?.tenant?.reviewCount]);
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/40">
       <div className="mx-auto max-w-5xl px-4 py-8">
-        <header className="flex items-start justify-between gap-6">
-          <div className="flex items-center gap-3">
-            {data.tenant.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={data.tenant.logoUrl}
-                alt={data.tenant.name}
-                className="h-10 w-auto max-w-[180px] object-contain"
-              />
-            ) : null}
-            <div>
-              <div className="text-lg font-semibold">{data.tenant.name}</div>
-              <div className="text-xs text-muted-foreground">
-                {data.tenant.website ? (
-                  <a className="underline" href={data.tenant.website} target="_blank" rel="noreferrer">
-                    {data.tenant.website}
-                  </a>
+        <header className="overflow-hidden rounded-3xl border bg-background/70 shadow-sm">
+          {heroUrl ? (
+            <div className="relative h-44 w-full md:h-56">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={heroUrl} alt="" className="h-full w-full object-cover" />
+              <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-background/30 to-transparent" />
+            </div>
+          ) : null}
+
+          <div className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-3">
+              {data.tenant.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={data.tenant.logoUrl}
+                  alt={data.tenant.name}
+                  className="h-10 w-auto max-w-[180px] object-contain"
+                />
+              ) : null}
+              <div>
+                <div className="text-lg font-semibold">{data.tenant.name}</div>
+                <div className="text-xs text-muted-foreground">
+                  {data.tenant.website ? (
+                    <a className="underline" href={data.tenant.website} target="_blank" rel="noreferrer">
+                      {data.tenant.website}
+                    </a>
+                  ) : null}
+                  {data.tenant.website && data.tenant.phone ? <span> · </span> : null}
+                  {data.tenant.phone || null}
+                  {reviewScore != null || reviewCount != null ? <span> · </span> : null}
+                  {reviewScore != null ? <span>{reviewScore.toFixed(1)}★</span> : null}
+                  {reviewCount != null ? <span>{reviewScore != null ? ' ' : ''}({Math.round(reviewCount)} reviews)</span> : null}
+                  {data.tenant.reviewSourceLabel ? <span>{` · ${String(data.tenant.reviewSourceLabel)}`}</span> : null}
+                </div>
+                {data.tenant.quoteDefaults?.tagline ? (
+                  <div className="mt-1 text-sm text-muted-foreground">{String(data.tenant.quoteDefaults.tagline)}</div>
                 ) : null}
-                {data.tenant.website && data.tenant.phone ? <span> · </span> : null}
-                {data.tenant.phone || null}
               </div>
             </div>
-          </div>
 
-          {bookingUrl ? (
-            <Button asChild>
-              <a href={bookingUrl} target="_blank" rel="noreferrer">Book an appointment</a>
-            </Button>
-          ) : null}
+            <div className="flex items-center gap-2">
+              {bookingUrl ? (
+                <Button asChild variant="outline">
+                  <a href={bookingUrl} target="_blank" rel="noreferrer">Book an appointment</a>
+                </Button>
+              ) : null}
+              <Button variant="outline" onClick={handleShare} disabled={!data.portalUrl}>
+                Share
+              </Button>
+              {data.quote.status !== 'ACCEPTED' ? (
+                <Button onClick={handleAcceptQuote}>Accept quote</Button>
+              ) : (
+                <Button variant="secondary" disabled>Accepted</Button>
+              )}
+            </div>
+          </div>
         </header>
 
-        <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
           <div className="rounded-xl border bg-background/60 px-4 py-3">
             <div className="text-xs text-muted-foreground">Quote</div>
             <div className="text-lg font-semibold">{data.quote.title}</div>
             <div className="mt-1 text-xs text-muted-foreground">Status: {data.quote.status}</div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={handleShare} disabled={!data.portalUrl}>
-              Share
-            </Button>
-            {data.quote.status !== 'ACCEPTED' ? (
-              <Button onClick={handleAcceptQuote}>Accept quote</Button>
-            ) : (
-              <Button variant="secondary" disabled>Accepted</Button>
-            )}
-          </div>
+          {galleryUrls.length ? (
+            <div className="grid grid-cols-3 gap-2">
+              {galleryUrls.slice(0, 3).map((u) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={u} src={u} alt="Gallery" className="h-14 w-20 rounded-lg border object-cover" />
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="mt-6">
@@ -479,19 +607,41 @@ export default function QuotePortalPage() {
             {(data.tenant.quoteDefaults?.guarantees?.length || data.tenant.testimonials?.length) ? (
               <section className="rounded-2xl border bg-background/70 p-4 shadow-sm">
                 <div className="text-sm font-medium">Peace of mind</div>
-                {Array.isArray(data.tenant.quoteDefaults?.guarantees) && data.tenant.quoteDefaults.guarantees.length ? (
-                  <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-                    {data.tenant.quoteDefaults.guarantees.slice(0, 6).map((g: any, idx: number) => (
-                      <li key={idx}>{String(g)}</li>
+                {(guarantees.length || certifications.length) ? (
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    {guarantees.slice(0, 10).map((g, idx) => (
+                      <div key={`g-${idx}`} className="rounded-xl border bg-background p-3">
+                        <div className="text-sm font-medium">{g.title}</div>
+                        {g.description ? <div className="mt-1 text-sm text-muted-foreground">{g.description}</div> : null}
+                      </div>
                     ))}
-                  </ul>
+                    {certifications.slice(0, 6).map((c: any, idx: number) => (
+                      <div key={`c-${idx}`} className="rounded-xl border bg-background p-3">
+                        <div className="text-sm font-medium">{String(c.name)}</div>
+                        {c.description ? <div className="mt-1 text-sm text-muted-foreground">{String(c.description)}</div> : null}
+                      </div>
+                    ))}
+                  </div>
                 ) : null}
-                {Array.isArray(data.tenant.testimonials) && data.tenant.testimonials.length ? (
+
+                {testimonials.length ? (
                   <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    {data.tenant.testimonials.slice(0, 4).map((t: any, idx: number) => (
+                    {testimonials.slice(0, 6).map((t, idx) => (
                       <div key={idx} className="rounded-xl border bg-background p-3">
-                        <div className="text-sm">{String(t?.quote || t?.text || t)}</div>
-                        {t?.name ? <div className="mt-2 text-xs text-muted-foreground">— {String(t.name)}</div> : null}
+                        <div className="flex items-start gap-3">
+                          {t.photoUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={t.photoUrl} alt="" className="h-10 w-10 rounded-full border object-cover" />
+                          ) : null}
+                          <div className="min-w-0">
+                            <div className="text-sm">{t.quote}</div>
+                            {(t.client || t.role) ? (
+                              <div className="mt-2 text-xs text-muted-foreground">
+                                — {t.client || 'Customer'}{t.role ? `, ${t.role}` : ''}
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -532,7 +682,7 @@ export default function QuotePortalPage() {
               ) : null}
 
               <div className="mt-6 grid gap-4">
-                {quoteLines.map((ln) => {
+                {sortedQuoteLines.map((ln) => {
                   const draft = lineDrafts[ln.id] || { description: String(ln.description ?? ''), qty: String(ln.qty ?? 1) };
                   const photoId = ln.lineStandard?.photoOutsideFileId || ln.lineStandard?.photoFileId || null;
                   return (
@@ -632,7 +782,7 @@ export default function QuotePortalPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {quoteLines.map((ln) => {
+                    {sortedQuoteLines.map((ln) => {
                       const unit = getSellUnit(ln);
                       const total = getSellTotal(ln);
                       return (
