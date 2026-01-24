@@ -527,6 +527,17 @@ export default function QuotePortalPage() {
     return Array.isArray(raw) ? raw.filter((u) => typeof u === 'string' && u.trim()) : [];
   }, [data?.tenant?.galleryImageUrls]);
 
+  const effectiveHeroUrl = useMemo(() => {
+    if (heroUrl) return heroUrl;
+    if (galleryUrls.length) return galleryUrls[0];
+    return null;
+  }, [heroUrl, galleryUrls]);
+
+  const galleryPreviewUrls = useMemo(() => {
+    const filtered = galleryUrls.filter((u) => u !== effectiveHeroUrl);
+    return filtered.slice(0, 3);
+  }, [galleryUrls, effectiveHeroUrl]);
+
   const reviewScore = useMemo(() => normalizeNumber(data?.tenant?.reviewScore), [data?.tenant?.reviewScore]);
   const reviewCount = useMemo(() => normalizeNumber(data?.tenant?.reviewCount), [data?.tenant?.reviewCount]);
 
@@ -553,67 +564,81 @@ export default function QuotePortalPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-muted/40">
+    <div className="min-h-screen bg-gradient-to-b from-background via-muted/20 to-muted/50">
       <div className="mx-auto max-w-5xl px-4 py-8">
-        <header className="overflow-hidden rounded-3xl border bg-background/70 shadow-sm">
-          {heroUrl ? (
-            <div className="relative h-44 w-full md:h-56">
+        <header className="relative overflow-hidden rounded-3xl border bg-background/60 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/40">
+          {effectiveHeroUrl ? (
+            <div className="relative h-56 w-full md:h-80">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={heroUrl} alt="" className="h-full w-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-background/30 to-transparent" />
+              <img src={effectiveHeroUrl} alt="" className="h-full w-full object-cover" />
+              <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/40 to-transparent" />
             </div>
           ) : null}
 
-          <div className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-3">
-              {data.tenant.logoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={data.tenant.logoUrl}
-                  alt={data.tenant.name}
-                  className="h-10 w-auto max-w-[180px] object-contain"
-                />
-              ) : null}
-              <div>
-                <div className="text-lg font-semibold">{data.tenant.name}</div>
-                <div className="text-xs text-muted-foreground">
-                  {data.tenant.website ? (
-                    <a className="underline" href={data.tenant.website} target="_blank" rel="noreferrer">
-                      {data.tenant.website}
-                    </a>
-                  ) : null}
-                  {data.tenant.website && data.tenant.phone ? <span> · </span> : null}
-                  {data.tenant.phone || null}
-                  {reviewScore != null || reviewCount != null ? <span> · </span> : null}
-                  {reviewScore != null ? <span>{reviewScore.toFixed(1)}★</span> : null}
-                  {reviewCount != null ? <span>{reviewScore != null ? ' ' : ''}({Math.round(reviewCount)} reviews)</span> : null}
-                  {data.tenant.reviewSourceLabel ? <span>{` · ${String(data.tenant.reviewSourceLabel)}`}</span> : null}
-                </div>
-                {data.tenant.quoteDefaults?.tagline ? (
-                  <div className="mt-1 text-sm text-muted-foreground">{String(data.tenant.quoteDefaults.tagline)}</div>
-                ) : null}
-              </div>
-            </div>
+          <div className={effectiveHeroUrl ? 'absolute inset-x-0 bottom-0' : ''}>
+            <div className={effectiveHeroUrl ? 'px-4 pb-5' : 'p-5'}>
+              <div className={
+                effectiveHeroUrl
+                  ? 'mx-auto max-w-5xl rounded-2xl border bg-background/85 p-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70 md:p-5'
+                  : 'rounded-2xl border bg-background/70 p-5'
+              }>
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div className="flex items-center gap-3">
+                    {data.tenant.logoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={data.tenant.logoUrl}
+                        alt={data.tenant.name}
+                        className="h-11 w-auto max-w-[200px] object-contain"
+                      />
+                    ) : null}
+                    <div className="min-w-0">
+                      <div className="text-xl font-semibold leading-tight md:text-2xl">{data.tenant.name}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {data.tenant.website ? (
+                          <a className="underline" href={data.tenant.website} target="_blank" rel="noreferrer">
+                            {data.tenant.website}
+                          </a>
+                        ) : null}
+                        {data.tenant.website && data.tenant.phone ? <span> · </span> : null}
+                        {data.tenant.phone || null}
+                        {reviewScore != null || reviewCount != null ? <span> · </span> : null}
+                        {reviewScore != null ? <span>{reviewScore.toFixed(1)}★</span> : null}
+                        {reviewCount != null ? <span>{reviewScore != null ? ' ' : ''}({Math.round(reviewCount)} reviews)</span> : null}
+                        {data.tenant.reviewSourceLabel ? <span>{` · ${String(data.tenant.reviewSourceLabel)}`}</span> : null}
+                      </div>
+                      {data.tenant.quoteDefaults?.tagline ? (
+                        <div className="mt-1 text-sm text-muted-foreground">{String(data.tenant.quoteDefaults.tagline)}</div>
+                      ) : null}
+                    </div>
+                  </div>
 
-            <div className="flex items-center gap-2">
-              {bookingUrl ? (
-                <Button asChild variant="outline">
-                  <a href={bookingUrl} target="_blank" rel="noreferrer">Book an appointment</a>
-                </Button>
-              ) : null}
-              <Button variant="outline" onClick={handleShare} disabled={!data.portalUrl}>
-                Share
-              </Button>
-              {data.quote.status !== 'ACCEPTED' ? (
-                <Button onClick={handleAcceptQuote}>Accept quote</Button>
-              ) : (
-                <Button variant="secondary" disabled>Accepted</Button>
-              )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {bookingUrl ? (
+                      <Button asChild variant="outline">
+                        <a href={bookingUrl} target="_blank" rel="noreferrer">Book an appointment</a>
+                      </Button>
+                    ) : null}
+                    <Button variant="outline" onClick={handleShare} disabled={!data.portalUrl}>
+                      Share
+                    </Button>
+                    {data.quote.status !== 'ACCEPTED' ? (
+                      <Button onClick={handleAcceptQuote}>Accept quote</Button>
+                    ) : (
+                      <Button variant="secondary" disabled>Accepted</Button>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
           {(certificationLogos.length || certificationLabels.length || guarantees.length) ? (
-            <div className="border-t bg-background/60 px-5 py-4">
+            <div className={
+              effectiveHeroUrl
+                ? 'border-t bg-background/70 px-5 py-4'
+                : 'border-t bg-background/60 px-5 py-4'
+            }>
               <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
                 <div>
                   <div className="text-xs font-medium text-muted-foreground">Accreditations & guarantees</div>
@@ -624,11 +649,11 @@ export default function QuotePortalPage() {
                         <img
                           src={String(c.logoUrl)}
                           alt={c.name}
-                          className="h-8 w-auto max-w-[120px] object-contain"
+                          className="h-9 w-auto max-w-[140px] object-contain"
                         />
                       );
                       return (
-                        <div key={`logo-${idx}`} className="rounded-lg border bg-background px-2 py-1">
+                        <div key={`logo-${idx}`} className="rounded-xl border bg-background/90 px-3 py-2 shadow-sm">
                           {c.href ? (
                             <a href={String(c.href)} target="_blank" rel="noreferrer" className="block">
                               {img}
@@ -643,7 +668,7 @@ export default function QuotePortalPage() {
                     {certificationLabels.map((c, idx) => (
                       <div
                         key={`label-${idx}`}
-                        className="rounded-lg border bg-background px-2 py-1 text-xs text-muted-foreground"
+                        className="rounded-full border bg-background/90 px-3 py-1 text-xs text-muted-foreground"
                         title={c.description || undefined}
                       >
                         {c.name}
@@ -655,7 +680,7 @@ export default function QuotePortalPage() {
                 {guarantees.length ? (
                   <div className="flex flex-wrap items-center gap-2">
                     {guarantees.slice(0, 3).map((g, idx) => (
-                      <div key={`g-chip-${idx}`} className="rounded-lg border bg-background px-2 py-1 text-xs">
+                      <div key={`g-chip-${idx}`} className="rounded-full border bg-background/90 px-3 py-1 text-xs">
                         {g.title}
                       </div>
                     ))}
@@ -666,36 +691,60 @@ export default function QuotePortalPage() {
           ) : null}
         </header>
 
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-          <div className="rounded-xl border bg-background/60 px-4 py-3">
-            <div className="text-xs text-muted-foreground">Quote</div>
-            <div className="text-lg font-semibold">{data.quote.title}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Status: {data.quote.status}</div>
+        <div className="mt-6 grid gap-4 md:grid-cols-[1.1fr_.9fr]">
+          <div className="rounded-3xl border bg-background/70 p-5 shadow-sm">
+            <div className="text-xs font-medium text-muted-foreground">Your quote</div>
+            <div className="mt-1 text-xl font-semibold leading-tight md:text-2xl">{data.quote.title}</div>
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              <span>Status: {data.quote.status}</span>
+              <span>·</span>
+              <span>Pricing is read‑only</span>
+            </div>
+            <div className="mt-4 flex items-end justify-between gap-4">
+              <div>
+                <div className="text-xs text-muted-foreground">Total</div>
+                <div className="text-2xl font-semibold md:text-3xl">{formatCurrency(totals.sellTotal, totals.currency)}</div>
+              </div>
+              <div className="text-right text-xs text-muted-foreground">
+                {data.quote.status !== 'ACCEPTED' ? 'Ready to proceed?' : 'Accepted'}
+              </div>
+            </div>
           </div>
-          {galleryUrls.length ? (
-            <div className="grid grid-cols-4 gap-2">
-              {galleryUrls.slice(0, 4).map((u) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  key={u}
-                  src={u}
-                  alt="Gallery"
-                  className="h-16 w-24 rounded-xl border object-cover md:h-20 md:w-28"
-                />
-              ))}
+
+          {(galleryPreviewUrls.length || galleryUrls.length) ? (
+            <div className="rounded-3xl border bg-background/70 p-3 shadow-sm">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="col-span-2 overflow-hidden rounded-2xl border bg-muted/20">
+                  {galleryUrls[0] ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={galleryUrls[0]} alt="Gallery" className="aspect-[16/11] h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex aspect-[16/11] items-center justify-center text-xs text-muted-foreground">Gallery</div>
+                  )}
+                </div>
+                <div className="grid gap-2">
+                  {galleryPreviewUrls.map((u) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img key={u} src={u} alt="Gallery" className="aspect-square w-full rounded-2xl border object-cover" />
+                  ))}
+                  {!galleryPreviewUrls.length ? (
+                    <div className="flex aspect-square items-center justify-center rounded-2xl border bg-muted/20 text-xs text-muted-foreground">Photos</div>
+                  ) : null}
+                </div>
+              </div>
             </div>
           ) : null}
         </div>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="mt-6">
-          <TabsList className="grid w-full grid-cols-3">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="mt-8">
+          <TabsList className="grid w-full grid-cols-3 rounded-2xl border bg-background/70 p-1 shadow-sm">
             <TabsTrigger value="client">Client details</TabsTrigger>
             <TabsTrigger value="product">Product details</TabsTrigger>
             <TabsTrigger value="quote">Quote details</TabsTrigger>
           </TabsList>
 
           <TabsContent value="client" className="mt-6 grid gap-6">
-            <section className="rounded-2xl border bg-background/70 p-4 shadow-sm">
+            <section className="rounded-3xl border bg-background/70 p-5 shadow-sm">
               <div className="text-sm font-medium">Your details</div>
               <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div>
@@ -735,18 +784,18 @@ export default function QuotePortalPage() {
             </section>
 
             {(data.tenant.quoteDefaults?.guarantees?.length || data.tenant.testimonials?.length) ? (
-              <section className="rounded-2xl border bg-background/70 p-4 shadow-sm">
+              <section className="rounded-3xl border bg-background/70 p-5 shadow-sm">
                 <div className="text-sm font-medium">Peace of mind</div>
                 {(guarantees.length || certifications.length) ? (
-                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
                     {guarantees.slice(0, 10).map((g, idx) => (
-                      <div key={`g-${idx}`} className="rounded-xl border bg-background p-3">
+                      <div key={`g-${idx}`} className="rounded-2xl border bg-background/90 p-4 shadow-sm">
                         <div className="text-sm font-medium">{g.title}</div>
                         {g.description ? <div className="mt-1 text-sm text-muted-foreground">{g.description}</div> : null}
                       </div>
                     ))}
                     {certifications.slice(0, 6).map((c: any, idx: number) => (
-                      <div key={`c-${idx}`} className="rounded-xl border bg-background p-3">
+                      <div key={`c-${idx}`} className="rounded-2xl border bg-background/90 p-4 shadow-sm">
                         <div className="text-sm font-medium">{String(c.name)}</div>
                         {c.description ? <div className="mt-1 text-sm text-muted-foreground">{String(c.description)}</div> : null}
                       </div>
@@ -755,16 +804,16 @@ export default function QuotePortalPage() {
                 ) : null}
 
                 {testimonials.length ? (
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <div className="mt-5 grid gap-3 md:grid-cols-2">
                     {testimonials.slice(0, 6).map((t, idx) => (
-                      <div key={idx} className="rounded-xl border bg-background p-3">
+                      <div key={idx} className="rounded-2xl border bg-background/90 p-4 shadow-sm">
                         <div className="flex items-start gap-3">
                           {t.photoUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={t.photoUrl} alt="" className="h-10 w-10 rounded-full border object-cover" />
+                            <img src={t.photoUrl} alt="" className="h-11 w-11 rounded-full border object-cover" />
                           ) : null}
                           <div className="min-w-0">
-                            <div className="text-sm">{t.quote}</div>
+                            <div className="text-sm leading-relaxed">{t.quote}</div>
                             {(t.client || t.role) ? (
                               <div className="mt-2 text-xs text-muted-foreground">
                                 — {t.client || 'Customer'}{t.role ? `, ${t.role}` : ''}
@@ -781,7 +830,7 @@ export default function QuotePortalPage() {
           </TabsContent>
 
           <TabsContent value="product" className="mt-6 grid gap-6">
-            <section className="rounded-2xl border bg-background/70 p-4 shadow-sm">
+            <section className="rounded-3xl border bg-background/70 p-5 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-medium">Product details</div>
@@ -803,11 +852,21 @@ export default function QuotePortalPage() {
               </div>
 
               {moodboardFileIds.length ? (
-                <div className="mt-4 grid grid-cols-3 gap-2 md:grid-cols-6">
-                  {moodboardFileIds.slice(0, 18).map((fid) => (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img key={fid} src={fileUrl(fid)} alt="Moodboard" className="aspect-square w-full rounded-lg border object-cover" />
-                  ))}
+                <div className="mt-4 grid grid-cols-6 gap-2">
+                  <div className="col-span-6 overflow-hidden rounded-2xl border bg-muted/20 md:col-span-3">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={fileUrl(moodboardFileIds[0])}
+                      alt="Moodboard"
+                      className="aspect-[16/11] h-full w-full object-cover"
+                    />
+                  </div>
+                  <div className="col-span-6 grid grid-cols-3 gap-2 md:col-span-3 md:grid-cols-3">
+                    {moodboardFileIds.slice(1, 7).map((fid) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img key={fid} src={fileUrl(fid)} alt="Moodboard" className="aspect-square w-full rounded-2xl border object-cover" />
+                    ))}
+                  </div>
                 </div>
               ) : null}
 
@@ -816,10 +875,10 @@ export default function QuotePortalPage() {
                   const draft = lineDrafts[ln.id] || { description: String(ln.description ?? ''), qty: String(ln.qty ?? 1) };
                   const photoId = ln.lineStandard?.photoOutsideFileId || ln.lineStandard?.photoFileId || null;
                   return (
-                    <div key={ln.id} className="rounded-xl border bg-background p-4">
+                    <div key={ln.id} className="rounded-2xl border bg-background/90 p-4 shadow-sm">
                       <div className="grid gap-4 md:grid-cols-[120px_1fr]">
                         <div>
-                          <div className="aspect-square w-full overflow-hidden rounded-lg border bg-muted/30">
+                          <div className="aspect-square w-full overflow-hidden rounded-2xl border bg-muted/30">
                             {photoId ? (
                               // eslint-disable-next-line @next/next/no-img-element
                               <img src={fileUrl(String(photoId))} alt="Item photo" className="h-full w-full object-cover" />
@@ -889,7 +948,7 @@ export default function QuotePortalPage() {
           </TabsContent>
 
           <TabsContent value="quote" className="mt-6 grid gap-6">
-            <section className="rounded-2xl border bg-background/70 p-4 shadow-sm">
+            <section className="rounded-3xl border bg-background/70 p-5 shadow-sm">
               <div className="flex items-end justify-between gap-4">
                 <div>
                   <div className="text-sm font-medium">Quote details</div>
@@ -901,7 +960,7 @@ export default function QuotePortalPage() {
                 </div>
               </div>
 
-              <div className="mt-4 overflow-x-auto rounded-xl border bg-background">
+              <div className="mt-4 overflow-x-auto rounded-2xl border bg-background/90 shadow-sm">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/30 text-xs text-muted-foreground">
                     <tr>
@@ -916,7 +975,7 @@ export default function QuotePortalPage() {
                       const unit = getSellUnit(ln);
                       const total = getSellTotal(ln);
                       return (
-                        <tr key={ln.id} className="border-t">
+                        <tr key={ln.id} className="border-t hover:bg-muted/20">
                           <td className="px-3 py-2 align-top">
                             <div className="font-medium">{String(ln.description || 'Item')}</div>
                           </td>
@@ -930,7 +989,7 @@ export default function QuotePortalPage() {
                 </table>
               </div>
 
-              <div className="mt-4 rounded-xl border bg-muted/20 p-3 text-sm text-muted-foreground">
+              <div className="mt-4 rounded-2xl border bg-muted/20 p-4 text-sm text-muted-foreground">
                 Once you’re happy, click “Accept quote”. We’ll confirm next steps and timings.
               </div>
             </section>
