@@ -5765,12 +5765,25 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
   try {
     const tenantId = await getTenantId(req);
     const id = String(req.params.id);
-    const quote = await prisma.quote.findFirst({
-      where: { id, tenantId },
-      include: { lines: { orderBy: [{ sortIndex: "asc" }, { id: "asc" }] }, tenant: true, lead: true },
-    });
+    let quote: any;
+    try {
+      quote = await prisma.quote.findFirst({
+        where: { id, tenantId },
+        // Keep this endpoint resilient: some environments may lag schema migrations
+        // (e.g. QuoteLine.sortIndex). If Prisma throws, fall back to raw queries.
+        include: { lines: { orderBy: [{ sortIndex: "asc" }, { id: "asc" }] } },
+      });
+    } catch (inner: any) {
+      if (shouldFallbackQuoteQuery(inner)) {
+        console.warn(`[/quotes/:id/price] Prisma schema mismatch, falling back: ${inner?.message || inner}`);
+        quote = await loadQuoteFallback(id, tenantId, { includeLines: true });
+      } else {
+        throw inner;
+      }
+    }
     if (!quote) return res.status(404).json({ error: "not_found" });
-    const method = String(req.body?.method || "margin");
+
+    const method = String(req.body?.method || "margin").trim().toLowerCase();
     const marginRaw = req.body?.margin ?? (quote as any).markupDefault ?? 0.25;
     const marginParsed = safeNumber(marginRaw);
     const margin = marginParsed != null && Number.isFinite(marginParsed) ? marginParsed : 0.25;
@@ -5851,7 +5864,10 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
         return res.status(500).json({ ok: false, error: "pricing_failed", message: "Computed total was not a finite number." });
       }
 
-  const pricedSaved1 = await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP), markupDefault: new Prisma.Decimal(margin) } });
+      const pricedSaved1 = await prisma.quote.update({
+        where: { id: quote.id },
+        data: { totalGBP: new Prisma.Decimal(totalGBP), markupDefault: new Prisma.Decimal(margin) },
+      });
       try {
         await completeTasksOnRecordChangeByLinks({
           tenantId,
@@ -5985,7 +6001,7 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
           }
           // Always distribute predicted total by quantity when using questionnaire-only mode
           let totalGBP = 0;
-          const qtySum = quote.lines.reduce((s, ln) => s + Math.max(1, Number(ln.qty || 1)), 0);
+          const qtySum = quote.lines.reduce((s: number, ln: any) => s + Math.max(1, Number(ln.qty || 1)), 0);
           for (const ln of quote.lines) {
             const qty = Math.max(1, Number(ln.qty || 1));
             const sellTotal = predictedTotal > 0 ? (predictedTotal * qty) / Math.max(1, qtySum) : 0;
@@ -6178,7 +6194,7 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
       if (hasLines) {
         // Distribute by quantity across existing line items.
         let totalGBP = 0;
-        const qtySum2 = quote.lines.reduce((s, ln) => s + Math.max(1, Number(ln.qty || 1)), 0);
+        const qtySum2 = quote.lines.reduce((s: number, ln: any) => s + Math.max(1, Number(ln.qty || 1)), 0);
         for (const ln of quote.lines) {
           const qty = Math.max(1, Number(ln.qty || 1));
           const sellTotal = (predictedTotal * qty) / Math.max(1, qtySum2);
