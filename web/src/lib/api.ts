@@ -19,6 +19,10 @@ function inferApiBase(): string {
   // In the browser, prefer a configured absolute base when provided.
   // This avoids /api 404s on hosts without rewrites.
   if (typeof window !== "undefined") {
+    const hostname = window.location?.hostname || "";
+    if (hostname === "lignumwindows.com" || hostname === "www.lignumwindows.com") {
+      return "/api";
+    }
     if (RAW_API_BASE) return String(RAW_API_BASE).replace(/\/+$/g, "");
     return "/api";
   }
