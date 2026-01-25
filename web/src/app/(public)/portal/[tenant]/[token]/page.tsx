@@ -546,12 +546,24 @@ export default function QuotePortalPage() {
     return normalizeCertifications(data?.tenant?.quoteDefaults?.certifications);
   }, [data?.tenant?.quoteDefaults?.certifications]);
 
+  const fallbackCertificationLogos = useMemo(
+    () => [
+      { name: 'FENSA', logoUrl: '/wealden/FENSA-Logo.png' },
+      { name: 'PAS 24', logoUrl: '/wealden/Pas-24-Logo.png' },
+      { name: 'FSC', logoUrl: '/wealden/FSC-Logo.png' },
+      { name: 'GGF', logoUrl: '/wealden/GGF-Logo.png' },
+    ],
+    [],
+  );
+
   const certificationLogos = useMemo(
     () => {
       if (christchurchCertificationLogos.length) return christchurchCertificationLogos.slice(0, 8);
-      return certifications.filter((c) => typeof c.logoUrl === 'string' && c.logoUrl.trim()).slice(0, 8);
+      const tenantLogos = certifications.filter((c) => typeof c.logoUrl === 'string' && c.logoUrl.trim()).slice(0, 8);
+      if (tenantLogos.length) return tenantLogos;
+      return fallbackCertificationLogos;
     },
-    [certifications, christchurchCertificationLogos],
+    [certifications, christchurchCertificationLogos, fallbackCertificationLogos],
   );
 
   const certificationLabels = useMemo(
@@ -573,6 +585,8 @@ export default function QuotePortalPage() {
     return Array.isArray(raw) ? raw.filter((u) => typeof u === 'string' && u.trim()) : [];
   }, [data?.tenant?.galleryImageUrls]);
 
+  const heroFallbackUrl = '/wealden/hero-placeholder.jpg';
+
   const galleryUrls = useMemo(() => {
     if (tenantGalleryUrls.length) return tenantGalleryUrls;
     if (moodboardUrls.length) return moodboardUrls;
@@ -581,9 +595,9 @@ export default function QuotePortalPage() {
 
   const effectiveHeroUrl = useMemo(() => {
     if (heroUrl) return heroUrl;
-    if (galleryUrls.length) return galleryUrls[0];
-    return null;
-  }, [heroUrl, galleryUrls]);
+    if (tenantGalleryUrls.length || moodboardUrls.length) return galleryUrls[0] || null;
+    return heroFallbackUrl;
+  }, [heroUrl, tenantGalleryUrls.length, moodboardUrls.length, galleryUrls, heroFallbackUrl]);
 
   const galleryPreviewUrls = useMemo(() => {
     const filtered = galleryUrls.filter((u) => u !== effectiveHeroUrl);
