@@ -66,7 +66,7 @@ export default function MigrateImagesPage() {
         formData.append("slotId", result.slotId);
 
         // Upload to server
-        const uploadResponse = await fetch("/api/wealden/upload-image", {
+        const uploadResponse = await fetch("/api/wealden/images/upload", {
           method: "POST",
           body: formData,
         });

@@ -25,7 +25,7 @@ export function ImageUploadButton({ label, onUpload, variant = "default" }: Imag
       formData.append("label", label);
 
       // Upload to the backend
-      const response = await fetch("/api/wealden/upload-image", {
+      const response = await fetch("/api/wealden/images/upload", {
         method: "POST",
         body: formData,
       });

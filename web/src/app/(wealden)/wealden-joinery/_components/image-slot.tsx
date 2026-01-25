@@ -87,7 +87,7 @@ export function ImageSlot({
     }
     
     // Fetch existing image from server
-    const fetchUrl = `/api/wealden/upload-image?slotId=${encodeURIComponent(slotId)}`;
+    const fetchUrl = `/api/wealden/images/${encodeURIComponent(slotId)}`;
     console.log(`[ImageSlot ${slotId}] Fetching from: ${fetchUrl}`);
     
     fetch(fetchUrl)
@@ -162,7 +162,7 @@ export function ImageSlot({
       formData.append("slotId", slotId);
 
       try {
-        const response = await fetch("/api/wealden/upload-image", {
+        const response = await fetch("/api/wealden/images/upload", {
           method: "POST",
           body: formData,
         });
