@@ -210,9 +210,32 @@ export default function TimberWindowsClient() {
 
       {/* Hero */}
       <section className={components.sectionCompact}>
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
+          <div className="text-sm font-medium text-slate-700">
+            Ready to price your timber windows? Get a fast, itemised quote.
+          </div>
+          <Button
+            type="button"
+            className={designSystem.buttons.primary}
+            onClick={scrollToForm}
+            data-cta="top-cta"
+          >
+            Get a Quote
+          </Button>
+        </div>
         <div className="grid gap-12 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
           <div className="space-y-8">
             <div className="space-y-4">
+              <div>
+                <Image
+                  src="/lignum-windows-logo.jpg"
+                  alt="Lignum Windows by Wealden Joinery"
+                  width={420}
+                  height={120}
+                  className="h-20 w-auto"
+                  priority
+                />
+              </div>
               <p className={designSystem.typography.caption}>Timber Windows</p>
               <h1 className={designSystem.typography.hero}>Timber Windows</h1>
               <p className={`${designSystem.typography.body} max-w-xl`}>
