@@ -16,10 +16,10 @@ const RAW_API_BASE = (typeof process !== "undefined" && (
 )) as string;
 
 function inferApiBase(): string {
-  // In the browser, always prefer same-origin /api.
-  // This keeps auth cookies first-party to the web origin and avoids relying on
-  // hosting-provider cookie domains (e.g. *.onrender.com), which some browsers reject.
+  // In the browser, prefer a configured absolute base when provided.
+  // This avoids /api 404s on hosts without rewrites.
   if (typeof window !== "undefined") {
+    if (RAW_API_BASE) return String(RAW_API_BASE).replace(/\/+$/g, "");
     return "/api";
   }
 
