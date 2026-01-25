@@ -67,8 +67,16 @@ export function WealdenFooter() {
           </div>
         </div>
       </div>
-      <div className="border-t border-slate-200 bg-slate-50 py-4 text-center text-xs text-slate-600">
-        © {new Date().getFullYear()} Wealden Joinery. All rights reserved. Privacy · Terms · Cookies
+      <div className="border-t border-slate-200 bg-slate-50 py-4">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-3 px-4 text-center text-xs text-slate-600 md:justify-between md:px-8">
+          <div>© {new Date().getFullYear()} Wealden Joinery. All rights reserved. Privacy · Terms · Cookies</div>
+          <Link
+            href="/login?next=/timber-windows"
+            className="text-slate-500 hover:text-emerald-700"
+          >
+            Staff login
+          </Link>
+        </div>
       </div>
     </footer>
   );
