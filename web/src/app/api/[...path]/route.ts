@@ -85,7 +85,20 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path?: string[] 
   const apiBase = backendBase.endsWith("/api") ? backendBase : `${backendBase}/api`;
 
   const url = new URL(req.nextUrl.toString());
-  const target = new URL(`${apiBase}/${path.map(encodeURIComponent).join("/")}`);
+  const rootRoutes = new Set([
+    "auth",
+    "customer-auth",
+    "public",
+    "health",
+    "healthz",
+    "__debug",
+    "api-check",
+    "seed",
+  ]);
+  const firstSegment = path[0] || "";
+  const useApiBase = firstSegment ? !rootRoutes.has(firstSegment) : true;
+  const targetBase = useApiBase ? apiBase : backendBase;
+  const target = new URL(`${targetBase}/${path.map(encodeURIComponent).join("/")}`);
   target.search = url.search;
 
   const method = req.method.toUpperCase();
