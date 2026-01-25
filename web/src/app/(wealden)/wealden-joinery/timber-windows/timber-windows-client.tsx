@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -216,13 +215,14 @@ export default function TimberWindowsClient() {
               >
                 Get a Quote
               </Button>
-              <Link
-                href="/wealden-joinery/showrooms"
+              <Button
+                type="button"
                 className={designSystem.buttons.secondary}
+                onClick={scrollToForm}
                 data-cta="showroom"
               >
-                Book a Showroom Visit
-              </Link>
+                Request a Callback
+              </Button>
             </div>
             <div className="grid gap-3 pt-6 md:grid-cols-2">
               {trustBullets.map((item) => (
@@ -363,9 +363,7 @@ export default function TimberWindowsClient() {
             <p className={designSystem.typography.body}>
               Complete the façade with matching timber doors, including front doors, bi-folds, and heritage designs.
             </p>
-            <Link href="/wealden-joinery/doors" className={designSystem.buttons.tertiary}>
-              Explore timber doors →
-            </Link>
+            <div className={designSystem.typography.bodySmall}>Ask about matching timber doors in your enquiry.</div>
           </div>
         </div>
       </section>
@@ -509,9 +507,9 @@ export default function TimberWindowsClient() {
               >
                 {submitState === "submitting" ? "Submitting..." : "Submit enquiry"}
               </Button>
-              <Link href="/wealden-joinery/contact" className={designSystem.buttons.tertiary}>
-                Prefer to call? Contact us
-              </Link>
+              <a href="tel:+441892852544" className={designSystem.buttons.tertiary}>
+                Prefer to call? 01892 852544
+              </a>
             </div>
           </form>
         </div>
@@ -552,13 +550,14 @@ export default function TimberWindowsClient() {
             >
               Get a Quote
             </Button>
-            <Link
-              href="/wealden-joinery/showrooms"
+            <Button
+              type="button"
               className="border border-white/20 px-10 py-4 text-sm font-medium uppercase tracking-[0.15em] text-white/70 transition hover:border-white/40 hover:text-white rounded-full"
+              onClick={scrollToForm}
               data-cta="showroom"
             >
-              Book a Showroom Visit
-            </Link>
+              Request a Callback
+            </Button>
           </div>
         </div>
       </section>

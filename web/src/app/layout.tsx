@@ -29,6 +29,7 @@ const WEALDEN_MARKETING_CLEAN_PATHS = new Set([
   "/about",
   "/contact",
   "/estimate",
+  "/timber-windows",
   "/privacy",
 ]);
 
