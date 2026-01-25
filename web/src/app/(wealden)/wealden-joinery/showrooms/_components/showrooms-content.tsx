@@ -749,7 +749,7 @@ export function ShowroomsContent({ heroImage, showroomImages }: ShowroomsContent
                 Request a Virtual Consultation
               </Link>
               <Link
-                href="/wealden-joinery/estimate"
+                href="/wealden-joinery/contact#enquiry-form"
                 className="rounded-full border-2 border-white/30 bg-white/10 px-8 py-4 text-sm font-semibold text-white transition hover:scale-[1.02] hover:bg-white/20"
               >
                 Get an Estimate

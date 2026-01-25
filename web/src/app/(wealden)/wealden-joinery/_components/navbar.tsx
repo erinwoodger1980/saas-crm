@@ -40,7 +40,7 @@ export function WealdenNavbar() {
         </nav>
         <div className="flex items-center gap-3">
           <Link
-            href="/wealden-joinery/estimate"
+            href="/wealden-joinery/contact#enquiry-form"
             className="rounded-full bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white shadow-md transition hover:scale-[1.02] hover:bg-emerald-800 hover:shadow-lg"
           >
             Get an Estimate

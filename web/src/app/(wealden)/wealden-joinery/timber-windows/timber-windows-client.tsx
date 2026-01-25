@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -36,6 +37,19 @@ const trustBullets = [
   "Secure locking options to PAS 24",
   "UK craftsmanship with factory-finished paint",
   "Transparent, itemised quotations",
+];
+
+const guaranteeHighlights = [
+  { value: "30yr", label: "Rot & Decay" },
+  { value: "10yr", label: "Workmanship" },
+  { value: "15yr", label: "Glazing" },
+];
+
+const certificationLogos = [
+  { src: "/wealden/FENSA-Logo.png", alt: "FENSA" },
+  { src: "/wealden/Pas-24-Logo.png", alt: "PAS 24" },
+  { src: "/wealden/FSC-Logo.png", alt: "FSC" },
+  { src: "/wealden/GGF-Logo.png", alt: "GGF" },
 ];
 
 const faqItems = [
@@ -241,6 +255,27 @@ export default function TimberWindowsClient() {
             imageContext="hero"
             allowUpload={canEditImages}
           />
+        </div>
+      </section>
+
+      {/* Guarantees + Certifications */}
+      <section className={`${components.contentSection} bg-white`}>
+        <div className="grid gap-8 rounded-2xl border border-slate-200 bg-slate-50 p-6 md:p-8">
+          <div className="grid gap-6 md:grid-cols-3">
+            {guaranteeHighlights.map((item) => (
+              <div key={item.label} className="text-center">
+                <div className="text-4xl font-light text-slate-900 md:text-5xl">{item.value}</div>
+                <div className="mt-2 text-xs uppercase tracking-wider text-slate-500">{item.label}</div>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-4 pt-2">
+            {certificationLogos.map((logo) => (
+              <div key={logo.alt} className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                <Image src={logo.src} alt={logo.alt} width={140} height={48} className="h-9 w-auto object-contain" />
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 

@@ -30,7 +30,7 @@ export function WealdenFooter() {
             </div>
             <div className="flex items-center gap-2">
               <span className="text-slate-400">✉️</span>
-              <a className="text-emerald-700 hover:underline" href="mailto:martin@wealdenjoinery.com">martin@wealdenjoinery.com</a>
+              <a className="text-emerald-700 hover:underline" href="mailto:hello@lignumwindows.com">hello@lignumwindows.com</a>
             </div>
           </div>
         </div>
@@ -59,7 +59,7 @@ export function WealdenFooter() {
               Book a Consultation
             </Link>
             <Link
-              href="/wealden-joinery/estimate"
+              href="/wealden-joinery/contact#enquiry-form"
               className="rounded-full border border-slate-300 px-5 py-2.5 text-slate-700 transition hover:border-emerald-700 hover:bg-emerald-50 hover:text-emerald-700"
             >
               Get an Estimate

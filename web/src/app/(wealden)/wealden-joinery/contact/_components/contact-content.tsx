@@ -351,7 +351,7 @@ export function ContactContent({ heroImage }: ContactContentProps) {
               </button>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form id="enquiry-form" onSubmit={handleSubmit} className="space-y-4">
               {/* Name & Email */}
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-1">

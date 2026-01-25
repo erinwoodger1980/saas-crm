@@ -89,7 +89,7 @@ export default async function WealdenProjectPage({ params }: PageProps) {
               Book a consultation
             </Link>
             <Link
-              href="/wealden-joinery/estimate"
+              href="/wealden-joinery/contact#enquiry-form"
               className="inline-flex items-center justify-center rounded-full border border-slate-300 px-6 py-3 text-sm font-medium text-slate-900 hover:border-slate-400"
             >
               Get an estimate

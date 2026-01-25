@@ -84,7 +84,11 @@ export function middleware(req: NextRequest) {
 
     if (!shouldBypass) {
       const url = req.nextUrl.clone();
-      url.pathname = pathname === "/" ? MARKETING_BASE_PATH : `${MARKETING_BASE_PATH}${pathname}`;
+      if (pathname === "/timber-windows" || pathname.startsWith("/timber-windows/")) {
+        url.pathname = "/wealden-ppc/timber-windows";
+      } else {
+        url.pathname = pathname === "/" ? MARKETING_BASE_PATH : `${MARKETING_BASE_PATH}${pathname}`;
+      }
       return NextResponse.rewrite(url);
     }
   }
