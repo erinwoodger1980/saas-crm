@@ -83,12 +83,11 @@ export function middleware(req: NextRequest) {
       false;
 
     if (!shouldBypass) {
-      const url = req.nextUrl.clone();
       if (pathname === "/timber-windows" || pathname.startsWith("/timber-windows/")) {
-        url.pathname = "/wealden-ppc/timber-windows";
-      } else {
-        url.pathname = pathname === "/" ? MARKETING_BASE_PATH : `${MARKETING_BASE_PATH}${pathname}`;
+        return NextResponse.next();
       }
+      const url = req.nextUrl.clone();
+      url.pathname = pathname === "/" ? MARKETING_BASE_PATH : `${MARKETING_BASE_PATH}${pathname}`;
       return NextResponse.rewrite(url);
     }
   }
