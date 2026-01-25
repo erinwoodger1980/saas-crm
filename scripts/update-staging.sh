@@ -105,6 +105,7 @@ fi
 
 if [ -z "$STAGING_DB" ]; then
   STAGING_DB=$(resolve_env_var "$REPO_ROOT/api/.staging.env" DATABASE_URL)
+  [ -z "$STAGING_DB" ] && STAGING_DB=$(resolve_env_var "$REPO_ROOT/api/.env" STAGING_DATABASE_URL)
 fi
 
 if [ -z "$PROD_DB" ] || [ -z "$STAGING_DB" ]; then
