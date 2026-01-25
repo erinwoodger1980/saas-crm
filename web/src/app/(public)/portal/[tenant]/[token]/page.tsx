@@ -114,10 +114,10 @@ type PortalData = {
 };
 
 const FALLBACK_GALLERY_URLS = [
-  '/images/wealden/p1.jpg',
-  '/images/wealden/p2.jpg',
-  '/images/wealden/p3.jpg',
-  '/images/wealden/p4.jpg',
+  '/tenants/wealden/wealden-001_1600.jpg',
+  '/tenants/wealden/wealden-002_1600.jpg',
+  '/tenants/wealden/wealden-003_1600.jpg',
+  '/tenants/wealden/wealden-001_800.webp',
 ];
 
 function normalizeNumber(value: unknown): number | null {
@@ -341,6 +341,8 @@ export default function QuotePortalPage() {
     const ids: any = data?.quote?.meta?.customerMoodboardFileIds;
     return Array.isArray(ids) ? (ids.filter((x) => typeof x === 'string' && x.trim()) as string[]) : [];
   }, [data?.quote?.meta]);
+
+  const moodboardUrls = useMemo(() => moodboardFileIds.map((fid) => fileUrl(fid)), [moodboardFileIds, fileUrl]);
 
   const totals = useMemo(() => {
     const currency = data?.quote?.currency || 'GBP';
@@ -566,11 +568,16 @@ export default function QuotePortalPage() {
     return url || null;
   }, [data?.tenant?.heroImageUrl]);
 
-  const galleryUrls = useMemo(() => {
+  const tenantGalleryUrls = useMemo(() => {
     const raw = data?.tenant?.galleryImageUrls;
-    const filtered = Array.isArray(raw) ? raw.filter((u) => typeof u === 'string' && u.trim()) : [];
-    return filtered.length ? filtered : FALLBACK_GALLERY_URLS;
+    return Array.isArray(raw) ? raw.filter((u) => typeof u === 'string' && u.trim()) : [];
   }, [data?.tenant?.galleryImageUrls]);
+
+  const galleryUrls = useMemo(() => {
+    if (tenantGalleryUrls.length) return tenantGalleryUrls;
+    if (moodboardUrls.length) return moodboardUrls;
+    return FALLBACK_GALLERY_URLS;
+  }, [tenantGalleryUrls, moodboardUrls]);
 
   const effectiveHeroUrl = useMemo(() => {
     if (heroUrl) return heroUrl;
@@ -796,6 +803,22 @@ export default function QuotePortalPage() {
                 )}
               </div>
             </div>
+            {!tenantGalleryUrls.length ? (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border bg-background/80 px-3 py-2 text-xs text-muted-foreground" style={{ borderColor: `${brandColor}22` }}>
+                <span>Upload moodboard images to replace these placeholders.</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  style={{ borderColor: brandColor, color: brandColor }}
+                  onClick={() => {
+                    setActiveTab('product');
+                    setTimeout(() => moodboardInputRef.current?.click(), 0);
+                  }}
+                >
+                  Add photos
+                </Button>
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -920,22 +943,26 @@ export default function QuotePortalPage() {
                 </div>
               </div>
 
-              {moodboardFileIds.length ? (
-                <div className="mt-4 grid grid-cols-6 gap-2">
-                  <div className="col-span-6 overflow-hidden rounded-2xl border bg-muted/20 md:col-span-3">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={fileUrl(moodboardFileIds[0])}
-                      alt="Moodboard"
-                      className="aspect-[16/11] h-full w-full object-cover"
-                    />
-                  </div>
-                  <div className="col-span-6 grid grid-cols-3 gap-2 md:col-span-3 md:grid-cols-3">
-                    {moodboardFileIds.slice(1, 7).map((fid) => (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img key={fid} src={fileUrl(fid)} alt="Moodboard" className="aspect-square w-full rounded-2xl border object-cover" />
-                    ))}
-                  </div>
+              {moodboardUrls.length ? (
+                <div className="mt-5 grid gap-3 md:grid-cols-4">
+                  {moodboardUrls.map((url, idx) => (
+                    <div
+                      key={`${url}-${idx}`}
+                      className={
+                        idx === 0
+                          ? 'md:col-span-2 md:row-span-2 overflow-hidden rounded-2xl border bg-muted/20'
+                          : 'overflow-hidden rounded-2xl border bg-muted/20'
+                      }
+                      style={{ borderColor: `${brandColor}22` }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={url}
+                        alt="Moodboard"
+                        className={idx === 0 ? 'aspect-[4/3] h-full w-full object-cover' : 'aspect-square w-full object-cover'}
+                      />
+                    </div>
+                  ))}
                 </div>
               ) : null}
 
