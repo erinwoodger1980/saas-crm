@@ -566,15 +566,6 @@ export default function QuotePortalPage() {
     [certifications, christchurchCertificationLogos, fallbackCertificationLogos],
   );
 
-  const certificationLabels = useMemo(
-    () => {
-      // If Christchurch uploaded logos exist, prefer the logo strip only.
-      if (christchurchCertificationLogos.length) return [];
-      return certifications.filter((c) => !c.logoUrl).slice(0, 8);
-    },
-    [certifications, christchurchCertificationLogos],
-  );
-
   const heroUrl = useMemo(() => {
     const url = String(data?.tenant?.heroImageUrl || '').trim();
     return url || null;
@@ -630,7 +621,7 @@ export default function QuotePortalPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-muted/20 to-muted/50" style={{ backgroundColor: brandSoft }}>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/40 to-slate-100" style={{ backgroundColor: brandSoft }}>
       <div className="mx-auto max-w-6xl px-4 py-10" style={brandVars}>
         <header className="relative overflow-hidden rounded-3xl border bg-background/60 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/40" style={{ borderColor: `${brandColor}22` }}>
           <div className="relative h-56 w-full md:h-80">
@@ -642,7 +633,7 @@ export default function QuotePortalPage() {
             ) : (
               <div className="h-full w-full" style={{ background: `linear-gradient(135deg, ${brandGlow}, rgba(255,255,255,0))` }} />
             )}
-            <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/40 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-background/95 via-background/50 to-transparent" />
 
             {!effectiveHeroUrl ? (
               <div className="absolute inset-0 flex items-center justify-center">
@@ -653,10 +644,10 @@ export default function QuotePortalPage() {
             ) : null}
           </div>
 
-          <div className="relative z-10 -mt-10 px-4 pb-6">
+          <div className="relative z-10 mt-4 px-4 pb-6">
             <div
-              className="mx-auto max-w-6xl rounded-2xl border bg-background/85 p-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70 md:p-5"
-              style={{ borderColor: `${brandColor}33`, boxShadow: `0 12px 40px -30px ${brandColor}` }}
+              className="mx-auto max-w-6xl rounded-2xl border bg-background/90 p-5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80 md:p-6"
+              style={{ borderColor: `${brandColor}33`, boxShadow: `0 18px 50px -35px ${brandColor}` }}
             >
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div className="flex items-center gap-3">
@@ -669,7 +660,7 @@ export default function QuotePortalPage() {
                       />
                     ) : null}
                     <div className="min-w-0">
-                      <div className="text-xl font-semibold leading-tight md:text-2xl">{data.tenant.name}</div>
+                      <div className="text-xl font-semibold leading-tight text-foreground md:text-2xl">{data.tenant.name}</div>
                       <div className="mt-1 text-xs text-muted-foreground">
                         {data.tenant.website ? (
                           <a className="underline" href={data.tenant.website} target="_blank" rel="noreferrer">
@@ -710,7 +701,7 @@ export default function QuotePortalPage() {
             </div>
           </div>
 
-          {(certificationLogos.length || certificationLabels.length || guarantees.length) ? (
+          {(certificationLogos.length || guarantees.length) ? (
             <div className={
               effectiveHeroUrl
                 ? 'border-t bg-background/70 px-5 py-4'
@@ -718,8 +709,7 @@ export default function QuotePortalPage() {
             }>
               <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
                 <div>
-                  <div className="text-xs font-medium text-muted-foreground">Accreditations & guarantees</div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     {certificationLogos.map((c, idx) => {
                       const img = (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -741,16 +731,6 @@ export default function QuotePortalPage() {
                         </div>
                       );
                     })}
-
-                    {certificationLabels.map((c, idx) => (
-                      <div
-                        key={`label-${idx}`}
-                        className="rounded-full border bg-background/90 px-3 py-1 text-xs text-muted-foreground"
-                        title={c.description || undefined}
-                      >
-                        {c.name}
-                      </div>
-                    ))}
                   </div>
                 </div>
 
@@ -769,7 +749,7 @@ export default function QuotePortalPage() {
         </header>
 
         <div className="mt-6 grid gap-4 md:grid-cols-[1.1fr_.9fr]">
-          <div className="rounded-3xl border bg-background/70 p-5 shadow-sm" style={{ borderColor: `${brandColor}22` }}>
+          <div className="rounded-3xl border bg-white/80 p-5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-white/70" style={{ borderColor: `${brandColor}22` }}>
             <div className="text-xs font-medium text-muted-foreground">Your quote</div>
             <div className="mt-1 text-xl font-semibold leading-tight md:text-2xl">{data.quote.title}</div>
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -790,7 +770,7 @@ export default function QuotePortalPage() {
             </div>
           </div>
 
-          <div className="rounded-3xl border bg-background/70 p-3 shadow-sm" style={{ borderColor: `${brandColor}22` }}>
+          <div className="rounded-3xl border bg-white/80 p-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-white/70" style={{ borderColor: `${brandColor}22` }}>
             <div className="grid grid-cols-3 gap-2">
               <div className="col-span-2 overflow-hidden rounded-2xl border bg-muted/20">
                 {galleryUrls[0] ? (
@@ -837,20 +817,20 @@ export default function QuotePortalPage() {
         </div>
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="mt-8">
-          <TabsList className="grid w-full grid-cols-3 rounded-2xl border bg-background/70 p-1 shadow-sm" style={{ borderColor: `${brandColor}22` }}>
-            <TabsTrigger value="client" className="data-[state=active]:bg-[var(--brand)] data-[state=active]:text-white data-[state=active]:shadow-sm">
+          <TabsList className="grid w-full grid-cols-3 rounded-2xl border bg-white/80 p-1.5 shadow-md backdrop-blur supports-[backdrop-filter]:bg-white/70" style={{ borderColor: `${brandColor}22` }}>
+            <TabsTrigger value="client" className="rounded-xl data-[state=active]:bg-[var(--brand)] data-[state=active]:text-white data-[state=active]:shadow">
               Client details
             </TabsTrigger>
-            <TabsTrigger value="product" className="data-[state=active]:bg-[var(--brand)] data-[state=active]:text-white data-[state=active]:shadow-sm">
+            <TabsTrigger value="product" className="rounded-xl data-[state=active]:bg-[var(--brand)] data-[state=active]:text-white data-[state=active]:shadow">
               Product details
             </TabsTrigger>
-            <TabsTrigger value="quote" className="data-[state=active]:bg-[var(--brand)] data-[state=active]:text-white data-[state=active]:shadow-sm">
+            <TabsTrigger value="quote" className="rounded-xl data-[state=active]:bg-[var(--brand)] data-[state=active]:text-white data-[state=active]:shadow">
               Quote details
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="client" className="mt-6 grid gap-6">
-            <section className="rounded-3xl border bg-background/70 p-5 shadow-sm">
+            <section className="rounded-3xl border bg-white/80 p-5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-white/70">
               <div className="text-sm font-medium">Your details</div>
               <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div>
@@ -890,20 +870,14 @@ export default function QuotePortalPage() {
             </section>
 
             {(data.tenant.quoteDefaults?.guarantees?.length || data.tenant.testimonials?.length) ? (
-              <section className="rounded-3xl border bg-background/70 p-5 shadow-sm">
+              <section className="rounded-3xl border bg-white/80 p-5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-white/70">
                 <div className="text-sm font-medium">Peace of mind</div>
-                {(guarantees.length || certifications.length) ? (
+                {guarantees.length ? (
                   <div className="mt-4 grid gap-3 md:grid-cols-2">
                     {guarantees.slice(0, 10).map((g, idx) => (
-                      <div key={`g-${idx}`} className="rounded-2xl border bg-background/90 p-4 shadow-sm">
+                      <div key={`g-${idx}`} className="rounded-2xl border bg-white/90 p-4 shadow-sm">
                         <div className="text-sm font-medium">{g.title}</div>
                         {g.description ? <div className="mt-1 text-sm text-muted-foreground">{g.description}</div> : null}
-                      </div>
-                    ))}
-                    {certifications.slice(0, 6).map((c: any, idx: number) => (
-                      <div key={`c-${idx}`} className="rounded-2xl border bg-background/90 p-4 shadow-sm">
-                        <div className="text-sm font-medium">{String(c.name)}</div>
-                        {c.description ? <div className="mt-1 text-sm text-muted-foreground">{String(c.description)}</div> : null}
                       </div>
                     ))}
                   </div>
@@ -912,7 +886,7 @@ export default function QuotePortalPage() {
                 {testimonials.length ? (
                   <div className="mt-5 grid gap-3 md:grid-cols-2">
                     {testimonials.slice(0, 6).map((t, idx) => (
-                      <div key={idx} className="rounded-2xl border bg-background/90 p-4 shadow-sm">
+                      <div key={idx} className="rounded-2xl border bg-white/90 p-4 shadow-sm">
                         <div className="flex items-start gap-3">
                           {t.photoUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element
@@ -936,7 +910,7 @@ export default function QuotePortalPage() {
           </TabsContent>
 
           <TabsContent value="product" className="mt-6 grid gap-6">
-            <section className="rounded-3xl border bg-background/70 p-5 shadow-sm">
+            <section className="rounded-3xl border bg-white/80 p-5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-white/70">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-medium">Product details</div>
@@ -985,7 +959,7 @@ export default function QuotePortalPage() {
                   const draft = lineDrafts[ln.id] || { description: String(ln.description ?? ''), qty: String(ln.qty ?? 1) };
                   const photoId = ln.lineStandard?.photoOutsideFileId || ln.lineStandard?.photoFileId || null;
                   return (
-                    <div key={ln.id} className="rounded-2xl border bg-background/90 p-4 shadow-sm">
+                    <div key={ln.id} className="rounded-2xl border bg-white/90 p-4 shadow-sm">
                       <div className="grid gap-4 md:grid-cols-[120px_1fr]">
                         <div>
                           <div className="aspect-square w-full overflow-hidden rounded-2xl border bg-muted/30">
@@ -1058,7 +1032,7 @@ export default function QuotePortalPage() {
           </TabsContent>
 
           <TabsContent value="quote" className="mt-6 grid gap-6">
-            <section className="rounded-3xl border bg-background/70 p-5 shadow-sm">
+            <section className="rounded-3xl border bg-white/80 p-5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-white/70">
               <div className="flex items-end justify-between gap-4">
                 <div>
                   <div className="text-sm font-medium">Quote details</div>
@@ -1070,9 +1044,9 @@ export default function QuotePortalPage() {
                 </div>
               </div>
 
-              <div className="mt-4 overflow-x-auto rounded-2xl border bg-background/90 shadow-sm">
+              <div className="mt-4 overflow-x-auto rounded-2xl border bg-white/90 shadow-sm">
                 <table className="w-full text-sm">
-                  <thead className="bg-muted/30 text-xs text-muted-foreground">
+                  <thead className="bg-muted/20 text-xs text-muted-foreground">
                     <tr>
                       <th className="px-3 py-2 text-left">Description</th>
                       <th className="px-3 py-2 text-right">Qty</th>
@@ -1105,7 +1079,7 @@ export default function QuotePortalPage() {
             </section>
           </TabsContent>
         </Tabs>
-        <footer className="pt-6 text-xs text-muted-foreground">
+        <footer className="pt-6 text-center text-xs text-muted-foreground">
           Powered by joineryai.app
         </footer>
       </div>
