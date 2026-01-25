@@ -78,6 +78,7 @@ router.get("/images/:slotId", async (req, res) => {
     });
 
     if (image) {
+      res.set("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400");
       return res.json({
         image: {
           imageUrl: image.imageUrl,

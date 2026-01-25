@@ -109,12 +109,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   const isPublicQuestionnaire = pathname?.startsWith("/q/");
   const isPublicThankYou =
     pathname === "/thank-you" || pathname?.startsWith("/q/thank-you");
+  const isWealdenMarketingPath = WEALDEN_MARKETING_CLEAN_PATHS.has(pathname || "");
   const isMarketingRoute =
     pathname === "/" ||
     pathname?.startsWith("/policy") ||
     pathname?.startsWith("/wealden-landing") ||
     pathname?.startsWith("/wealden-joinery") ||
-    (isWealdenMarketingHost && WEALDEN_MARKETING_CLEAN_PATHS.has(pathname || ""));
+    (isWealdenMarketingHost && isWealdenMarketingPath) ||
+    (!hostname && isWealdenMarketingPath);
   const isPublicEstimatorRoute =
     pathname === "/estimate" ||
     pathname?.startsWith("/estimate-demo") ||

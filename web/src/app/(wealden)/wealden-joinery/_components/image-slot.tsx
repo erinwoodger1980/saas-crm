@@ -81,6 +81,10 @@ export function ImageSlot({
   // Load from server on mount
   useEffect(() => {
     setIsClient(true);
+    const localImage = localStorage.getItem(`wealden-image-${slotId}`);
+    if (localImage) {
+      setImageUrl(localImage);
+    }
     
     // Fetch existing image from server
     const fetchUrl = `/api/wealden/upload-image?slotId=${encodeURIComponent(slotId)}`;
@@ -96,27 +100,18 @@ export function ImageSlot({
         if (data.image?.imageUrl) {
           console.log(`[ImageSlot ${slotId}] ✅ Image found on server`);
           setImageUrl(data.image.imageUrl);
+          localStorage.setItem(`wealden-image-${slotId}`, data.image.imageUrl);
         } else if (defaultImage) {
           console.log(`[ImageSlot ${slotId}] Using default image`);
           setImageUrl(defaultImage);
         } else {
           console.log(`[ImageSlot ${slotId}] No image found on server or default`);
-          // Check localStorage as fallback during migration
-          const localImage = localStorage.getItem(`wealden-image-${slotId}`);
-          if (localImage) {
-            console.log(`[ImageSlot ${slotId}] ⚠️ Found in localStorage - use migration tool to upload to server`);
-            setImageUrl(localImage);
-          }
+          // Keep any localStorage image already set, if present
         }
       })
       .catch((err) => {
         console.error(`[ImageSlot ${slotId}] ❌ Failed to fetch from server:`, err);
-        // Fallback to localStorage during migration
-        const localImage = localStorage.getItem(`wealden-image-${slotId}`);
-        if (localImage) {
-          console.log(`[ImageSlot ${slotId}] Using localStorage fallback`);
-          setImageUrl(localImage);
-        } else if (defaultImage) {
+        if (!localImage && defaultImage) {
           setImageUrl(defaultImage);
         }
       });
