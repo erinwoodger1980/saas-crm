@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { API_BASE } from '@/lib/api';
+import { useCurrentUser } from '@/lib/use-current-user';
 import { Image as ImageIcon } from 'lucide-react';
 
 type PortalData = {
@@ -275,6 +276,9 @@ export default function QuotePortalPage() {
 
   const [lineDrafts, setLineDrafts] = useState<Record<string, { description: string; qty: string }>>({});
 
+  const { user } = useCurrentUser();
+  const isLoggedIn = Boolean(user?.id);
+
   const bookingUrl = useMemo(() => firstUrlFromLinks(data?.tenant?.links), [data?.tenant?.links]);
 
   const fileUrl = useCallback(
@@ -450,6 +454,12 @@ export default function QuotePortalPage() {
       setError(String(e?.message || 'Failed to upload photo'));
     }
   };
+
+  const openLinePhotoPicker = useCallback((lineId: string) => {
+    if (typeof document === 'undefined') return;
+    const input = document.getElementById(`line-photo-${lineId}`) as HTMLInputElement | null;
+    input?.click();
+  }, []);
 
   const handleUploadMoodboard = async (files: FileList | null) => {
     if (!files || !files.length) return;
@@ -777,9 +787,23 @@ export default function QuotePortalPage() {
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={galleryUrls[0]} alt="Gallery" className="aspect-[16/11] h-full w-full object-cover" />
                 ) : (
-                  <div className="flex aspect-[16/11] flex-col items-center justify-center gap-2 text-xs text-muted-foreground">
+                  <div className="relative flex aspect-[16/11] flex-col items-center justify-center gap-2 text-xs text-muted-foreground">
                     <ImageIcon className="h-5 w-5" />
                     <div>Project gallery</div>
+                    {isLoggedIn ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-1"
+                        style={{ borderColor: brandColor, color: brandColor }}
+                        onClick={() => {
+                          setActiveTab('product');
+                          setTimeout(() => moodboardInputRef.current?.click(), 0);
+                        }}
+                      >
+                        Upload photo
+                      </Button>
+                    ) : null}
                   </div>
                 )}
               </div>
@@ -791,13 +815,45 @@ export default function QuotePortalPage() {
                   ))
                 ) : (
                   <>
-                    <div className="flex aspect-square items-center justify-center rounded-2xl border bg-muted/20 text-xs text-muted-foreground">Details</div>
-                    <div className="flex aspect-square items-center justify-center rounded-2xl border bg-muted/20 text-xs text-muted-foreground">Materials</div>
+                    <div className="relative flex aspect-square items-center justify-center rounded-2xl border bg-muted/20 text-xs text-muted-foreground">
+                      <span>Details</span>
+                      {isLoggedIn ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="absolute bottom-2"
+                          style={{ borderColor: brandColor, color: brandColor }}
+                          onClick={() => {
+                            setActiveTab('product');
+                            setTimeout(() => moodboardInputRef.current?.click(), 0);
+                          }}
+                        >
+                          Upload
+                        </Button>
+                      ) : null}
+                    </div>
+                    <div className="relative flex aspect-square items-center justify-center rounded-2xl border bg-muted/20 text-xs text-muted-foreground">
+                      <span>Materials</span>
+                      {isLoggedIn ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="absolute bottom-2"
+                          style={{ borderColor: brandColor, color: brandColor }}
+                          onClick={() => {
+                            setActiveTab('product');
+                            setTimeout(() => moodboardInputRef.current?.click(), 0);
+                          }}
+                        >
+                          Upload
+                        </Button>
+                      ) : null}
+                    </div>
                   </>
                 )}
               </div>
             </div>
-            {!tenantGalleryUrls.length ? (
+            {!tenantGalleryUrls.length && isLoggedIn ? (
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border bg-background/80 px-3 py-2 text-xs text-muted-foreground" style={{ borderColor: `${brandColor}22` }}>
                 <span>Upload moodboard images to replace these placeholders.</span>
                 <Button
@@ -925,9 +981,11 @@ export default function QuotePortalPage() {
                     hidden
                     onChange={(e) => void handleUploadMoodboard(e.target.files)}
                   />
-                  <Button variant="outline" onClick={() => moodboardInputRef.current?.click()}>
-                    Upload moodboard
-                  </Button>
+                  {isLoggedIn ? (
+                    <Button variant="outline" onClick={() => moodboardInputRef.current?.click()}>
+                      Upload moodboard
+                    </Button>
+                  ) : null}
                 </div>
               </div>
 
@@ -967,20 +1025,48 @@ export default function QuotePortalPage() {
                               // eslint-disable-next-line @next/next/no-img-element
                               <img src={fileUrl(String(photoId))} alt="Item photo" className="h-full w-full object-cover" />
                             ) : (
-                              <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">No photo</div>
+                              <div className="relative flex h-full w-full items-center justify-center text-xs text-muted-foreground">
+                                <span>No photo</span>
+                                {isLoggedIn ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="absolute bottom-2"
+                                    style={{ borderColor: brandColor, color: brandColor }}
+                                    onClick={() => openLinePhotoPicker(ln.id)}
+                                  >
+                                    Upload
+                                  </Button>
+                                ) : null}
+                              </div>
                             )}
                           </div>
-                          <div className="mt-2">
-                            <Input
-                              type="file"
-                              accept="image/*"
-                              onChange={(e) => {
-                                const f = e.target.files?.[0];
-                                if (f) void handleUploadLinePhoto(ln.id, f);
-                                e.currentTarget.value = '';
-                              }}
-                            />
-                          </div>
+                          {isLoggedIn ? (
+                            <div className="mt-2">
+                              <Input
+                                id={`line-photo-${ln.id}`}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const f = e.target.files?.[0];
+                                  if (f) void handleUploadLinePhoto(ln.id, f);
+                                  e.currentTarget.value = '';
+                                }}
+                              />
+                              {photoId ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="w-full"
+                                  style={{ borderColor: brandColor, color: brandColor }}
+                                  onClick={() => openLinePhotoPicker(ln.id)}
+                                >
+                                  Replace photo
+                                </Button>
+                              ) : null}
+                            </div>
+                          ) : null}
                         </div>
 
                         <div className="space-y-3">
