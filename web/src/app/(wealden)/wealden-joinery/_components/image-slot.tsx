@@ -273,7 +273,21 @@ export function ImageSlot({
   }
 
   return (
-    <div className={`image-slot relative ${aspectRatio} bg-slate-100 ${sizeClasses[size]} overflow-hidden group`}>
+    <div
+      className={`image-slot relative ${aspectRatio} bg-slate-100 ${sizeClasses[size]} overflow-hidden group${showUpload ? " cursor-pointer" : ""}`}
+      onClick={showUpload ? handleButtonClick : undefined}
+      role={showUpload ? "button" : undefined}
+      tabIndex={showUpload ? 0 : undefined}
+      onKeyDown={
+        showUpload
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                handleButtonClick(event as unknown as React.MouseEvent<HTMLDivElement>);
+              }
+            }
+          : undefined
+      }
+    >
       {imageUrl ? (
         <div className="relative w-full h-full">
           {imageUrl.startsWith('data:') ? (
