@@ -195,7 +195,7 @@ export default function TimberWindowsClient() {
       />
 
       {/* Hero */}
-      <section className={components.heroSection}>
+      <section className={components.sectionCompact}>
         <div className="grid gap-12 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
           <div className="space-y-8">
             <div className="space-y-4">
