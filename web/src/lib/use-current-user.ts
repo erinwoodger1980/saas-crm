@@ -68,11 +68,12 @@ export function useCurrentUser(options?: UseCurrentUserOptions) {
     if (!enabled) return;
     const status = (error as any)?.status ?? (error as any)?.response?.status;
     if (status === 401) {
-      // Clear legacy tokens so any JWT-gated UI updates
+      // Clear legacy tokens and cached user data so UI hides gated controls
       clearJwt();
       setStoredJwt(null);
+      mutate(null, { revalidate: false });
     }
-  }, [error, enabled]);
+  }, [error, enabled, mutate]);
 
   return {
     user: enabled ? data ?? null : null,
