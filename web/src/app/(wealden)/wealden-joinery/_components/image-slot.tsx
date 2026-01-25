@@ -352,7 +352,9 @@ export function ImageSlot({
             type="file"
             accept="image/jpeg,image/jpg,image/png,image/webp,image/heic"
             onChange={handleFileChange}
-            className="hidden"
+            className="absolute inset-0 z-20 opacity-0 cursor-pointer"
+            onClick={(e) => e.stopPropagation()}
+            disabled={processingState === "optimizing"}
             aria-label={`Upload image for ${label}`}
           />
         </>
