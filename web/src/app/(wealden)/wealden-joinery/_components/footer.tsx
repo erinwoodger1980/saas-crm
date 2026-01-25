@@ -1,8 +1,30 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { apiFetch, clearJwt } from "@/lib/api";
+import { useCurrentUser } from "@/lib/use-current-user";
 
 // Footer with key contact details for Wealden Joinery.
 export function WealdenFooter() {
+  const { user, mutate } = useCurrentUser();
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await apiFetch("/auth/logout", { method: "POST" });
+    } catch {
+      // Ignore errors; clear local auth state regardless
+    } finally {
+      clearJwt();
+      mutate(null, { revalidate: false });
+      setLoggingOut(false);
+    }
+  };
+
   return (
     <footer className="mt-24 border-t border-slate-200 bg-white">
       <div className="mx-auto grid max-w-7xl grid-cols-1 gap-12 px-4 py-16 md:grid-cols-3 md:px-8">
@@ -70,12 +92,24 @@ export function WealdenFooter() {
       <div className="border-t border-slate-200 bg-slate-50 py-4">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-3 px-4 text-center text-xs text-slate-600 md:justify-between md:px-8">
           <div>© {new Date().getFullYear()} Wealden Joinery. All rights reserved. Privacy · Terms · Cookies</div>
-          <Link
-            href="/login?next=/timber-windows"
-            className="text-slate-500 hover:text-emerald-700"
-          >
-            Staff login
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/login?next=/timber-windows"
+              className="text-slate-500 hover:text-emerald-700"
+            >
+              Staff login
+            </Link>
+            {user?.id ? (
+              <button
+                type="button"
+                onClick={handleLogout}
+                disabled={loggingOut}
+                className="text-slate-500 hover:text-emerald-700 disabled:opacity-60"
+              >
+                {loggingOut ? "Logging out..." : "Log out"}
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
     </footer>
