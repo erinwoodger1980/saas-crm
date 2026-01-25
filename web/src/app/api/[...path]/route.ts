@@ -81,9 +81,11 @@ function filterResponseHeaders(headers: Headers): Headers {
 async function proxy(req: NextRequest, ctx: { params: Promise<{ path?: string[] }> }): Promise<Response> {
   const { path = [] } = await ctx.params;
   const backend = pickBackendOrigin(req);
+  const backendBase = backend.replace(/\/+$/g, "");
+  const apiBase = backendBase.endsWith("/api") ? backendBase : `${backendBase}/api`;
 
   const url = new URL(req.nextUrl.toString());
-  const target = new URL(`${backend}/${path.map(encodeURIComponent).join("/")}`);
+  const target = new URL(`${apiBase}/${path.map(encodeURIComponent).join("/")}`);
   target.search = url.search;
 
   const method = req.method.toUpperCase();
