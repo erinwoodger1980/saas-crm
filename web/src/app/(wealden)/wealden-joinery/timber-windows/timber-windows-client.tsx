@@ -411,7 +411,7 @@ export default function TimberWindowsClient() {
           <ImageSlot
             slotId="timber-windows-doors"
             label="Timber Doors"
-            aspectRatio={designSystem.images.landscape}
+            aspectRatio={designSystem.images.portrait}
             size="lg"
             allowUpload={canEditImages}
           />
