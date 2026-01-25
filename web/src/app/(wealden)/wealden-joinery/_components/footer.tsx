@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { usePathname } from "next/navigation";
 import { apiFetch, clearJwt } from "@/lib/api";
 import { useCurrentUser } from "@/lib/use-current-user";
 
@@ -10,6 +11,10 @@ import { useCurrentUser } from "@/lib/use-current-user";
 export function WealdenFooter() {
   const { user, mutate } = useCurrentUser();
   const [loggingOut, setLoggingOut] = useState(false);
+  const pathname = usePathname();
+  const estimateHref = pathname?.includes("timber-windows")
+    ? "/timber-windows#timber-windows-form"
+    : "/wealden-joinery/contact#enquiry-form";
 
   const handleLogout = async () => {
     if (loggingOut) return;
@@ -81,7 +86,7 @@ export function WealdenFooter() {
               Book a Consultation
             </Link>
             <Link
-              href="/wealden-joinery/contact#enquiry-form"
+              href={estimateHref}
               className="rounded-full border border-slate-300 px-5 py-2.5 text-slate-700 transition hover:border-emerald-700 hover:bg-emerald-50 hover:text-emerald-700"
             >
               Get an Estimate

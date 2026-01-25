@@ -230,9 +230,9 @@ export default function TimberWindowsClient() {
                 <Image
                   src="/lignum-windows-logo.jpg"
                   alt="Lignum Windows by Wealden Joinery"
-                  width={420}
-                  height={120}
-                  className="h-20 w-auto"
+                  width={840}
+                  height={240}
+                  className="h-40 w-auto"
                   priority
                 />
               </div>
