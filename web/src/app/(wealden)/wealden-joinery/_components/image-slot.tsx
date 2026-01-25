@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import Image from "next/image";
 import { Upload, CheckCircle2, Loader2 } from "lucide-react";
 import { optimizeImageFile, getRecommendedMaxEdge } from "../_lib/imageOptimizer";
+import { useCurrentUser } from "@/lib/use-current-user";
 
 interface ImageSlotProps {
   slotId: string;
@@ -64,6 +65,10 @@ export function ImageSlot({
   imageContext = "default",
   allowUpload = true,
 }: ImageSlotProps) {
+  const { user } = useCurrentUser();
+  const role = String(user?.role || "").toLowerCase();
+  const canEditImages = Boolean(user?.id) && (!role || ["admin", "owner", "editor"].includes(role));
+  const showUpload = allowUpload && canEditImages;
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isClient, setIsClient] = useState(false);
   const [processingState, setProcessingState] = useState<ProcessingState>("idle");
@@ -306,12 +311,12 @@ export function ImageSlot({
               <Upload className="w-8 h-8 text-slate-400" />
             </div>
             <p className="text-sm text-slate-500 font-medium">{label}</p>
-            {allowUpload ? <p className="text-xs text-slate-400">Click to upload</p> : null}
+            {showUpload ? <p className="text-xs text-slate-400">Click to upload</p> : null}
           </div>
         </div>
       )}
 
-      {allowUpload ? (
+      {showUpload ? (
         <>
           {/* Upload control overlay - positioned absolutely with z-index to prevent navigation */}
           <div className={overlayClasses}>
