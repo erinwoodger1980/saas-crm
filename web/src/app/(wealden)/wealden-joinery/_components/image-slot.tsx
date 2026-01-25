@@ -74,6 +74,7 @@ export function ImageSlot({
   const [processingState, setProcessingState] = useState<ProcessingState>("idle");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlRef = useRef<string | null>(null);
+  const inputId = `wealden-image-${slotId}`;
 
   const sizes = getSizesForContext(imageContext, size);
   const quality = getQualityForContext(imageContext);
@@ -329,18 +330,24 @@ export function ImageSlot({
         <>
           {/* Upload control overlay - positioned absolutely with z-index to prevent navigation */}
           <div className={overlayClasses}>
-            <button
-              onClick={handleButtonClick}
-              className="image-upload-control px-4 py-2 text-xs font-medium uppercase tracking-wider bg-white/90 hover:bg-white text-slate-900 rounded-full shadow-lg backdrop-blur-sm transition-all hover:scale-105 border border-slate-200 flex items-center gap-2"
-              type="button"
-              disabled={processingState === "optimizing"}
-            >
-              {renderButtonContent()}
-            </button>
+            {processingState === "optimizing" ? (
+              <div className="image-upload-control px-4 py-2 text-xs font-medium uppercase tracking-wider bg-white/80 text-slate-500 rounded-full shadow-lg backdrop-blur-sm border border-slate-200 flex items-center gap-2">
+                {renderButtonContent()}
+              </div>
+            ) : (
+              <label
+                htmlFor={inputId}
+                className="image-upload-control px-4 py-2 text-xs font-medium uppercase tracking-wider bg-white/90 hover:bg-white text-slate-900 rounded-full shadow-lg backdrop-blur-sm transition-all hover:scale-105 border border-slate-200 flex items-center gap-2 cursor-pointer"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {renderButtonContent()}
+              </label>
+            )}
           </div>
 
           {/* Hidden file input */}
           <input
+            id={inputId}
             ref={fileInputRef}
             type="file"
             accept="image/jpeg,image/jpg,image/png,image/webp,image/heic"
