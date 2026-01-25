@@ -14,6 +14,8 @@ interface ImageSlotProps {
   defaultImage?: string;
   /** Image context for optimization (default: 'default') */
   imageContext?: "hero" | "card" | "thumbnail" | "default";
+  /** Hide upload controls for public visitors */
+  allowUpload?: boolean;
 }
 
 const sizeClasses = {
@@ -60,6 +62,7 @@ export function ImageSlot({
   overlayPosition = "top-right",
   defaultImage,
   imageContext = "default",
+  allowUpload = true,
 }: ImageSlotProps) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isClient, setIsClient] = useState(false);
@@ -303,32 +306,36 @@ export function ImageSlot({
               <Upload className="w-8 h-8 text-slate-400" />
             </div>
             <p className="text-sm text-slate-500 font-medium">{label}</p>
-            <p className="text-xs text-slate-400">Click to upload</p>
+            {allowUpload ? <p className="text-xs text-slate-400">Click to upload</p> : null}
           </div>
         </div>
       )}
 
-      {/* Upload control overlay - positioned absolutely with z-index to prevent navigation */}
-      <div className={overlayClasses}>
-        <button
-          onClick={handleButtonClick}
-          className="image-upload-control px-4 py-2 text-xs font-medium uppercase tracking-wider bg-white/90 hover:bg-white text-slate-900 rounded-full shadow-lg backdrop-blur-sm transition-all hover:scale-105 border border-slate-200 flex items-center gap-2"
-          type="button"
-          disabled={processingState === "optimizing"}
-        >
-          {renderButtonContent()}
-        </button>
-      </div>
+      {allowUpload ? (
+        <>
+          {/* Upload control overlay - positioned absolutely with z-index to prevent navigation */}
+          <div className={overlayClasses}>
+            <button
+              onClick={handleButtonClick}
+              className="image-upload-control px-4 py-2 text-xs font-medium uppercase tracking-wider bg-white/90 hover:bg-white text-slate-900 rounded-full shadow-lg backdrop-blur-sm transition-all hover:scale-105 border border-slate-200 flex items-center gap-2"
+              type="button"
+              disabled={processingState === "optimizing"}
+            >
+              {renderButtonContent()}
+            </button>
+          </div>
 
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/jpeg,image/jpg,image/png,image/webp,image/heic"
-        onChange={handleFileChange}
-        className="hidden"
-        aria-label={`Upload image for ${label}`}
-      />
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/jpg,image/png,image/webp,image/heic"
+            onChange={handleFileChange}
+            className="hidden"
+            aria-label={`Upload image for ${label}`}
+          />
+        </>
+      ) : null}
     </div>
   );
 }
