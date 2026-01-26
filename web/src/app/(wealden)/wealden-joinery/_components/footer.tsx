@@ -12,9 +12,14 @@ export function WealdenFooter() {
   const { user, mutate } = useCurrentUser();
   const [loggingOut, setLoggingOut] = useState(false);
   const pathname = usePathname();
-  const estimateHref = pathname?.includes("timber-windows")
-    ? "/timber-windows#timber-windows-form"
-    : "/wealden-joinery/contact#enquiry-form";
+  const consultationHref = pathname?.includes("lignum-windows")
+    ? "/lignum-windows#lignum-windows-form"
+    : pathname?.includes("timber-windows-east-sussex")
+      ? "/timber-windows-east-sussex#timber-windows-east-sussex-form"
+      : pathname?.includes("timber-windows")
+        ? "/timber-windows#timber-windows-form"
+        : "/wealden-joinery/contact#enquiry-form";
+  const estimateHref = consultationHref;
 
   const handleLogout = async () => {
     if (loggingOut) return;
@@ -80,7 +85,7 @@ export function WealdenFooter() {
           </p>
           <div className="flex flex-wrap gap-3 text-sm font-semibold">
             <Link
-              href="/wealden-joinery/contact"
+              href={consultationHref}
               className="rounded-full bg-emerald-700 px-5 py-2.5 text-white transition hover:scale-[1.02] hover:bg-emerald-800"
             >
               Book a Consultation

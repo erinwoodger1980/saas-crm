@@ -54,7 +54,7 @@ const certificationLogos = [
 
 const faqItems = [
   {
-    q: "How much do timber windows cost?",
+    q: "How much do Lignum windows cost?",
     a: "Costs vary by size, glazing choice, and detailing. We provide an itemised quote after a survey so you can compare options clearly.",
   },
   {
@@ -91,7 +91,7 @@ const faqItems = [
   },
 ];
 
-export default function TimberWindowsClient() {
+export default function LignumWindowsClient() {
   const { user } = useCurrentUser();
   const role = String(user?.role || "").toLowerCase();
   const canEditImages = Boolean(user?.id) && (!role || ["admin", "owner", "editor"].includes(role));
@@ -137,7 +137,7 @@ export default function TimberWindowsClient() {
   };
 
   const scrollToForm = () => {
-    document.getElementById("timber-windows-form")?.scrollIntoView({ behavior: "smooth" });
+    document.getElementById("lignum-windows-form")?.scrollIntoView({ behavior: "smooth" });
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -166,7 +166,7 @@ export default function TimberWindowsClient() {
 
     try {
       const payload = new FormData();
-      payload.append("source", "PPC Timber Windows");
+      payload.append("source", "PPC Lignum Windows");
       payload.append("tenantId", "wealden-joinery");
       payload.append("name", formState.name);
       payload.append("email", formState.email);
@@ -184,7 +184,7 @@ export default function TimberWindowsClient() {
       if (!response.ok) throw new Error("Failed to submit");
 
       setSubmitState("success");
-      wealdenTrack.lead({ content_name: "Timber Windows" });
+      wealdenTrack.lead({ content_name: "Lignum Windows" });
       setFormState({
         name: "",
         email: "",
@@ -195,7 +195,7 @@ export default function TimberWindowsClient() {
         consent: false,
       });
     } catch (error) {
-      console.error("[timber-windows] lead submit failed", error);
+      console.error("[lignum-windows] lead submit failed", error);
       setSubmitState("error");
       setSubmitError("We could not submit your enquiry. Please try again or call us.");
     }
@@ -212,7 +212,7 @@ export default function TimberWindowsClient() {
       <section className={components.sectionCompact}>
         <div className="mb-8 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
           <div className="text-sm font-medium text-slate-700">
-            Ready to price your timber windows? Get a fast, itemised quote.
+            Ready to price your Lignum windows? Get a fast, itemised quote.
           </div>
           <Button
             type="button"
@@ -236,11 +236,11 @@ export default function TimberWindowsClient() {
                   priority
                 />
               </div>
-              <p className={designSystem.typography.caption}>Timber Windows</p>
-              <h1 className={designSystem.typography.hero}>Timber Windows</h1>
+              <p className={designSystem.typography.caption}>Lignum Windows</p>
+              <h1 className={designSystem.typography.hero}>Lignum Windows</h1>
               <p className={`${designSystem.typography.body} max-w-xl`}>
-                Premium timber windows designed, manufactured, and installed in the UK. Heritage craft meets modern
-                performance for sash and flush casement projects.
+                Premium timber windows from Lignum by Wealden Joinery. Heritage sash and flush casement designs with
+                modern performance, security, and factory-finished paint.
               </p>
             </div>
             <div className="flex flex-wrap gap-4">
@@ -271,8 +271,8 @@ export default function TimberWindowsClient() {
             </div>
           </div>
           <ImageSlot
-            slotId="timber-windows-hero"
-            label="Timber Windows Hero"
+            slotId="lignum-windows-hero"
+            label="Lignum Windows Hero"
             aspectRatio={designSystem.images.portrait}
             size="xl"
             imageContext="hero"
@@ -309,56 +309,21 @@ export default function TimberWindowsClient() {
             <p className={designSystem.typography.caption}>Trusted craftsmanship</p>
             <h2 className={designSystem.typography.h2}>Heritage confidence with modern performance</h2>
             <p className={designSystem.typography.body}>
-              We specialise in timber windows for listed buildings, conservation areas, and architect-led homes. Every
-              project includes detailed surveying, specification guidance, and a dedicated install team.
+              Lignum windows are built for listed buildings, conservation areas, and architect-led homes. Every project
+              includes detailed surveying, specification guidance, and a dedicated install team.
             </p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <p className="text-sm font-medium text-slate-900">Reviews</p>
             <p className="mt-2 text-sm text-slate-600">
-              Verified customer feedback from recent timber window projects.
+              Customer reviews will be added here. For now, this space is reserved for future verified feedback.
             </p>
             <div className="mt-4 space-y-3">
-              <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="font-semibold text-slate-800">All round excellence!</div>
-                  <div className="text-amber-500" aria-label="5 out of 5 stars">★★★★★</div>
+              {[1, 2, 3].map((idx) => (
+                <div key={idx} className="rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-500">
+                  “Review placeholder #{idx}”
                 </div>
-                <p className="mt-2">
-                  Very pleased with our new French windows and kitchen door and window; it was so good to be able to
-                  have real wood as opposed to uPVC and the talented fitters - Dean and Charley - were friendly and very
-                  careful workers. Every thing was delivered and fitted on time as arranged. Many thanks to Martin and
-                  the team, we highly recommend this local joinery firm.
-                </p>
-                <p className="mt-3 text-xs font-semibold text-slate-700">— Sarah H.</p>
-              </div>
-              <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="font-semibold text-slate-800">A Transformation</div>
-                  <div className="text-amber-500" aria-label="5 out of 5 stars">★★★★★</div>
-                </div>
-                <p className="mt-2">
-                  Super work carried out by thoughtful and efficient staff. The new porch entrance has transformed the
-                  look of the house from the outside and greatly improved the warmth and reduced traffic noise inside.
-                  The new bay windows were a big financial consideration and as we were replacing the existing windows
-                  with the same style we were unsure we would see any real difference. However, the results were worth
-                  every penny because the rooms are now brighter, quieter and warmer. Thank you for a great job well
-                  done.
-                </p>
-                <p className="mt-3 text-xs font-semibold text-slate-700">— James R.</p>
-              </div>
-              <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="font-semibold text-slate-800">Would definitely recommend</div>
-                  <div className="text-amber-500" aria-label="5 out of 5 stars">★★★★★</div>
-                </div>
-                <p className="mt-2">
-                  The new window looks great and was fitted rapidly and professionally. Dealing with Wealden Joinery
-                  was a pleasure as they are responsive and do what they say they're going to do - a rare thing these
-                  days!
-                </p>
-                <p className="mt-3 text-xs font-semibold text-slate-700">— Claire M.</p>
-              </div>
+              ))}
             </div>
           </div>
         </div>
@@ -381,8 +346,8 @@ export default function TimberWindowsClient() {
             </ul>
           </div>
           <ImageSlot
-            slotId="timber-windows-sash"
-            label="Timber Sash Windows"
+            slotId="lignum-windows-sash"
+            label="Lignum Sash Windows"
             aspectRatio={designSystem.images.portrait}
             size="lg"
             allowUpload={canEditImages}
@@ -393,8 +358,8 @@ export default function TimberWindowsClient() {
       <section className={`${components.section} bg-slate-50`}>
         <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
           <ImageSlot
-            slotId="timber-windows-casement"
-            label="Flush Casement Windows"
+            slotId="lignum-windows-casement"
+            label="Lignum Casement Windows"
             aspectRatio={designSystem.images.portrait}
             size="lg"
             allowUpload={canEditImages}
@@ -432,8 +397,8 @@ export default function TimberWindowsClient() {
             </ul>
           </div>
           <ImageSlot
-            slotId="timber-windows-why"
-            label="Timber detail"
+            slotId="lignum-windows-why"
+            label="Lignum timber detail"
             aspectRatio={designSystem.images.landscape}
             size="lg"
             allowUpload={canEditImages}
@@ -444,8 +409,8 @@ export default function TimberWindowsClient() {
       <section className={`${components.section} bg-slate-50`}>
         <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
           <ImageSlot
-            slotId="timber-windows-doors"
-            label="Timber Doors"
+            slotId="lignum-windows-doors"
+            label="Lignum timber doors"
             aspectRatio={designSystem.images.portrait}
             size="lg"
             allowUpload={canEditImages}
@@ -468,8 +433,8 @@ export default function TimberWindowsClient() {
             <p className={designSystem.typography.caption}>Service area</p>
             <h2 className={designSystem.typography.h2}>Serving projects across the UK</h2>
             <p className={designSystem.typography.body}>
-              We work across the South East and wider UK for projects that demand exceptional timber craftsmanship. Tell us
-              where your property is located and we’ll advise on next steps.
+              We work across the South East and wider UK for projects that demand exceptional timber craftsmanship. Tell
+              us where your property is located and we’ll advise on next steps.
             </p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -484,17 +449,17 @@ export default function TimberWindowsClient() {
       </section>
 
       {/* Lead Form */}
-      <section id="timber-windows-form" className={`${components.sectionNarrow} bg-white`}>
+      <section id="lignum-windows-form" className={`${components.sectionNarrow} bg-white`}>
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 shadow-sm md:p-8">
           <div className="space-y-4">
             <p className={designSystem.typography.caption}>Get a Quote</p>
-            <h2 className={designSystem.typography.h2}>Request your timber windows quote</h2>
+            <h2 className={designSystem.typography.h2}>Request your Lignum windows quote</h2>
             <p className={designSystem.typography.bodySmall}>
               Share your project details and we will respond with next steps, timings, and a tailored quotation.
             </p>
           </div>
 
-          <form className="mt-8 grid gap-4" onSubmit={handleSubmit} data-form="timber-windows">
+          <form className="mt-8 grid gap-4" onSubmit={handleSubmit} data-form="lignum-windows">
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <label className={designSystem.typography.label}>Name *</label>
@@ -596,7 +561,7 @@ export default function TimberWindowsClient() {
                 type="submit"
                 className={designSystem.buttons.primary}
                 disabled={submitState === "submitting"}
-                data-form="timber-windows"
+                data-form="lignum-windows"
               >
                 {submitState === "submitting" ? "Submitting..." : "Submit enquiry"}
               </Button>
@@ -612,7 +577,7 @@ export default function TimberWindowsClient() {
       <section className={`${components.sectionNarrow} bg-slate-50`}>
         <div className="mb-10 text-center space-y-3">
           <p className={designSystem.typography.caption}>FAQ</p>
-          <h2 className={designSystem.typography.h2}>Timber windows FAQs</h2>
+          <h2 className={designSystem.typography.h2}>Lignum windows FAQs</h2>
         </div>
         <div className="space-y-6">
           {faqItems.map((item) => (
@@ -629,7 +594,7 @@ export default function TimberWindowsClient() {
         <div className="text-center space-y-6">
           <p className="text-xs font-medium uppercase tracking-[0.25em] text-white/60">Ready to start?</p>
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-light tracking-tight text-white">
-            Let’s plan your timber windows
+            Let’s plan your Lignum windows
           </h2>
           <p className={`${designSystem.typography.body} max-w-2xl mx-auto text-white/80`}>
             Speak with our team about design options, performance upgrades, and timelines.

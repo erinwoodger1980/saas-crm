@@ -195,8 +195,10 @@ export async function apiFetch<T = unknown>(
   if (res.status === 401) {
     clearJwt();
     if (typeof window !== "undefined" && isAuthMeRequest) {
+      const hostname = window.location.hostname.toLowerCase();
+      const isMarketingHost = hostname === "lignumwindows.com" || hostname === "www.lignumwindows.com";
       const alreadyOnLogin = window.location.pathname.startsWith("/login");
-      if (!alreadyOnLogin) window.location.href = "/login";
+      if (!alreadyOnLogin && !isMarketingHost) window.location.href = "/login";
     }
     const error = new Error(`${msg} for ${url}`) as Error & {
       status?: number; details?: any; response?: Response; body?: string | null;

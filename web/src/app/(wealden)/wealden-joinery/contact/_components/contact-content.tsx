@@ -121,7 +121,7 @@ export function ContactContent({ heroImage }: ContactContentProps) {
         submitData.append(`customerPhoto${index}`, photo);
       });
 
-      const response = await fetch("/api/tenant/wealden-joinery/leads", {
+      const response = await fetch("/api/public/tenant/wealden-joinery/leads", {
         method: "POST",
         body: submitData,
       });
