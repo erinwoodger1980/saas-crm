@@ -165,20 +165,21 @@ export default function TimberWindowsClient() {
     setSubmitState("submitting");
 
     try {
-      const payload = new FormData();
-      payload.append("source", "PPC Timber Windows");
-      payload.append("tenantId", "wealden-joinery");
-      payload.append("name", formState.name);
-      payload.append("email", formState.email);
-      payload.append("phone", formState.phone);
-      payload.append("postcode", formState.postcode);
-      payload.append("projectType", formState.projectType);
-      payload.append("message", formState.message);
-      payload.append("consent", String(formState.consent));
-
       const response = await fetch("/api/public/tenant/wealden-joinery/leads", {
         method: "POST",
-        body: payload,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          source: "PPC Timber Windows",
+          name: formState.name,
+          email: formState.email,
+          phone: formState.phone,
+          postcode: formState.postcode,
+          projectType: formState.projectType,
+          message: formState.message,
+          consent: formState.consent,
+        }),
       });
 
       if (!response.ok) throw new Error("Failed to submit");

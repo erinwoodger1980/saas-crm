@@ -101,29 +101,28 @@ export function ContactContent({ heroImage }: ContactContentProps) {
     setSubmitError("");
 
     try {
-      // Create FormData for multipart/form-data submission
-      const submitData = new FormData();
-      submitData.append("source", "contact_form");
-      submitData.append("tenantId", "wealden-joinery");
-      submitData.append("name", formData.name);
-      submitData.append("email", formData.email);
-      submitData.append("phone", formData.phone);
-      submitData.append("postcode", formData.postcode);
-      submitData.append("projectType", formData.projectType);
-      submitData.append("message", formData.message);
-      submitData.append("preferredContact", formData.preferredContact);
-      submitData.append("preferredTime", formData.preferredTime);
-      submitData.append("budgetRange", formData.budgetRange);
-      submitData.append("consent", formData.consent.toString());
-
-      // Add customer photos
-      customerPhotos.forEach((photo, index) => {
-        submitData.append(`customerPhoto${index}`, photo);
-      });
+      const photoNote = customerPhotos.length
+        ? `\n\nCustomer attached ${customerPhotos.length} photo(s): ${customerPhotos.map((photo) => photo.name).join(", ")}`
+        : "";
 
       const response = await fetch("/api/public/tenant/wealden-joinery/leads", {
         method: "POST",
-        body: submitData,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          source: "contact_form",
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          postcode: formData.postcode,
+          projectType: formData.projectType,
+          message: `${formData.message}${photoNote}`,
+          preferredContact: formData.preferredContact,
+          preferredTime: formData.preferredTime,
+          budgetRange: formData.budgetRange,
+          consent: formData.consent,
+        }),
       });
 
       if (!response.ok) {
