@@ -85,18 +85,20 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path?: string[] 
   const apiBase = backendBase.endsWith("/api") ? backendBase : `${backendBase}/api`;
 
   const url = new URL(req.nextUrl.toString());
-  const rootRoutes = new Set([
-    "auth",
-    "customer-auth",
-    "public",
-    "health",
-    "healthz",
-    "__debug",
-    "api-check",
-    "seed",
+  const apiBaseRoutes = new Set([
+    // Routes that are mounted under /api on the backend
+    "wealden",
+    "scene-state",
+    "landing-tenants",
+    "aggregate-reviews",
+    "admin",
+    "interest",
+    "early-access",
   ]);
   const firstSegment = path[0] || "";
-  const useApiBase = firstSegment ? !rootRoutes.has(firstSegment) : true;
+  // Default to backend root for core app routes (e.g., /tenant, /clients, /analytics)
+  // and only use /api for explicitly prefixed routes above.
+  const useApiBase = firstSegment ? apiBaseRoutes.has(firstSegment) : true;
   const targetBase = useApiBase ? apiBase : backendBase;
   const target = new URL(`${targetBase}/${path.map(encodeURIComponent).join("/")}`);
   target.search = url.search;
