@@ -682,7 +682,7 @@ async function loadQuoteFallback(
           const msg = err?.message || String(err);
           console.warn("[loadQuoteFallback] uploadedFile.findMany failed; falling back to raw query:", msg);
           const files: any[] = await prisma.$queryRawUnsafe(
-            `SELECT "id", "tenantId", "quoteId", "kind"::text AS "kind", "name", "path", "mimeType", "sizeBytes", "uploadedAt" FROM "UploadedFile" WHERE "quoteId" = $1 AND "tenantId" = $2 ORDER BY "uploadedAt" DESC`,
+                        `SELECT "id", "tenantId", "quoteId", "kind"::text AS "kind", "name", "path", "mimeType", "sizeBytes", "uploadedAt" FROM "UploadedFile" WHERE "quoteId" = $1 AND "tenantId" = $2 ORDER BY "uploadedAt" DESC`,
             quoteId,
             tenantId,
           );
@@ -1253,6 +1253,38 @@ router.get("/:id/lines", requireAuth, async (req: any, res) => {
       where: { quote: { id, tenantId } },
       orderBy: [{ sortIndex: "asc" }, { id: "asc" }],
     });
+
+    if (!lines.length) {
+      try {
+        const parsed = await prisma.parsedSupplierLine.findMany({
+          where: { tenantId, quoteId: id },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        });
+        const parsedOut = parsed.map((ln: any) => ({
+          id: ln.id,
+          description: ln.description || ln.rawText || "—",
+          qty: typeof ln.qty === "number" ? ln.qty : null,
+          unitPrice: typeof ln.costUnit === "number" ? ln.costUnit : null,
+          currency: ln.currency || "GBP",
+          meta: {
+            source: "parsed_supplier_line",
+            lineTotal: ln.lineTotal ?? null,
+            supplier: ln.supplier ?? null,
+            confidence: ln.confidence ?? null,
+            page: ln.page ?? null,
+          },
+          lineStandard: null,
+          sellUnit: null,
+          sellTotal: null,
+          lineTotalGBP: null,
+          deliveryShareGBP: null,
+          surchargeGBP: null,
+        }));
+        return res.json({ lines: parsedOut, imageUrlMap: {} });
+      } catch (e: any) {
+        console.warn("[/quotes/:id/lines] parsed lines fallback failed:", e?.message || e);
+      }
+    }
 
     const out = lines.map((ln: any) => ({
       id: ln.id,
@@ -3531,13 +3563,21 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     const imageUrlMap = await fetchLineImageUrls(quote.lines, tenantId);
 
     // Fetch proposal asset URLs (e.g., hero images + embedded proposal images) referenced by quote.meta
+    const quoteDefaults: any = (ts?.quoteDefaults as any) || {};
     const quoteMetaAny: any = (quote.meta as any) || {};
     const proposalAssetIds: string[] = [];
-    if (typeof quoteMetaAny?.proposalHeroImageFileId === "string" && quoteMetaAny.proposalHeroImageFileId.trim()) {
-      proposalAssetIds.push(quoteMetaAny.proposalHeroImageFileId.trim());
-    }
+    const heroFileId =
+      typeof quoteMetaAny?.proposalHeroImageFileId === "string"
+        ? quoteMetaAny.proposalHeroImageFileId.trim()
+        : typeof quoteDefaults?.proposalHeroImageFileId === "string"
+          ? quoteDefaults.proposalHeroImageFileId.trim()
+          : "";
+    if (heroFileId) proposalAssetIds.push(heroFileId);
     // Christchurch template image overrides (stored as fileIds)
-    const ccAny: any = (quoteMetaAny?.proposalChristchurchImageFileIds as any) || {};
+    const ccAny: any = {
+      ...((quoteDefaults?.proposalChristchurchImageFileIds as any) || {}),
+      ...((quoteMetaAny?.proposalChristchurchImageFileIds as any) || {}),
+    };
     for (const k of [
       "logoMarkFileId",
       "logoWideFileId",
@@ -3555,7 +3595,10 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     }
 
     // Also sign any images embedded in proposalBlocks HTML (proposal-asset://<fileId> or <img data-file-id="...">)
-    const proposalBlocksAny: any = (quoteMetaAny?.proposalBlocks as any) || {};
+    const proposalBlocksAny: any = {
+      ...((quoteDefaults?.proposalBlocks as any) || {}),
+      ...((quoteMetaAny?.proposalBlocks as any) || {}),
+    };
     const proposalBlockHtmlCandidates: string[] = [
       String(proposalBlocksAny?.introHtml || ""),
       String(proposalBlocksAny?.scopeHtml || ""),
@@ -3823,13 +3866,21 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
     const imageUrlMap = await fetchLineImageUrls(quote.lines, tenantId);
 
     // Fetch proposal asset URLs (e.g., hero images + embedded proposal images) referenced by quote.meta
+    const quoteDefaults: any = (ts?.quoteDefaults as any) || {};
     const quoteMetaAny: any = (quote.meta as any) || {};
     const proposalAssetIds: string[] = [];
-    if (typeof quoteMetaAny?.proposalHeroImageFileId === "string" && quoteMetaAny.proposalHeroImageFileId.trim()) {
-      proposalAssetIds.push(quoteMetaAny.proposalHeroImageFileId.trim());
-    }
+    const heroFileId =
+      typeof quoteMetaAny?.proposalHeroImageFileId === "string"
+        ? quoteMetaAny.proposalHeroImageFileId.trim()
+        : typeof quoteDefaults?.proposalHeroImageFileId === "string"
+          ? quoteDefaults.proposalHeroImageFileId.trim()
+          : "";
+    if (heroFileId) proposalAssetIds.push(heroFileId);
     // Christchurch template image overrides (stored as fileIds)
-    const ccAny: any = (quoteMetaAny?.proposalChristchurchImageFileIds as any) || {};
+    const ccAny: any = {
+      ...((quoteDefaults?.proposalChristchurchImageFileIds as any) || {}),
+      ...((quoteMetaAny?.proposalChristchurchImageFileIds as any) || {}),
+    };
     for (const k of [
       "logoMarkFileId",
       "logoWideFileId",
@@ -3847,7 +3898,10 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
     }
 
     // Also sign any images embedded in proposalBlocks HTML (proposal-asset://<fileId> or <img data-file-id="...">)
-    const proposalBlocksAny: any = (quoteMetaAny?.proposalBlocks as any) || {};
+    const proposalBlocksAny: any = {
+      ...((quoteDefaults?.proposalBlocks as any) || {}),
+      ...((quoteMetaAny?.proposalBlocks as any) || {}),
+    };
     const proposalBlockHtmlCandidates: string[] = [
       String(proposalBlocksAny?.introHtml || ""),
       String(proposalBlocksAny?.scopeHtml || ""),
@@ -4083,12 +4137,20 @@ router.get("/:id/proposal/html", requireAuth, async (req: any, res) => {
 
     const imageUrlMap = await fetchLineImageUrls(quote.lines, tenantId);
 
+    const quoteDefaults: any = (ts?.quoteDefaults as any) || {};
     const quoteMetaAny: any = (quote.meta as any) || {};
     const proposalAssetIds: string[] = [];
-    if (typeof quoteMetaAny?.proposalHeroImageFileId === "string" && quoteMetaAny.proposalHeroImageFileId.trim()) {
-      proposalAssetIds.push(quoteMetaAny.proposalHeroImageFileId.trim());
-    }
-    const ccAny: any = (quoteMetaAny?.proposalChristchurchImageFileIds as any) || {};
+    const heroFileId =
+      typeof quoteMetaAny?.proposalHeroImageFileId === "string"
+        ? quoteMetaAny.proposalHeroImageFileId.trim()
+        : typeof quoteDefaults?.proposalHeroImageFileId === "string"
+          ? quoteDefaults.proposalHeroImageFileId.trim()
+          : "";
+    if (heroFileId) proposalAssetIds.push(heroFileId);
+    const ccAny: any = {
+      ...((quoteDefaults?.proposalChristchurchImageFileIds as any) || {}),
+      ...((quoteMetaAny?.proposalChristchurchImageFileIds as any) || {}),
+    };
     for (const k of [
       "logoMarkFileId",
       "logoWideFileId",
@@ -4105,7 +4167,10 @@ router.get("/:id/proposal/html", requireAuth, async (req: any, res) => {
       if (v) proposalAssetIds.push(v);
     }
 
-    const proposalBlocksAny: any = (quoteMetaAny?.proposalBlocks as any) || {};
+    const proposalBlocksAny: any = {
+      ...((quoteDefaults?.proposalBlocks as any) || {}),
+      ...((quoteMetaAny?.proposalBlocks as any) || {}),
+    };
     const proposalBlockHtmlCandidates: string[] = [
       String(proposalBlocksAny?.introHtml || ""),
       String(proposalBlocksAny?.scopeHtml || ""),
@@ -4579,14 +4644,22 @@ async function buildQuoteProposalHtml(opts: {
   
   // Extract specifications
   const quoteMeta: any = (quote.meta as any) || {};
-  const templateRaw = String(quoteMeta?.proposalTemplate || "soho").trim().toLowerCase();
+  const templateRaw = String(quoteMeta?.proposalTemplate || quoteDefaults?.proposalTemplate || "christchurch").trim().toLowerCase();
   const proposalTemplate = templateRaw === "christchurch" ? "christchurch" : "soho";
 
-  const proposalHeroImageFileId = typeof quoteMeta?.proposalHeroImageFileId === "string" ? quoteMeta.proposalHeroImageFileId.trim() : "";
+  const proposalHeroImageFileId =
+    typeof quoteMeta?.proposalHeroImageFileId === "string"
+      ? quoteMeta.proposalHeroImageFileId.trim()
+      : typeof quoteDefaults?.proposalHeroImageFileId === "string"
+        ? quoteDefaults.proposalHeroImageFileId.trim()
+        : "";
   const proposalHeroImageUrl = proposalHeroImageFileId ? (opts.proposalAssetUrlMap || {})[proposalHeroImageFileId] : "";
 
   // Rich text (WYSIWYG) blocks stored on the quote
-  const proposalBlocks: any = (quoteMeta?.proposalBlocks as any) || {};
+  const proposalBlocks: any = {
+    ...((quoteDefaults?.proposalBlocks as any) || {}),
+    ...((quoteMeta?.proposalBlocks as any) || {}),
+  };
   const specifications = quoteMeta?.specifications || {};
   const fallbackTimber = specifications.timber || quoteDefaults?.defaultTimber || "Engineered timber";
   const fallbackFinish = specifications.finish || quoteDefaults?.defaultFinish || "Factory finished";
@@ -4636,7 +4709,10 @@ async function buildQuoteProposalHtml(opts: {
     const hasUserScopeHtml = Boolean(String(blocks.scopeHtml || "").trim());
     const ai = await summarizeChristchurchFromLineItems(quote.lines || []);
 
-    const ccAny: any = (quoteMeta?.proposalChristchurchImageFileIds as any) || {};
+    const ccAny: any = {
+      ...((quoteDefaults?.proposalChristchurchImageFileIds as any) || {}),
+      ...((quoteMeta?.proposalChristchurchImageFileIds as any) || {}),
+    };
     const ccUrls = {
       logoMark: typeof ccAny?.logoMarkFileId === "string" ? proposalAssets[String(ccAny.logoMarkFileId).trim()] : undefined,
       logoWide: typeof ccAny?.logoWideFileId === "string" ? proposalAssets[String(ccAny.logoWideFileId).trim()] : undefined,

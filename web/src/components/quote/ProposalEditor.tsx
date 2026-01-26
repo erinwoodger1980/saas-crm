@@ -95,13 +95,62 @@ export function ProposalEditor({
   initialMeta: ProposalEditorMeta | null | undefined;
   onSaved?: () => void;
 }) {
-  const initialTemplate = (initialMeta?.proposalTemplate || "soho") as "soho" | "christchurch";
+  const [tenantQuoteDefaults, setTenantQuoteDefaults] = useState<Record<string, any> | null>(null);
+  const [tenantProposalDefaults, setTenantProposalDefaults] = useState<ProposalEditorMeta | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const settings = await apiFetch<any>("/tenant/settings");
+        if (cancelled) return;
+        const quoteDefaults = (settings?.quoteDefaults && typeof settings.quoteDefaults === "object")
+          ? settings.quoteDefaults
+          : {};
+        setTenantQuoteDefaults(quoteDefaults);
+        setTenantProposalDefaults({
+          proposalTemplate: quoteDefaults?.proposalTemplate === "soho" ? "soho" : (quoteDefaults?.proposalTemplate === "christchurch" ? "christchurch" : undefined),
+          proposalHeroImageFileId: typeof quoteDefaults?.proposalHeroImageFileId === "string" ? quoteDefaults.proposalHeroImageFileId : null,
+          proposalChristchurchImageFileIds: (quoteDefaults?.proposalChristchurchImageFileIds && typeof quoteDefaults.proposalChristchurchImageFileIds === "object")
+            ? quoteDefaults.proposalChristchurchImageFileIds
+            : {},
+          proposalBlocks: (quoteDefaults?.proposalBlocks && typeof quoteDefaults.proposalBlocks === "object")
+            ? quoteDefaults.proposalBlocks
+            : {},
+        });
+      } catch {
+        // Ignore settings load failures; quote-level meta will still work.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const effectiveMeta = useMemo<ProposalEditorMeta>(() => {
+    const tenantMeta = tenantProposalDefaults || {};
+    const quoteMeta = initialMeta || {};
+    return {
+      proposalTemplate: (quoteMeta.proposalTemplate ?? tenantMeta.proposalTemplate ?? "christchurch") as any,
+      proposalHeroImageFileId: quoteMeta.proposalHeroImageFileId ?? tenantMeta.proposalHeroImageFileId ?? null,
+      proposalChristchurchImageFileIds: {
+        ...(tenantMeta.proposalChristchurchImageFileIds || {}),
+        ...(quoteMeta.proposalChristchurchImageFileIds || {}),
+      },
+      proposalBlocks: {
+        ...(tenantMeta.proposalBlocks || {}),
+        ...(quoteMeta.proposalBlocks || {}),
+      },
+    };
+  }, [initialMeta, tenantProposalDefaults]);
+
+  const initialTemplate = (effectiveMeta?.proposalTemplate || "christchurch") as "soho" | "christchurch";
   const [proposalTemplate, setProposalTemplate] = useState<"soho" | "christchurch">(initialTemplate);
-  const [heroFileId, setHeroFileId] = useState<string | null>(initialMeta?.proposalHeroImageFileId ?? null);
+  const [heroFileId, setHeroFileId] = useState<string | null>(effectiveMeta?.proposalHeroImageFileId ?? null);
   const [heroPreviewUrl, setHeroPreviewUrl] = useState<string | null>(null);
 
   const [ccImageFileIds, setCcImageFileIds] = useState<NonNullable<ProposalEditorMeta["proposalChristchurchImageFileIds"]>>(
-    initialMeta?.proposalChristchurchImageFileIds || {},
+    effectiveMeta?.proposalChristchurchImageFileIds || {},
   );
   const [ccPreviewUrls, setCcPreviewUrls] = useState<Record<string, string | null>>({
     logoMarkFileId: null,
@@ -140,14 +189,45 @@ export function ProposalEditor({
   }, [quoteId]);
 
   const defaults = useMemo(() => {
-    const blocks = initialMeta?.proposalBlocks || {};
+    const blocks = effectiveMeta?.proposalBlocks || {};
 
     return {
       scopeHtml:
         blocks.scopeHtml ||
         "<p>This quotation covers the supply of bespoke joinery for <strong>{{projectName}}</strong>. Please review specifications and quantities.</p>",
     };
-  }, [initialMeta]);
+  }, [effectiveMeta]);
+
+  const updateTenantProposalDefaults = useCallback(
+    async (patch: ProposalEditorMeta) => {
+      const base = (tenantQuoteDefaults && typeof tenantQuoteDefaults === "object") ? tenantQuoteDefaults : {};
+      const nextDefaults = {
+        ...base,
+        proposalTemplate: patch.proposalTemplate ?? base?.proposalTemplate ?? "christchurch",
+        proposalHeroImageFileId: patch.proposalHeroImageFileId ?? base?.proposalHeroImageFileId ?? null,
+        proposalChristchurchImageFileIds: {
+          ...(base?.proposalChristchurchImageFileIds || {}),
+          ...(patch.proposalChristchurchImageFileIds || {}),
+        },
+        proposalBlocks: {
+          ...(base?.proposalBlocks || {}),
+          ...(patch.proposalBlocks || {}),
+        },
+      };
+      await apiFetch("/tenant/settings", {
+        method: "PATCH",
+        json: { quoteDefaults: nextDefaults },
+      });
+      setTenantQuoteDefaults(nextDefaults);
+      setTenantProposalDefaults({
+        proposalTemplate: nextDefaults.proposalTemplate === "soho" ? "soho" : "christchurch",
+        proposalHeroImageFileId: nextDefaults.proposalHeroImageFileId ?? null,
+        proposalChristchurchImageFileIds: nextDefaults.proposalChristchurchImageFileIds || {},
+        proposalBlocks: nextDefaults.proposalBlocks || {},
+      });
+    },
+    [tenantQuoteDefaults],
+  );
 
   const editorScope = useEditor({
     extensions: [StarterKit, ProposalImage],
@@ -156,10 +236,10 @@ export function ProposalEditor({
 
   // If quote changes under us, keep template in sync.
   useEffect(() => {
-    setProposalTemplate((initialMeta?.proposalTemplate || "soho") as any);
-    setHeroFileId(initialMeta?.proposalHeroImageFileId ?? null);
-    setCcImageFileIds(initialMeta?.proposalChristchurchImageFileIds || {});
-  }, [initialMeta?.proposalTemplate, initialMeta?.proposalHeroImageFileId, initialMeta?.proposalChristchurchImageFileIds]);
+    setProposalTemplate((effectiveMeta?.proposalTemplate || "christchurch") as any);
+    setHeroFileId(effectiveMeta?.proposalHeroImageFileId ?? null);
+    setCcImageFileIds(effectiveMeta?.proposalChristchurchImageFileIds || {});
+  }, [effectiveMeta?.proposalTemplate, effectiveMeta?.proposalHeroImageFileId, effectiveMeta?.proposalChristchurchImageFileIds]);
 
   useEffect(() => {
     let cancelled = false;
@@ -305,6 +385,7 @@ export function ProposalEditor({
             method: "PATCH",
             json: { meta: { proposalHeroImageFileId: String(uploadedId) } },
           });
+          await updateTenantProposalDefaults({ proposalHeroImageFileId: String(uploadedId), proposalTemplate });
           onSaved?.();
         } catch {
           // Non-fatal: the preview will still show; user can hit Save proposal.
@@ -336,11 +417,12 @@ export function ProposalEditor({
         method: "PATCH",
         json: { meta },
       });
+      await updateTenantProposalDefaults(meta);
       onSaved?.();
     } finally {
       setIsSaving(false);
     }
-  }, [quoteId, proposalTemplate, heroFileId, ccImageFileIds, editorScope, onSaved]);
+  }, [quoteId, proposalTemplate, heroFileId, ccImageFileIds, editorScope, onSaved, updateTenantProposalDefaults]);
 
   const handleUploadChristchurchImage = useCallback(
     async (
@@ -366,12 +448,13 @@ export function ProposalEditor({
           method: "PATCH",
           json: { meta: { proposalChristchurchImageFileIds: next } },
         });
+        await updateTenantProposalDefaults({ proposalChristchurchImageFileIds: next, proposalTemplate });
         onSaved?.();
       } catch {
         // Non-fatal: user can hit Save proposal.
       }
     },
-    [uploadQuoteImage, ccImageFileIds, quoteId, onSaved],
+    [uploadQuoteImage, ccImageFileIds, quoteId, onSaved, updateTenantProposalDefaults, proposalTemplate],
   );
 
   return (
@@ -437,7 +520,7 @@ export function ProposalEditor({
         <div className="space-y-3">
           <div className="text-sm font-medium">Christchurch template images</div>
           <div className="text-xs text-muted-foreground">
-            Defaults come from the reference PDF. Uploading here overrides them for this quote only.
+            Defaults are tenant-wide. Uploading here updates the tenant defaults and this quote.
           </div>
 
           <TemplateImageRow
