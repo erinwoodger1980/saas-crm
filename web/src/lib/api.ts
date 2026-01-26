@@ -23,6 +23,9 @@ function inferApiBase(): string {
     if (hostname === "lignumwindows.com" || hostname === "www.lignumwindows.com") {
       return "/api";
     }
+    if (hostname === "joineryai.app" || hostname === "www.joineryai.app") {
+      return "/api";
+    }
     if (RAW_API_BASE) return String(RAW_API_BASE).replace(/\/+$/g, "");
     return "/api";
   }
