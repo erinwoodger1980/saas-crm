@@ -1923,8 +1923,6 @@ router.post("/quote-portal/:token/accept", async (req, res) => {
   }
 });
 
-export default router;
- 
 /* ---------- PUBLIC: create CRM Lead by tenant slug (for ads/landing) ---------- */
 /** POST /public/tenant/:slug/leads
  * Body: {
@@ -2055,8 +2053,31 @@ router.post("/tenant/:slug/leads", async (req, res) => {
 
     // Optionally notify via email (fire-and-forget)
     try {
+      const rawNotify = (settings as any)?.notificationEmails?.leadNotifications
+        ?? (settings as any)?.notificationEmails?.leads
+        ?? (settings as any)?.notificationEmails?.lead
+        ?? (settings as any)?.notificationEmails?.sales
+        ?? (settings as any)?.notificationEmails?.emails
+        ?? (settings as any)?.notificationEmails;
+
+      const notifyEmails = (() => {
+        if (!rawNotify) return [] as string[];
+        if (Array.isArray(rawNotify)) {
+          return rawNotify
+            .map((v) => String(v || "").trim())
+            .filter(Boolean)
+            .filter((e) => /.+@.+\..+/.test(e));
+        }
+        return String(rawNotify)
+          .split(/[;,\s]+/)
+          .map((v) => v.trim())
+          .filter(Boolean)
+          .filter((e) => /.+@.+\..+/.test(e));
+      })();
+
       const { sendLeadEmail } = await import("../lib/mailer");
       sendLeadEmail({
+        to: notifyEmails.length ? notifyEmails : undefined,
         source: s(source),
         name: s(finalName),
         email: s(email),
@@ -2093,3 +2114,5 @@ router.post("/tenant/:slug/leads", async (req, res) => {
     return res.status(500).json({ ok: false, error: e?.message || "server_error" });
   }
 });
+
+export default router;
