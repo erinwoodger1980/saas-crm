@@ -1943,9 +1943,16 @@ router.post("/tenant/:slug/leads", async (req, res) => {
     const slug = String(req.params.slug || "").trim();
     if (!slug) return res.status(400).json({ ok: false, error: "slug_required" });
 
-    const settings = await prisma.tenantSettings.findUnique({ where: { slug } });
-    if (!settings) return res.status(404).json({ ok: false, error: "unknown_tenant" });
-    const tenantId = settings.tenantId;
+    const settingsBySlug = await prisma.tenantSettings.findUnique({ where: { slug } });
+    let tenantId = settingsBySlug?.tenantId || null;
+    if (!tenantId) {
+      const tenant = await prisma.tenant.findUnique({ where: { slug }, select: { id: true } });
+      tenantId = tenant?.id || null;
+    }
+    if (!tenantId) return res.status(404).json({ ok: false, error: "unknown_tenant" });
+
+    const settings = settingsBySlug
+      ?? (await prisma.tenantSettings.findUnique({ where: { tenantId } }));
 
     const {
       source = "unknown",
