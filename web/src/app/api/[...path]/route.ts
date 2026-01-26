@@ -92,6 +92,7 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path?: string[] 
     "scene-state",
     "landing-tenants",
     "aggregate-reviews",
+    "public",
     "admin",
     "interest",
     "early-access",
