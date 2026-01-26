@@ -316,14 +316,37 @@ export default function TimberWindowsClient() {
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <p className="text-sm font-medium text-slate-900">Reviews</p>
             <p className="mt-2 text-sm text-slate-600">
-              Customer reviews will be added here. For now, this space is reserved for future verified feedback.
+              Verified customer feedback from recent timber window projects.
             </p>
             <div className="mt-4 space-y-3">
-              {[1, 2, 3].map((idx) => (
-                <div key={idx} className="rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-500">
-                  “Review placeholder #{idx}”
-                </div>
-              ))}
+              <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
+                <div className="font-semibold text-slate-800">All round excellence!</div>
+                <p className="mt-2">
+                  Very pleased with our new French windows and kitchen door and window; it was so good to be able to
+                  have real wood as opposed to uPVC and the talented fitters - Dean and Charley - were friendly and very
+                  careful workers. Every thing was delivered and fitted on time as arranged. Many thanks to Martin and
+                  the team, we highly recommend this local joinery firm.
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
+                <div className="font-semibold text-slate-800">A Transformation</div>
+                <p className="mt-2">
+                  Super work carried out by thoughtful and efficient staff. The new porch entrance has transformed the
+                  look of the house from the outside and greatly improved the warmth and reduced traffic noise inside.
+                  The new bay windows were a big financial consideration and as we were replacing the existing windows
+                  with the same style we were unsure we would see any real difference. However, the results were worth
+                  every penny because the rooms are now brighter, quieter and warmer. Thank you for a great job well
+                  done.
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
+                <div className="font-semibold text-slate-800">Would definitely recommend</div>
+                <p className="mt-2">
+                  The new window looks great and was fitted rapidly and professionally. Dealing with Wealden Joinery
+                  was a pleasure as they are responsive and do what they say they're going to do - a rare thing these
+                  days!
+                </p>
+              </div>
             </div>
           </div>
         </div>
