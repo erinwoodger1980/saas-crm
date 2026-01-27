@@ -37,21 +37,29 @@ const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 const isProd = process.env.NODE_ENV === "production";
 // Allow overriding cookie domain (needed for staging/onrender where joineryai.app is not used)
 const rawCookieDomain = process.env.COOKIE_DOMAIN || (isProd ? ".joineryai.app" : undefined);
-// On onrender.com staging, use sameSite=lax (same-site). For production cross-site, use sameSite=none.
-const isOnRender = rawCookieDomain === ".onrender.com";
-// Some hosted shared domains (including many *.onrender.com setups) cannot be used as cookie domains.
-// Prefer omitting Domain entirely on Render and rely on the web app's same-origin /api proxy instead.
-const cookieDomain = isOnRender ? undefined : rawCookieDomain;
-const COOKIE_OPTS = {
-  httpOnly: true,
-  // Always use secure=true in production (HTTPS required). For dev, secure=false.
-  secure: isProd,
-  // For joineryai.app cross-site: sameSite=none. For onrender.com same-site: sameSite=lax
-  sameSite: (isProd && !isOnRender ? "none" : "lax") as "none" | "lax",
-  ...(cookieDomain ? { domain: cookieDomain } : {}),
-  path: "/",
-  maxAge: COOKIE_MAX_AGE,
-};
+
+function resolveCookieOptions(req: any) {
+  const host = String(req?.headers?.host || "").toLowerCase();
+  const origin = String(req?.headers?.origin || "").toLowerCase();
+  const onRender = host.includes("onrender.com") || origin.includes("onrender.com");
+
+  // Some hosted shared domains (including many *.onrender.com setups) cannot be used as cookie domains.
+  // Prefer omitting Domain entirely on Render and rely on the web app's same-origin /api proxy instead.
+  const cookieDomain = onRender
+    ? undefined
+    : rawCookieDomain;
+
+  return {
+    httpOnly: true,
+    // Always use secure=true in production (HTTPS required). For dev, secure=false.
+    secure: isProd,
+    // For joineryai.app cross-site: sameSite=none. For onrender.com same-site: sameSite=lax
+    sameSite: (isProd && !onRender ? "none" : "lax") as "none" | "lax",
+    ...(cookieDomain ? { domain: cookieDomain } : {}),
+    path: "/",
+    maxAge: COOKIE_MAX_AGE,
+  };
+}
 
 // ---- Stripe (used only to link/create tenant & user) ----
 const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || "").trim();
@@ -237,7 +245,7 @@ router.post("/login", async (req, res) => {
     const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: "7d" });
 
     // HttpOnly session cookie
-    res.cookie(COOKIE_NAME, token, COOKIE_OPTS);
+    res.cookie(COOKIE_NAME, token, resolveCookieOptions(req));
 
     const { firstName, lastName } = splitName(user.name);
     return res.json({
@@ -267,8 +275,9 @@ router.post("/login", async (req, res) => {
 router.post("/logout", async (_req, res) => {
   try {
     // Use same options we used to set the cookie (omit domain in dev)
-    const clearOpts: any = { path: "/", secure: COOKIE_OPTS.secure, sameSite: COOKIE_OPTS.sameSite };
-    if ((COOKIE_OPTS as any).domain) clearOpts.domain = (COOKIE_OPTS as any).domain;
+    const opts = resolveCookieOptions(_req);
+    const clearOpts: any = { path: "/", secure: opts.secure, sameSite: opts.sameSite };
+    if ((opts as any).domain) clearOpts.domain = (opts as any).domain;
     res.clearCookie(COOKIE_NAME, clearOpts);
     return res.json({ ok: true });
   } catch (e: any) {
