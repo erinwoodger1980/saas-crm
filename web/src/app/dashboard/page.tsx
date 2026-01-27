@@ -20,6 +20,7 @@ import {
 } from "recharts";
 import { Target, Calendar, PoundSterling, Users, Award, ArrowUp, ArrowDown } from "lucide-react";
 import { LeadSourceCostsTab } from "@/components/dashboard/LeadSourceCostsTab";
+import { SalesPerformanceMatrix } from "@/components/dashboard/SalesPerformanceMatrix";
 
 type MonthlyData = {
   year: number;
@@ -105,6 +106,8 @@ type BusinessMetrics = {
 
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<"overview" | "sales" | "source-costs">("overview");
+  const [salesView, setSalesView] = useState<"trend" | "detail">("trend");
+  const [salesMatrixMode, setSalesMatrixMode] = useState<"monthly" | "weekly">("monthly");
   const [data, setData] = useState<BusinessMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -786,6 +789,63 @@ export default function DashboardPage() {
       {activeTab === "sales" && loading && <div className="p-6">Loading sales dashboard…</div>}
       {activeTab === "sales" && !loading && data && (
         <>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm text-slate-600">
+              View: <span className="font-semibold text-slate-800">{salesView === "trend" ? "Trend" : "Detail"}</span>
+            </div>
+            <div className="flex gap-1 rounded-lg bg-white/80 p-1 border border-indigo-200/70 shadow-sm">
+              <Button
+                size="sm"
+                variant={salesView === "trend" ? "default" : "ghost"}
+                onClick={() => setSalesView("trend")}
+              >
+                Trend view
+              </Button>
+              <Button
+                size="sm"
+                variant={salesView === "detail" ? "default" : "ghost"}
+                onClick={() => setSalesView("detail")}
+              >
+                Detail view
+              </Button>
+            </div>
+          </div>
+
+          {salesView === "trend" && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-slate-600">Time columns:</div>
+                <div className="flex gap-1 rounded-lg bg-white/80 p-1 border border-indigo-200/70 shadow-sm">
+                  <Button
+                    size="sm"
+                    variant={salesMatrixMode === "monthly" ? "default" : "ghost"}
+                    onClick={() => setSalesMatrixMode("monthly")}
+                  >
+                    Months
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={salesMatrixMode === "weekly" ? "default" : "ghost"}
+                    onClick={() => setSalesMatrixMode("weekly")}
+                  >
+                    Weeks
+                  </Button>
+                </div>
+              </div>
+              <SalesPerformanceMatrix
+                mode={salesMatrixMode}
+                monthlyData={data.monthlyData}
+                weeklyData={data.weeklyData}
+                targetsBreakdown={targetsBreakdown!}
+                currentMonth={currentMonth ? { year: currentMonth.year, month: currentMonth.month } : null}
+                formatCurrency={formatCurrency}
+                formatPercent={formatPercent}
+              />
+            </div>
+          )}
+
+          {salesView === "detail" && (
+            <>
           {/* KPI Summary */}
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
             <Card>
@@ -977,6 +1037,8 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           </div>
+            </>
+          )}
         </>
       )}
     </DeskSurface>
