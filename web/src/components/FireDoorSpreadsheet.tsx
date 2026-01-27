@@ -1122,6 +1122,306 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     }
   }, []);
 
+  // Evaluate formulas (memoized to avoid re-fetch loops)
+  const lookupTablesByName = useMemo(() => {
+    const m = new Map<string, any>();
+    for (const t of availableLookupTables as any[]) {
+      const name = String(t?.tableName || t?.name || '').trim();
+      if (!name) continue;
+      m.set(name, t);
+    }
+    return m;
+  }, [availableLookupTables]);
+
+  const unquote = useCallback((s: string) => {
+    const t = String(s || '').trim();
+    if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) {
+      return t.slice(1, -1);
+    }
+    return t;
+  }, []);
+
+  const splitTopLevelArgs = useCallback((s: string): string[] => {
+    const out: string[] = [];
+    let cur = '';
+    let depth = 0;
+    let quote: '"' | "'" | null = null;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (quote) {
+        cur += ch;
+        if (ch === quote && s[i - 1] !== '\\') quote = null;
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        quote = ch as '"' | "'";
+        cur += ch;
+        continue;
+      }
+      if (ch === '(') {
+        depth++;
+        cur += ch;
+        continue;
+      }
+      if (ch === ')') {
+        depth = Math.max(0, depth - 1);
+        cur += ch;
+        continue;
+      }
+      if (ch === ',' && depth === 0) {
+        out.push(cur.trim());
+        cur = '';
+        continue;
+      }
+      cur += ch;
+    }
+    if (cur.trim()) out.push(cur.trim());
+    return out;
+  }, []);
+
+  const valuesEqual = useCallback((a: any, b: any) => {
+    if (a == null && b == null) return true;
+    const as = String(a ?? '').trim();
+    const bs = String(b ?? '').trim();
+    const an = Number(as);
+    const bn = Number(bs);
+    const aNumOk = as !== '' && Number.isFinite(an);
+    const bNumOk = bs !== '' && Number.isFinite(bn);
+    if (aNumOk && bNumOk) return an === bn;
+    return as.localeCompare(bs, undefined, { sensitivity: 'accent' }) === 0;
+  }, []);
+
+  const resolveLookup = useCallback((tableName: string, conditions: string, returnField: string, row: FireDoorRow) => {
+    const table = lookupTablesByName.get(tableName);
+    const rows = Array.isArray(table?.rows) ? (table.rows as Array<Record<string, any>>) : [];
+    if (!rows.length) return null;
+
+    const condStr = String(conditions || '').replace(/\$\{([^}]+)\}/g, (_m, keyRaw) => {
+      const key = String(keyRaw || '').trim();
+      const v = (row as any)[key];
+      return v == null ? '' : String(v);
+    });
+
+    const conds: Array<{ key: string; value: string }> = [];
+    for (const part of condStr.split('&')) {
+      const p = String(part || '').trim();
+      if (!p) continue;
+      const eq = p.indexOf('=');
+      if (eq < 0) continue;
+      const k = p.slice(0, eq).trim();
+      const v = p.slice(eq + 1).trim();
+      if (!k) continue;
+      conds.push({ key: k, value: unquote(v) });
+    }
+
+    const ret = String(returnField || '').trim();
+    if (!ret) return null;
+
+    const found = rows.find((r) => {
+      if (r && r.isActive === false) return false;
+      for (const c of conds) {
+        if (!valuesEqual((r as any)[c.key], c.value)) return false;
+      }
+      return true;
+    });
+
+    if (!found) return null;
+    const v = (found as any)[ret];
+    return v == null ? null : v;
+  }, [lookupTablesByName, unquote, valuesEqual]);
+
+  const replaceLookupCalls = useCallback((input: string, row: FireDoorRow): string => {
+    let out = String(input || '');
+    if (!out.includes('LOOKUP(')) return out;
+
+    let guard = 0;
+    while (out.includes('LOOKUP(') && guard++ < 25) {
+      const start = out.indexOf('LOOKUP(');
+      if (start < 0) break;
+      let i = start + 'LOOKUP('.length;
+      let depth = 1;
+      let quote: '"' | "'" | null = null;
+      for (; i < out.length; i++) {
+        const ch = out[i];
+        if (quote) {
+          if (ch === quote && out[i - 1] !== '\\') quote = null;
+          continue;
+        }
+        if (ch === '"' || ch === "'") {
+          quote = ch as '"' | "'";
+          continue;
+        }
+        if (ch === '(') depth++;
+        if (ch === ')') {
+          depth--;
+          if (depth === 0) break;
+        }
+      }
+      if (depth !== 0) break;
+
+      const call = out.slice(start, i + 1);
+      const inner = call.slice('LOOKUP('.length, -1);
+      const args = splitTopLevelArgs(inner);
+      const tableName = unquote(args[0] || '');
+      const conditions = unquote(args[1] || '');
+      const returnField = unquote(args[2] || '');
+      const resolved = resolveLookup(tableName, conditions, returnField, row);
+
+      let replacement = 'null';
+      if (typeof resolved === 'number' && Number.isFinite(resolved)) replacement = String(resolved);
+      else if (typeof resolved === 'boolean') replacement = resolved ? 'true' : 'false';
+      else if (resolved != null) replacement = JSON.stringify(String(resolved));
+
+      out = out.slice(0, start) + replacement + out.slice(i + 1);
+    }
+    return out;
+  }, [resolveLookup, splitTopLevelArgs, unquote]);
+
+  const evaluateFormula = useCallback((formula: string, row: FireDoorRow): any => {
+    try {
+      let expression = String(formula || '').trim();
+      if (expression.startsWith('=')) {
+        expression = expression.slice(1).trim();
+      }
+      if (!expression) return null;
+
+      // Resolve LOOKUP(...) calls first, using loaded flexible lookup tables.
+      expression = replaceLookupCalls(expression, row);
+
+      // Normalize single '=' to '==' (avoid assignment errors in conditions).
+      expression = expression.replace(/(^|[^=<>!])=([^=])/g, "$1==$2");
+
+      // Primary syntax: ${fieldName}
+      expression = expression.replace(/\$\{([^}]+)\}/g, (_m, fieldRaw) => {
+        const key = String(fieldRaw || '').trim();
+        const value = (row as any)[key];
+        if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+        if (value == null || value === '') return '0';
+        return JSON.stringify(String(value));
+      });
+
+      // Back-compat: replace bare identifiers for numeric fields
+      for (const key of Object.keys(row)) {
+        const value = (row as any)[key];
+        if (typeof value === 'number' && Number.isFinite(value)) {
+          expression = expression.replace(new RegExp(`\\b${key}\\b`, 'g'), String(value));
+        }
+      }
+
+      const AND = (...args: any[]) => args.every((x) => !!x);
+      const OR = (...args: any[]) => args.some((x) => !!x);
+      const IF = (cond: any, truthy: any, falsy: any) => (cond ? truthy : falsy);
+      const SUM = (...args: any[]) => args.reduce((s, v) => s + (Number(v) || 0), 0);
+      const MULTIPLY = (...args: any[]) => args.reduce((p, v) => p * (Number(v) || 0), 1);
+      const DIVIDE = (a: any, b: any) => {
+        const na = Number(a);
+        const nb = Number(b);
+        if (!Number.isFinite(na) || !Number.isFinite(nb) || nb === 0) return 0;
+        return na / nb;
+      };
+      const SUBTRACT = (a: any, b: any) => (Number(a) || 0) - (Number(b) || 0);
+      const MAX = (...args: any[]) => Math.max(...args.map((v) => (Number(v) || 0)));
+      const MIN = (...args: any[]) => Math.min(...args.map((v) => (Number(v) || 0)));
+      const ROUND = (n: any, decimals: any = 0) => {
+        const nn = Number(n);
+        const d = Number(decimals);
+        if (!Number.isFinite(nn) || !Number.isFinite(d)) return 0;
+        const f = Math.pow(10, Math.max(0, Math.floor(d)));
+        return Math.round(nn * f) / f;
+      };
+      const CEIL = (n: any) => Math.ceil(Number(n) || 0);
+      const FLOOR = (n: any) => Math.floor(Number(n) || 0);
+      const CONCAT = (...args: any[]) => args.map((v) => (v == null ? '' : String(v))).join('');
+      const LENGTH = (v: any) => (v == null ? 0 : String(v).length);
+
+      // eslint-disable-next-line no-new-func
+      return new Function(
+        'AND',
+        'OR',
+        'IF',
+        'SUM',
+        'MULTIPLY',
+        'DIVIDE',
+        'SUBTRACT',
+        'MAX',
+        'MIN',
+        'ROUND',
+        'CEIL',
+        'FLOOR',
+        'CONCAT',
+        'LENGTH',
+        'return ' + expression
+      )(
+        AND,
+        OR,
+        IF,
+        SUM,
+        MULTIPLY,
+        DIVIDE,
+        SUBTRACT,
+        MAX,
+        MIN,
+        ROUND,
+        CEIL,
+        FLOOR,
+        CONCAT,
+        LENGTH
+      );
+    } catch (err) {
+      console.error('Formula evaluation error:', err);
+      return null;
+    }
+  }, [replaceLookupCalls]);
+
+  const formulaColumns = useMemo(() => {
+    return COLUMNS
+      .map((c) => String((c as any)?.key || '').trim())
+      .filter((key) => {
+        if (!key) return false;
+        const cfg = gridConfig[key];
+        return !!cfg?.formula && (cfg?.inputType === 'formula' || !!cfg?.formula);
+      });
+  }, [gridConfig]);
+
+  const applyFormulaCascade = useCallback((inputRows: FireDoorRow[]) => {
+    const rowsCopy: FireDoorRow[] = inputRows.map((row) => ({
+      ...row,
+      __gridMeta:
+        row && typeof row === 'object' && (row as any).__gridMeta && typeof (row as any).__gridMeta === 'object'
+          ? { ...(row as any).__gridMeta }
+          : (row as any).__gridMeta,
+    })) as FireDoorRow[];
+
+    const updatesById = new Map<string, Record<string, any>>();
+
+    for (let pass = 0; pass < 5; pass++) {
+      let changed = false;
+      for (const row of rowsCopy) {
+        for (const key of formulaColumns) {
+          const cfg = gridConfig[key];
+          if (!cfg?.formula) continue;
+          const allowOverride = !!cfg?.allowFormulaOverride;
+          const overrideActive = allowOverride && getFormulaOverrideFlag(row, key);
+          if (overrideActive) continue;
+
+          const nextVal = evaluateFormula(cfg.formula, row);
+          const normalized = nextVal == null ? null : nextVal;
+          if (!Object.is((row as any)[key], normalized)) {
+            (row as any)[key] = normalized;
+            const patch = updatesById.get(row.id) || {};
+            patch[key] = normalized;
+            updatesById.set(row.id, patch);
+            changed = true;
+          }
+        }
+      }
+      if (!changed) break;
+    }
+
+    const updates = Array.from(updatesById.entries()).map(([id, changes]) => ({ id, changes }));
+    return { rows: rowsCopy, updates };
+  }, [formulaColumns, gridConfig, evaluateFormula]);
+
   const ensureRowCount = useCallback(async (minRowCount: number) => {
     if (!importId) return;
     const current = rowsRef.current;
@@ -1732,306 +2032,6 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       console.error('Failed to save config:', err);
     }
   };
-
-  // Evaluate formulas
-  const lookupTablesByName = useMemo(() => {
-    const m = new Map<string, any>();
-    for (const t of availableLookupTables as any[]) {
-      const name = String(t?.tableName || t?.name || '').trim();
-      if (!name) continue;
-      m.set(name, t);
-    }
-    return m;
-  }, [availableLookupTables]);
-
-  const unquote = (s: string) => {
-    const t = String(s || '').trim();
-    if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) {
-      return t.slice(1, -1);
-    }
-    return t;
-  };
-
-  const splitTopLevelArgs = (s: string): string[] => {
-    const out: string[] = [];
-    let cur = '';
-    let depth = 0;
-    let quote: '"' | "'" | null = null;
-    for (let i = 0; i < s.length; i++) {
-      const ch = s[i];
-      if (quote) {
-        cur += ch;
-        if (ch === quote && s[i - 1] !== '\\') quote = null;
-        continue;
-      }
-      if (ch === '"' || ch === "'") {
-        quote = ch;
-        cur += ch;
-        continue;
-      }
-      if (ch === '(') {
-        depth++;
-        cur += ch;
-        continue;
-      }
-      if (ch === ')') {
-        depth = Math.max(0, depth - 1);
-        cur += ch;
-        continue;
-      }
-      if (ch === ',' && depth === 0) {
-        out.push(cur.trim());
-        cur = '';
-        continue;
-      }
-      cur += ch;
-    }
-    if (cur.trim()) out.push(cur.trim());
-    return out;
-  };
-
-  const valuesEqual = (a: any, b: any) => {
-    if (a == null && b == null) return true;
-    const as = String(a ?? '').trim();
-    const bs = String(b ?? '').trim();
-    const an = Number(as);
-    const bn = Number(bs);
-    const aNumOk = as !== '' && Number.isFinite(an);
-    const bNumOk = bs !== '' && Number.isFinite(bn);
-    if (aNumOk && bNumOk) return an === bn;
-    return as.localeCompare(bs, undefined, { sensitivity: 'accent' }) === 0;
-  };
-
-  const resolveLookup = (tableName: string, conditions: string, returnField: string, row: FireDoorRow) => {
-    const table = lookupTablesByName.get(tableName);
-    const rows = Array.isArray(table?.rows) ? (table.rows as Array<Record<string, any>>) : [];
-    if (!rows.length) return null;
-
-    const condStr = String(conditions || '').replace(/\$\{([^}]+)\}/g, (_m, keyRaw) => {
-      const key = String(keyRaw || '').trim();
-      const v = (row as any)[key];
-      return v == null ? '' : String(v);
-    });
-
-    const conds: Array<{ key: string; value: string }> = [];
-    for (const part of condStr.split('&')) {
-      const p = String(part || '').trim();
-      if (!p) continue;
-      const eq = p.indexOf('=');
-      if (eq < 0) continue;
-      const k = p.slice(0, eq).trim();
-      const v = p.slice(eq + 1).trim();
-      if (!k) continue;
-      conds.push({ key: k, value: unquote(v) });
-    }
-
-    const ret = String(returnField || '').trim();
-    if (!ret) return null;
-
-    const found = rows.find((r) => {
-      if (r && r.isActive === false) return false;
-      for (const c of conds) {
-        if (!valuesEqual((r as any)[c.key], c.value)) return false;
-      }
-      return true;
-    });
-
-    if (!found) return null;
-    const v = (found as any)[ret];
-    return v == null ? null : v;
-  };
-
-  const replaceLookupCalls = (input: string, row: FireDoorRow): string => {
-    let out = String(input || '');
-    if (!out.includes('LOOKUP(')) return out;
-
-    let guard = 0;
-    while (out.includes('LOOKUP(') && guard++ < 25) {
-      const start = out.indexOf('LOOKUP(');
-      if (start < 0) break;
-      let i = start + 'LOOKUP('.length;
-      let depth = 1;
-      let quote: '"' | "'" | null = null;
-      for (; i < out.length; i++) {
-        const ch = out[i];
-        if (quote) {
-          if (ch === quote && out[i - 1] !== '\\') quote = null;
-          continue;
-        }
-        if (ch === '"' || ch === "'") {
-          quote = ch;
-          continue;
-        }
-        if (ch === '(') depth++;
-        if (ch === ')') {
-          depth--;
-          if (depth === 0) break;
-        }
-      }
-      if (depth !== 0) break;
-
-      const call = out.slice(start, i + 1);
-      const inner = call.slice('LOOKUP('.length, -1);
-      const args = splitTopLevelArgs(inner);
-      const tableName = unquote(args[0] || '');
-      const conditions = unquote(args[1] || '');
-      const returnField = unquote(args[2] || '');
-      const resolved = resolveLookup(tableName, conditions, returnField, row);
-
-      let replacement = 'null';
-      if (typeof resolved === 'number' && Number.isFinite(resolved)) replacement = String(resolved);
-      else if (typeof resolved === 'boolean') replacement = resolved ? 'true' : 'false';
-      else if (resolved != null) replacement = JSON.stringify(String(resolved));
-
-      out = out.slice(0, start) + replacement + out.slice(i + 1);
-    }
-    return out;
-  };
-
-  const evaluateFormula = (formula: string, row: FireDoorRow): any => {
-    try {
-      let expression = String(formula || '').trim();
-      if (expression.startsWith('=')) {
-        expression = expression.slice(1).trim();
-      }
-      if (!expression) return null;
-
-      // Resolve LOOKUP(...) calls first, using loaded flexible lookup tables.
-      expression = replaceLookupCalls(expression, row);
-
-      // Normalize single '=' to '==' (avoid assignment errors in conditions).
-      expression = expression.replace(/(^|[^=<>!])=([^=])/g, "$1==$2");
-
-      // Primary syntax: ${fieldName}
-      expression = expression.replace(/\$\{([^}]+)\}/g, (_m, fieldRaw) => {
-        const key = String(fieldRaw || '').trim();
-        const value = (row as any)[key];
-        if (typeof value === 'number' && Number.isFinite(value)) return String(value);
-        if (value == null || value === '') return '0';
-        return JSON.stringify(String(value));
-      });
-
-      // Back-compat: replace bare identifiers for numeric fields
-      for (const key of Object.keys(row)) {
-        const value = (row as any)[key];
-        if (typeof value === 'number' && Number.isFinite(value)) {
-          expression = expression.replace(new RegExp(`\\b${key}\\b`, 'g'), String(value));
-        }
-      }
-
-      const AND = (...args: any[]) => args.every((x) => !!x);
-      const OR = (...args: any[]) => args.some((x) => !!x);
-      const IF = (cond: any, truthy: any, falsy: any) => (cond ? truthy : falsy);
-      const SUM = (...args: any[]) => args.reduce((s, v) => s + (Number(v) || 0), 0);
-      const MULTIPLY = (...args: any[]) => args.reduce((p, v) => p * (Number(v) || 0), 1);
-      const DIVIDE = (a: any, b: any) => {
-        const na = Number(a);
-        const nb = Number(b);
-        if (!Number.isFinite(na) || !Number.isFinite(nb) || nb === 0) return 0;
-        return na / nb;
-      };
-      const SUBTRACT = (a: any, b: any) => (Number(a) || 0) - (Number(b) || 0);
-      const MAX = (...args: any[]) => Math.max(...args.map((v) => (Number(v) || 0)));
-      const MIN = (...args: any[]) => Math.min(...args.map((v) => (Number(v) || 0)));
-      const ROUND = (n: any, decimals: any = 0) => {
-        const nn = Number(n);
-        const d = Number(decimals);
-        if (!Number.isFinite(nn) || !Number.isFinite(d)) return 0;
-        const f = Math.pow(10, Math.max(0, Math.floor(d)));
-        return Math.round(nn * f) / f;
-      };
-      const CEIL = (n: any) => Math.ceil(Number(n) || 0);
-      const FLOOR = (n: any) => Math.floor(Number(n) || 0);
-      const CONCAT = (...args: any[]) => args.map((v) => (v == null ? '' : String(v))).join('');
-      const LENGTH = (v: any) => (v == null ? 0 : String(v).length);
-
-      // eslint-disable-next-line no-new-func
-      return new Function(
-        'AND',
-        'OR',
-        'IF',
-        'SUM',
-        'MULTIPLY',
-        'DIVIDE',
-        'SUBTRACT',
-        'MAX',
-        'MIN',
-        'ROUND',
-        'CEIL',
-        'FLOOR',
-        'CONCAT',
-        'LENGTH',
-        'return ' + expression
-      )(
-        AND,
-        OR,
-        IF,
-        SUM,
-        MULTIPLY,
-        DIVIDE,
-        SUBTRACT,
-        MAX,
-        MIN,
-        ROUND,
-        CEIL,
-        FLOOR,
-        CONCAT,
-        LENGTH
-      );
-    } catch (err) {
-      console.error('Formula evaluation error:', err);
-      return null;
-    }
-  };
-
-  const formulaColumns = useMemo(() => {
-    return COLUMNS
-      .map((c) => String((c as any)?.key || '').trim())
-      .filter((key) => {
-        if (!key) return false;
-        const cfg = gridConfig[key];
-        return !!cfg?.formula && (cfg?.inputType === 'formula' || !!cfg?.formula);
-      });
-  }, [gridConfig]);
-
-  function applyFormulaCascade(inputRows: FireDoorRow[]) {
-    const rowsCopy: FireDoorRow[] = inputRows.map((row) => ({
-      ...row,
-      __gridMeta:
-        row && typeof row === 'object' && (row as any).__gridMeta && typeof (row as any).__gridMeta === 'object'
-          ? { ...(row as any).__gridMeta }
-          : (row as any).__gridMeta,
-    })) as FireDoorRow[];
-
-    const updatesById = new Map<string, Record<string, any>>();
-
-    for (let pass = 0; pass < 5; pass++) {
-      let changed = false;
-      for (const row of rowsCopy) {
-        for (const key of formulaColumns) {
-          const cfg = gridConfig[key];
-          if (!cfg?.formula) continue;
-          const allowOverride = !!cfg?.allowFormulaOverride;
-          const overrideActive = allowOverride && getFormulaOverrideFlag(row, key);
-          if (overrideActive) continue;
-
-          const nextVal = evaluateFormula(cfg.formula, row);
-          const normalized = nextVal == null ? null : nextVal;
-          if (!Object.is((row as any)[key], normalized)) {
-            (row as any)[key] = normalized;
-            const patch = updatesById.get(row.id) || {};
-            patch[key] = normalized;
-            updatesById.set(row.id, patch);
-            changed = true;
-          }
-        }
-      }
-      if (!changed) break;
-    }
-
-    const updates = Array.from(updatesById.entries()).map(([id, changes]) => ({ id, changes }));
-    return { rows: rowsCopy, updates };
-  }
 
   const loadImport = useCallback(async (opts?: { selectAll?: boolean }) => {
     if (!importId) return;
