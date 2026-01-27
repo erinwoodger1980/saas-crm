@@ -313,6 +313,18 @@ const FIRE_DOOR_FIELD_CATALOG_RAW = [
   'Sequence',
   'Batch / Phase',
   'Door Ref',
+  'Cost Of Materials',
+  'Cost Of Labour',
+  'Line Cost',
+  'Line Sell',
+  'Price Ea',
+  'Qty2',
+  'Line Price',
+  'Total Material Cost',
+  'Total Labour Cost',
+  'Total Costs',
+  'Profit',
+  'Total Line Price',
   'Location',
   'Doorset / Leaf  / Frame',
   'Type',
@@ -933,6 +945,8 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   const [availableLookupTables, setAvailableLookupTables] = useState<Array<{ id: string; tableName?: string; name?: string; category?: string; columns?: string[]; rows?: Array<Record<string, any>> }>>([]);
   const [availableComponents, setAvailableComponents] = useState<Array<{ id: string; code: string; name: string }>>([]);
   const [availableFields, setAvailableFields] = useState<Array<{ name: string; type: string }>>([]);
+  const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
+  const [showColumnManager, setShowColumnManager] = useState(false);
 
   const [mutatingRows, setMutatingRows] = useState(false);
   const [markupPercent, setMarkupPercent] = useState(0);
@@ -998,6 +1012,28 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   useEffect(() => {
     rowsRef.current = rows;
   }, [rows]);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem('fireDoorOrderGridHiddenColumns');
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as string[];
+      if (Array.isArray(parsed)) {
+        setHiddenColumns(new Set(parsed.filter((k) => typeof k === 'string')));
+      }
+    } catch {
+      // ignore storage failures
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const data = Array.from(hiddenColumns);
+      window.localStorage.setItem('fireDoorOrderGridHiddenColumns', JSON.stringify(data));
+    } catch {
+      // ignore storage failures
+    }
+  }, [hiddenColumns]);
 
   const totals = useMemo(() => {
     const readNumber = (value: any) => {
@@ -2414,6 +2450,10 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     ];
   }, [gridConfig, lookupOptions, activeCell, isCellInSelection, columnWidths, openRfiDialog, openColumnConfig, rfiCells, rfiColumns]);
 
+  const visibleColumns = useMemo(() => {
+    return columns.filter((col) => !hiddenColumns.has(String((col as any)?.key || '')));
+  }, [columns, hiddenColumns]);
+
   const handleColumnResize = useCallback((colOrIdx: any, widthMaybe: any) => {
     let colKey: string | null = null;
     let nextWidth: number | null = null;
@@ -2757,6 +2797,12 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
           </span>
           <Button
             variant="outline"
+            onClick={() => setShowColumnManager((prev) => !prev)}
+          >
+            Manage Columns
+          </Button>
+          <Button
+            variant="outline"
             disabled={mutatingRows}
             onClick={async () => {
               try {
@@ -2802,6 +2848,42 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
           {creatingQuote ? "Creating..." : `Create Quote (${selectedRows.size} doors)`}
         </Button>
       </div>
+
+      {showColumnManager && (
+        <div className="bg-white border rounded-lg p-4 max-h-[300px] overflow-y-auto">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+            {columns
+              .filter((col) => {
+                const key = String((col as any)?.key || '');
+                return key && key !== 'select-row' && key !== 'rowIndex';
+              })
+              .map((col) => {
+                const key = String((col as any)?.key || '');
+                return (
+                  <label key={key} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                    <input
+                      type="checkbox"
+                      checked={!hiddenColumns.has(key)}
+                      onChange={() => {
+                        setHiddenColumns((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(key)) {
+                            next.delete(key);
+                          } else {
+                            next.add(key);
+                          }
+                          return next;
+                        });
+                      }}
+                      className="rounded"
+                    />
+                    <span className="text-sm">{(col as any)?.name || key}</span>
+                  </label>
+                );
+              })}
+          </div>
+        </div>
+      )}
 
       <div className="bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow border border-white/20">
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -2873,7 +2955,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
         onMouseDown={() => gridContainerRef.current?.focus()}
       >
         <DataGrid
-          columns={columns}
+          columns={visibleColumns}
           rows={rows}
           rowKeyGetter={(row) => row.id}
           selectedRows={selectedRowsSet}
