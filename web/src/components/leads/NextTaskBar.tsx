@@ -73,6 +73,24 @@ Our team`
     }
   };
 
+  const handleAcceptNoEmail = async () => {
+    if (!nextTask.id) return;
+    setLoading(true);
+    try {
+      await apiFetch(`/tasks/${nextTask.id}/actions/accept-enquiry`, {
+        method: "POST",
+        json: { skipEmail: true },
+      });
+      toast({ title: "Enquiry accepted", description: "No email sent" });
+      onTaskComplete();
+    } catch (error) {
+      console.error("Failed to accept lead without email:", error);
+      toast({ title: "Failed to accept" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleReject = async () => {
     if (!nextTask.id) return;
     setLoading(true);
@@ -118,9 +136,12 @@ Our team`
             </p>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
             <Button size="sm" onClick={handleAccept} disabled={loading} className="bg-sky-600 hover:bg-sky-700 text-white">
               Accept
+            </Button>
+            <Button size="sm" variant="outline" onClick={handleAcceptNoEmail} disabled={loading}>
+              Accept (no email)
             </Button>
             <Button size="sm" variant="outline" onClick={handleDecline} disabled={loading}>
               Decline

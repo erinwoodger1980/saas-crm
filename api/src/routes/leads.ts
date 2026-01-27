@@ -1645,33 +1645,50 @@ router.post("/", async (req, res) => {
     // Proactive first task
     await handleStatusTransition({ tenantId, leadId: lead.id, prevUi: null, nextUi: uiStatus, actorId: userId, playbook });
 
-    // If assigned to a user, create initial task for them
+    // If assigned to a user, create initial task for them (avoid duplicates from playbook)
     if (assignedUserId) {
-      const initialTask = await prisma.task.create({
-        data: {
+      const reviewKey = `status:new-review:${lead.id}`;
+      const existingReviewTask = await prisma.task.findFirst({
+        where: {
           tenantId,
-          createdById: userId,
-          title: `Review enquiry: ${lead.contactName}`,
-          description: `Review and respond to enquiry from ${lead.contactName} (${normalizedEmail})`,
-          status: "OPEN",
-          priority: "HIGH",
-          taskType: "MANUAL",
-          relatedType: "LEAD",
+          relatedType: "LEAD" as any,
           relatedId: lead.id,
-          autoCompleted: false,
-          requiresSignature: false,
-          dueAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // Due in 24 hours
+          status: { notIn: ["DONE", "CANCELLED"] as any },
+          OR: [
+            { meta: { path: ["key"], equals: reviewKey } as any },
+            { title: { contains: "review enquiry", mode: "insensitive" } },
+          ],
         },
+        select: { id: true },
       });
 
-      // Assign task to user
-      await prisma.taskAssignee.create({
-        data: {
-          taskId: initialTask.id,
-          userId: assignedUserId,
-          role: "OWNER",
-        },
-      });
+      if (!existingReviewTask) {
+        const initialTask = await prisma.task.create({
+          data: {
+            tenantId,
+            createdById: userId,
+            title: `Review enquiry: ${lead.contactName}`,
+            description: `Review and respond to enquiry from ${lead.contactName} (${normalizedEmail})`,
+            status: "OPEN",
+            priority: "HIGH",
+            taskType: "MANUAL",
+            relatedType: "LEAD",
+            relatedId: lead.id,
+            autoCompleted: false,
+            requiresSignature: false,
+            dueAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // Due in 24 hours
+          },
+        });
+
+        // Assign task to user
+        await prisma.taskAssignee.create({
+          data: {
+            taskId: initialTask.id,
+            userId: assignedUserId,
+            role: "OWNER",
+          },
+        });
+      }
     }
 
     // If created with WON status, ensure opportunity exists
@@ -2163,26 +2180,24 @@ router.patch("/:id", async (req, res) => {
       console.warn("[leads] status→training log failed:", (e as any)?.message || e);
     }
 
-    // Auto-complete the initial "Review enquiry" task when moving off NEW_ENQUIRY
+    // Auto-complete the initial "Review enquiry" task when moving to accepted/quote stages
     try {
-      if (prevUi === "NEW_ENQUIRY" && nextUi !== "NEW_ENQUIRY") {
+      const shouldCompleteReview = nextUi === "READY_TO_QUOTE" || nextUi === "QUOTE_SENT" || nextUi === "WON";
+      if (shouldCompleteReview) {
         const key = `status:new-review:${id}`;
-        const reviewTask = await prisma.task.findFirst({
+        await prisma.task.updateMany({
           where: {
             tenantId,
             relatedType: "LEAD" as any,
             relatedId: id,
             status: { notIn: ["DONE", "CANCELLED"] as any },
-            meta: { path: ["key"], equals: key } as any,
+            OR: [
+              { meta: { path: ["key"], equals: key } as any },
+              { title: { contains: "review enquiry", mode: "insensitive" } },
+            ],
           },
-          select: { id: true },
+          data: { status: "DONE" as any, completedAt: new Date(), updatedById: actorId ?? undefined },
         });
-        if (reviewTask) {
-          await prisma.task.update({
-            where: { id: reviewTask.id },
-            data: { status: "DONE" as any, completedAt: new Date(), updatedById: actorId ?? undefined },
-          });
-        }
       }
     } catch (e) {
       console.warn("[leads] auto-complete review task failed:", (e as any)?.message || e);

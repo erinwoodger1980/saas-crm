@@ -195,6 +195,21 @@ export function TaskCenter({
     }
   };
 
+  const handleAcceptNoEmail = async (taskId: string) => {
+    try {
+      await apiFetch(`/tasks/${taskId}/actions/accept-enquiry`, {
+        method: 'POST',
+        headers: { 'x-tenant-id': tenantId },
+        json: { skipEmail: true },
+      });
+      await loadTasks();
+      await Promise.resolve(onTasksChanged?.());
+      alert('Enquiry accepted (no email sent)');
+    } catch {
+      alert('Failed to accept enquiry');
+    }
+  };
+
   const toggleTaskExpansion = async (taskId: string, leadId?: string) => { const newExpanded = new Set(expandedTaskIds); if (newExpanded.has(taskId)) newExpanded.delete(taskId); else { newExpanded.add(taskId);
       const t = tasks.find(tt => tt.id === taskId); if (t && (t as any).meta?.inlineReplyDraft && !emailComposeMap[taskId]) { const draft = (t as any).meta.inlineReplyDraft; setEmailComposeMap(prev => ({ ...prev, [taskId]: { open: false, subject: draft.subject || '', body: draft.body || '' } })); }
       if (t && !taskEditMap[taskId]) { const meta = (t as any).meta || {}; const lf = meta.linkedField || {}; const toLocal = (iso?: string) => { if (!iso) return ''; const d = new Date(iso); const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; }; setTaskEditMap(prev => ({ ...prev, [taskId]: { taskType: t.taskType, status: t.status, priority: t.priority, dueAt: toLocal(t.dueAt), description: t.description || '', linkId: lf?.linkId || '', recordId: lf?.recordId || '' } })); }
@@ -246,6 +261,7 @@ export function TaskCenter({
                 {isReviewEnquiry ? (
                   <>
                     <Button size="sm" variant="default" className="flex-1 bg-green-600 hover:bg-green-700" onClick={() => handleSendEmailPreview(task.id, 'accept')}>✓ Accept</Button>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => handleAcceptNoEmail(task.id)}>✓ Accept (no email)</Button>
                     <Button size="sm" variant="default" className="flex-1 bg-orange-600 hover:bg-orange-700" onClick={() => handleSendEmailPreview(task.id, 'decline')}>↓ Decline</Button>
                     <Button size="sm" variant="outline" className="flex-1 border-red-400 text-red-700 hover:bg-red-50" onClick={() => handleRejectEnquiry(task.id)}>✕ Reject</Button>
                   </>
@@ -481,8 +497,29 @@ export function TaskCenter({
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">To:</label><div className="text-sm text-gray-900">{emailPreview.recipientName ? `${emailPreview.recipientName} <${emailPreview.to}>` : emailPreview.to}</div></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Subject:</label><Input value={emailPreview.subject} onChange={(e) => setEmailPreview({ ...emailPreview, subject: e.target.value })} /></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Message:</label><textarea value={emailPreview.body} onChange={(e) => setEmailPreview({ ...emailPreview, body: e.target.value })} rows={12} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm" /></div>
-                <div className="flex gap-3 pt-4">
+                <div className="flex gap-3 pt-4 flex-wrap">
                   <Button variant="outline" onClick={() => setEmailPreview({ ...emailPreview, isOpen: false })} className="flex-1">Cancel</Button>
+                  {emailPreview.action === 'accept' && (
+                    <Button
+                      variant="outline"
+                      onClick={async () => {
+                        if (!emailPreview.taskId) return;
+                        try {
+                          await apiFetch(`/tasks/${emailPreview.taskId}/actions/accept-enquiry`, {
+                            method: 'POST',
+                            headers: { 'x-tenant-id': tenantId },
+                            json: { skipEmail: true },
+                          });
+                          setEmailPreview({ ...emailPreview, isOpen: false });
+                          await loadTasks();
+                          alert('Enquiry accepted (no email sent)');
+                        } catch {
+                          alert('Failed to accept enquiry');
+                        }
+                      }}
+                      className="flex-1"
+                    >Accept (no email)</Button>
+                  )}
                   <Button onClick={async () => { if (!emailPreview.taskId || !emailPreview.action) return; try { const endpoint = emailPreview.action === 'accept' ? 'accept-enquiry' : 'decline-enquiry'; await apiFetch(`/tasks/${emailPreview.taskId}/actions/${endpoint}`, { method: 'POST', headers: { 'x-tenant-id': tenantId }, json: { subject: emailPreview.subject, body: emailPreview.body } }); setEmailPreview({ ...emailPreview, isOpen: false }); await loadTasks(); alert('Email sent successfully!'); } catch { alert('Failed to send email'); } }} className="flex-1 bg-blue-600 hover:bg-blue-700"><Mail className="h-4 w-4 mr-2" />Send Email</Button>
                 </div>
               </div>

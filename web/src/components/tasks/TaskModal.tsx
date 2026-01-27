@@ -943,6 +943,17 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
                   className="bg-green-600 hover:bg-green-700"
                 >✓ Accept</Button>
                 <Button
+                  variant="outline"
+                  onClick={async () => {
+                    if (!form?.id) return;
+                    try {
+                      await apiFetch(`/tasks/${form.id}/actions/accept-enquiry`, { method: 'POST', headers: authHeaders, json: { skipEmail: true } });
+                      toast('Enquiry accepted (no email sent)');
+                      onChanged?.();
+                    } catch { toast('Failed to accept'); }
+                  }}
+                >Accept (no email)</Button>
+                <Button
                   variant="default"
                   onClick={async () => {
                     if (!form?.id) return;

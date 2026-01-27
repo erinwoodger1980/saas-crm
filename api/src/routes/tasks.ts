@@ -2257,9 +2257,18 @@ router.post("/:id/actions/accept-enquiry", async (req, res) => {
     });
     const brandName = (settings?.brandName as string) || "Sales Team";
 
+    const wrapEmailHtml = (body: string) => {
+      const content = String(body || '').trim();
+      const looksHtml = /<\/?[a-z][\s\S]*>/i.test(content);
+      const inner = looksHtml ? content : content.replace(/\n/g, "<br/>");
+      return `<!doctype html><html><body style="margin:0;padding:0;background:#f3f4f6;"><div style="max-width:640px;margin:0 auto;background:#ffffff;padding:24px;font-family:Arial,Helvetica,sans-serif;color:#0f172a;line-height:1.6;">${inner}</div></body></html>`;
+    };
+
+    const { customSubject, customBody, skipEmail } = req.body || {};
+    const shouldSendEmail = !skipEmail;
+
     // Send thank you email
-    if (recipientEmail && userId) {
-      const { customSubject, customBody } = req.body || {};
+    if (shouldSendEmail && recipientEmail && userId) {
       let finalSubject = customSubject;
       let finalBody = customBody;
       let userEdited = !!(customSubject || customBody);
@@ -2289,7 +2298,7 @@ router.post("/:id/actions/accept-enquiry", async (req, res) => {
           to: recipientEmail,
           subject: finalSubject,
           body: finalBody,
-          htmlBody: finalBody,
+          htmlBody: wrapEmailHtml(finalBody),
           fromName: brandName,
           inReplyTo: emailMessageId || undefined,
           references: emailThreadId ? [emailThreadId] : undefined,
@@ -2334,7 +2343,7 @@ router.post("/:id/actions/accept-enquiry", async (req, res) => {
         entityId: task.id,
         verb: "COMPLETED",
         actorId: userId,
-        data: { action: "accept_enquiry", emailSent: !!recipientEmail } as any,
+        data: { action: "accept_enquiry", emailSent: !!(shouldSendEmail && recipientEmail) } as any,
       },
     });
 
@@ -2344,13 +2353,13 @@ router.post("/:id/actions/accept-enquiry", async (req, res) => {
         tenantId,
         module: "tasks",
         kind: "task_action_accept_enquiry",
-        payload: { taskId: task.id, emailSent: !!recipientEmail },
+        payload: { taskId: task.id, emailSent: !!(shouldSendEmail && recipientEmail) },
         actorId: userId,
       });
     }
 
     console.log("[tasks/:id/actions/accept-enquiry] Success");
-    return res.json({ ok: true, emailSent: !!recipientEmail });
+    return res.json({ ok: true, emailSent: !!(shouldSendEmail && recipientEmail) });
   } catch (e: any) {
     console.error("[tasks/:id/actions/accept-enquiry] Error:", e?.message || e);
     console.error("[tasks/:id/actions/accept-enquiry] Stack:", e?.stack);
