@@ -1899,6 +1899,9 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       // Resolve LOOKUP(...) calls first, using loaded flexible lookup tables.
       expression = replaceLookupCalls(expression, row);
 
+      // Normalize single '=' to '==' (avoid assignment errors in conditions).
+      expression = expression.replace(/(^|[^=<>!])=([^=])/g, "$1==$2");
+
       // Primary syntax: ${fieldName}
       expression = expression.replace(/\$\{([^}]+)\}/g, (_m, fieldRaw) => {
         const key = String(fieldRaw || '').trim();
