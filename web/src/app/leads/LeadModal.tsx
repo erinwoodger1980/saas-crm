@@ -4913,11 +4913,11 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                               <select
                                 className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-inner"
                                 value={currentClientData?.userId || ""}
-                                onChange={(e) => {
+                                onChange={async (e) => {
                                   const newUserId = e.target.value || null;
                                   if (lead?.clientId) {
                                     try {
-                                      void apiFetch(`/clients/${lead.clientId}`, {
+                                      await apiFetch(`/clients/${lead.clientId}`, {
                                         method: "PATCH",
                                         json: { userId: newUserId },
                                         headers: authHeaders,

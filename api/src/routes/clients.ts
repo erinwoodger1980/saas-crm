@@ -396,6 +396,7 @@ router.patch("/:id", async (req, res) => {
       tags,
       type,
       linkedTenantId,
+      userId: assignedUserId,
     } = req.body;
 
     // Verify client exists and belongs to tenant
@@ -423,6 +424,7 @@ router.patch("/:id", async (req, res) => {
     if (tags !== undefined) updateData.tags = Array.isArray(tags) ? tags : [];
     if (type !== undefined) updateData.type = ["trade", "public", "reseller"].includes(type) ? type : "public";
     if (linkedTenantId !== undefined) updateData.linkedTenantId = linkedTenantId || null;
+    if (assignedUserId !== undefined) updateData.userId = assignedUserId ? String(assignedUserId) : null;
 
     const client = await prisma.client.update({
       where: { id },
