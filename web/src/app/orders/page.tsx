@@ -74,6 +74,9 @@ type Order = {
   processPercentages?: Record<string, number>;
   manufacturingCompletionDate?: string | null;
   orderValueGBP?: number | string | null;
+  assignedUserId?: string | null;
+  assignedUser?: { id: string; name?: string | null; email?: string | null } | null;
+  assignedUserName?: string | null;
 };
 
 type Grouped = Record<string, Order[]>;
@@ -112,6 +115,8 @@ export default function OrdersPage() {
   const [rows, setRows] = useState<Order[]>([]);
   const { shortName } = useTenantBrand();
   const { toast } = useToast();
+  const [tenantUsers, setTenantUsers] = useState<Array<{ id: string; name?: string | null; email?: string | null }>>([]);
+  const [assignedUserFilter, setAssignedUserFilter] = useState<string>("all");
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [clients, setClients] = useState<Array<{ id: string; name: string; email?: string | null }>>([]);
 
@@ -170,6 +175,7 @@ export default function OrdersPage() {
       { field: 'displayName', label: 'Name', type: 'text' },
       { field: 'contactName', label: 'Contact Name', type: 'text' },
       { field: 'email', label: 'Email', type: 'email' },
+      { field: 'assignedUserName', label: 'Assigned User', type: 'text' },
       { field: 'status', label: 'Status', type: 'dropdown', dropdownOptions: ['WON', 'COMPLETED'] },
       { field: 'nextAction', label: 'Next Action', type: 'text' },
       { field: 'nextActionAt', label: 'Next Action Date', type: 'date' },
@@ -229,6 +235,32 @@ export default function OrdersPage() {
   }
 
   useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiFetch<any[]>("/tenant/users");
+        if (cancelled) return;
+        if (Array.isArray(data)) {
+          setTenantUsers(
+            data.map((u: any) => ({
+              id: u.id,
+              name: u.name || u.firstName || null,
+              email: u.email || null,
+            }))
+          );
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Failed to load tenant users:", err);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
@@ -242,8 +274,16 @@ export default function OrdersPage() {
     [grouped]
   );
 
+  const filteredRows = useMemo(() => {
+    if (assignedUserFilter === "all") return rows;
+    return rows.filter((o: any) => {
+      const assignedId = o?.assignedUserId || o?.assignedUser?.id || o?.client?.userId || o?.client?.user?.id || null;
+      return assignedId === assignedUserFilter;
+    });
+  }, [assignedUserFilter, rows]);
+
   const sortedRows = useMemo(() => {
-    const list = [...(rows || [])];
+    const list = [...(filteredRows || [])];
     // Blank manufacturing completion dates first, then ascending by date.
     list.sort((a, b) => {
       const ad = a.manufacturingCompletionDate;
@@ -256,7 +296,7 @@ export default function OrdersPage() {
       return compareIsoDateAsc(ad!, bd!);
     });
     return list;
-  }, [rows]);
+  }, [filteredRows]);
 
   const groupedForCards = useMemo(() => {
     const noDate: Order[] = [];
@@ -310,7 +350,20 @@ export default function OrdersPage() {
                 return col;
               })
             : parsed;
-          setColumnConfig(migrated);
+          const ensureAssignedUser = (cols: any[]) => {
+            if (cols.some((c) => c?.field === 'assignedUserName')) return cols;
+            const insertAfter = cols.findIndex((c) => c?.field === 'email');
+            const next = [...cols];
+            next.splice(Math.max(0, insertAfter + 1), 0, {
+              field: 'assignedUserName',
+              label: 'Assigned User',
+              visible: true,
+              frozen: false,
+              width: 160,
+            });
+            return next;
+          };
+          setColumnConfig(Array.isArray(migrated) ? ensureAssignedUser(migrated) : migrated);
         } catch {
           setColumnConfig([
             { 
@@ -322,6 +375,7 @@ export default function OrdersPage() {
               type: 'text'
             },
             { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
+            { field: 'assignedUserName', label: 'Assigned User', visible: true, frozen: false, width: 160 },
             { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown', dropdownOptions: ['WON', 'COMPLETED'] },
             { field: 'nextAction', label: 'Next Action', visible: true, frozen: false, width: 200 },
           ]);
@@ -337,6 +391,7 @@ export default function OrdersPage() {
             type: 'text'
           },
           { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
+          { field: 'assignedUserName', label: 'Assigned User', visible: true, frozen: false, width: 160 },
           { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown', dropdownOptions: ['WON', 'COMPLETED'] },
           { field: 'nextAction', label: 'Next Action', visible: true, frozen: false, width: 200 },
         ]);
@@ -486,9 +541,26 @@ export default function OrdersPage() {
           </div>
         </header>
 
-        <div className="flex flex-wrap gap-2">
-          <TabButton s="WON" />
-          <TabButton s="COMPLETED" />
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap gap-2">
+            <TabButton s="WON" />
+            <TabButton s="COMPLETED" />
+          </div>
+          <div className="ml-auto flex items-center gap-2 rounded-full border border-emerald-200/70 bg-white/70 px-3 py-1.5 text-xs font-semibold text-emerald-700 shadow-sm">
+            <span className="text-[10px] uppercase tracking-wide text-emerald-400">Assignee</span>
+            <select
+              className="bg-transparent text-xs font-semibold text-emerald-900 outline-none"
+              value={assignedUserFilter}
+              onChange={(e) => setAssignedUserFilter(e.target.value)}
+            >
+              <option value="all">All</option>
+              {tenantUsers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name || u.email || "User"}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {error && (
@@ -650,6 +722,8 @@ function CardRow({
   actionArea?: React.ReactNode;
 }) {
   const badge = "bg-emerald-100 text-emerald-900";
+  const assignedUserLabel =
+    order.assignedUserName || order.assignedUser?.name || order.assignedUser?.email || null;
 
   return (
     <div
@@ -674,6 +748,13 @@ function CardRow({
             {order.custom?.source ? `Source: ${order.custom.source}` : "Source: —"}
             {order.nextAction ? ` · Next: ${order.nextAction}` : ""}
           </div>
+          {assignedUserLabel && (
+            <div className="mt-1">
+              <span className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+                {assignedUserLabel}
+              </span>
+            </div>
+          )}
           {(order.opportunityGroupName || order.opportunityGroupId) && (
             <div className="mt-1">
               <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">

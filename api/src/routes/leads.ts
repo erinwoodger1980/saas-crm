@@ -1416,7 +1416,11 @@ router.get("/grouped", async (req, res) => {
     orderBy: [{ capturedAt: "desc" }],
     include: {
       client: {
-        select: { source: true },
+        select: {
+          source: true,
+          userId: true,
+          user: { select: { id: true, name: true, email: true } },
+        },
       },
       opportunity: {
         select: { 
@@ -1492,9 +1496,21 @@ router.get("/grouped", async (req, res) => {
       });
     }
     
+    const assignedUser = (l as any)?.client?.user
+      ? {
+          id: (l as any).client.user.id,
+          name: (l as any).client.user.name ?? null,
+          email: (l as any).client.user.email ?? null,
+        }
+      : null;
+    const assignedUserId = (l as any)?.client?.userId ?? assignedUser?.id ?? null;
+
     (grouped[bucket] || grouped.NEW_ENQUIRY).push({
       ...l,
       custom: mergedCustom,
+      assignedUser,
+      assignedUserId,
+      assignedUserName: assignedUser?.name ?? assignedUser?.email ?? null,
       opportunityId: l.opportunity?.id || null,
       opportunityGroupId: (l.opportunity as any)?.groupId ?? null,
       opportunityGroupName: (l.opportunity as any)?.group?.name ?? null,

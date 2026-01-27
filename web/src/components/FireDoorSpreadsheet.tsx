@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { apiFetch } from "@/lib/api";
+import { useCurrentUser } from "@/lib/use-current-user";
 import DataGrid, { Column, SelectColumn, RenderEditCellProps } from "react-data-grid";
 import "react-data-grid/lib/styles.css";
 import clsx from "clsx";
@@ -897,6 +898,7 @@ const COLUMNS: Column<FireDoorRow>[] = buildColumnsFromCatalog(BASE_COLUMNS, FIR
 const GRID_KEYS: string[] = Array.from(new Set(COLUMNS.map((c) => String((c as any).key || "")).filter(Boolean)));
 
 export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onComponentCreated }: FireDoorSpreadsheetProps) {
+  const { user } = useCurrentUser();
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<FireDoorRow[]>([]);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
@@ -936,6 +938,12 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   }, []);
 
   const lastSavedColumnWidthsRef = useRef<string>("{}");
+  const authHeaders = useMemo(() => {
+    const headers: Record<string, string> = {};
+    if (user?.tenantId) headers["x-tenant-id"] = String(user.tenantId);
+    if (user?.id) headers["x-user-id"] = String(user.id);
+    return headers;
+  }, [user?.id, user?.tenantId]);
 
   useEffect(() => {
     rowsRef.current = rows;
@@ -979,7 +987,8 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     (async () => {
       try {
         const res = await apiFetch<{ ok: boolean; columnWidths?: Record<string, number> }>(
-          `/fire-doors/order-grid/column-widths`
+          `/fire-doors/order-grid/column-widths`,
+          { headers: authHeaders }
         );
         const widths = res?.columnWidths && typeof res.columnWidths === "object" ? res.columnWidths : {};
         if (cancelled) return;
@@ -994,7 +1003,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     return () => {
       cancelled = true;
     };
-  }, [stableStringifyObject]);
+  }, [authHeaders, stableStringifyObject]);
 
   useEffect(() => {
     if (!columnWidthsLoaded) return;
@@ -1005,6 +1014,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       try {
         await apiFetch(`/fire-doors/order-grid/column-widths`, {
           method: "POST",
+          headers: authHeaders,
           json: { columnWidths: columnWidths || {} },
         });
         lastSavedColumnWidthsRef.current = sig;
@@ -1014,7 +1024,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     }, 250);
 
     return () => window.clearTimeout(t);
-  }, [columnWidths, columnWidthsLoaded, stableStringifyObject]);
+  }, [authHeaders, columnWidths, columnWidthsLoaded, stableStringifyObject]);
 
   const loadRfis = useCallback(async () => {
     if (!importId) return;

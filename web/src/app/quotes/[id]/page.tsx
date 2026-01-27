@@ -63,12 +63,13 @@ export default function QuoteBuilderPage() {
   const proposalBasicsAutosaveTimerRef = useRef<number | null>(null);
   const [proposalBasicsOpen, setProposalBasicsOpen] = useState(true);
   const [proposalScopeDraft, setProposalScopeDraft] = useState<string>("");
-  const [proposalSpecsDraft, setProposalSpecsDraft] = useState<{ timber: string; finish: string; glazing: string; fittings: string; ventilation: string }>({
+  const [proposalSpecsDraft, setProposalSpecsDraft] = useState<{ timber: string; finish: string; glazing: string; fittings: string; ventilation: string; compliance: string }>({
     timber: "",
     finish: "",
     glazing: "",
     fittings: "",
     ventilation: "",
+    compliance: "",
   });
   const [isSavingProposalBasics, setIsSavingProposalBasics] = useState(false);
   const [isRefreshingProposalBasics, setIsRefreshingProposalBasics] = useState(false);
@@ -1283,6 +1284,7 @@ export default function QuoteBuilderPage() {
         glazing: proposalSpecsDraft.glazing,
         fittings: proposalSpecsDraft.fittings,
         ventilation: proposalSpecsDraft.ventilation,
+        compliance: proposalSpecsDraft.compliance,
       };
 
       await apiFetch(`/quotes/${encodeURIComponent(quoteId)}`, {
@@ -1305,6 +1307,7 @@ export default function QuoteBuilderPage() {
           glazing: proposalSpecsDraft.glazing,
           fittings: proposalSpecsDraft.fittings,
           ventilation: proposalSpecsDraft.ventilation,
+          compliance: proposalSpecsDraft.compliance,
         },
       });
       if (!opts?.silent) {
@@ -1334,6 +1337,7 @@ export default function QuoteBuilderPage() {
       glazing: typeof specsAny?.glazing === "string" ? specsAny.glazing : "",
       fittings: typeof specsAny?.fittings === "string" ? specsAny.fittings : "",
       ventilation: typeof specsAny?.ventilation === "string" ? specsAny.ventilation : "",
+      compliance: typeof specsAny?.compliance === "string" ? specsAny.compliance : "",
     };
     setProposalSpecsDraft({
       ...initSpecs,
@@ -1355,6 +1359,7 @@ export default function QuoteBuilderPage() {
         glazing: proposalSpecsDraft.glazing,
         fittings: proposalSpecsDraft.fittings,
         ventilation: proposalSpecsDraft.ventilation,
+        compliance: proposalSpecsDraft.compliance,
       },
     });
     if (snapshot === proposalBasicsLastSavedRef.current) return;
@@ -1393,13 +1398,14 @@ export default function QuoteBuilderPage() {
       }
 
       setProposalScopeDraft(typeof b.scope === "string" ? b.scope : "");
-      setProposalSpecsDraft({
+      setProposalSpecsDraft((prev) => ({
+        ...prev,
         timber: typeof b.timber === "string" ? b.timber : "",
         finish: typeof b.finish === "string" ? b.finish : "",
         glazing: typeof b.glazing === "string" ? b.glazing : "",
         fittings: typeof b.fittings === "string" ? b.fittings : "",
         ventilation: typeof b.ventilation === "string" ? b.ventilation : "",
-      });
+      }));
 
       toast({ title: "Refreshed", description: "Updated scope and specs from the current line items." });
     } catch (err: any) {
@@ -2761,6 +2767,15 @@ export default function QuoteBuilderPage() {
                               onBlur={() => void handleSaveProposalBasics({ silent: true })}
                             />
                           </div>
+                          <div className="space-y-1 md:col-span-2">
+                            <div className="text-xs font-medium text-muted-foreground">Compliance note</div>
+                            <Input
+                              value={proposalSpecsDraft.compliance}
+                              onChange={(e) => setProposalSpecsDraft((p) => ({ ...p, compliance: e.target.value }))}
+                              onBlur={() => void handleSaveProposalBasics({ silent: true })}
+                              placeholder="e.g. PAS 24 / Part Q: Glazing to GGF guidelines."
+                            />
+                          </div>
                         </div>
                       </div>
                     ) : null}
@@ -3183,7 +3198,7 @@ export default function QuoteBuilderPage() {
                   if (!quoteId || !selectedFileId) return;
                   setIsProcessingSupplier(true);
                   try {
-                    const file = (quote?.supplierFiles ?? []).find((f) => f.id === selectedFileId) as SupplierFile | undefined;
+                    const file = (quote?.supplierFiles ?? []).find((f) => f.id === selectedFileId) as SupplierFileDto | undefined;
                     if (!file) throw new Error("Select a file to process");
                     
                     // Step 1: Process the supplier PDF

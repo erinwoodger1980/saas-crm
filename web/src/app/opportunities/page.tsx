@@ -65,6 +65,9 @@ type Lead = {
   nextActionAt?: string | null;
   custom?: Record<string, any>;
   opportunityId?: string | null;
+  assignedUserId?: string | null;
+  assignedUser?: { id: string; name?: string | null; email?: string | null } | null;
+  assignedUserName?: string | null;
 };
 
 type Grouped = Record<string, Lead[]>;
@@ -89,6 +92,8 @@ function OpportunitiesPageContent() {
   const [repliedIds, setRepliedIds] = useState<Set<string>>(new Set());
   const { shortName } = useTenantBrand();
   const { toast } = useToast();
+  const [tenantUsers, setTenantUsers] = useState<Array<{ id: string; name?: string | null; email?: string | null }>>([]);
+  const [assignedUserFilter, setAssignedUserFilter] = useState<string>("all");
 
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Lead | null>(null);
@@ -156,6 +161,7 @@ function OpportunitiesPageContent() {
     const baseFields = [
       { field: 'contactName', label: 'Contact Name', type: 'text' },
       { field: 'email', label: 'Email', type: 'email' },
+      { field: 'assignedUserName', label: 'Assigned User', type: 'text' },
       { field: 'status', label: 'Status', type: 'dropdown', dropdownOptions: ['READY_TO_QUOTE', 'ESTIMATE', 'QUOTE_SENT', 'LOST'] },
       { field: 'nextAction', label: 'Next Action', type: 'text' },
       { field: 'nextActionAt', label: 'Next Action Date', type: 'date' },
@@ -215,6 +221,32 @@ function OpportunitiesPageContent() {
   }
 
   useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiFetch<any[]>("/tenant/users");
+        if (cancelled) return;
+        if (Array.isArray(data)) {
+          setTenantUsers(
+            data.map((u: any) => ({
+              id: u.id,
+              name: u.name || u.firstName || null,
+              email: u.email || null,
+            }))
+          );
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Failed to load tenant users:", err);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
@@ -255,14 +287,22 @@ function OpportunitiesPageContent() {
     [grouped]
   );
 
+  const filteredRows = useMemo(() => {
+    if (assignedUserFilter === "all") return rows;
+    return rows.filter((l: any) => {
+      const assignedId = l?.assignedUserId || l?.assignedUser?.id || l?.client?.userId || l?.client?.user?.id || null;
+      return assignedId === assignedUserFilter;
+    });
+  }, [assignedUserFilter, rows]);
+
   // Split attention for QUOTE_SENT
   const repliedNow = useMemo(
-    () => (tab === "QUOTE_SENT" ? rows.filter((l) => repliedIds.has(l.id)) : []),
-    [rows, tab, repliedIds]
+    () => (tab === "QUOTE_SENT" ? filteredRows.filter((l) => repliedIds.has(l.id)) : []),
+    [filteredRows, tab, repliedIds]
   );
   const notReplied = useMemo(
-    () => (tab === "QUOTE_SENT" ? rows.filter((l) => !repliedIds.has(l.id)) : rows),
-    [rows, tab, repliedIds]
+    () => (tab === "QUOTE_SENT" ? filteredRows.filter((l) => !repliedIds.has(l.id)) : filteredRows),
+    [filteredRows, tab, repliedIds]
   );
 
   async function planFollowUp(id: string) {
@@ -283,11 +323,26 @@ function OpportunitiesPageContent() {
       const saved = localStorage.getItem(`opportunities-column-config-${tab}`);
       if (saved) {
         try {
-          setColumnConfig(JSON.parse(saved));
+          const parsed = JSON.parse(saved);
+          const ensureAssignedUser = (cols: any[]) => {
+            if (cols.some((c) => c?.field === 'assignedUserName')) return cols;
+            const insertAfter = cols.findIndex((c) => c?.field === 'email');
+            const next = [...cols];
+            next.splice(Math.max(0, insertAfter + 1), 0, {
+              field: 'assignedUserName',
+              label: 'Assigned User',
+              visible: true,
+              frozen: false,
+              width: 160,
+            });
+            return next;
+          };
+          setColumnConfig(Array.isArray(parsed) ? ensureAssignedUser(parsed) : parsed);
         } catch {
           setColumnConfig([
             { field: 'contactName', label: 'Contact Name', visible: true, frozen: true, width: 200 },
             { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
+            { field: 'assignedUserName', label: 'Assigned User', visible: true, frozen: false, width: 160 },
             { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown', dropdownOptions: ['READY_TO_QUOTE', 'ESTIMATE', 'QUOTE_SENT', 'LOST'] },
             { field: 'nextAction', label: 'Next Action', visible: true, frozen: false, width: 200 },
           ]);
@@ -296,6 +351,7 @@ function OpportunitiesPageContent() {
         setColumnConfig([
           { field: 'contactName', label: 'Contact Name', visible: true, frozen: true, width: 200 },
           { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
+          { field: 'assignedUserName', label: 'Assigned User', visible: true, frozen: false, width: 160 },
           { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown', dropdownOptions: ['READY_TO_QUOTE', 'ESTIMATE', 'QUOTE_SENT', 'LOST'] },
           { field: 'nextAction', label: 'Next Action', visible: true, frozen: false, width: 200 },
         ]);
@@ -451,11 +507,28 @@ function OpportunitiesPageContent() {
           </div>
         </header>
 
-        <div className="flex flex-wrap gap-2">
-          <TabButton s="READY_TO_QUOTE" />
-          <TabButton s="ESTIMATE" />
-          <TabButton s="QUOTE_SENT" />
-          <TabButton s="LOST" />
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap gap-2">
+            <TabButton s="READY_TO_QUOTE" />
+            <TabButton s="ESTIMATE" />
+            <TabButton s="QUOTE_SENT" />
+            <TabButton s="LOST" />
+          </div>
+          <div className="ml-auto flex items-center gap-2 rounded-full border border-amber-200/70 bg-white/70 px-3 py-1.5 text-xs font-semibold text-amber-700 shadow-sm">
+            <span className="text-[10px] uppercase tracking-wide text-amber-400">Assignee</span>
+            <select
+              className="bg-transparent text-xs font-semibold text-amber-900 outline-none"
+              value={assignedUserFilter}
+              onChange={(e) => setAssignedUserFilter(e.target.value)}
+            >
+              <option value="all">All</option>
+              {tenantUsers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name || u.email || "User"}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {error && (
@@ -504,13 +577,13 @@ function OpportunitiesPageContent() {
         )}
 
         <section className="space-y-2">
-          {(tab === "QUOTE_SENT" ? notReplied : rows).length === 0 ? (
+          {(tab === "QUOTE_SENT" ? notReplied : filteredRows).length === 0 ? (
             <div className="rounded-xl border border-dashed border-amber-200 bg-white/70 py-10 text-center text-sm text-slate-500">
               No quotes in "{STATUS_LABELS[tab]}".
             </div>
           ) : viewMode === 'grid' ? (
             <CustomizableGrid
-              data={tab === "QUOTE_SENT" ? notReplied : rows}
+              data={tab === "QUOTE_SENT" ? notReplied : filteredRows}
               columns={columnConfig}
               onRowClick={openLead}
               onCellChange={handleCellChange}
@@ -519,7 +592,7 @@ function OpportunitiesPageContent() {
               onEditColumnOptions={(field) => setEditingField(field)}
             />
           ) : (
-            (tab === "QUOTE_SENT" ? notReplied : rows).map((l) => (
+            (tab === "QUOTE_SENT" ? notReplied : filteredRows).map((l) => (
               <CardRow
                 key={l.id}
                 lead={l}
@@ -656,6 +729,8 @@ function CardRow({
     accent === "amber"
       ? "bg-amber-100 text-amber-900"
       : "bg-slate-100 text-slate-700";
+  const assignedUserLabel =
+    lead.assignedUserName || lead.assignedUser?.name || lead.assignedUser?.email || null;
 
   return (
     <div
@@ -672,6 +747,13 @@ function CardRow({
             {lead.custom?.source ? `Source: ${lead.custom.source}` : "Source: —"}
             {lead.nextAction ? ` · Next: ${lead.nextAction}` : ""}
           </div>
+          {assignedUserLabel && (
+            <div className="mt-1">
+              <span className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+                {assignedUserLabel}
+              </span>
+            </div>
+          )}
         </div>
         <div className="shrink-0 flex items-center gap-2">
           {actionArea}

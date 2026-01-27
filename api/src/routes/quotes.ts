@@ -713,6 +713,17 @@ function summariseParseQuality(entries: Array<Record<string, any>>): "ok" | "poo
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+const resolveUploadPath = (p: string): string | null => {
+  const raw = String(p || "").trim();
+  if (!raw) return null;
+  if (path.isAbsolute(raw)) return raw;
+  const cwdPath = path.join(process.cwd(), raw);
+  if (fs.existsSync(cwdPath)) return cwdPath;
+  const normalized = raw.replace(/^uploads[\\/]/, "");
+  const uploadPath = path.join(UPLOAD_DIR, normalized);
+  if (fs.existsSync(uploadPath)) return uploadPath;
+  return cwdPath;
+};
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
   filename: (_req, file, cb) => {
@@ -4445,21 +4456,17 @@ function buildLineItemAiContext(lines: any[]): string {
   const chunks: string[] = [];
   const maxLines = 80;
 
-  for (const ln of (lines || []).slice(0, maxLines)) {
-    const qty = ln?.qty ?? 1;
-    const description = String(ln?.description || "").replace(/\s+/g, " ").trim();
-
-    const metaAny: any = (ln?.meta as any) || {};
-    const metaPruned: Record<string, string> = {};
-    for (const [k, v] of Object.entries(metaAny)) {
+  const pruneRecord = (input: Record<string, any>, maxLen: number): Record<string, string> => {
+    const pruned: Record<string, string> = {};
+    for (const [k, v] of Object.entries(input || {})) {
       if (v == null) continue;
       if (typeof v === "string") {
         const s = v.trim();
-        if (s && s.length <= 240) metaPruned[k] = s;
+        if (s && s.length <= maxLen) pruned[k] = s;
         continue;
       }
       if (typeof v === "number" || typeof v === "boolean") {
-        metaPruned[k] = String(v);
+        pruned[k] = String(v);
         continue;
       }
       if (Array.isArray(v) && v.length && v.every(x => typeof x === "string")) {
@@ -4468,13 +4475,29 @@ function buildLineItemAiContext(lines: any[]): string {
           .filter(Boolean)
           .slice(0, 8)
           .join("; ");
-        if (s) metaPruned[k] = s;
+        if (s) pruned[k] = s;
         continue;
       }
     }
+    return pruned;
+  };
+
+  for (const ln of (lines || []).slice(0, maxLines)) {
+    const qty = ln?.qty ?? 1;
+    const description = String(ln?.description || "").replace(/\s+/g, " ").trim();
+
+    const metaAny: any = (ln?.meta as any) || {};
+    const metaPruned = pruneRecord(metaAny, 240);
+
+    const standardAny: any = (ln?.lineStandard as any) || {};
+    const standardPruned = pruneRecord(standardAny, 120);
 
     const metaText = Object.keys(metaPruned).length ? JSON.stringify(metaPruned) : "";
-    chunks.push(`- qty: ${qty}; description: ${description}${metaText ? `; meta: ${metaText}` : ""}`);
+    const standardText = Object.keys(standardPruned).length ? JSON.stringify(standardPruned) : "";
+    const parts = [`qty: ${qty}`, `description: ${description}`];
+    if (standardText) parts.push(`standard: ${standardText}`);
+    if (metaText) parts.push(`meta: ${metaText}`);
+    chunks.push(`- ${parts.join("; ")}`);
   }
 
   return `Line items (from CRM):\n${chunks.join("\n")}`;
@@ -4667,9 +4690,11 @@ async function buildQuoteProposalHtml(opts: {
   const fallbackFittings = specifications.fittings || quoteDefaults?.defaultFittings || "";
   const fallbackVentilation = specifications.ventilation || "";
   const compliance =
-    (typeof leadCustom?.compliance === "string" && String(leadCustom.compliance).trim())
-      ? String(leadCustom.compliance).trim()
-      : (specifications.compliance || quoteDefaults?.compliance || DEFAULT_COMPLIANCE_NOTE);
+    (typeof specifications?.compliance === "string" && String(specifications.compliance).trim())
+      ? String(specifications.compliance).trim()
+      : (typeof leadCustom?.compliance === "string" && String(leadCustom.compliance).trim())
+        ? String(leadCustom.compliance).trim()
+        : (specifications.compliance || quoteDefaults?.compliance || DEFAULT_COMPLIANCE_NOTE);
 
   const blocks = {
     introHtml: sanitizeRichTextHtml(String(proposalBlocks?.introHtml || "")),
@@ -6979,10 +7004,11 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
         sizeBytes: f.sizeBytes,
       });
       
-      const abs = path.isAbsolute(f.path) ? f.path : path.join(process.cwd(), f.path);
+      const abs = resolveUploadPath(f.path);
       let buffer: Buffer;
       
       try {
+        if (!abs) throw new Error("missing_path");
         buffer = await fs.promises.readFile(abs);
       } catch (err: any) {
         console.error(`[process-supplier] Failed to read file ${f.id}:`, err?.message);
@@ -7540,13 +7566,15 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
       }
     }
 
-    const existingMetaAny: any = (quote.meta as any) || {};
+    const latestMetaRow = await prisma.quote.findFirst({ where: { id: quote.id }, select: { meta: true } });
+    const existingMetaAny: any = (latestMetaRow?.meta as any) || (quote.meta as any) || {};
     const existingSpecsAny: any = existingMetaAny?.specifications || {};
 
-    // When triggered by a new supplier PDF parse, overwrite proposal basics
-    // (matches the manual "Refresh" behavior in the quote builder).
+    // Only overwrite proposal basics when explicitly requested.
+    // By default, supplier parsing should only fill blanks to avoid clobbering
+    // user edits that may happen while parsing is in progress.
     // If fallback couldn't infer a field (empty string), keep the existing value.
-    const overwriteFromParse = !!proposalBasics;
+    const overwriteFromParse = req?.body?.overwriteProposalBasics === true;
     const nextScopeDescription = overwriteFromParse
       ? (String(proposalBasics?.scope || "").trim() || String(existingMetaAny?.scopeDescription || "").trim())
       : fillIfBlank(existingMetaAny?.scopeDescription, proposalBasics?.scope);

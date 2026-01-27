@@ -18,6 +18,7 @@ import {
   DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
 } from "@/lib/constants";
 import { useTenantBrand } from "@/lib/use-tenant-brand";
+import { useCurrentUser } from "@/lib/use-current-user";
 import { Button } from "@/components/ui/button";
 import LeadSourcePicker from "@/components/leads/LeadSourcePicker";
 import { UnifiedActivityTimeline } from "@/components/leads/UnifiedActivityTimeline";
@@ -64,6 +65,9 @@ export type Lead = {
   }> | null;
   visionInferences?: VisionInference[] | null;
   taskCount?: number;
+  assignedUserId?: string | null;
+  assignedUser?: { id: string; name?: string | null; email?: string | null } | null;
+  assignedUserName?: string | null;
 };
 
 type Task = {
@@ -458,9 +462,10 @@ export default function LeadModal({
   showFollowUp?: boolean;
   scrollToNotes?: boolean;
 }) {
+  const { user } = useCurrentUser();
   const ids = getAuthIdsFromJwt();
-  const tenantId = ids?.tenantId || "";
-  const userId = ids?.userId || "";
+  const tenantId = user?.tenantId || ids?.tenantId || "";
+  const userId = user?.id || ids?.userId || "";
 
   const authHeaders = useMemo(
     () => ({ "x-tenant-id": tenantId, "x-user-id": userId }),
@@ -563,6 +568,31 @@ export default function LeadModal({
   const [currentClientData, setCurrentClientData] = useState<any>(null);
   const [tenantUsers, setTenantUsers] = useState<Array<{ id: string; name: string | null; email: string }>>([]);
   const [showClientModal, setShowClientModal] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!open || !tenantId) return;
+    (async () => {
+      try {
+        const usersData = await apiFetch<any[]>(`/tenant/users`, { headers: authHeaders });
+        if (cancelled) return;
+        if (Array.isArray(usersData)) {
+          setTenantUsers(usersData.map((u: any) => ({
+            id: u.id,
+            name: u.name || u.firstName || u.email,
+            email: u.email,
+          })));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Failed to fetch tenant users:", err);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authHeaders, open, tenantId]);
 
   // Communication logging
   const [newNote, setNewNote] = useState("");

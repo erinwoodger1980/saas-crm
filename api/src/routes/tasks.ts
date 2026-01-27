@@ -5,6 +5,8 @@ import { prisma } from "../prisma";
 import { markLinkedProjectFieldFromTaskCompletion } from "../services/fire-door-link";
 import { applyFieldLinkOnTaskComplete } from "../services/field-link";
 import { logEvent, logInsight } from "../services/training";
+import { sendAdminEmail } from "../services/email-notification";
+import { env } from "../env";
 import {
   ensureCommunicationTaskLoggedToLeadNotes,
   formatCommunicationEntry,
@@ -46,6 +48,88 @@ function todayRange() {
   const end = new Date();
   end.setHours(23, 59, 59, 999);
   return { start, end };
+}
+
+function escapeHtml(text: string): string {
+  return String(text || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;")
+    .replace(/\n/g, "<br/>");
+}
+
+function formatDateShort(date: Date): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function buildManualTaskAssignedEmail(params: {
+  assigneeName: string;
+  assignerName: string;
+  tenantName: string;
+  taskTitle: string;
+  description?: string | null;
+  dueAt?: Date | null;
+  priority?: string | null;
+  taskLink: string;
+}): string {
+  const dueLabel = params.dueAt ? formatDateShort(params.dueAt) : "No due date";
+  const priorityLabel = params.priority ? params.priority.toLowerCase() : "medium";
+  const description = params.description ? escapeHtml(params.description) : "(No description)";
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #111827; background: #f8fafc; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #0ea5e9; color: white; padding: 20px; border-radius: 12px 12px 0 0; }
+        .content { background: white; padding: 20px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px; }
+        .field { margin-bottom: 14px; }
+        .label { font-weight: 700; color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+        .value { margin-top: 4px; font-size: 14px; color: #111827; }
+        .button { display: inline-block; margin-top: 16px; padding: 10px 16px; background: #10b981; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; }
+        .footer { margin-top: 16px; font-size: 12px; color: #6b7280; text-align: center; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h2 style="margin: 0;">New task assigned</h2>
+          <p style="margin: 4px 0 0; font-size: 14px;">${escapeHtml(params.tenantName)} • Assigned by ${escapeHtml(params.assignerName)}</p>
+        </div>
+        <div class="content">
+          <div class="field">
+            <div class="value">Hi ${escapeHtml(params.assigneeName)},</div>
+          </div>
+          <div class="field">
+            <div class="label">Task</div>
+            <div class="value">${escapeHtml(params.taskTitle)}</div>
+          </div>
+          <div class="field">
+            <div class="label">Description</div>
+            <div class="value">${description}</div>
+          </div>
+          <div class="field">
+            <div class="label">Due</div>
+            <div class="value">${escapeHtml(dueLabel)}</div>
+          </div>
+          <div class="field">
+            <div class="label">Priority</div>
+            <div class="value">${escapeHtml(priorityLabel)}</div>
+          </div>
+          <a href="${params.taskLink}" class="button">Open Tasks</a>
+        </div>
+        <div class="footer">JoineryAI • Task Notifications</div>
+      </div>
+    </body>
+    </html>
+  `;
 }
 
 function computeFollowUpSuggestion(text: string): { dueAt: string; title: string; description: string } | null {
@@ -243,6 +327,78 @@ router.post("/", async (req, res) => {
         data: { source: "manual" } as any,
       },
     });
+
+    // Notify assignees for manually created tasks
+    if (Array.isArray(body.assignees) && body.assignees.length > 0) {
+      const assigneeIds = Array.from(
+        new Set(
+          body.assignees
+            .map((a) => a.userId)
+            .filter((id): id is string => typeof id === "string" && id.length > 0)
+        )
+      );
+
+      if (assigneeIds.length > 0) {
+        try {
+          const [assignees, creator, tenant] = await Promise.all([
+            prisma.user.findMany({
+              where: { id: { in: assigneeIds } },
+              select: { id: true, email: true, name: true, firstName: true, lastName: true },
+            }),
+            createdById
+              ? prisma.user.findUnique({
+                  where: { id: createdById },
+                  select: { name: true, firstName: true, lastName: true },
+                })
+              : null,
+            prisma.tenant.findUnique({
+              where: { id: tenantId },
+              select: { name: true },
+            }),
+          ]);
+
+          const assignerName =
+            creator?.name ||
+            [creator?.firstName, creator?.lastName].filter(Boolean).join(" ") ||
+            "A teammate";
+          const tenantName = tenant?.name || "Your workspace";
+          const baseUrl = env.WEB_URL || "https://app.joineryai.app";
+          const taskLink = `${baseUrl}/tasks/center`;
+
+          const emailSends = assignees
+            .filter((assignee) => !!assignee.email)
+            .filter((assignee) => !createdById || assignee.id !== createdById)
+            .map((assignee) =>
+              sendAdminEmail({
+                to: assignee.email as string,
+                subject: `New task assigned: ${task.title}`,
+                html: buildManualTaskAssignedEmail({
+                  assigneeName:
+                    assignee.name ||
+                    [assignee.firstName, assignee.lastName].filter(Boolean).join(" ") ||
+                    "there",
+                  assignerName,
+                  tenantName,
+                  taskTitle: task.title,
+                  description: task.description,
+                  dueAt: task.dueAt,
+                  priority: task.priority,
+                  taskLink,
+                }),
+              }).catch((err) => {
+                console.error(
+                  `[tasks] Failed to send task assignment email to ${assignee.email}:`,
+                  err?.message || err
+                );
+              })
+            );
+
+          await Promise.all(emailSends);
+        } catch (notifyError: any) {
+          console.error("[tasks] Failed to send manual task notifications:", notifyError?.message || notifyError);
+        }
+      }
+    }
 
     // Auto-generate AI draft for FOLLOW_UP tasks
     if (body.taskType === "FOLLOW_UP" && body.meta) {
@@ -539,10 +695,15 @@ router.get("/stats", async (req, res) => {
     if (!tenantId) return res.status(400).json({ error: "Missing tenantId" });
     const scope = String((req.query as any)?.scope || "all").toLowerCase();
     const userId = resolveUserId(req);
+    const newSinceHoursRaw = Number((req.query as any)?.newSinceHours ?? 24);
+    const newSinceHours = Number.isFinite(newSinceHoursRaw) && newSinceHoursRaw > 0
+      ? Math.min(newSinceHoursRaw, 168)
+      : 24;
 
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    const newSince = new Date(now.getTime() - newSinceHours * 60 * 60 * 1000);
 
     // Common scope filter
     const assigneeFilter =
@@ -556,7 +717,7 @@ router.get("/stats", async (req, res) => {
       ...assigneeFilter,
     };
 
-    const [late, dueToday, completedToday, total] = await Promise.all([
+    const [late, dueToday, completedToday, total, newTasks] = await Promise.all([
       prisma.task.count({
         where: {
           ...baseActiveFilter,
@@ -580,6 +741,12 @@ router.get("/stats", async (req, res) => {
       prisma.task.count({
         where: baseActiveFilter,
       }),
+      prisma.task.count({
+        where: {
+          ...baseActiveFilter,
+          createdAt: { gte: newSince },
+        },
+      }),
     ]);
 
     res.json({
@@ -587,6 +754,8 @@ router.get("/stats", async (req, res) => {
       dueToday,
       completedToday,
       total,
+      newTasks,
+      newSinceHours,
     });
   } catch (e: any) {
     console.error("[tasks.stats] Error:", e);

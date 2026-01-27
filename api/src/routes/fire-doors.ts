@@ -25,6 +25,24 @@ const router = Router();
 
 const FIRE_DOOR_REQUIRED_HEADERS: readonly string[] = [];
 
+function resolveTenantId(req: any): string {
+  return (
+    req.auth?.tenantId ||
+    req.user?.tenantId ||
+    (req.headers["x-tenant-id"] as string) ||
+    ""
+  );
+}
+
+function resolveUserId(req: any): string | undefined {
+  return (
+    req.auth?.userId ||
+    req.user?.id ||
+    (req.headers["x-user-id"] as string) ||
+    undefined
+  );
+}
+
 function isXlsxUpload(file: Express.Multer.File): boolean {
   const name = String(file?.originalname || '').toLowerCase();
   const type = String((file as any)?.mimetype || '').toLowerCase();
@@ -425,8 +443,9 @@ function sanitizeColumnWidths(input: any): Record<string, number> {
  */
 router.get('/order-grid/column-widths', async (req, res) => {
   try {
-    const tenantId = req.auth?.tenantId as string | undefined;
-    if (!tenantId) return res.status(401).json({ error: 'Authentication required' });
+    const tenantId = resolveTenantId(req);
+    const userId = resolveUserId(req);
+    if (!tenantId || !userId) return res.status(401).json({ error: 'Authentication required' });
 
     const tenantSettings = await prisma.tenantSettings.findUnique({
       where: { tenantId },
@@ -448,8 +467,9 @@ router.get('/order-grid/column-widths', async (req, res) => {
  */
 router.post('/order-grid/column-widths', async (req, res) => {
   try {
-    const tenantId = req.auth?.tenantId as string | undefined;
-    if (!tenantId) return res.status(401).json({ error: 'Authentication required' });
+    const tenantId = resolveTenantId(req);
+    const userId = resolveUserId(req);
+    if (!tenantId || !userId) return res.status(401).json({ error: 'Authentication required' });
 
     const tenantSettings = await prisma.tenantSettings.findUnique({
       where: { tenantId },

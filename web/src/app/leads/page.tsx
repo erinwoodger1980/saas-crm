@@ -109,6 +109,7 @@ const AVAILABLE_LEAD_FIELDS = [
   { field: 'contactName', label: 'Contact Name', type: 'text' },
   { field: 'email', label: 'Email', type: 'email' },
   { field: 'phone', label: 'Phone', type: 'phone' },
+  { field: 'assignedUserName', label: 'Assigned User', type: 'text' },
   { field: 'number', label: 'Lead #', type: 'text' },
   { field: 'latestTask', label: 'Latest task', type: 'custom' },
   { field: 'latestCommunication', label: 'Latest note', type: 'custom' },
@@ -181,6 +182,8 @@ function LeadsPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   // Removed: manual quotes filter toggle (unused)
+  const [tenantUsers, setTenantUsers] = useState<Array<{ id: string; name?: string | null; email?: string | null }>>([]);
+  const [assignedUserFilter, setAssignedUserFilter] = useState<string>("all");
 
   // modal
   const [open, setOpen] = useState(false);
@@ -275,7 +278,24 @@ function LeadsPageContent() {
             });
             return next;
           };
-          setColumnConfig(Array.isArray(migrated) ? ensureLatestCommunication(migrated) : migrated);
+          const ensureAssignedUser = (cols: any[]) => {
+            if (cols.some((c) => c?.field === 'assignedUserName')) return cols;
+            const insertAfter = cols.findIndex((c) => c?.field === 'email');
+            const next = [...cols];
+            next.splice(Math.max(0, insertAfter + 1), 0, {
+              field: 'assignedUserName',
+              label: 'Assigned User',
+              visible: true,
+              frozen: false,
+              width: 160,
+            });
+            return next;
+          };
+          setColumnConfig(
+            Array.isArray(migrated)
+              ? ensureAssignedUser(ensureLatestCommunication(migrated))
+              : migrated
+          );
         } catch {
           setColumnConfig([
             { 
@@ -288,6 +308,7 @@ function LeadsPageContent() {
             },
             { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
             { field: 'phone', label: 'Phone', visible: true, frozen: false, width: 150 },
+            { field: 'assignedUserName', label: 'Assigned User', visible: true, frozen: false, width: 160 },
             { field: 'latestTask', label: 'Latest task', visible: true, frozen: false, width: 320, type: 'custom' },
             { field: 'latestCommunication', label: 'Latest note', visible: true, frozen: false, width: 360, type: 'custom' },
             { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown' },
@@ -305,6 +326,7 @@ function LeadsPageContent() {
           },
           { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
           { field: 'phone', label: 'Phone', visible: true, frozen: false, width: 150 },
+          { field: 'assignedUserName', label: 'Assigned User', visible: true, frozen: false, width: 160 },
           { field: 'latestTask', label: 'Latest task', visible: true, frozen: false, width: 320, type: 'custom' },
           { field: 'latestCommunication', label: 'Latest note', visible: true, frozen: false, width: 360, type: 'custom' },
           { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown' },
@@ -323,6 +345,32 @@ function LeadsPageContent() {
     if (!ids?.tenantId || !ids?.userId) return undefined;
     return { "x-tenant-id": ids.tenantId, "x-user-id": ids.userId };
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiFetch<any[]>("/tenant/users", { headers: buildAuthHeaders() });
+        if (cancelled) return;
+        if (Array.isArray(data)) {
+          setTenantUsers(
+            data.map((u: any) => ({
+              id: u.id,
+              name: u.name || u.firstName || null,
+              email: u.email || null,
+            }))
+          );
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Failed to load tenant users:", err);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Handle URL parameters for direct lead access
   const openLeadById = useCallback(async (leadId: string) => {
@@ -589,10 +637,18 @@ function LeadsPageContent() {
     return filtered;
   }, [grouped, tab]);
 
+  const filteredRows = useMemo(() => {
+    if (assignedUserFilter === "all") return rows;
+    return rows.filter((l: any) => {
+      const assignedId = l?.assignedUserId || l?.assignedUser?.id || l?.client?.userId || l?.client?.user?.id || null;
+      return assignedId === assignedUserFilter;
+    });
+  }, [assignedUserFilter, rows]);
+
   // Fetch latest tasks for the currently visible rows (grid column)
   useEffect(() => {
     if (viewMode !== 'grid') return;
-    const ids = rows.map((r) => r.id).filter(Boolean);
+    const ids = filteredRows.map((r) => r.id).filter(Boolean);
     if (ids.length === 0) {
       setLatestTaskByLeadId({});
       return;
@@ -617,7 +673,7 @@ function LeadsPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [rows, viewMode]);
+  }, [filteredRows, viewMode]);
 
   const gridColumns = useMemo(() => {
     return (columnConfig || []).map((c: any) => {
@@ -654,6 +710,17 @@ function LeadsPageContent() {
                 {snippet}
               </button>
             );
+          },
+        };
+      }
+      if (c?.field === 'assignedUserName') {
+        return {
+          ...c,
+          type: 'custom',
+          render: (row: any) => {
+            const label = row?.assignedUserName || row?.assignedUser?.name || row?.assignedUser?.email || "";
+            if (!label) return <span className="text-xs text-slate-400">-</span>;
+            return <span className="text-xs text-slate-700">{label}</span>;
           },
         };
       }
@@ -1406,34 +1473,51 @@ function LeadsPageContent() {
           </div>
         </header>
 
-        <div className="flex flex-wrap gap-2">
-          {ACTIVE_TABS.map((s) => {
-            const active = tab === s;
-            return (
-              <button
-                  key={s}
-                  onClick={() => setTab(s)}
-                  className={`group inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
-                    active
-                      ? "border-transparent bg-gradient-to-r from-sky-500 via-indigo-500 to-rose-500 text-white shadow-[0_14px_34px_-18px_rgba(37,99,235,0.6)]"
-                      : "border-slate-200/70 bg-white/70 text-slate-700 hover:border-slate-300 hover:bg-white"
-                  }`}
-                  type="button"
-                >
-                  <span>{STATUS_LABELS[s]}</span>
-                  <span
-                    className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs font-semibold ${
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap gap-2">
+            {ACTIVE_TABS.map((s) => {
+              const active = tab === s;
+              return (
+                <button
+                    key={s}
+                    onClick={() => setTab(s)}
+                    className={`group inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
                       active
-                        ? "bg-white/30 text-white"
-                        : "bg-slate-100 text-slate-600 group-hover:bg-slate-200"
+                        ? "border-transparent bg-gradient-to-r from-sky-500 via-indigo-500 to-rose-500 text-white shadow-[0_14px_34px_-18px_rgba(37,99,235,0.6)]"
+                        : "border-slate-200/70 bg-white/70 text-slate-700 hover:border-slate-300 hover:bg-white"
                     }`}
+                    type="button"
                   >
-                    {grouped[s].length}
-                  </span>
-                </button>
-              );
-            })}
-          {/* Removed manual quotes toggle */}
+                    <span>{STATUS_LABELS[s]}</span>
+                    <span
+                      className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs font-semibold ${
+                        active
+                          ? "bg-white/30 text-white"
+                          : "bg-slate-100 text-slate-600 group-hover:bg-slate-200"
+                      }`}
+                    >
+                      {grouped[s].length}
+                    </span>
+                  </button>
+                );
+              })}
+            {/* Removed manual quotes toggle */}
+          </div>
+          <div className="ml-auto flex items-center gap-2 rounded-full border border-slate-200/70 bg-white/70 px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm">
+            <span className="text-[10px] uppercase tracking-wide text-slate-400">Assignee</span>
+            <select
+              className="bg-transparent text-xs font-semibold text-slate-700 outline-none"
+              value={assignedUserFilter}
+              onChange={(e) => setAssignedUserFilter(e.target.value)}
+            >
+              <option value="all">All</option>
+              {tenantUsers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name || u.email || "User"}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <SectionCard
@@ -1451,7 +1535,7 @@ function LeadsPageContent() {
                 </Button>
               )}
               <span className="text-xs font-medium text-slate-500">
-                {loading ? "Syncing…" : `${rows.length} in "${STATUS_LABELS[tab]}"`}
+                {loading ? "Syncing…" : `${filteredRows.length} in "${STATUS_LABELS[tab]}"`}
               </span>
             </div>
           }
@@ -1464,7 +1548,7 @@ function LeadsPageContent() {
 
           {loading ? (
             <RowsSkeleton />
-          ) : rows.length === 0 ? (
+          ) : filteredRows.length === 0 ? (
             <EmptyState
               title={`No leads in “${STATUS_LABELS[tab]}”.`}
               action={
@@ -1479,7 +1563,7 @@ function LeadsPageContent() {
             />
           ) : viewMode === 'grid' ? (
             <CustomizableGrid
-              data={rows}
+              data={filteredRows}
               columns={gridColumns}
               onRowClick={openLead}
               onCellChange={handleCellChange}
@@ -1489,7 +1573,7 @@ function LeadsPageContent() {
             />
           ) : (
             <div className="grid gap-3">
-              {rows.map((lead) => (
+              {filteredRows.map((lead) => (
                 <LeadCard
                   key={lead.id}
                   lead={lead}
@@ -1911,6 +1995,11 @@ function LeadCard({
   const statusLabel = STATUS_LABELS[lead.status as LeadStatus] || "—";
   const needsManualQuote = Boolean(lead.custom?.needsManualQuote);
   const manualQuoteReason = typeof lead.custom?.manualQuoteReason === 'string' ? lead.custom.manualQuoteReason : undefined;
+  const assignedUserLabel =
+    (lead as any)?.assignedUserName ||
+    (lead as any)?.assignedUser?.name ||
+    (lead as any)?.assignedUser?.email ||
+    null;
   const latestNoteSnippet = getLatestCommunicationNoteSnippet(lead);
   const enquiryAt = (lead as any).capturedAt ?? (lead as any).createdAt ?? null;
   const enquiryAtLabel = formatUiDate(enquiryAt);
@@ -1980,6 +2069,11 @@ function LeadCard({
         </div>
 
         <div className="shrink-0 flex flex-col items-end gap-2 text-right">
+          {assignedUserLabel && (
+            <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 shadow-sm">
+              {assignedUserLabel}
+            </span>
+          )}
           {/* Task Count Badge */}
           {lead.taskCount !== undefined && lead.taskCount > 0 && (
             <button

@@ -6,6 +6,7 @@ import { prisma } from "../prisma";
 import { env } from "../env";
 
 const router = Router();
+const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
 
 /**
  * GET /files
@@ -139,7 +140,19 @@ async function resolveFileRequest(req: any, res: any, mode: "GET" | "HEAD"): Pro
   }
 
   const p = String(file.path || "");
-  const abs = p && (path.isAbsolute(p) ? p : path.join(process.cwd(), p));
+  const resolveUploadPath = (rawPath: string): string | null => {
+    const raw = String(rawPath || "").trim();
+    if (!raw) return null;
+    if (path.isAbsolute(raw)) return raw;
+    const cwdPath = path.join(process.cwd(), raw);
+    if (fs.existsSync(cwdPath)) return cwdPath;
+    const normalized = raw.replace(/^uploads[\\/]/, "");
+    const uploadPath = path.join(UPLOAD_DIR, normalized);
+    if (fs.existsSync(uploadPath)) return uploadPath;
+    return cwdPath;
+  };
+
+  const abs = resolveUploadPath(p);
   if (abs && fs.existsSync(abs)) {
     const stat = fs.statSync(abs);
     return { source: "disk", file: file as any, abs, stat };

@@ -94,9 +94,11 @@ export function buildChristchurchProposalHtml(opts: {
   const fallbackFittings = (specifications.fittings || quoteDefaults?.defaultFittings || "Polished chrome heritage fittings").toString();
   const fallbackVentilation = (specifications.ventilation || "Trickle vents").toString();
   const compliance = (
-    (typeof leadCustom?.compliance === "string" && String(leadCustom.compliance).trim())
-      ? String(leadCustom.compliance).trim()
-      : (specifications.compliance || quoteDefaults?.compliance || DEFAULT_COMPLIANCE_NOTE)
+    (typeof specifications?.compliance === "string" && String(specifications.compliance).trim())
+      ? String(specifications.compliance).trim()
+      : (typeof leadCustom?.compliance === "string" && String(leadCustom.compliance).trim())
+        ? String(leadCustom.compliance).trim()
+        : (specifications.compliance || quoteDefaults?.compliance || DEFAULT_COMPLIANCE_NOTE)
   ).toString();
 
   const toNonEmptyStr = (v: any): string => {

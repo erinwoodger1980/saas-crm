@@ -22,12 +22,13 @@ interface TaskStats {
   dueToday: number;
   completed: number;
   total: number;
+  newTasks: number;
 }
 
 export default function AIAssistant() {
   const { user } = useCurrentUser();
   const [insight, setInsight] = useState<AssistantInsight | null>(null);
-  const [taskStats, setTaskStats] = useState<TaskStats>({ late: 0, dueToday: 0, completed: 0, total: 0 });
+  const [taskStats, setTaskStats] = useState<TaskStats>({ late: 0, dueToday: 0, completed: 0, total: 0, newTasks: 0 });
   const [loading, setLoading] = useState(true);
   const [isMounted, setIsMounted] = useState(false);
 
@@ -48,13 +49,14 @@ export default function AIAssistant() {
   async function loadInsights() {
     try {
       // Fetch task statistics
-      const tasksData = await apiFetch<any>("/tasks/stats?scope=mine");
+      const tasksData = await apiFetch<any>("/tasks/stats?scope=mine&newSinceHours=24");
       if (tasksData) {
         setTaskStats({
           late: tasksData.late || 0,
           dueToday: tasksData.dueToday || 0,
           completed: tasksData.completedToday || 0,
           total: tasksData.total || 0,
+          newTasks: tasksData.newTasks || 0,
         });
       }
 
@@ -144,7 +146,8 @@ export default function AIAssistant() {
 
   const currentInsight = insight || getDefaultInsight();
   const Icon = currentInsight.icon;
-  const hasNotifications = taskStats.late > 0 || taskStats.dueToday > 0;
+  const hasNotifications = taskStats.late > 0 || taskStats.dueToday > 0 || taskStats.newTasks > 0;
+  const notificationCount = taskStats.late + taskStats.dueToday + taskStats.newTasks;
 
   return (
     <DropdownMenu>
@@ -156,7 +159,7 @@ export default function AIAssistant() {
           </span>
           {hasNotifications && (
             <div className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-red-500 border-2 border-white flex items-center justify-center">
-              <span className="text-[10px] font-bold text-white">{taskStats.late + taskStats.dueToday}</span>
+              <span className="text-[10px] font-bold text-white">{notificationCount}</span>
             </div>
           )}
         </div>
@@ -175,6 +178,24 @@ export default function AIAssistant() {
               </div>
             </div>
           </div>
+
+          {taskStats.newTasks > 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+              <div className="flex items-center gap-2">
+                <Bell className="h-4 w-4 text-amber-600" />
+                <div className="text-sm font-semibold text-amber-900">New task assigned</div>
+              </div>
+              <p className="text-xs text-amber-700 mt-1">
+                {taskStats.newTasks} {taskStats.newTasks === 1 ? "new task" : "new tasks"} in the last 24 hours.
+              </p>
+              <button
+                onClick={() => (window.location.href = "/tasks/center")}
+                className="mt-3 w-full rounded-lg bg-amber-600/90 hover:bg-amber-700 text-white text-xs font-semibold py-2 transition"
+              >
+                View tasks
+              </button>
+            </div>
+          )}
 
           {/* Main Insight */}
           <div className={`rounded-xl bg-gradient-to-br ${currentInsight.color} p-4 text-white shadow-lg`}>
