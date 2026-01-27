@@ -309,6 +309,7 @@ export function ColumnHeaderModal({
           setFormulaInput(formula);
           setShowFormulaWizard(false);
         }}
+        initialFormula={formulaInput}
         availableFields={availableFields}
         availableLookupTables={availableLookupTables}
       />

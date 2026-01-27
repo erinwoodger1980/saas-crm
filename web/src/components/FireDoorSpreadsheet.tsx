@@ -941,30 +941,6 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     rowsRef.current = rows;
   }, [rows]);
 
-  const loadImport = useCallback(async (opts?: { selectAll?: boolean }) => {
-    if (!importId) return;
-    const selectAll = !!opts?.selectAll;
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await apiFetch<any>(`/fire-doors/imports/${importId}`);
-      const hydrated = (data.lineItems || []).map((item: any) => hydrateImportRow(item, COLUMNS));
-      setRows(hydrated);
-      if (selectAll) {
-        setSelectedRows(new Set((data.lineItems || []).map((r: any) => r.id)));
-      }
-    } catch (err: any) {
-      setError(err.message || "Failed to load import");
-    } finally {
-      setLoading(false);
-    }
-  }, [importId]);
-
-  // Load fire door data from import
-  useEffect(() => {
-    loadImport({ selectAll: true });
-  }, [loadImport]);
-
   const bulkCreateRows = useCallback(async (count: number) => {
     if (!importId) return [] as any[];
     const n = Number(count);
@@ -1183,13 +1159,15 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       return ai - bi;
     });
 
-    setRows(merged);
-    rowsRef.current = merged;
+    const { rows: withFormulas, updates: formulaUpdates } = applyFormulaCascade(merged);
 
-    if (updates.length) {
-      await bulkPersist(updates);
+    setRows(withFormulas);
+    rowsRef.current = withFormulas;
+
+    if (updates.length || formulaUpdates.length) {
+      await bulkPersist([...updates, ...formulaUpdates]);
     }
-  }, [importId, bulkCreateRows, bulkPersist, coerceDefaultValue, gridConfig]);
+  }, [importId, bulkCreateRows, bulkPersist, coerceDefaultValue, gridConfig, applyFormulaCascade]);
 
   const selectionRange = useMemo(() => {
     if (!selection) return null;
@@ -1356,18 +1334,49 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     }
 
     if (updates.length === 0) return;
-    setRows(nextRows);
-    rowsRef.current = nextRows;
 
-    await bulkPersist(updates);
-  }, [activeCell, selection, bulkPersist, getSelectableColumns, editableKeySet, gridConfig, ensureRowCount]);
+    const { rows: withFormulas, updates: formulaUpdates } = applyFormulaCascade(nextRows);
+    setRows(withFormulas);
+    rowsRef.current = withFormulas;
+
+    const mergedUpdates = new Map<string, Record<string, any>>();
+    for (const u of updates) mergedUpdates.set(u.id, { ...(u.changes || {}) });
+    for (const u of formulaUpdates) {
+      const prev = mergedUpdates.get(u.id) || {};
+      mergedUpdates.set(u.id, { ...prev, ...(u.changes || {}) });
+    }
+
+    const finalUpdates = Array.from(mergedUpdates.entries()).map(([id, changes]) => ({ id, changes }));
+    await bulkPersist(finalUpdates);
+  }, [activeCell, selection, bulkPersist, getSelectableColumns, editableKeySet, gridConfig, ensureRowCount, applyFormulaCascade]);
 
   const handleRowsChange = useCallback((newRows: FireDoorRow[]) => {
     const oldRows = rowsRef.current;
     const oldById = new Map<string, FireDoorRow>();
     for (const r of oldRows) oldById.set(r.id, r);
 
-    setRows(newRows);
+    // Mark formula overrides before recalculating formulas
+    for (const row of newRows) {
+      const prev = oldById.get(row.id);
+      if (!prev) continue;
+      for (const key of GRID_KEYS) {
+        if (key === "rowIndex" || key === "id") continue;
+        const cfg = gridConfig[key];
+        const isCalculated = !!cfg?.formula || cfg?.inputType === 'formula';
+        const allowOverride = !!cfg?.allowFormulaOverride;
+        if (!isCalculated || !allowOverride) continue;
+        if (!Object.is((prev as any)[key], (row as any)[key])) {
+          if ((row as any)[key] == null || (row as any)[key] === '') {
+            setFormulaOverrideFlag(row as any, key, null);
+          } else {
+            setFormulaOverrideFlag(row as any, key, true);
+          }
+        }
+      }
+    }
+
+    const { rows: computedRows } = applyFormulaCascade(newRows);
+    setRows(computedRows);
 
     // Debounced persistence: only send the changed keys for each changed row.
     const persistRowPatch = async (rowId: string, patch: Record<string, any>) => {
@@ -1382,7 +1391,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       }
     };
 
-    for (const row of newRows) {
+    for (const row of computedRows) {
       const prev = oldById.get(row.id);
       if (!prev) continue;
 
@@ -1424,7 +1433,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     // Auto-generate BOMs for all rows
     const batchGenerateBOMs = async () => {
       try {
-        const bomRows = newRows.map(row => ({
+        const bomRows = computedRows.map(row => ({
           id: row.id,
           fieldValues: {
             height: row.leafHeight,
@@ -1472,7 +1481,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
         }
       });
     });
-  }, [rows, gridConfig]);
+  }, [rows, gridConfig, applyFormulaCascade]);
 
   // Load grid field configurations
   useEffect(() => {
@@ -1881,7 +1890,11 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
 
   const evaluateFormula = (formula: string, row: FireDoorRow): any => {
     try {
-      let expression = String(formula || '');
+      let expression = String(formula || '').trim();
+      if (expression.startsWith('=')) {
+        expression = expression.slice(1).trim();
+      }
+      if (!expression) return null;
 
       // Resolve LOOKUP(...) calls first, using loaded flexible lookup tables.
       expression = replaceLookupCalls(expression, row);
@@ -1968,6 +1981,83 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     }
   };
 
+  const formulaColumns = useMemo(() => {
+    return COLUMNS
+      .map((c) => String((c as any)?.key || '').trim())
+      .filter((key) => {
+        if (!key) return false;
+        const cfg = gridConfig[key];
+        return !!cfg?.formula && (cfg?.inputType === 'formula' || !!cfg?.formula);
+      });
+  }, [gridConfig]);
+
+  function applyFormulaCascade(inputRows: FireDoorRow[]) {
+    const rowsCopy: FireDoorRow[] = inputRows.map((row) => ({
+      ...row,
+      __gridMeta:
+        row && typeof row === 'object' && (row as any).__gridMeta && typeof (row as any).__gridMeta === 'object'
+          ? { ...(row as any).__gridMeta }
+          : (row as any).__gridMeta,
+    })) as FireDoorRow[];
+
+    const updatesById = new Map<string, Record<string, any>>();
+
+    for (let pass = 0; pass < 5; pass++) {
+      let changed = false;
+      for (const row of rowsCopy) {
+        for (const key of formulaColumns) {
+          const cfg = gridConfig[key];
+          if (!cfg?.formula) continue;
+          const allowOverride = !!cfg?.allowFormulaOverride;
+          const overrideActive = allowOverride && getFormulaOverrideFlag(row, key);
+          if (overrideActive) continue;
+
+          const nextVal = evaluateFormula(cfg.formula, row);
+          const normalized = nextVal == null ? null : nextVal;
+          if (!Object.is((row as any)[key], normalized)) {
+            (row as any)[key] = normalized;
+            const patch = updatesById.get(row.id) || {};
+            patch[key] = normalized;
+            updatesById.set(row.id, patch);
+            changed = true;
+          }
+        }
+      }
+      if (!changed) break;
+    }
+
+    const updates = Array.from(updatesById.entries()).map(([id, changes]) => ({ id, changes }));
+    return { rows: rowsCopy, updates };
+  }
+
+  const loadImport = useCallback(async (opts?: { selectAll?: boolean }) => {
+    if (!importId) return;
+    const selectAll = !!opts?.selectAll;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await apiFetch<any>(`/fire-doors/imports/${importId}`);
+      const hydrated = (data.lineItems || []).map((item: any) => hydrateImportRow(item, COLUMNS));
+      const { rows: withFormulas, updates } = applyFormulaCascade(hydrated);
+      setRows(withFormulas);
+      if (updates.length) {
+        await bulkPersist(updates);
+      }
+      if (selectAll) {
+        setSelectedRows(new Set((data.lineItems || []).map((r: any) => r.id)));
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to load import");
+    } finally {
+      setLoading(false);
+    }
+  }, [applyFormulaCascade, bulkPersist, importId]);
+
+  // Load fire door data from import
+  useEffect(() => {
+    loadImport({ selectAll: true });
+  }, [loadImport]);
+
   const columns = useMemo((): readonly Column<FireDoorRow>[] => {
     return [
       SelectColumn,
@@ -2006,6 +2096,14 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
               >
                 {typeof col.name === 'string' ? col.name : 'Column'}
               </span>
+              {isCalculated && fieldConfig?.formula && (
+                <span
+                  className="absolute top-1 right-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-indigo-100 text-[9px] font-semibold text-indigo-700 border border-indigo-200"
+                  title="Formula column"
+                >
+                  F
+                </span>
+              )}
               <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
                 <button
                   type="button"
@@ -2315,11 +2413,20 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       const updates = Array.from(changedById.entries()).map(([id, changes]) => ({ id, changes }));
       if (!updates.length) return;
 
-      setRows(nextRows);
-      rowsRef.current = nextRows;
-      bulkPersist(updates);
+      const { rows: withFormulas, updates: formulaUpdates } = applyFormulaCascade(nextRows);
+      setRows(withFormulas);
+      rowsRef.current = withFormulas;
+
+      const mergedUpdates = new Map<string, Record<string, any>>();
+      for (const u of updates) mergedUpdates.set(u.id, { ...(u.changes || {}) });
+      for (const u of formulaUpdates) {
+        const prev = mergedUpdates.get(u.id) || {};
+        mergedUpdates.set(u.id, { ...prev, ...(u.changes || {}) });
+      }
+      const finalUpdates = Array.from(mergedUpdates.entries()).map(([id, changes]) => ({ id, changes }));
+      bulkPersist(finalUpdates);
     }
-  }, [selectionRange, columns, bulkPersist]);
+  }, [selectionRange, columns, bulkPersist, applyFormulaCascade]);
 
   const selectedRowsSet = useMemo(() => {
     const set = new Set<string>();

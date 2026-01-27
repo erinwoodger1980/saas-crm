@@ -430,14 +430,10 @@ router.get('/order-grid/column-widths', async (req, res) => {
 
     const tenantSettings = await prisma.tenantSettings.findUnique({
       where: { tenantId },
-      select: { isFireDoorManufacturer: true, beta: true },
+      select: { beta: true },
     });
 
-    if (!tenantSettings?.isFireDoorManufacturer) {
-      return res.status(403).json({ error: 'Fire door import access required' });
-    }
-
-    const beta = getJsonObject((tenantSettings as any).beta);
+    const beta = getJsonObject((tenantSettings as any)?.beta);
     const columnWidths = sanitizeColumnWidths((beta as any).fireDoorOrderGridColumnWidths);
     return res.json({ ok: true, columnWidths });
   } catch (error: any) {
@@ -457,27 +453,46 @@ router.post('/order-grid/column-widths', async (req, res) => {
 
     const tenantSettings = await prisma.tenantSettings.findUnique({
       where: { tenantId },
-      select: { isFireDoorManufacturer: true, beta: true },
+      select: { beta: true },
     });
-
-    if (!tenantSettings?.isFireDoorManufacturer) {
-      return res.status(403).json({ error: 'Fire door import access required' });
-    }
 
     const body = (req.body && typeof req.body === 'object') ? (req.body as any) : {};
     const columnWidths = sanitizeColumnWidths(body.columnWidths);
-    const beta = getJsonObject((tenantSettings as any).beta);
+    const beta = getJsonObject((tenantSettings as any)?.beta);
 
-    await prisma.tenantSettings.update({
-      where: { tenantId },
-      data: {
-        beta: {
-          ...(beta as any),
-          fireDoorOrderGridColumnWidths: columnWidths,
+    if (tenantSettings) {
+      await prisma.tenantSettings.update({
+        where: { tenantId },
+        data: {
+          beta: {
+            ...(beta as any),
+            fireDoorOrderGridColumnWidths: columnWidths,
+          },
         },
-      },
-      select: { tenantId: true },
-    });
+        select: { tenantId: true },
+      });
+    } else {
+      const tenant = await prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { slug: true, name: true },
+      });
+
+      if (!tenant) {
+        return res.status(404).json({ error: 'Tenant not found' });
+      }
+
+      await prisma.tenantSettings.create({
+        data: {
+          tenantId,
+          slug: tenant.slug,
+          brandName: tenant.name,
+          beta: {
+            fireDoorOrderGridColumnWidths: columnWidths,
+          },
+        },
+        select: { tenantId: true },
+      });
+    }
 
     return res.json({ ok: true, columnWidths });
   } catch (error: any) {
