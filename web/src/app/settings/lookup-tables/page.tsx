@@ -2,6 +2,7 @@
 
 import { useRef, useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Save, X, Table as TableIcon, Database, Upload, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 interface LookupTable {
   id: string;
@@ -210,13 +211,68 @@ export default function LookupTablesPage() {
     }
   };
 
-  const importTableCsv = async (table: LookupTable, file: File) => {
+  const exportTableExcel = async (table: LookupTable) => {
     try {
       setBusyTableId(table.id);
       setError(null);
 
+      const columns = Array.isArray(table.columns) ? table.columns : [];
+      const rows = Array.isArray(table.rows) ? table.rows : [];
+      const data: any[][] = [columns];
+      rows.forEach((row) => {
+        data.push(columns.map((col) => row?.[col] ?? ''));
+      });
+
+      const sheet = XLSX.utils.aoa_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, sheet, 'LookupTable');
+
+      const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const baseName = (table.name || 'lookup-table').replace(/[^a-z0-9\-_.]+/gi, '_');
+      a.href = url;
+      a.download = `${baseName}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setError(err.message || 'Failed to export Excel');
+    } finally {
+      setBusyTableId(null);
+    }
+  };
+
+  const importTableFile = async (table: LookupTable, file: File) => {
+    try {
+      setBusyTableId(table.id);
+      setError(null);
+
+      const lower = file.name.toLowerCase();
+      const isExcel = lower.endsWith('.xlsx') || lower.endsWith('.xls');
+
+      let uploadFile = file;
+      if (isExcel) {
+        const buffer = await file.arrayBuffer();
+        const wb = XLSX.read(buffer, { type: 'array' });
+        const sheetName = wb.SheetNames[0];
+        const sheet = sheetName ? wb.Sheets[sheetName] : null;
+        const rows = sheet ? (XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as any[][]) : [];
+        if (!rows.length) throw new Error('Excel file is empty');
+
+        const escapeCsv = (value: any) => {
+          const s = String(value ?? '');
+          if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+          return s;
+        };
+        const csv = rows.map((r) => r.map(escapeCsv).join(',')).join('\n');
+        uploadFile = new File([csv], file.name.replace(/\.(xlsx|xls)$/i, '.csv'), { type: 'text/csv' });
+      }
+
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', uploadFile);
 
       const res = await fetch(`/api/flexible-fields/lookup-tables/${table.id}/csv-import`, {
         method: 'POST',
@@ -441,12 +497,21 @@ export default function LookupTablesPage() {
                     <Download className="h-4 w-4" />
                     Export CSV
                   </button>
+                    <button
+                      onClick={() => exportTableExcel(table)}
+                      disabled={busyTableId === table.id}
+                      className="inline-flex items-center gap-2 rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      title="Export this table as Excel"
+                    >
+                      <Download className="h-4 w-4" />
+                      Export Excel
+                    </button>
 
                   {!table.isStandard && (
                     <>
                       <input
                         type="file"
-                        accept=".csv,text/csv"
+                          accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xls,application/vnd.ms-excel"
                         className="hidden"
                         ref={(el) => {
                           importInputRefs.current[table.id] = el;
@@ -454,17 +519,17 @@ export default function LookupTablesPage() {
                         onChange={(e) => {
                           const f = e.target.files?.[0];
                           if (!f) return;
-                          importTableCsv(table, f);
+                            importTableFile(table, f);
                         }}
                       />
                       <button
                         onClick={() => importInputRefs.current[table.id]?.click()}
                         disabled={busyTableId === table.id}
                         className="inline-flex items-center gap-2 rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                        title="Import CSV (upserts by first column, adds new columns)"
+                          title="Import CSV or Excel (upserts by first column, adds new columns)"
                       >
                         <Upload className="h-4 w-4" />
-                        Import CSV
+                          Import CSV/Excel
                       </button>
                     </>
                   )}

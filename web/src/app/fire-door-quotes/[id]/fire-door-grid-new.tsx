@@ -235,6 +235,29 @@ export function FireDoorGrid({
   const [highlightedColumn, setHighlightedColumn] = useState<string | null>(null);
   const [fillDownMode, setFillDownMode] = useState<{ columnKey: string; sourceRowIdx: number } | null>(null);
   const [showColumnManager, setShowColumnManager] = useState(false);
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem('fireDoorQuoteGridColumnWidths');
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, number>;
+        if (parsed && typeof parsed === 'object') {
+          setColumnWidths(parsed);
+        }
+      }
+    } catch {
+      // ignore storage failures
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('fireDoorQuoteGridColumnWidths', JSON.stringify(columnWidths || {}));
+    } catch {
+      // ignore storage failures
+    }
+  }, [columnWidths]);
 
   // Sync with parent
   useEffect(() => {
@@ -303,6 +326,28 @@ export function FireDoorGrid({
     return map;
   }, [rfis]);
 
+  const costSheetKeyMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const col of COST_SHEET_COLUMNS) {
+      const name = String(col.name || '').trim().toLowerCase();
+      if (!name) continue;
+      map.set(name, col.key);
+    }
+    return map;
+  }, []);
+
+  const getCostKey = useCallback((name: string) => {
+    return costSheetKeyMap.get(name.trim().toLowerCase());
+  }, [costSheetKeyMap]);
+
+  const readNumber = useCallback((row: FireDoorLineItem, key?: string) => {
+    if (!key) return 0;
+    const raw = row?.[key as keyof FireDoorLineItem];
+    if (raw == null || raw === '') return 0;
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : 0;
+  }, []);
+
   // Handle row updates with auto-calculations
   const handleRowsChange = useCallback((newRows: FireDoorLineItem[]) => {
     // Auto-calculate reduced dimensions and line totals
@@ -340,10 +385,16 @@ export function FireDoorGrid({
 
   // Column definitions driven directly from Cost Sheet header
   const columns = useMemo<Column<FireDoorLineItem>[]>(() => {
+    const materialCostKey = getCostKey('Cost Of Materials');
+    const labourCostKey = getCostKey('Cost Of Labour');
+    const lineCostKey = getCostKey('Line Cost');
+    const lineSellKey = getCostKey('Line Sell');
+    const linePriceKey = getCostKey('Line Price');
+
     const dynamicColumns: Column<FireDoorLineItem>[] = COST_SHEET_COLUMNS.map((c, index) => ({
       key: c.key,
       name: c.name || `Col ${index + 1}`,
-      width: 140,
+      width: columnWidths[c.key] || 140,
       editable: true,
     }));
 
@@ -353,7 +404,7 @@ export function FireDoorGrid({
       {
         key: "rowIndex",
         name: "#",
-        width: 60,
+        width: columnWidths.rowIndex || 60,
         frozen: true,
         renderCell: ({ rowIdx }) => rowIdx + 1,
       },
@@ -361,14 +412,14 @@ export function FireDoorGrid({
       {
         key: "quantity",
         name: "Qty",
-        width: 80,
+        width: columnWidths.quantity || 80,
         editable: true,
         frozen: true,
       },
       {
         key: "unitValue",
         name: "Unit Price (£)",
-        width: 130,
+        width: columnWidths.unitValue || 130,
         editable: true,
         frozen: true,
         renderCell: ({ row }) => (row.unitValue ? `£${row.unitValue.toFixed(2)}` : ""),
@@ -376,14 +427,94 @@ export function FireDoorGrid({
       {
         key: "lineTotal",
         name: "Line Total (£)",
-        width: 140,
+        width: columnWidths.lineTotal || 140,
         editable: false,
         frozen: true,
         cellClass: "bg-blue-50 font-semibold",
         renderCell: ({ row }) => `£${(row.lineTotal || 0).toFixed(2)}`,
       },
+      {
+        key: "totalMaterialCost",
+        name: "Total Material Cost",
+        width: columnWidths.totalMaterialCost || 170,
+        editable: false,
+        cellClass: "bg-emerald-50 font-semibold",
+        renderCell: ({ row }) => `£${readNumber(row, materialCostKey).toFixed(2)}`,
+      },
+      {
+        key: "totalLabourCost",
+        name: "Total Labour Cost",
+        width: columnWidths.totalLabourCost || 160,
+        editable: false,
+        cellClass: "bg-emerald-50 font-semibold",
+        renderCell: ({ row }) => `£${readNumber(row, labourCostKey).toFixed(2)}`,
+      },
+      {
+        key: "totalCosts",
+        name: "Total Costs",
+        width: columnWidths.totalCosts || 140,
+        editable: false,
+        cellClass: "bg-amber-50 font-semibold",
+        renderCell: ({ row }) => {
+          const material = readNumber(row, materialCostKey);
+          const labour = readNumber(row, labourCostKey);
+          const lineCost = readNumber(row, lineCostKey);
+          const total = lineCost || material + labour;
+          return `£${total.toFixed(2)}`;
+        },
+      },
+      {
+        key: "profit",
+        name: "Profit",
+        width: columnWidths.profit || 120,
+        editable: false,
+        cellClass: "bg-purple-50 font-semibold",
+        renderCell: ({ row }) => {
+          const material = readNumber(row, materialCostKey);
+          const labour = readNumber(row, labourCostKey);
+          const lineCost = readNumber(row, lineCostKey) || material + labour;
+          const lineSell = readNumber(row, lineSellKey);
+          const linePrice = readNumber(row, linePriceKey) || (row.lineTotal || 0);
+          const totalLinePrice = lineSell || linePrice;
+          const profit = totalLinePrice - lineCost;
+          return `£${profit.toFixed(2)}`;
+        },
+      },
+      {
+        key: "totalLinePrice",
+        name: "Total Line Price",
+        width: columnWidths.totalLinePrice || 150,
+        editable: false,
+        cellClass: "bg-blue-50 font-semibold",
+        renderCell: ({ row }) => {
+          const lineSell = readNumber(row, lineSellKey);
+          const linePrice = readNumber(row, linePriceKey) || (row.lineTotal || 0);
+          const totalLinePrice = lineSell || linePrice;
+          return `£${totalLinePrice.toFixed(2)}`;
+        },
+      },
     ];
-  }, [COST_SHEET_COLUMNS]);
+  }, [columnWidths, getCostKey, readNumber]);
+
+  const handleColumnResize = useCallback((colOrIdx: any, widthMaybe: any) => {
+    let colKey: string | null = null;
+    let nextWidth: number | null = null;
+
+    if (typeof colOrIdx === 'number') {
+      const c = (columns as any[])?.[colOrIdx];
+      colKey = c?.key ? String(c.key) : null;
+      nextWidth = Number(widthMaybe);
+    } else {
+      colKey = colOrIdx?.key ? String(colOrIdx.key) : null;
+      nextWidth = Number(widthMaybe);
+    }
+
+    if (!colKey || colKey === 'select-row') return;
+    if (!Number.isFinite(nextWidth)) return;
+
+    const clamped = Math.max(60, Math.min(800, Math.round(nextWidth)));
+    setColumnWidths((prev) => ({ ...prev, [colKey as string]: clamped }));
+  }, [columns]);
 
   // Cell click handler for RFI
   const handleCellClick = useCallback((args: { row: FireDoorLineItem; column: Column<FireDoorLineItem> }) => {
@@ -705,6 +836,7 @@ export function FireDoorGrid({
           selectedRows={selectedRows}
           onSelectedRowsChange={setSelectedRows}
           onCellClick={handleCellClick}
+          onColumnResize={handleColumnResize as any}
           className="rdg-light fill-grid"
           style={{ height: '100%' }}
           enableVirtualization

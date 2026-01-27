@@ -3885,6 +3885,7 @@ model FireDoorLineItem {
   doorFinishSide2PullLabour Decimal?
   doorViewerCost          Decimal?
   doorViewerLabour        Decimal?
+  escutcheonsBathroomTurnCost Decimal?
   escutcheonsBathroomTurnLabour Decimal?
   extensionMaterialCost   Decimal?
   extensionMaterialLabour Decimal?

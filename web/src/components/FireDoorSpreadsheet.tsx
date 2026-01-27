@@ -929,6 +929,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   const saveTimersRef = useRef<Map<string, any>>(new Map());
   const bomTimerRef = useRef<any>(null);
   const gridContainerRef = useRef<HTMLDivElement | null>(null);
+  const gridScrollLeftRef = useRef<number>(0);
 
   const stableStringifyObject = useCallback((obj: Record<string, any>) => {
     const keys = Object.keys(obj || {}).sort();
@@ -938,6 +939,33 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   }, []);
 
   const lastSavedColumnWidthsRef = useRef<string>("{}");
+
+  const rememberGridScroll = useCallback(() => {
+    const scroller = gridContainerRef.current?.querySelector('.rdg') as HTMLElement | null;
+    if (scroller) {
+      gridScrollLeftRef.current = scroller.scrollLeft || 0;
+    }
+  }, []);
+
+  const restoreGridScroll = useCallback(() => {
+    const scroller = gridContainerRef.current?.querySelector('.rdg') as HTMLElement | null;
+    if (!scroller) return;
+    const targetLeft = gridScrollLeftRef.current || 0;
+    requestAnimationFrame(() => {
+      scroller.scrollLeft = targetLeft;
+    });
+  }, []);
+
+  const openColumnConfig = useCallback((columnKey: string) => {
+    rememberGridScroll();
+    setConfigModalColumn(columnKey);
+    setConfigModalOpen(true);
+  }, [rememberGridScroll]);
+
+  const closeColumnConfig = useCallback(() => {
+    setConfigModalOpen(false);
+    restoreGridScroll();
+  }, [restoreGridScroll]);
   const authHeaders = useMemo(() => {
     const headers: Record<string, string> = {};
     if (user?.tenantId) headers["x-tenant-id"] = String(user.tenantId);
@@ -2037,7 +2065,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
         [fieldName]: config,
       }));
       
-      setConfigModalOpen(false);
+      closeColumnConfig();
     } catch (err) {
       console.error('Failed to save config:', err);
     }
@@ -2099,8 +2127,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
               className="relative flex items-center h-full px-2 group"
               onClick={(e) => {
                 e.stopPropagation();
-                setConfigModalColumn(col.key);
-                setConfigModalOpen(true);
+                openColumnConfig(col.key);
               }}
             >
               <span
@@ -2306,7 +2333,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
         };
       }),
     ];
-  }, [gridConfig, lookupOptions, activeCell, isCellInSelection, columnWidths, openRfiDialog, rfiCells, rfiColumns]);
+  }, [gridConfig, lookupOptions, activeCell, isCellInSelection, columnWidths, openRfiDialog, openColumnConfig, rfiCells, rfiColumns]);
 
   const handleColumnResize = useCallback((colOrIdx: any, widthMaybe: any) => {
     let colKey: string | null = null;
@@ -2756,7 +2783,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
         isOpen={configModalOpen}
         fieldName={configModalColumn}
         currentConfig={gridConfig[configModalColumn]}
-        onClose={() => setConfigModalOpen(false)}
+        onClose={closeColumnConfig}
         onSave={(config) => saveColumnConfig(configModalColumn, config)}
         availableLookupTables={availableLookupTables}
         availableComponents={availableComponents}

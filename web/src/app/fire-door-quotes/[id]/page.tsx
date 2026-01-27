@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import { apiFetch } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
 import { FireDoorGrid } from "./fire-door-grid-new";
 import { RfiDialog } from "@/components/rfi-dialog";
+import { COST_SHEET_COLUMNS } from "../cost-sheet-columns";
 
 interface FireDoorLineItem {
   id?: string;
@@ -45,6 +46,8 @@ interface FireDoorQuote {
   contactPhone?: string;
   poNumber?: string;
   dateRequired?: string;
+  markupPercent?: number | null;
+  deliveryCost?: number | null;
   status?: string;
   totalValue?: number;
   lineItems: FireDoorLineItem[];
@@ -73,11 +76,69 @@ export default function FireDoorQuoteBuilderPage() {
     contactPhone: "",
     poNumber: "",
     dateRequired: "",
+    markupPercent: 0,
+    deliveryCost: 0,
     status: "DRAFT",
     totalValue: 0,
     lineItems: [],
     notes: "",
   });
+
+  const costSheetKeyMap = useMemo(() => {
+    const map = new Map<string, string>();
+    COST_SHEET_COLUMNS.forEach((col) => {
+      const name = String(col.name || '').trim().toLowerCase();
+      if (!name) return;
+      map.set(name, col.key);
+    });
+    return map;
+  }, []);
+
+  const totals = useMemo(() => {
+    const getKey = (name: string) => costSheetKeyMap.get(name.trim().toLowerCase());
+    const materialKey = getKey('Cost Of Materials');
+    const labourKey = getKey('Cost Of Labour');
+    const lineCostKey = getKey('Line Cost');
+    const lineSellKey = getKey('Line Sell');
+    const linePriceKey = getKey('Line Price');
+
+    const readNumber = (row: FireDoorLineItem, key?: string) => {
+      if (!key) return 0;
+      const raw = row?.[key as keyof FireDoorLineItem];
+      if (raw == null || raw === '') return 0;
+      const num = Number(raw);
+      return Number.isFinite(num) ? num : 0;
+    };
+
+    const materialTotal = quote.lineItems.reduce((sum, row) => sum + readNumber(row, materialKey), 0);
+    const labourTotal = quote.lineItems.reduce((sum, row) => sum + readNumber(row, labourKey), 0);
+    const lineCostTotal = quote.lineItems.reduce((sum, row) => sum + readNumber(row, lineCostKey), 0);
+    const lineSellTotal = quote.lineItems.reduce((sum, row) => sum + readNumber(row, lineSellKey), 0);
+    const linePriceTotal = quote.lineItems.reduce((sum, row) => {
+      const fallback = readNumber(row, linePriceKey) || (row.lineTotal || 0);
+      return sum + fallback;
+    }, 0);
+
+    const totalCosts = lineCostTotal || materialTotal + labourTotal;
+    const totalLinePrice = lineSellTotal || linePriceTotal;
+    const profit = totalLinePrice - totalCosts;
+    const markupPercent = Number(quote.markupPercent || 0);
+    const deliveryCost = Number(quote.deliveryCost || 0);
+    const totalWithMarkup = totalCosts * (1 + markupPercent / 100);
+    const grandTotal = totalWithMarkup + deliveryCost;
+
+    return {
+      materialTotal,
+      labourTotal,
+      totalCosts,
+      totalLinePrice,
+      profit,
+      markupPercent,
+      deliveryCost,
+      totalWithMarkup,
+      grandTotal,
+    };
+  }, [costSheetKeyMap, quote.lineItems, quote.deliveryCost, quote.markupPercent]);
 
   useEffect(() => {
     if (params?.id && params.id !== "new") {
@@ -447,6 +508,59 @@ export default function FireDoorQuoteBuilderPage() {
               <Plus className="w-4 h-4 mr-2" />
               Add Door
             </Button>
+          </div>
+
+          <div className="p-4 border-b border-slate-200 bg-white/80">
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 block">Markup (%)</label>
+                <Input
+                  type="number"
+                  value={quote.markupPercent ?? 0}
+                  onChange={(e) => setQuote({ ...quote, markupPercent: Number(e.target.value) || 0 })}
+                  className="h-9 bg-white"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 block">Delivery (£)</label>
+                <Input
+                  type="number"
+                  value={quote.deliveryCost ?? 0}
+                  onChange={(e) => setQuote({ ...quote, deliveryCost: Number(e.target.value) || 0 })}
+                  className="h-9 bg-white"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 block">Total Material Cost</label>
+                <div className="h-9 flex items-center font-semibold text-slate-800">£{totals.materialTotal.toFixed(2)}</div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 block">Total Labour Cost</label>
+                <div className="h-9 flex items-center font-semibold text-slate-800">£{totals.labourTotal.toFixed(2)}</div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 block">Total Costs</label>
+                <div className="h-9 flex items-center font-semibold text-slate-800">£{totals.totalCosts.toFixed(2)}</div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 block">Profit</label>
+                <div className="h-9 flex items-center font-semibold text-emerald-700">£{totals.profit.toFixed(2)}</div>
+              </div>
+            </div>
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 block">Total Line Price</label>
+                <div className="h-9 flex items-center font-semibold text-slate-900">£{totals.totalLinePrice.toFixed(2)}</div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 block">Total With Markup</label>
+                <div className="h-9 flex items-center font-semibold text-slate-900">£{totals.totalWithMarkup.toFixed(2)}</div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 block">Grand Total</label>
+                <div className="h-9 flex items-center font-semibold text-blue-700">£{totals.grandTotal.toFixed(2)}</div>
+              </div>
+            </div>
           </div>
 
           <div className="p-4">
