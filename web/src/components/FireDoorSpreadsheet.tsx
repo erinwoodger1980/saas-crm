@@ -583,6 +583,11 @@ const FIRE_DOOR_FIELD_CATALOG_RAW = [
   'Cost Of Labour',
   'Line Cost',
   'Line Sell',
+  'Total Material Cost',
+  'Total Labour Cost',
+  'Total Costs',
+  'Profit',
+  'Total Line Price',
   'Price Ea',
   'Qty2',
   'Line Price',
@@ -862,6 +867,11 @@ const BASE_COLUMNS: Column<FireDoorRow>[] = [
   { key: "labourCost", name: "Cost Of Labour", width: 150, editable: true },
   { key: "lineCost", name: "Line Cost", width: 140, editable: true },
   { key: "lineSell", name: "Line Sell", width: 140, editable: true },
+  { key: "totalMaterialCost", name: "Total Material Cost", width: 170, editable: false },
+  { key: "totalLabourCost", name: "Total Labour Cost", width: 160, editable: false },
+  { key: "totalCosts", name: "Total Costs", width: 140, editable: false },
+  { key: "profit", name: "Profit", width: 120, editable: false },
+  { key: "totalLinePrice", name: "Total Line Price", width: 150, editable: false },
   { key: "priceEa", name: "Price Ea", width: 110, editable: true },
   { key: "qty2", name: "Qty2", width: 90, editable: true },
   { key: "linePrice", name: "Line Price", width: 120, editable: true, frozen: true },
@@ -2242,6 +2252,26 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
             const inSelection = isCellInSelection(rowIdx, col.key);
             const isActive = activeCell?.rowIdx === rowIdx && activeCell?.colKey === col.key;
 
+            const readNumber = (v: any) => {
+              if (v == null || v === '') return 0;
+              const n = Number(v);
+              return Number.isFinite(n) ? n : 0;
+            };
+
+            if (['totalMaterialCost', 'totalLabourCost', 'totalCosts', 'profit', 'totalLinePrice'].includes(col.key)) {
+              const material = readNumber((row as any).materialCost);
+              const labour = readNumber((row as any).labourCost);
+              const lineCost = readNumber((row as any).lineCost) || material + labour;
+              const lineSell = readNumber((row as any).lineSell);
+              const linePrice = readNumber((row as any).linePrice) || readNumber((row as any).lineTotal);
+              const totalLinePrice = lineSell || linePrice;
+              if (col.key === 'totalMaterialCost') value = material;
+              if (col.key === 'totalLabourCost') value = labour;
+              if (col.key === 'totalCosts') value = lineCost;
+              if (col.key === 'profit') value = totalLinePrice - lineCost;
+              if (col.key === 'totalLinePrice') value = totalLinePrice;
+            }
+
             const cellHasRfi =
               (row?.id ? rfiCells.has(`${row.id}::${col.key}`) : false) || rfiColumns.has(col.key);
             const baseClass = clsx(
@@ -2261,7 +2291,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
             if (value === null || value === undefined) return <div className={clsx(baseClass, 'text-gray-400')}>-</div>;
             
             // Format currency columns
-            if (['labourCost', 'materialCost', 'unitValue', 'lineTotal', 'priceEa', 'linePrice'].includes(col.key)) {
+            if (['labourCost', 'materialCost', 'unitValue', 'lineTotal', 'priceEa', 'linePrice', 'lineCost', 'lineSell', 'totalMaterialCost', 'totalLabourCost', 'totalCosts', 'profit', 'totalLinePrice'].includes(col.key)) {
               return <div className={clsx(baseClass, 'font-semibold text-green-700')}>£{Number(value).toFixed(2)}</div>;
             }
             
