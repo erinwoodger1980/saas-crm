@@ -9,7 +9,8 @@ import {
   Settings,
   Image as ImageIcon,
   Search,
-  Wrench
+  Wrench,
+  ShieldCheck
 } from 'lucide-react';
 
 export function Sidebar() {
@@ -18,6 +19,7 @@ export function Sidebar() {
   const navItems = [
     { href: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
     { href: '/admin/tenants', icon: FileText, label: 'Landing Pages' },
+    { href: '/admin/joinery-network', icon: ShieldCheck, label: 'Joinery Network' },
     { href: '/admin/dev-console', icon: Wrench, label: 'Developer Console' },
     { href: '/admin/features/review', icon: FileText, label: 'Feature Review' },
     { href: '/admin/seo-keywords', icon: Search, label: 'SEO & Keywords' },

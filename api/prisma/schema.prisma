@@ -149,6 +149,13 @@ model Tenant {
   timberDeliveries           TimberDelivery[]            @relation("TenantTimberDeliveries")
   timberDeliveryLines        TimberDeliveryLine[]        @relation("TenantTimberDeliveryLines")
   timberUsageLogs            TimberUsageLog[]            @relation("TenantTimberUsageLogs")
+  networksOwned              Network[]                   @relation("NetworkOwner")
+  networkMemberships         NetworkMember[]             @relation("NetworkMemberTenant")
+  evidences                  Evidence[]
+  dopDocuments               DoP[]
+  fpcRecords                 Fpc[]
+  projectCompliances         ProjectCompliance[]
+  compliancePacks            CompliancePack[]
 }
 
 model LippingLookup {
@@ -431,6 +438,8 @@ model Project {
   opportunity         Opportunity?             @relation("ProjectOpportunity", fields: [opportunityId], references: [id])
   bomLineItems        BOMLineItem[]            @relation("ProjectBOM")
   bomVariantLineItems BOMVariantLineItem[]     @relation("ProjectVariantBOM")
+  compliance          ProjectCompliance?
+  compliancePacks     CompliancePack[]
 
   @@index([tenantId])
   @@index([projectType])
@@ -521,6 +530,8 @@ model ProductType {
   standardFieldMaps    StandardFieldMapping[]   @relation("ProductTypeStandardFieldMappings")
   componentAssignments ProductTypeComponentAssignment[] @relation("ProductTypeComponentAssignments")
   fireDoorBOMs         FireDoorBOM[]            @relation("ProductTypeFireDoorBOMs")
+  dopDocuments         DoP[]
+  evidences            Evidence[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -553,6 +564,182 @@ model ProductTypeComponentAssignment {
   @@index([tenantId])
   @@index([productTypeId])
   @@index([componentId])
+}
+
+// ============================================================================
+// Joinery Network Authorisation + Compliance
+// ============================================================================
+
+model Network {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  slug      String   @unique
+  metadata  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant   Tenant         @relation("NetworkOwner", fields: [tenantId], references: [id], onDelete: Cascade)
+  members  NetworkMember[] @relation("NetworkMemberNetwork")
+  evidences Evidence[]
+
+  @@index([tenantId])
+}
+
+model NetworkMember {
+  id                 String              @id @default(cuid())
+  networkId          String
+  tenantId           String
+  status             NetworkMemberStatus @default(PENDING)
+  requestedByUserId  String
+  requestedAt        DateTime            @default(now())
+  approvedByUserId   String?
+  approvedAt         DateTime?
+  revokedAt          DateTime?
+  taskId             String?             @unique
+  metadata           Json?
+
+  network     Network @relation("NetworkMemberNetwork", fields: [networkId], references: [id], onDelete: Cascade)
+  tenant      Tenant  @relation("NetworkMemberTenant", fields: [tenantId], references: [id], onDelete: Cascade)
+  requestedBy User    @relation("NetworkRequests", fields: [requestedByUserId], references: [id])
+  approvedBy  User?   @relation("NetworkApprovals", fields: [approvedByUserId], references: [id])
+  task        Task?   @relation("NetworkAuthTask", fields: [taskId], references: [id])
+
+  @@unique([networkId, tenantId])
+  @@index([networkId, status])
+  @@index([tenantId, status])
+}
+
+model Evidence {
+  id            String       @id @default(cuid())
+  tenantId      String
+  networkId     String?
+  productTypeId String?
+  kind          EvidenceKind
+  title         String?
+  description   String?
+  metadata      Json?
+  fileId        String?
+  issuedAt      DateTime?
+  expiresAt     DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  network     Network?     @relation(fields: [networkId], references: [id], onDelete: Cascade)
+  productType ProductType? @relation(fields: [productTypeId], references: [id], onDelete: SetNull)
+  file        UploadedFile? @relation(fields: [fileId], references: [id], onDelete: SetNull)
+  dopLinks    DoPEvidence[]
+  fpcLinks    FpcEvidence[]
+
+  @@index([tenantId])
+  @@index([networkId])
+  @@index([productTypeId])
+  @@index([kind])
+}
+
+model DoP {
+  id            String   @id @default(cuid())
+  tenantId      String
+  productTypeId String
+  status        DoPStatus @default(DRAFT)
+  version       String
+  issuedAt      DateTime?
+  expiresAt     DateTime?
+  performance   Json?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  productType ProductType @relation(fields: [productTypeId], references: [id], onDelete: Cascade)
+  evidences   DoPEvidence[]
+
+  @@unique([tenantId, productTypeId, version])
+  @@index([tenantId, productTypeId, status])
+}
+
+model DoPEvidence {
+  dopId      String
+  evidenceId String
+  isPrimary  Boolean @default(false)
+
+  dop      DoP      @relation(fields: [dopId], references: [id], onDelete: Cascade)
+  evidence Evidence @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+
+  @@id([dopId, evidenceId])
+  @@index([evidenceId])
+}
+
+model Fpc {
+  id        String   @id @default(cuid())
+  tenantId  String
+  status    FpcStatus @default(DRAFT)
+  version   String
+  issuedAt  DateTime?
+  expiresAt DateTime?
+  details   Json?
+  metadata  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  evidences FpcEvidence[]
+  projectCompliances ProjectCompliance[]
+
+  @@unique([tenantId, version])
+  @@index([tenantId, status])
+}
+
+model FpcEvidence {
+  fpcId      String
+  evidenceId String
+  isPrimary  Boolean @default(false)
+
+  fpc      Fpc      @relation(fields: [fpcId], references: [id], onDelete: Cascade)
+  evidence Evidence @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+
+  @@id([fpcId, evidenceId])
+  @@index([evidenceId])
+}
+
+model ProjectCompliance {
+  id            String           @id @default(cuid())
+  projectId     String           @unique
+  tenantId      String
+  fpcId         String?
+  status        ComplianceStatus @default(IN_PROGRESS)
+  goodInChecks  Json?
+  signedOffAt   DateTime?
+  signedByUserId String?
+  metadata      Json?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fpc       Fpc?    @relation(fields: [fpcId], references: [id], onDelete: SetNull)
+  signedBy  User?   @relation("ProjectComplianceSignoff", fields: [signedByUserId], references: [id])
+
+  @@index([tenantId, status])
+  @@index([fpcId])
+}
+
+model CompliancePack {
+  id          String               @id @default(cuid())
+  projectId   String
+  tenantId    String
+  fileId      String?
+  status      CompliancePackStatus @default(GENERATED)
+  generatedAt DateTime             @default(now())
+  metadata    Json?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  file    UploadedFile? @relation(fields: [fileId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([projectId])
 }
 
 model Attribute {
@@ -826,6 +1013,9 @@ model User {
   clients                    Client[]
   createdRFIs                FireDoorRFI[]               @relation("RFICreator")
   assignedRFIs               FireDoorRFI[]               @relation("RFIAssignee")
+  networkAuthRequests        NetworkMember[]             @relation("NetworkRequests")
+  networkAuthApprovals       NetworkMember[]             @relation("NetworkApprovals")
+  signedOffProjectCompliances ProjectCompliance[]        @relation("ProjectComplianceSignoff")
 }
 
 model SignupToken {
@@ -1589,6 +1779,8 @@ model UploadedFile {
   supplierQuoteRequest SupplierQuoteRequest?
   quote                Quote?                @relation(fields: [quoteId], references: [id])
   tenant               Tenant                @relation(fields: [tenantId], references: [id])
+  evidences            Evidence[]
+  compliancePacks      CompliancePack[]
 
   @@index([tenantId, quoteId])
 }
@@ -2025,6 +2217,7 @@ model Task {
   emailConversations     EmailConversation[]
   timeEntries            TimeEntry[]
   workshopTimers         WorkshopTimer[]
+  networkMemberRequest   NetworkMember?         @relation("NetworkAuthTask")
 
   @@index([tenantId, status, dueAt])
   @@index([tenantId, relatedType, relatedId])
@@ -4541,6 +4734,50 @@ enum AssigneeRole {
 enum SubtaskStatus {
   OPEN
   DONE
+}
+
+enum NetworkMemberStatus {
+  PENDING
+  AUTHORISED
+  REJECTED
+  SUSPENDED
+  REVOKED
+}
+
+enum EvidenceKind {
+  TEST_REPORT
+  CERTIFICATE
+  TECHNICAL_FILE
+  SPECIFICATION
+  DECLARATION
+  PROCEDURE
+  PHOTO
+  OTHER
+}
+
+enum DoPStatus {
+  DRAFT
+  ACTIVE
+  SUPERSEDED
+  WITHDRAWN
+}
+
+enum FpcStatus {
+  DRAFT
+  ACTIVE
+  SUSPENDED
+  WITHDRAWN
+}
+
+enum ComplianceStatus {
+  IN_PROGRESS
+  SIGNED_OFF
+  REJECTED
+}
+
+enum CompliancePackStatus {
+  GENERATED
+  ARCHIVED
 }
 
 enum NotificationType {

@@ -34,8 +34,21 @@ type MonthlyData = {
   sourceConversions: Record<string, { leads: number; wins: number; rate: number }>;
 };
 
+type WeeklyData = {
+  weekStart: string;
+  weekEnd: string;
+  weekLabel: string;
+  enquiries: number;
+  quotesCount: number;
+  quotesValue: number;
+  salesCount: number;
+  salesValue: number;
+  conversionRate: number;
+};
+
 type BusinessMetrics = {
   monthlyData: MonthlyData[];
+  weeklyData: WeeklyData[];
   monthlyDataTwoYear: MonthlyData[];
   yearToDate: {
     enquiries: number;
@@ -91,7 +104,7 @@ type BusinessMetrics = {
 };
 
 export default function DashboardPage() {
-  const [activeTab, setActiveTab] = useState<"overview" | "source-costs">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "sales" | "source-costs">("overview");
   const [data, setData] = useState<BusinessMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -240,9 +253,35 @@ export default function DashboardPage() {
     return (value * 100).toFixed(1) + '%';
   };
 
+  const averageValue = (total: number, count: number) => {
+    if (!count || count <= 0) return 0;
+    return total / count;
+  };
+
   const currentMonth = useMemo(() => {
     if (!data?.monthlyData.length) return null;
     return data.monthlyData[data.monthlyData.length - 1];
+  }, [data]);
+
+  const targetsBreakdown = useMemo(() => {
+    if (!data) return null;
+    return {
+      annual: data.targets,
+      monthly: {
+        enquiriesTarget: data.targets.enquiriesTarget / 12,
+        quotesValueTarget: data.targets.quotesValueTarget / 12,
+        quotesCountTarget: data.targets.quotesCountTarget / 12,
+        salesValueTarget: data.targets.salesValueTarget / 12,
+        salesCountTarget: data.targets.salesCountTarget / 12,
+      },
+      weekly: {
+        enquiriesTarget: data.targets.enquiriesTarget / 52,
+        quotesValueTarget: data.targets.quotesValueTarget / 52,
+        quotesCountTarget: data.targets.quotesCountTarget / 52,
+        salesValueTarget: data.targets.salesValueTarget / 52,
+        salesCountTarget: data.targets.salesCountTarget / 52,
+      },
+    };
   }, [data]);
 
   if (err) return <div className="p-6 text-red-600">Error: {err}</div>;
@@ -439,6 +478,13 @@ export default function DashboardPage() {
           className="flex-1"
         >
           📊 Overview
+        </Button>
+        <Button
+          variant={activeTab === "sales" ? "default" : "ghost"}
+          onClick={() => setActiveTab("sales")}
+          className="flex-1"
+        >
+          🧾 Sales
         </Button>
         <Button
           variant={activeTab === "source-costs" ? "default" : "ghost"}
@@ -735,6 +781,204 @@ export default function DashboardPage() {
 
       {/* Tab Content - Lead Source Costs */}
       {activeTab === "source-costs" && <LeadSourceCostsTab />}
+
+      {/* Tab Content - Sales */}
+      {activeTab === "sales" && loading && <div className="p-6">Loading sales dashboard…</div>}
+      {activeTab === "sales" && !loading && data && (
+        <>
+          {/* KPI Summary */}
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">YTD Enquiries</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{data.yearToDate.enquiries.toLocaleString()}</div>
+                <div className="text-xs text-slate-500">Target: {data.targets.ytdEnquiriesTarget.toLocaleString()}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">YTD Quotes Value</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatCurrency(data.yearToDate.quotesValue)}</div>
+                <div className="text-xs text-slate-500">Target: {formatCurrency(data.targets.ytdQuotesValueTarget)}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">YTD Sales Value</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatCurrency(data.yearToDate.salesValue)}</div>
+                <div className="text-xs text-slate-500">Target: {formatCurrency(data.targets.ytdSalesValueTarget)}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">YTD Conversion Rate</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatPercent(data.yearToDate.conversionRate)}</div>
+                <div className="text-xs text-slate-500">Enquiry → sale</div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Weekly Overview */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Weekly Performance (last 12 weeks)</CardTitle>
+              <p className="text-sm text-slate-600">Enquiries, quotes, conversions and averages</p>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-slate-50 text-slate-600">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Week</th>
+                      <th className="px-3 py-2 text-right">Enquiries</th>
+                      <th className="px-3 py-2 text-right">Quotes Value</th>
+                      <th className="px-3 py-2 text-right">Conversions</th>
+                      <th className="px-3 py-2 text-right">Conversions Value</th>
+                      <th className="px-3 py-2 text-right">Avg Sale</th>
+                      <th className="px-3 py-2 text-right">Avg Quote</th>
+                      <th className="px-3 py-2 text-right">Conversion Rate</th>
+                      <th className="px-3 py-2 text-right">Weekly Targets</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(data.weeklyData || []).map((week) => (
+                      <tr key={week.weekStart} className="border-t">
+                        <td className="px-3 py-2 font-medium">{week.weekLabel}</td>
+                        <td className="px-3 py-2 text-right">{week.enquiries.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right">{formatCurrency(week.quotesValue)}</td>
+                        <td className="px-3 py-2 text-right">{week.salesCount.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right">{formatCurrency(week.salesValue)}</td>
+                        <td className="px-3 py-2 text-right">{formatCurrency(averageValue(week.salesValue, week.salesCount))}</td>
+                        <td className="px-3 py-2 text-right">{formatCurrency(averageValue(week.quotesValue, week.quotesCount))}</td>
+                        <td className="px-3 py-2 text-right">{formatPercent(week.conversionRate)}</td>
+                        <td className="px-3 py-2 text-right text-xs text-slate-500">
+                          {targetsBreakdown ? (
+                            <div className="space-y-0.5">
+                              <div>E: {targetsBreakdown.weekly.enquiriesTarget.toFixed(1)}</div>
+                              <div>Q: {formatCurrency(targetsBreakdown.weekly.quotesValueTarget)}</div>
+                              <div>S: {formatCurrency(targetsBreakdown.weekly.salesValueTarget)}</div>
+                            </div>
+                          ) : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Monthly Overview */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Monthly Performance (last 12 months)</CardTitle>
+              <p className="text-sm text-slate-600">Totals, averages and targets per month</p>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-slate-50 text-slate-600">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Month</th>
+                      <th className="px-3 py-2 text-right">Enquiries</th>
+                      <th className="px-3 py-2 text-right">Quotes Value</th>
+                      <th className="px-3 py-2 text-right">Conversions</th>
+                      <th className="px-3 py-2 text-right">Conversions Value</th>
+                      <th className="px-3 py-2 text-right">Avg Sale</th>
+                      <th className="px-3 py-2 text-right">Avg Quote</th>
+                      <th className="px-3 py-2 text-right">Conversion Rate</th>
+                      <th className="px-3 py-2 text-right">Monthly Targets</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.monthlyData.map((month) => (
+                      <tr key={`${month.year}-${month.month}`} className="border-t">
+                        <td className="px-3 py-2 font-medium">{month.monthName}</td>
+                        <td className="px-3 py-2 text-right">{month.enquiries.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right">{formatCurrency(month.quotesValue)}</td>
+                        <td className="px-3 py-2 text-right">{month.salesCount.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right">{formatCurrency(month.salesValue)}</td>
+                        <td className="px-3 py-2 text-right">{formatCurrency(averageValue(month.salesValue, month.salesCount))}</td>
+                        <td className="px-3 py-2 text-right">{formatCurrency(averageValue(month.quotesValue, month.quotesCount))}</td>
+                        <td className="px-3 py-2 text-right">{formatPercent(month.conversionRate)}</td>
+                        <td className="px-3 py-2 text-right text-xs text-slate-500">
+                          {targetsBreakdown ? (
+                            <div className="space-y-0.5">
+                              <div>E: {targetsBreakdown.monthly.enquiriesTarget.toFixed(1)}</div>
+                              <div>Q: {formatCurrency(targetsBreakdown.monthly.quotesValueTarget)}</div>
+                              <div>S: {formatCurrency(targetsBreakdown.monthly.salesValueTarget)}</div>
+                            </div>
+                          ) : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Targets Summary */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Weekly Targets</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                {targetsBreakdown ? (
+                  <>
+                    <div className="flex justify-between"><span>Enquiries</span><span>{targetsBreakdown.weekly.enquiriesTarget.toFixed(1)}</span></div>
+                    <div className="flex justify-between"><span>Quotes Value</span><span>{formatCurrency(targetsBreakdown.weekly.quotesValueTarget)}</span></div>
+                    <div className="flex justify-between"><span>Sales Value</span><span>{formatCurrency(targetsBreakdown.weekly.salesValueTarget)}</span></div>
+                    <div className="flex justify-between"><span>Quotes Count</span><span>{targetsBreakdown.weekly.quotesCountTarget.toFixed(1)}</span></div>
+                    <div className="flex justify-between"><span>Sales Count</span><span>{targetsBreakdown.weekly.salesCountTarget.toFixed(1)}</span></div>
+                  </>
+                ) : (
+                  <div className="text-slate-500">No targets available.</div>
+                )}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Monthly Targets</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                {targetsBreakdown ? (
+                  <>
+                    <div className="flex justify-between"><span>Enquiries</span><span>{targetsBreakdown.monthly.enquiriesTarget.toFixed(1)}</span></div>
+                    <div className="flex justify-between"><span>Quotes Value</span><span>{formatCurrency(targetsBreakdown.monthly.quotesValueTarget)}</span></div>
+                    <div className="flex justify-between"><span>Sales Value</span><span>{formatCurrency(targetsBreakdown.monthly.salesValueTarget)}</span></div>
+                    <div className="flex justify-between"><span>Quotes Count</span><span>{targetsBreakdown.monthly.quotesCountTarget.toFixed(1)}</span></div>
+                    <div className="flex justify-between"><span>Sales Count</span><span>{targetsBreakdown.monthly.salesCountTarget.toFixed(1)}</span></div>
+                  </>
+                ) : (
+                  <div className="text-slate-500">No targets available.</div>
+                )}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Annual Targets & YTD</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <div className="flex justify-between"><span>Enquiries</span><span>{data.yearToDate.enquiries.toLocaleString()} / {data.targets.enquiriesTarget.toLocaleString()}</span></div>
+                <div className="flex justify-between"><span>Quotes Value</span><span>{formatCurrency(data.yearToDate.quotesValue)} / {formatCurrency(data.targets.quotesValueTarget)}</span></div>
+                <div className="flex justify-between"><span>Sales Value</span><span>{formatCurrency(data.yearToDate.salesValue)} / {formatCurrency(data.targets.salesValueTarget)}</span></div>
+                <div className="flex justify-between"><span>Quotes Count</span><span>{data.yearToDate.quotesCount.toLocaleString()} / {data.targets.quotesCountTarget.toLocaleString()}</span></div>
+                <div className="flex justify-between"><span>Sales Count</span><span>{data.yearToDate.salesCount.toLocaleString()} / {data.targets.salesCountTarget.toLocaleString()}</span></div>
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      )}
     </DeskSurface>
   );
 }

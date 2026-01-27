@@ -67,6 +67,23 @@ function getMonthBoundaries(year: number, month: number) {
   return { start, end };
 }
 
+function getWeekStart(date: Date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = day === 0 ? 6 : day - 1; // Monday as start of week
+  d.setDate(d.getDate() - diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function getWeekBoundaries(date: Date) {
+  const start = getWeekStart(date);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+  return { start, end };
+}
+
 // Helper function to get year boundaries
 function getYearBoundaries(year: number) {
   const start = new Date(year, 0, 1);
@@ -278,6 +295,73 @@ router.get("/business-metrics", async (req, res) => {
       });
     }
 
+    // Weekly data (last 12 weeks)
+    const weeklyData = [];
+    for (let i = 11; i >= 0; i--) {
+      const targetDate = new Date();
+      targetDate.setDate(targetDate.getDate() - i * 7);
+      const { start, end } = getWeekBoundaries(targetDate);
+
+      const enquiries = await prisma.lead.count({
+        where: {
+          tenantId,
+          capturedAt: { gte: start, lte: end },
+        },
+      });
+
+      const leadsWithQuotes = await prisma.lead.findMany({
+        where: {
+          tenantId,
+          dateQuoteSent: { gte: start, lte: end },
+        },
+        select: {
+          dateQuoteSent: true,
+          quotedValue: true,
+          custom: true,
+        },
+      });
+
+      const legacyWeeklyQuotes = legacyQuoteSentLeads.filter((lead) => {
+        const custom = lead.custom as any;
+        const d = parseCustomDate(custom?.dateQuoteSent);
+        return inRange(d, start, end);
+      });
+
+      const quotesCount = leadsWithQuotes.length + legacyWeeklyQuotes.length;
+      const quotesValue =
+        leadsWithQuotes.reduce((sum, lead) => sum + getEffectiveQuoteValue(lead), 0) +
+        legacyWeeklyQuotes.reduce((sum, lead) => sum + getEffectiveQuoteValue(lead), 0);
+
+      const salesOpps = await prisma.opportunity.findMany({
+        where: {
+          tenantId,
+          wonAt: { gte: start, lte: end },
+        },
+        select: { valueGBP: true },
+      });
+      const legacyWeeklySales = legacyOrderPlacedLeads.filter((lead) =>
+        inRange(getEffectiveOrderPlacedAt(lead), start, end)
+      );
+      const salesCount = salesOpps.length + legacyWeeklySales.length;
+      const salesValue =
+        salesOpps.reduce((sum, s) => sum + Number(s.valueGBP || 0), 0) +
+        legacyWeeklySales.reduce((sum, lead) => sum + getEffectiveOrderValue(lead), 0);
+
+      const weekLabel = `${start.toLocaleDateString("default", { day: "2-digit", month: "short" })} – ${end.toLocaleDateString("default", { day: "2-digit", month: "short" })}`;
+
+      weeklyData.push({
+        weekStart: start.toISOString(),
+        weekEnd: end.toISOString(),
+        weekLabel,
+        enquiries,
+        quotesCount,
+        quotesValue,
+        salesCount,
+        salesValue,
+        conversionRate: enquiries > 0 ? salesCount / enquiries : 0,
+      });
+    }
+
     // Financial year-to-date totals
     const { start: fyStart, end: fyEnd } = getFinancialYearBoundaries(financialYearEnd, currentFinancialYear);
 
@@ -446,6 +530,7 @@ router.get("/business-metrics", async (req, res) => {
 
     res.json({
       monthlyData: monthlyData.slice(-12), // Return last 12 months for main view
+      weeklyData,
       monthlyDataTwoYear: monthlyData, // Return 24 months for comparison charts
       yearToDate: {
         enquiries: ytdEnquiries,

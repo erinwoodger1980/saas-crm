@@ -40,7 +40,23 @@ export async function sendEmail(options: {
 }
 
 export async function sendLeadEmail(payload: any) {
-  if (!hasSmtp() || !ENV.SALES_NOTIFY_EMAIL) return;
+  const toList = (() => {
+    const raw = payload?.to ?? payload?.toEmails ?? ENV.SALES_NOTIFY_EMAIL;
+    if (!raw) return [] as string[];
+    if (Array.isArray(raw)) {
+      return raw
+        .map((v) => String(v || "").trim())
+        .filter(Boolean)
+        .filter((e) => /.+@.+\..+/.test(e));
+    }
+    return String(raw)
+      .split(/[;,\s]+/)
+      .map((v) => v.trim())
+      .filter(Boolean)
+      .filter((e) => /.+@.+\..+/.test(e));
+  })();
+
+  if (!hasSmtp() || toList.length === 0) return;
   const html = `
     <h2>New Lead (${payload.source})</h2>
     <p><strong>Name:</strong> ${payload.name}</p>
@@ -51,7 +67,7 @@ export async function sendLeadEmail(payload: any) {
     <p><strong>Message:</strong> ${payload.message || ""}</p>
   `;
   await sendEmail({
-    to: ENV.SALES_NOTIFY_EMAIL,
+    to: toList.join(", "),
     subject: `New Lead: ${payload.name} (${payload.source})`,
     html,
     from: `Leads <${ENV.SMTP_USER}>`,

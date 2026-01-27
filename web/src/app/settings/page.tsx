@@ -332,6 +332,9 @@ export default function SettingsPage() {
   const [uploadingQuotePdf, setUploadingQuotePdf] = useState(false);
   const [playbook, setPlaybook] = useState<TaskPlaybook>(normalizeTaskPlaybook(DEFAULT_TASK_PLAYBOOK));
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  const [tjnMember, setTjnMember] = useState<any | null>(null);
+  const [tjnLoading, setTjnLoading] = useState(false);
+  const [tjnRequesting, setTjnRequesting] = useState(false);
   // Workshop processes state
   type ProcessDef = {
     id: string;
@@ -384,6 +387,41 @@ export default function SettingsPage() {
       }
     })();
   }, [mutateCurrentUser, toast, user?.firstName, user?.lastName]);
+
+  const loadTjnMember = useCallback(async () => {
+    setTjnLoading(true);
+    try {
+      await ensureDemoAuth();
+      const res = await apiFetch<{ member?: any }>("/network/authorisation/me");
+      setTjnMember(res?.member ?? null);
+    } catch (e: any) {
+      setTjnMember(null);
+      console.warn("Failed to load TJN status:", e?.message || e);
+    } finally {
+      setTjnLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadTjnMember();
+  }, [loadTjnMember]);
+
+  const requestTjnAuthorisation = useCallback(async () => {
+    setTjnRequesting(true);
+    try {
+      await ensureDemoAuth();
+      const res = await apiFetch<{ member?: any }>("/network/authorisation/request", {
+        method: "POST",
+        json: {},
+      });
+      setTjnMember(res?.member ?? null);
+      toast({ title: "Request sent", description: "Your TJN authorisation request has been sent." });
+    } catch (e: any) {
+      toast({ title: "Request failed", description: e?.message || "Unable to request authorisation", variant: "destructive" });
+    } finally {
+      setTjnRequesting(false);
+    }
+  }, [toast]);
 
   // Load workshop processes when entering that stage
   useEffect(() => {
@@ -1458,6 +1496,24 @@ export default function SettingsPage() {
           </Button>
         </div>
       </div>
+    </div>
+  </Section>
+
+  <Section
+    title="Joinery Network Authorisation"
+    description="Request TJN authorisation to access network compliance features."
+    right={
+      <Button onClick={requestTjnAuthorisation} disabled={tjnRequesting || tjnLoading || tjnMember?.status === "AUTHORISED"}>
+        {tjnRequesting ? "Requesting…" : tjnMember?.status === "AUTHORISED" ? "Authorised" : "Request Authorisation"}
+      </Button>
+    }
+  >
+    <div className="text-sm text-slate-600">
+      {tjnLoading && "Loading authorisation status…"}
+      {!tjnLoading && !tjnMember && "No authorisation request yet."}
+      {!tjnLoading && tjnMember?.status === "PENDING" && "Your request is pending approval by The Joinery Network."}
+      {!tjnLoading && tjnMember?.status === "REJECTED" && "Your request was rejected. You can submit a new request if needed."}
+      {!tjnLoading && tjnMember?.status === "AUTHORISED" && "Your tenant is TJN authorised."}
     </div>
   </Section>
 

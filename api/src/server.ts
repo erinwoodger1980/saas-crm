@@ -154,6 +154,11 @@ import sceneStateRouter from "./routes/scene-state";
 import assetsRouter from "./routes/assets";
 import profilesRouter from "./routes/profiles";
 import templatesRouter from "./routes/templates";
+import networkRouter from "./routes/network";
+import evidenceRouter from "./routes/evidence";
+import dopRouter from "./routes/dop";
+import fpcRouter from "./routes/fpc";
+import projectComplianceRouter from "./routes/project-compliance";
 import accountingSageRouter from "./routes/accounting-sage";
 import fireDoorRfisRouter from "./routes/fire-door-rfis";
 import fireDoorComponentsRouter from "./routes/fire-door-components";
@@ -812,6 +817,12 @@ app.use("/assets", requireAuth, assetsRouter);
 app.use("/profiles", requireAuth, profilesRouter);
 // Template product generation (ProductType → ComponentTemplate → LookupTableRow)
 app.use("/templates", requireAuth, templatesRouter);
+// Joinery Network authorisation + compliance
+app.use("/network", requireAuth, networkRouter);
+app.use("/evidence", requireAuth, evidenceRouter);
+app.use("/dop", requireAuth, dopRouter);
+app.use("/fpc", requireAuth, fpcRouter);
+app.use("/project-compliance", requireAuth, projectComplianceRouter);
 // Fire door BOM auto-generation (generates BOMs for fire door rows)
 app.use("/fire-door-bom", requireAuth, fireDoorBOMRouter);
 // Material cost debug routes (internal debugging tool)
