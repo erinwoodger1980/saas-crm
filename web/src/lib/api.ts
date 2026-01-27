@@ -20,6 +20,9 @@ function inferApiBase(): string {
   // This avoids /api 404s on hosts without rewrites.
   if (typeof window !== "undefined") {
     const hostname = window.location?.hostname || "";
+    if (hostname.endsWith(".onrender.com")) {
+      return "/api";
+    }
     if (hostname === "lignumwindows.com" || hostname === "www.lignumwindows.com") {
       return "/api";
     }
