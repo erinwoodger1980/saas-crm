@@ -925,6 +925,8 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   const [availableFields, setAvailableFields] = useState<Array<{ name: string; type: string }>>([]);
 
   const [mutatingRows, setMutatingRows] = useState(false);
+  const [markupPercent, setMarkupPercent] = useState(0);
+  const [deliveryCost, setDeliveryCost] = useState(0);
 
   const [rfis, setRfis] = useState<RfiRecord[]>([]);
   const [rfiDialogOpen, setRfiDialogOpen] = useState(false);
@@ -986,6 +988,39 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   useEffect(() => {
     rowsRef.current = rows;
   }, [rows]);
+
+  const totals = useMemo(() => {
+    const readNumber = (value: any) => {
+      if (value == null || value === '') return 0;
+      const num = Number(value);
+      return Number.isFinite(num) ? num : 0;
+    };
+
+    const materialTotal = rows.reduce((sum, row) => sum + readNumber((row as any).materialCost), 0);
+    const labourTotal = rows.reduce((sum, row) => sum + readNumber((row as any).labourCost), 0);
+    const lineCostTotal = rows.reduce((sum, row) => sum + readNumber((row as any).lineCost), 0);
+    const lineSellTotal = rows.reduce((sum, row) => sum + readNumber((row as any).lineSell), 0);
+    const linePriceTotal = rows.reduce((sum, row) => {
+      const fallback = readNumber((row as any).linePrice) || readNumber((row as any).lineTotal);
+      return sum + fallback;
+    }, 0);
+
+    const totalCosts = lineCostTotal || materialTotal + labourTotal;
+    const totalLinePrice = lineSellTotal || linePriceTotal;
+    const profit = totalLinePrice - totalCosts;
+    const totalWithMarkup = totalCosts * (1 + (markupPercent || 0) / 100);
+    const grandTotal = totalWithMarkup + (deliveryCost || 0);
+
+    return {
+      materialTotal,
+      labourTotal,
+      totalCosts,
+      totalLinePrice,
+      profit,
+      totalWithMarkup,
+      grandTotal,
+    };
+  }, [rows, markupPercent, deliveryCost]);
 
   const bulkCreateRows = useCallback(async (count: number) => {
     if (!importId) return [] as any[];
@@ -2732,6 +2767,59 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
         >
           {creatingQuote ? "Creating..." : `Create Quote (${selectedRows.size} doors)`}
         </Button>
+      </div>
+
+      <div className="bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow border border-white/20">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div>
+            <label className="text-xs font-medium text-slate-600 mb-1 block">Markup (%)</label>
+            <input
+              type="number"
+              value={markupPercent}
+              onChange={(e) => setMarkupPercent(Number(e.target.value) || 0)}
+              className="h-9 w-full rounded border border-slate-300 px-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-600 mb-1 block">Delivery (£)</label>
+            <input
+              type="number"
+              value={deliveryCost}
+              onChange={(e) => setDeliveryCost(Number(e.target.value) || 0)}
+              className="h-9 w-full rounded border border-slate-300 px-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-600 mb-1 block">Total Material Cost</label>
+            <div className="h-9 flex items-center font-semibold text-slate-800">£{totals.materialTotal.toFixed(2)}</div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-600 mb-1 block">Total Labour Cost</label>
+            <div className="h-9 flex items-center font-semibold text-slate-800">£{totals.labourTotal.toFixed(2)}</div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-600 mb-1 block">Total Costs</label>
+            <div className="h-9 flex items-center font-semibold text-slate-800">£{totals.totalCosts.toFixed(2)}</div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-600 mb-1 block">Profit</label>
+            <div className="h-9 flex items-center font-semibold text-emerald-700">£{totals.profit.toFixed(2)}</div>
+          </div>
+        </div>
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div>
+            <label className="text-xs font-medium text-slate-600 mb-1 block">Total Line Price</label>
+            <div className="h-9 flex items-center font-semibold text-slate-900">£{totals.totalLinePrice.toFixed(2)}</div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-600 mb-1 block">Total With Markup</label>
+            <div className="h-9 flex items-center font-semibold text-slate-900">£{totals.totalWithMarkup.toFixed(2)}</div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-600 mb-1 block">Grand Total</label>
+            <div className="h-9 flex items-center font-semibold text-blue-700">£{totals.grandTotal.toFixed(2)}</div>
+          </div>
+        </div>
       </div>
 
       {error && (
