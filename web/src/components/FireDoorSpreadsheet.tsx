@@ -1006,18 +1006,22 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       return Number.isFinite(num) ? num : 0;
     };
 
-    const materialTotal = rows.reduce((sum, row) => sum + readNumber((row as any).materialCost), 0);
-    const labourTotal = rows.reduce((sum, row) => sum + readNumber((row as any).labourCost), 0);
-    const lineCostTotal = rows.reduce((sum, row) => sum + readNumber((row as any).lineCost), 0);
-    const lineSellTotal = rows.reduce((sum, row) => sum + readNumber((row as any).lineSell), 0);
-    const linePriceTotal = rows.reduce((sum, row) => {
-      const fallback = readNumber((row as any).linePrice) || readNumber((row as any).lineTotal);
-      return sum + fallback;
-    }, 0);
+    const lineTotals = rows.map((row) => {
+      const material = readNumber((row as any).materialCost);
+      const labour = readNumber((row as any).labourCost);
+      const lineCost = readNumber((row as any).lineCost) || material + labour;
+      const lineSell = readNumber((row as any).lineSell);
+      const linePrice = readNumber((row as any).linePrice) || readNumber((row as any).lineTotal);
+      const totalLinePrice = lineSell || linePrice;
+      const profit = totalLinePrice - lineCost;
+      return { material, labour, lineCost, totalLinePrice, profit };
+    });
 
-    const totalCosts = lineCostTotal || materialTotal + labourTotal;
-    const totalLinePrice = lineSellTotal || linePriceTotal;
-    const profit = totalLinePrice - totalCosts;
+    const materialTotal = lineTotals.reduce((sum, row) => sum + row.material, 0);
+    const labourTotal = lineTotals.reduce((sum, row) => sum + row.labour, 0);
+    const totalCosts = lineTotals.reduce((sum, row) => sum + row.lineCost, 0);
+    const totalLinePrice = lineTotals.reduce((sum, row) => sum + row.totalLinePrice, 0);
+    const profit = lineTotals.reduce((sum, row) => sum + row.profit, 0);
     const totalWithMarkup = totalCosts * (1 + (markupPercent || 0) / 100);
     const grandTotal = totalWithMarkup + (deliveryCost || 0);
 
