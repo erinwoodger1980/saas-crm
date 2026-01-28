@@ -84,7 +84,16 @@ export default function LookupTablesPage() {
       }
 
       const data = await res.json();
-      setTables(data);
+      const sorted = Array.isArray(data)
+        ? [...data].sort((a: any, b: any) =>
+            String(a?.tableName || a?.name || '').localeCompare(
+              String(b?.tableName || b?.name || ''),
+              undefined,
+              { sensitivity: 'base' }
+            )
+          )
+        : data;
+      setTables(sorted as any);
     } catch (err: any) {
       setError(err.message);
       console.error('Error fetching tables:', err);
