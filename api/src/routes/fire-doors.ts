@@ -443,9 +443,6 @@ function sanitizeColumnWidths(input: any): Record<string, number> {
  */
 router.get('/order-grid/column-widths', async (req, res) => {
   try {
-    const userId = resolveUserId(req);
-    if (!userId) return res.status(401).json({ error: 'Authentication required' });
-
     const appSettings = await prisma.appSettings.findUnique({
       where: { id: 'global' },
       select: { fireDoorOrderGridColumnWidths: true },
@@ -465,9 +462,6 @@ router.get('/order-grid/column-widths', async (req, res) => {
  */
 router.post('/order-grid/column-widths', async (req, res) => {
   try {
-    const userId = resolveUserId(req);
-    if (!userId) return res.status(401).json({ error: 'Authentication required' });
-
     const body = (req.body && typeof req.body === 'object') ? (req.body as any) : {};
     const columnWidths = sanitizeColumnWidths(body.columnWidths);
 

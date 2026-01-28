@@ -961,27 +961,42 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
 
   const lastSavedColumnWidthsRef = useRef<string>("{}");
 
-  const rememberGridScroll = useCallback(() => {
-    const scroller =
-      (gridContainerRef.current?.querySelector('.rdg-viewport') as HTMLElement | null) ||
-      (gridContainerRef.current?.querySelector('.rdg') as HTMLElement | null);
-    if (scroller) {
-      gridScrollLeftRef.current = scroller.scrollLeft || 0;
-    }
+  const getGridScrollTargets = useCallback((): HTMLElement[] => {
+    const root = gridContainerRef.current;
+    if (!root) return [];
+    const selectors = ['.rdg-viewport', '.rdg-viewport-scrollable', '.rdg', '.rdg-canvas'];
+    const nodes = selectors.flatMap((selector) =>
+      Array.from(root.querySelectorAll<HTMLElement>(selector))
+    );
+    const unique = Array.from(new Set(nodes));
+    return unique.filter((el) => el.scrollWidth > el.clientWidth);
   }, []);
 
+  const rememberGridScroll = useCallback(() => {
+    const targets = getGridScrollTargets();
+    if (!targets.length) return;
+    const best = targets.reduce((acc, el) => (el.scrollWidth > acc.scrollWidth ? el : acc), targets[0]);
+    gridScrollLeftRef.current = best.scrollLeft || 0;
+  }, [getGridScrollTargets]);
+
   const restoreGridScroll = useCallback(() => {
-    const scroller =
-      (gridContainerRef.current?.querySelector('.rdg-viewport') as HTMLElement | null) ||
-      (gridContainerRef.current?.querySelector('.rdg') as HTMLElement | null);
-    if (!scroller) return;
+    const targets = getGridScrollTargets();
+    if (!targets.length) return;
     const targetLeft = gridScrollLeftRef.current || 0;
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        scroller.scrollLeft = targetLeft;
+        targets.forEach((el) => {
+          el.scrollLeft = targetLeft;
+        });
       });
     });
-  }, []);
+  }, [getGridScrollTargets]);
+
+  useEffect(() => {
+    if (!configModalOpen) {
+      restoreGridScroll();
+    }
+  }, [configModalOpen, visibleColumns.length, restoreGridScroll]);
 
   const openColumnConfig = useCallback((columnKey: string) => {
     rememberGridScroll();
