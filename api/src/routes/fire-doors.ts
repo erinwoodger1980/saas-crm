@@ -4,6 +4,7 @@
  */
 
 import { Router } from 'express';
+import { parse as parseCsv } from 'csv-parse/sync';
 import multer from 'multer';
 import ExcelJS from 'exceljs';
 import * as XLSX from 'xlsx';
@@ -94,6 +95,38 @@ function rowToValues(row: ExcelJS.Row, maxColumns: number): string[] {
     out.pop();
   }
   return out;
+}
+
+function getCsvSampleValues(csvContent: string | Buffer, headers: string[]): Record<string, string> {
+  try {
+    const records = parseCsv(csvContent, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+      bom: true,
+      relax_column_count: true,
+      to: 5,
+    }) as Array<Record<string, any>>;
+
+    if (!Array.isArray(records) || records.length === 0) return {};
+
+    const sample: Record<string, string> = {};
+    for (const header of headers) {
+      if (!header) continue;
+      for (const row of records) {
+        const raw = (row as any)?.[header];
+        const value = raw == null ? '' : String(raw).trim();
+        if (value) {
+          sample[header] = value;
+          break;
+        }
+      }
+    }
+
+    return sample;
+  } catch {
+    return {};
+  }
 }
 
 function detectHeaderRowNumber(
@@ -600,6 +633,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
 
     // 4. Validate headers (CSV or Excel converted to CSV)
     const headers = getCsvHeaders(csvContent);
+    const sampleValues = getCsvSampleValues(csvContent, headers);
     const expectedHeaders = getExpectedCsvHeaders();
     const expectedHeadersForMapping = expectedHeaders.filter((csvHeader) => {
       // Primary rule: hide by label suffix (matches the user's CSV field list).
@@ -1115,6 +1149,7 @@ router.post('/import-lw', upload.single('file'), async (req, res) => {
         headers,
         expectedHeaders: expectedHeadersForMapping,
         headerMap: hm || {},
+        sampleValues,
       });
     }
 
@@ -1129,6 +1164,7 @@ router.post('/import-lw', upload.single('file'), async (req, res) => {
         headers,
         expectedHeaders: expectedHeadersForMapping,
         headerMap: {},
+        sampleValues,
       });
     }
 

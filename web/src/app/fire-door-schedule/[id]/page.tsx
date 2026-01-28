@@ -241,6 +241,7 @@ export default function FireDoorScheduleDetailPage() {
     const [pendingImportMode, setPendingImportMode] = useState<"lineItems" | "lw">("lineItems");
     const [mappingOpen, setMappingOpen] = useState(false);
     const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
+    const [csvSampleValues, setCsvSampleValues] = useState<Record<string, string>>({});
     const [missingHeaders, setMissingHeaders] = useState<string[]>([]);
     const [requiredHeaders, setRequiredHeaders] = useState<string[]>([]);
     const [expectedHeaders, setExpectedHeaders] = useState<string[]>([]);
@@ -799,6 +800,7 @@ export default function FireDoorScheduleDetailPage() {
           setMissingHeaders(missing);
           setRequiredHeaders(required);
           setExpectedHeaders(expected);
+          setCsvSampleValues(errorPayload?.sampleValues && typeof errorPayload.sampleValues === "object" ? errorPayload.sampleValues : {});
           const expectedAll = (expected && expected.length) ? expected : required;
           setHeaderMap({
             ...buildInitialHeaderMap(expectedAll, headers),
@@ -1043,6 +1045,7 @@ export default function FireDoorScheduleDetailPage() {
         setMissingHeaders(missing);
         setRequiredHeaders(required);
         setExpectedHeaders(expected);
+        setCsvSampleValues(errorPayload?.sampleValues && typeof errorPayload.sampleValues === "object" ? errorPayload.sampleValues : {});
         const expectedAll = (expected && expected.length) ? expected : required;
         setHeaderMap({
           ...buildInitialHeaderMap(expectedAll, headersList),
@@ -2023,111 +2026,116 @@ export default function FireDoorScheduleDetailPage() {
             </DialogDescription>
           </DialogHeader>
 
-          {(() => {
-            const expectedAll = (expectedHeaders && expectedHeaders.length) ? expectedHeaders : requiredHeaders;
-            const systemFields = (expectedAll || [])
-              .map((x) => String(x))
-              .filter(Boolean)
-              .slice()
-              .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+          <div className="flex-1 min-h-0 overflow-auto">
+            {(() => {
+              const expectedAll = (expectedHeaders && expectedHeaders.length) ? expectedHeaders : requiredHeaders;
+              const systemFields = (expectedAll || [])
+                .map((x) => String(x))
+                .filter(Boolean)
+                .slice()
+                .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 
-            const mappedByCsv: Record<string, string> = {};
-            for (const expected of systemFields) {
-              const csv = String(headerMap[expected] || "").trim();
-              if (csv) mappedByCsv[csv] = expected;
-            }
+              const mappedByCsv: Record<string, string> = {};
+              for (const expected of systemFields) {
+                const csv = String(headerMap[expected] || "").trim();
+                if (csv) mappedByCsv[csv] = expected;
+              }
 
-            const sortedCsv = (csvHeaders || [])
-              .map((h) => String(h))
-              .filter(Boolean)
-              .slice()
-              .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+              const sortedCsv = (csvHeaders || [])
+                .map((h) => String(h))
+                .filter(Boolean)
+                .slice()
+                .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 
-            const unmatchedCsv = sortedCsv.filter((h) => !mappedByCsv[h]);
-            const matchedCsv = sortedCsv.filter((h) => !!mappedByCsv[h]);
-            const orderedCsv = [...unmatchedCsv, ...matchedCsv];
+              const unmatchedCsv = sortedCsv.filter((h) => !mappedByCsv[h]);
+              const matchedCsv = sortedCsv.filter((h) => !!mappedByCsv[h]);
+              const orderedCsv = [...unmatchedCsv, ...matchedCsv];
 
-            const missingSystemFields = (missingHeaders || [])
-              .map((x) => String(x))
-              .filter(Boolean)
-              .slice()
-              .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+              const missingSystemFields = (missingHeaders || [])
+                .map((x) => String(x))
+                .filter(Boolean)
+                .slice()
+                .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 
-            return (
-              <>
-                <div className="space-y-2">
-                  <div className="text-sm font-medium text-slate-800">
-                    Imported columns
-                    <span className="text-xs text-slate-600"> (unmatched first)</span>
-                  </div>
-                  <div className="text-xs text-slate-600">
-                    Unmatched: {unmatchedCsv.length} / {sortedCsv.length}
-                  </div>
-                  {missingSystemFields.length ? (
-                    <div className="text-xs text-slate-600">
-                      Missing system fields: {missingSystemFields.join(", ")}
+              return (
+                <>
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-slate-800">
+                      Imported columns
+                      <span className="text-xs text-slate-600"> (unmatched first)</span>
                     </div>
-                  ) : null}
-                </div>
-
-                <div className="flex-1 overflow-hidden rounded-md border border-slate-200">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 px-3 py-2 text-xs font-semibold text-slate-600 bg-slate-50 sticky top-0 z-10">
-                    <div>Imported column</div>
-                    <div>System field</div>
+                    <div className="text-xs text-slate-600">
+                      Unmatched: {unmatchedCsv.length} / {sortedCsv.length}
+                    </div>
+                    {missingSystemFields.length ? (
+                      <div className="text-xs text-slate-600">
+                        Missing system fields: {missingSystemFields.join(", ")}
+                      </div>
+                    ) : null}
                   </div>
-                  <div className="max-h-[55vh] overflow-auto">
-                    {orderedCsv.map((csvHeader) => (
-                      <div key={csvHeader} className="grid grid-cols-1 md:grid-cols-2 gap-2 items-center px-3 py-2 border-t border-slate-100">
-                        <div className="text-sm font-medium text-slate-800 break-words">
-                          {csvHeader}
-                          {!mappedByCsv[csvHeader] ? <span className="text-xs text-orange-600"> (unmatched)</span> : null}
-                        </div>
-                        <Select
-                          value={mappedByCsv[csvHeader] ?? undefined}
-                          onValueChange={(val) => {
-                            if (val === IGNORE_SENTINEL) {
+
+                  <div className="mt-3 rounded-md border border-slate-200">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 px-3 py-2 text-xs font-semibold text-slate-600 bg-slate-50 sticky top-0 z-10">
+                      <div>Imported column</div>
+                      <div>System field</div>
+                    </div>
+                    <div className="max-h-[55vh] overflow-auto">
+                      {orderedCsv.map((csvHeader) => (
+                        <div key={csvHeader} className="grid grid-cols-1 md:grid-cols-2 gap-2 items-center px-3 py-2 border-t border-slate-100">
+                          <div className="text-sm font-medium text-slate-800 break-words">
+                            {csvHeader}
+                            {!mappedByCsv[csvHeader] ? <span className="text-xs text-orange-600"> (unmatched)</span> : null}
+                            {csvSampleValues[csvHeader] ? (
+                              <div className="text-xs text-slate-500 mt-1 truncate">Sample: {csvSampleValues[csvHeader]}</div>
+                            ) : null}
+                          </div>
+                          <Select
+                            value={mappedByCsv[csvHeader] ?? undefined}
+                            onValueChange={(val) => {
+                              if (val === IGNORE_SENTINEL) {
+                                setHeaderMap((prev) => {
+                                  const next = { ...prev };
+                                  for (const k of Object.keys(next)) {
+                                    if (String(next[k] || "").trim() === csvHeader) delete next[k];
+                                  }
+                                  return next;
+                                });
+                                return;
+                              }
+
                               setHeaderMap((prev) => {
                                 const next = { ...prev };
+
                                 for (const k of Object.keys(next)) {
                                   if (String(next[k] || "").trim() === csvHeader) delete next[k];
                                 }
+
+                                delete next[val];
+                                next[val] = csvHeader;
                                 return next;
                               });
-                              return;
-                            }
-
-                            setHeaderMap((prev) => {
-                              const next = { ...prev };
-
-                              for (const k of Object.keys(next)) {
-                                if (String(next[k] || "").trim() === csvHeader) delete next[k];
-                              }
-
-                              delete next[val];
-                              next[val] = csvHeader;
-                              return next;
-                            });
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select system field…" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value={IGNORE_SENTINEL}>(Ignore)</SelectItem>
-                            {systemFields.map((field) => (
-                              <SelectItem key={field} value={field}>
-                                {field}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    ))}
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select system field…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={IGNORE_SENTINEL}>(Ignore)</SelectItem>
+                              {systemFields.map((field) => (
+                                <SelectItem key={field} value={field}>
+                                  {field}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              </>
-            );
-          })()}
+                </>
+              );
+            })()}
+          </div>
 
           <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-200 mt-4">
             <Button variant="outline" onClick={() => setMappingOpen(false)}>
