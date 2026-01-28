@@ -2514,6 +2514,19 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
                 </div>
               );
             }
+
+            const numericValue = (() => {
+              if (typeof value === 'number') return value;
+              if (typeof value === 'string') {
+                const trimmed = value.trim();
+                if (!trimmed) return null;
+                const n = Number(trimmed);
+                return Number.isFinite(n) ? n : null;
+              }
+              return null;
+            })();
+            const shouldFormatNumber = numericValue != null && (inputType === 'number' || typeof value === 'number');
+            const displayValue = shouldFormatNumber ? numericValue.toFixed(2) : value;
             
             // Show lookup label if configured
             if (isDropdown && fieldConfig?.lookupTable) {
@@ -2553,7 +2566,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
             if (isCalculated && !overrideActive) {
               return (
                 <div className={clsx(baseClass, 'text-blue-700 font-mono text-xs')} {...cellHandlers}>
-                  {value}
+                  {displayValue}
                 </div>
               );
             }
@@ -2562,7 +2575,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
             if (isCalculated && overrideActive) {
               return (
                 <div className={clsx(baseClass, 'flex items-center justify-between gap-2')} {...cellHandlers}>
-                  <span className="truncate">{value}</span>
+                  <span className="truncate">{displayValue}</span>
                   {isActive && (
                     <button
                       type="button"
@@ -2599,7 +2612,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
             return (
               <div className={baseClass} {...cellHandlers}>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate">{value}</span>
+                  <span className="truncate">{displayValue}</span>
                   {isActive && (
                     <button
                       type="button"

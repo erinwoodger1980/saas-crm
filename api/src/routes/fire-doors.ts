@@ -383,6 +383,21 @@ function coerceScalarValue(value: any, fieldMeta: any): any {
   return typeof value === 'string' ? value : String(value);
 }
 
+function sanitizeJsonValue(value: any): any {
+  if (value === undefined) return null;
+  if (value === null) return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (Array.isArray(value)) return value.map((v) => sanitizeJsonValue(v));
+  if (value && typeof value === 'object') {
+    const out: Record<string, any> = {};
+    for (const [k, v] of Object.entries(value)) {
+      out[k] = sanitizeJsonValue(v);
+    }
+    return out;
+  }
+  return value;
+}
+
 function serializeLineItemForJson(item: any) {
   if (!item || typeof item !== 'object') return item;
   return {
@@ -1536,7 +1551,7 @@ router.patch('/line-items/bulk', async (req, res) => {
         if (isScalar && !LINE_ITEM_FORBIDDEN_UPDATE_FIELDS.has(dbKey)) {
           updateData[dbKey] = coerceScalarValue(uiVal, meta);
         } else {
-          gridEdits[uiKey] = uiVal === '' ? null : uiVal;
+          gridEdits[uiKey] = sanitizeJsonValue(uiVal === '' ? null : uiVal);
         }
       }
 
@@ -1639,7 +1654,7 @@ router.patch('/line-items/:id', async (req, res) => {
         updateData[dbKey] = coerceScalarValue(uiVal, meta);
       } else {
         // Persist any non-DB column edits in rawRowJson.__grid keyed by grid column key
-        gridEdits[uiKey] = uiVal === '' ? null : uiVal;
+        gridEdits[uiKey] = sanitizeJsonValue(uiVal === '' ? null : uiVal);
       }
     }
 
