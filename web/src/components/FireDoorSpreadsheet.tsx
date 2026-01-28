@@ -1779,8 +1779,18 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     while (rowsText.length > 0 && rowsText[rowsText.length - 1] === '') rowsText.pop();
     if (rowsText.length === 0) return;
 
+    const parsedRows = rowsText.map((row) => row.split('\t'));
+    const pasteRowCount = parsedRows.length;
+    const pasteColCount = parsedRows.reduce((max, row) => Math.max(max, row.length), 0);
+
+    const usingSelection = !!selectionRange;
+    const pasteStartRow = usingSelection ? selectionRange!.startRow : start.rowIdx;
+    const pasteStartColIdx = usingSelection ? selectionRange!.startColIdx : startColIdx;
+    const maxRow = usingSelection ? selectionRange!.endRow : pasteStartRow + pasteRowCount - 1;
+    const maxCol = usingSelection ? selectionRange!.endColIdx : pasteStartColIdx + pasteColCount - 1;
+
     // Auto-create missing line items when pasting extends beyond current row count.
-    const requiredRowCount = start.rowIdx + rowsText.length;
+    const requiredRowCount = maxRow + 1;
     if (requiredRowCount > currentRows.length) {
       try {
         setMutatingRows(true);
@@ -1801,49 +1811,72 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
 
     let willTouchCalculated = false;
 
-    for (let rOff = 0; rOff < rowsText.length; rOff++) {
-      const targetRowIdx = start.rowIdx + rOff;
-      if (targetRowIdx < 0 || targetRowIdx >= nextRows.length) break;
-      const targetRow = nextRows[targetRowIdx];
-      const prevRow = currentRows[targetRowIdx];
-      const cells = rowsText[rOff].split('\t');
+    const applyCellChange = (
+      targetRow: FireDoorRow,
+      prevRow: FireDoorRow,
+      key: string,
+      rawVal: string
+    ) => {
+      const cfg = gridConfig[key];
+      const isCalculated = !!cfg?.formula || cfg?.inputType === 'formula';
+      const allowOverride = !!cfg?.allowFormulaOverride;
 
-      for (let cOff = 0; cOff < cells.length; cOff++) {
-        const targetColIdx = startColIdx + cOff;
-        if (targetColIdx < 0 || targetColIdx >= keys.length) break;
-        const key = keys[targetColIdx];
+      // Never paste into calculated fields unless overwrite is enabled
+      if (isCalculated && !allowOverride) return;
 
-        const cfg = gridConfig[key];
-        const isCalculated = !!cfg?.formula || cfg?.inputType === 'formula';
-        const allowOverride = !!cfg?.allowFormulaOverride;
+      if (!editableKeySet.has(key)) return;
 
-        // Never paste into calculated fields unless overwrite is enabled
-        if (isCalculated && !allowOverride) continue;
+      const nextVal = maybeParseNumber(rawVal);
+      if (Object.is((prevRow as any)[key], nextVal)) return;
+      (targetRow as any)[key] = nextVal === '' ? null : nextVal;
 
-        if (!editableKeySet.has(key)) continue;
+      if (isCalculated && allowOverride) willTouchCalculated = true;
 
-        const rawVal = cells[cOff];
-        const nextVal = maybeParseNumber(rawVal);
-        if (Object.is((prevRow as any)[key], nextVal)) continue;
-        (targetRow as any)[key] = nextVal === '' ? null : nextVal;
-
-        if (isCalculated && allowOverride) willTouchCalculated = true;
-
-        if (isCalculated && allowOverride) {
-          if ((targetRow as any)[key] == null || (targetRow as any)[key] === '') {
-            setFormulaOverrideFlag(targetRow as any, key, null);
-          } else {
-            setFormulaOverrideFlag(targetRow as any, key, true);
-          }
+      if (isCalculated && allowOverride) {
+        if ((targetRow as any)[key] == null || (targetRow as any)[key] === '') {
+          setFormulaOverrideFlag(targetRow as any, key, null);
+        } else {
+          setFormulaOverrideFlag(targetRow as any, key, true);
         }
+      }
 
-        const patch = changedById.get(targetRow.id) || {};
-        patch[key] = (targetRow as any)[key];
+      const patch = changedById.get(targetRow.id) || {};
+      patch[key] = (targetRow as any)[key];
 
-        if (isCalculated && allowOverride) {
-          patch[`__override:${key}`] = getFormulaOverrideFlag(targetRow as any, key) ? true : null;
+      if (isCalculated && allowOverride) {
+        patch[`__override:${key}`] = getFormulaOverrideFlag(targetRow as any, key) ? true : null;
+      }
+      changedById.set(targetRow.id, patch);
+    };
+
+    if (usingSelection && pasteRowCount === 1 && pasteColCount === 1) {
+      const fillValue = parsedRows[0]?.[0] ?? '';
+      for (let r = pasteStartRow; r <= maxRow; r++) {
+        const targetRow = nextRows[r];
+        const prevRow = currentRows[r];
+        if (!targetRow || !prevRow) continue;
+        for (let c = pasteStartColIdx; c <= maxCol; c++) {
+          const key = keys[c];
+          applyCellChange(targetRow, prevRow, key, fillValue);
         }
-        changedById.set(targetRow.id, patch);
+      }
+    } else {
+      for (let rOff = 0; rOff < parsedRows.length; rOff++) {
+        const targetRowIdx = pasteStartRow + rOff;
+        if (targetRowIdx < 0 || targetRowIdx >= nextRows.length) break;
+        if (usingSelection && targetRowIdx > maxRow) break;
+        const targetRow = nextRows[targetRowIdx];
+        const prevRow = currentRows[targetRowIdx];
+        const cells = parsedRows[rOff];
+
+        for (let cOff = 0; cOff < cells.length; cOff++) {
+          const targetColIdx = pasteStartColIdx + cOff;
+          if (targetColIdx < 0 || targetColIdx >= keys.length) break;
+          if (usingSelection && targetColIdx > maxCol) break;
+          const key = keys[targetColIdx];
+
+          applyCellChange(targetRow, prevRow, key, cells[cOff]);
+        }
       }
     }
 
@@ -1887,7 +1920,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
 
     const finalUpdates = Array.from(mergedUpdates.entries()).map(([id, changes]) => ({ id, changes }));
     await bulkPersist(finalUpdates);
-  }, [activeCell, selection, bulkPersist, getSelectableColumns, editableKeySet, gridConfig, ensureRowCount, applyFormulaCascade]);
+  }, [activeCell, selection, selectionRange, bulkPersist, getSelectableColumns, editableKeySet, gridConfig, ensureRowCount, applyFormulaCascade]);
 
   const handleRowsChange = useCallback((newRows: FireDoorRow[]) => {
     const oldRows = rowsRef.current;
@@ -2471,18 +2504,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
               const options = lookupOptions[fieldConfig.lookupTable] || [];
               const valueStr = value == null ? '' : String(value).trim();
               const option = valueStr
-                ? (
-                    options.find((opt) => String(opt.value).trim() === valueStr) ||
-                    (() => {
-                      const asNum = Number(valueStr);
-                      if (!Number.isFinite(asNum)) return undefined;
-                      return options.find((opt) => {
-                        const optNum = Number(String(opt.value).trim());
-                        return Number.isFinite(optNum) && optNum === asNum;
-                      });
-                    })() ||
-                    options.find((opt) => String(opt.label).trim() === valueStr)
-                  )
+                ? options.find((opt) => valuesEqual(opt.value, valueStr) || valuesEqual(opt.label, valueStr))
                 : undefined;
 
               const hasTypedValue = valueStr !== '';
