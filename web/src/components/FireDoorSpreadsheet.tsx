@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { apiFetch } from "@/lib/api";
 import { useCurrentUser } from "@/lib/use-current-user";
 import DataGrid, { Column, SelectColumn, RenderEditCellProps } from "react-data-grid";
@@ -925,6 +925,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [activeCell, setActiveCell] = useState<{ rowIdx: number; colKey: string } | null>(null);
   const [selection, setSelection] = useState<{ anchor: { rowIdx: number; colKey: string }; focus: { rowIdx: number; colKey: string } } | null>(null);
+  const isSelectingRef = useRef(false);
   const [creatingQuote, setCreatingQuote] = useState(false);
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [configModalColumn, setConfigModalColumn] = useState<string>("");
@@ -2437,6 +2438,10 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
           renderCell: (props: any) => {
             const row = props.row;
             const rowIdx = props.rowIdx as number;
+            const cellHandlers = {
+              onMouseDown: (event: ReactMouseEvent) => handleCellMouseDown(rowIdx, col.key, event),
+              onMouseEnter: () => handleCellMouseEnter(rowIdx, col.key),
+            };
 
             // Display row number starting at 1 (not 0)
             if (col.key === 'rowIndex') {
@@ -2449,6 +2454,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
                     inSelection && 'bg-blue-50',
                     isActive && 'ring-2 ring-blue-500 ring-inset'
                   )}
+                  {...cellHandlers}
                 >
                   {rowIdx + 1}
                 </div>
@@ -2492,11 +2498,21 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
               value = evaluateFormula(fieldConfig.formula, row);
             }
             
-            if (value === null || value === undefined) return <div className={clsx(baseClass, 'text-gray-400')}>-</div>;
+            if (value === null || value === undefined) {
+              return (
+                <div className={clsx(baseClass, 'text-gray-400')} {...cellHandlers}>
+                  -
+                </div>
+              );
+            }
             
             // Format currency columns
             if (['labourCost', 'materialCost', 'unitValue', 'lineTotal', 'priceEa', 'linePrice', 'lineCost', 'lineSell', 'profit'].includes(col.key)) {
-              return <div className={clsx(baseClass, 'font-semibold text-green-700')}>£{Number(value).toFixed(2)}</div>;
+              return (
+                <div className={clsx(baseClass, 'font-semibold text-green-700')} {...cellHandlers}>
+                  £{Number(value).toFixed(2)}
+                </div>
+              );
             }
             
             // Show lookup label if configured
@@ -2511,7 +2527,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
               const isInvalidDropdownValue = hasTypedValue && !option;
 
               return (
-                <div className={clsx(baseClass, isInvalidDropdownValue && !cellHasRfi && 'bg-orange-100')}>
+                <div className={clsx(baseClass, isInvalidDropdownValue && !cellHasRfi && 'bg-orange-100')} {...cellHandlers}>
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate">{option?.label || valueStr}</span>
                     {isActive && (
@@ -2535,13 +2551,17 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
             
             // Formula indicator (only when the formula is in effect)
             if (isCalculated && !overrideActive) {
-              return <div className={clsx(baseClass, 'text-blue-700 font-mono text-xs')}>{value}</div>;
+              return (
+                <div className={clsx(baseClass, 'text-blue-700 font-mono text-xs')} {...cellHandlers}>
+                  {value}
+                </div>
+              );
             }
 
             // When a formula override is active, show a reset control to return this cell to the column formula.
             if (isCalculated && overrideActive) {
               return (
-                <div className={clsx(baseClass, 'flex items-center justify-between gap-2')}>
+                <div className={clsx(baseClass, 'flex items-center justify-between gap-2')} {...cellHandlers}>
                   <span className="truncate">{value}</span>
                   {isActive && (
                     <button
@@ -2577,7 +2597,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
             }
 
             return (
-              <div className={baseClass}>
+              <div className={baseClass} {...cellHandlers}>
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate">{value}</span>
                   {isActive && (
@@ -2601,11 +2621,19 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
         };
       }),
     ];
-  }, [gridConfig, lookupOptions, activeCell, isCellInSelection, columnWidths, openRfiDialog, openColumnConfig, rfiCells, rfiColumns]);
+  }, [gridConfig, lookupOptions, activeCell, isCellInSelection, columnWidths, openRfiDialog, openColumnConfig, rfiCells, rfiColumns, handleCellMouseDown, handleCellMouseEnter]);
 
   const visibleColumns = useMemo(() => {
     return columns.filter((col) => !hiddenColumns.has(String((col as any)?.key || '')));
   }, [columns, hiddenColumns]);
+
+  useEffect(() => {
+    const handleMouseUp = () => {
+      isSelectingRef.current = false;
+    };
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => window.removeEventListener('mouseup', handleMouseUp);
+  }, []);
 
   useEffect(() => {
     if (!configModalOpen) {
@@ -2682,6 +2710,28 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       // no-op
     }
   }, [selection, gridConfig]);
+
+  const handleCellMouseDown = useCallback((rowIdx: number, colKey: string, event?: ReactMouseEvent) => {
+    if (!colKey || colKey === 'select-row') return;
+    if (event && event.button !== 0) return;
+    if (event && event.target instanceof HTMLElement) {
+      if (event.target.closest('button, input, select, textarea, a')) return;
+    }
+    const next = { rowIdx, colKey };
+    setActiveCell(next);
+    setSelection({ anchor: next, focus: next });
+    isSelectingRef.current = true;
+    gridContainerRef.current?.focus?.();
+  }, []);
+
+  const handleCellMouseEnter = useCallback((rowIdx: number, colKey: string) => {
+    if (!isSelectingRef.current) return;
+    if (!colKey || colKey === 'select-row') return;
+    setSelection((prev) => {
+      const anchor = prev?.anchor ?? { rowIdx, colKey };
+      return { anchor, focus: { rowIdx, colKey } };
+    });
+  }, []);
 
   const handleCopyCapture = useCallback((e: React.ClipboardEvent) => {
     const tsv = buildTsvFromSelection();
