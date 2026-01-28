@@ -1000,7 +1000,11 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
 
   const closeColumnConfig = useCallback(() => {
     setConfigModalOpen(false);
-    restoreGridScroll();
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        restoreGridScroll();
+      }, 120);
+    });
   }, [restoreGridScroll]);
   const authHeaders = useMemo(() => {
     const headers: Record<string, string> = {};
@@ -2472,16 +2476,19 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
 
   useEffect(() => {
     if (!configModalOpen) {
-      restoreGridScroll();
+      const t = window.setTimeout(() => {
+        restoreGridScroll();
+      }, 150);
+      return () => window.clearTimeout(t);
     }
-  }, [configModalOpen, visibleColumns.length, restoreGridScroll]);
+  }, [configModalOpen, visibleColumns.length, restoreGridScroll, gridConfig]);
 
   const handleColumnResize = useCallback((colOrIdx: any, widthMaybe: any) => {
     let colKey: string | null = null;
     let nextWidth: number | null = null;
 
     if (typeof colOrIdx === 'number') {
-      const c = (columns as any[])?.[colOrIdx];
+      const c = (visibleColumns as any[])?.[colOrIdx];
       colKey = c?.key ? String(c.key) : null;
       nextWidth = Number(widthMaybe);
     } else {
@@ -2494,7 +2501,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
 
     const clamped = Math.max(60, Math.min(800, Math.round(nextWidth)));
     setColumnWidths((prev) => ({ ...prev, [colKey as string]: clamped }));
-  }, [columns]);
+  }, [visibleColumns]);
 
   const handleCellClick = useCallback((args: any, event: any) => {
     try {
