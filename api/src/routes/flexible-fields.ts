@@ -718,7 +718,7 @@ router.patch('/lookup-tables/:tableId', async (req: Request, res: Response) => {
       });
 
       return full;
-    });
+    }, { maxWait: 20000, timeout: 20000 });
 
     return res.json({
       ...updated,
@@ -943,7 +943,7 @@ router.post('/lookup-tables/:tableId/csv-import', upload.single('file'), async (
         include: { rows: { orderBy: { sortOrder: 'asc' } } },
       });
       return full;
-    });
+    }, { maxWait: 20000, timeout: 20000 });
 
     return res.json({
       ...updated,

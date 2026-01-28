@@ -2363,6 +2363,28 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     loadImport({ selectAll: true });
   }, [loadImport]);
 
+  const handleCellMouseDown = useCallback((rowIdx: number, colKey: string, event?: ReactMouseEvent) => {
+    if (!colKey || colKey === 'select-row') return;
+    if (event && event.button !== 0) return;
+    if (event && event.target instanceof HTMLElement) {
+      if (event.target.closest('button, input, select, textarea, a')) return;
+    }
+    const next = { rowIdx, colKey };
+    setActiveCell(next);
+    setSelection({ anchor: next, focus: next });
+    isSelectingRef.current = true;
+    gridContainerRef.current?.focus?.();
+  }, []);
+
+  const handleCellMouseEnter = useCallback((rowIdx: number, colKey: string) => {
+    if (!isSelectingRef.current) return;
+    if (!colKey || colKey === 'select-row') return;
+    setSelection((prev) => {
+      const anchor = prev?.anchor ?? { rowIdx, colKey };
+      return { anchor, focus: { rowIdx, colKey } };
+    });
+  }, []);
+
   const columns = useMemo((): readonly Column<FireDoorRow>[] => {
     return [
       SelectColumn,
@@ -2723,28 +2745,6 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       // no-op
     }
   }, [selection, gridConfig]);
-
-  const handleCellMouseDown = useCallback((rowIdx: number, colKey: string, event?: ReactMouseEvent) => {
-    if (!colKey || colKey === 'select-row') return;
-    if (event && event.button !== 0) return;
-    if (event && event.target instanceof HTMLElement) {
-      if (event.target.closest('button, input, select, textarea, a')) return;
-    }
-    const next = { rowIdx, colKey };
-    setActiveCell(next);
-    setSelection({ anchor: next, focus: next });
-    isSelectingRef.current = true;
-    gridContainerRef.current?.focus?.();
-  }, []);
-
-  const handleCellMouseEnter = useCallback((rowIdx: number, colKey: string) => {
-    if (!isSelectingRef.current) return;
-    if (!colKey || colKey === 'select-row') return;
-    setSelection((prev) => {
-      const anchor = prev?.anchor ?? { rowIdx, colKey };
-      return { anchor, focus: { rowIdx, colKey } };
-    });
-  }, []);
 
   const handleCopyCapture = useCallback((e: React.ClipboardEvent) => {
     const tsv = buildTsvFromSelection();
