@@ -27,6 +27,8 @@ interface ColumnHeaderModalProps {
   availableLookupTables?: Array<{ id: string; tableName?: string; name?: string; category?: string }>;
   availableComponents?: Array<{ id: string; code: string; name: string }>;
   availableFields?: Array<{ name: string; type: string }>;
+  onFormulaWizardOpen?: () => void;
+  onFormulaWizardClose?: () => void;
 }
 
 export function ColumnHeaderModal({
@@ -38,6 +40,8 @@ export function ColumnHeaderModal({
   availableLookupTables = [],
   availableComponents = [],
   availableFields = [],
+  onFormulaWizardOpen,
+  onFormulaWizardClose,
 }: ColumnHeaderModalProps) {
   const NONE_VALUE = "__none__";
 
@@ -208,7 +212,10 @@ export function ColumnHeaderModal({
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setShowFormulaWizard(true)}
+                onClick={() => {
+                  onFormulaWizardOpen?.();
+                  setShowFormulaWizard(true);
+                }}
                 className="gap-1.5"
               >
                 <Sparkles className="w-3.5 h-3.5" />
@@ -304,9 +311,13 @@ export function ColumnHeaderModal({
       {/* Formula Wizard Modal */}
       <FormulaWizard
         isOpen={showFormulaWizard}
-        onClose={() => setShowFormulaWizard(false)}
+        onClose={() => {
+          setShowFormulaWizard(false);
+          onFormulaWizardClose?.();
+        }}
         onSave={(formula) => {
           setFormulaInput(formula);
+          onFormulaWizardClose?.();
           setShowFormulaWizard(false);
         }}
         initialFormula={formulaInput}

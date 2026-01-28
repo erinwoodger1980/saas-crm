@@ -318,13 +318,8 @@ const FIRE_DOOR_FIELD_CATALOG_RAW = [
   'Line Cost',
   'Line Sell',
   'Price Ea',
-  'Qty2',
   'Line Price',
-  'Total Material Cost',
-  'Total Labour Cost',
-  'Total Costs',
   'Profit',
-  'Total Line Price',
   'Location',
   'Doorset / Leaf  / Frame',
   'Type',
@@ -596,13 +591,8 @@ const FIRE_DOOR_FIELD_CATALOG_RAW = [
   'Line Cost',
   'Line Sell',
   'Price Ea',
-  'Qty2',
   'Line Price',
-  'Total Material Cost',
-  'Total Labour Cost',
-  'Total Costs',
   'Profit',
-  'Total Line Price',
   'Important notes for Fire Rating',
   'Client Notes 1',
   'Client Notes 2',
@@ -880,13 +870,8 @@ const BASE_COLUMNS: Column<FireDoorRow>[] = [
   { key: "lineCost", name: "Line Cost", width: 140, editable: true },
   { key: "lineSell", name: "Line Sell", width: 140, editable: true },
   { key: "priceEa", name: "Price Ea", width: 110, editable: true },
-  { key: "qty2", name: "Qty2", width: 90, editable: true },
   { key: "linePrice", name: "Line Price", width: 120, editable: true, frozen: true },
-  { key: "totalMaterialCost", name: "Total Material Cost", width: 170, editable: false },
-  { key: "totalLabourCost", name: "Total Labour Cost", width: 160, editable: false },
-  { key: "totalCosts", name: "Total Costs", width: 140, editable: false },
   { key: "profit", name: "Profit", width: 120, editable: false },
-  { key: "totalLinePrice", name: "Total Line Price", width: 150, editable: false },
   { key: "importantNotes", name: "Important notes for Fire Rating", width: 240, editable: true },
   { key: "clientNotes1", name: "Client Notes 1", width: 160, editable: true },
   { key: "clientNotes2", name: "Client Notes 2", width: 160, editable: true },
@@ -1060,6 +1045,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     const profit = lineTotals.reduce((sum, row) => sum + row.profit, 0);
     const totalWithMarkup = totalCosts * (1 + (markupPercent || 0) / 100);
     const grandTotal = totalWithMarkup + (deliveryCost || 0);
+    const marginPercent = totalLinePrice > 0 ? (profit / totalLinePrice) * 100 : 0;
 
     return {
       materialTotal,
@@ -1069,6 +1055,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       profit,
       totalWithMarkup,
       grandTotal,
+      marginPercent,
     };
   }, [rows, markupPercent, deliveryCost]);
 
@@ -1418,6 +1405,11 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       }
       if (!expression) return null;
 
+      const formulaGlobals: Record<string, any> = {
+        'Markup (%)': markupPercent,
+        markupPercent,
+      };
+
       // Resolve LOOKUP(...) calls first, using loaded flexible lookup tables.
       expression = replaceLookupCalls(expression, row);
 
@@ -1427,15 +1419,20 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       // Primary syntax: ${fieldName}
       expression = expression.replace(/\$\{([^}]+)\}/g, (_m, fieldRaw) => {
         const key = String(fieldRaw || '').trim();
-        const value = (row as any)[key];
+        const value = Object.prototype.hasOwnProperty.call(formulaGlobals, key)
+          ? formulaGlobals[key]
+          : (row as any)[key];
         if (typeof value === 'number' && Number.isFinite(value)) return String(value);
         if (value == null || value === '') return '0';
         return JSON.stringify(String(value));
       });
 
       // Back-compat: replace bare identifiers for numeric fields
-      for (const key of Object.keys(row)) {
-        const value = (row as any)[key];
+      const numericKeys = new Set<string>([...Object.keys(row), ...Object.keys(formulaGlobals)]);
+      for (const key of numericKeys) {
+        const value = Object.prototype.hasOwnProperty.call(formulaGlobals, key)
+          ? formulaGlobals[key]
+          : (row as any)[key];
         if (typeof value === 'number' && Number.isFinite(value)) {
           expression = expression.replace(new RegExp(`\\b${key}\\b`, 'g'), String(value));
         }
@@ -1504,7 +1501,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       console.error('Formula evaluation error:', err);
       return null;
     }
-  }, [replaceLookupCalls]);
+  }, [replaceLookupCalls, markupPercent]);
 
   const formulaColumns = useMemo(() => {
     return COLUMNS
@@ -1999,14 +1996,22 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
             allFields.push(colField);
           }
         }
+
+        if (!allFields.some(f => f.name === 'Markup (%)')) {
+          allFields.push({ name: 'Markup (%)', type: 'number' });
+        }
         
         setAvailableFields(allFields);
       } catch (err) {
         // Fallback: add all fire door columns
-        setAvailableFields(COLUMNS.map((col) => ({
+        const fallbackFields = COLUMNS.map((col) => ({
           name: col.key,
           type: 'text',
-        })));
+        }));
+        if (!fallbackFields.some(f => f.name === 'Markup (%)')) {
+          fallbackFields.push({ name: 'Markup (%)', type: 'number' });
+        }
+        setAvailableFields(fallbackFields);
       }
     };
     loadFields();
@@ -2298,18 +2303,14 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
               return Number.isFinite(n) ? n : 0;
             };
 
-            if (['totalMaterialCost', 'totalLabourCost', 'totalCosts', 'profit', 'totalLinePrice'].includes(col.key)) {
+            if (col.key === 'profit') {
               const material = readNumber((row as any).materialCost);
               const labour = readNumber((row as any).labourCost);
               const lineCost = readNumber((row as any).lineCost) || material + labour;
               const lineSell = readNumber((row as any).lineSell);
               const linePrice = readNumber((row as any).linePrice) || readNumber((row as any).lineTotal);
               const totalLinePrice = lineSell || linePrice;
-              if (col.key === 'totalMaterialCost') value = material;
-              if (col.key === 'totalLabourCost') value = labour;
-              if (col.key === 'totalCosts') value = lineCost;
-              if (col.key === 'profit') value = totalLinePrice - lineCost;
-              if (col.key === 'totalLinePrice') value = totalLinePrice;
+              value = totalLinePrice - lineCost;
             }
 
             const cellHasRfi =
@@ -2331,7 +2332,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
             if (value === null || value === undefined) return <div className={clsx(baseClass, 'text-gray-400')}>-</div>;
             
             // Format currency columns
-            if (['labourCost', 'materialCost', 'unitValue', 'lineTotal', 'priceEa', 'linePrice', 'lineCost', 'lineSell', 'totalMaterialCost', 'totalLabourCost', 'totalCosts', 'profit', 'totalLinePrice'].includes(col.key)) {
+            if (['labourCost', 'materialCost', 'unitValue', 'lineTotal', 'priceEa', 'linePrice', 'lineCost', 'lineSell', 'profit'].includes(col.key)) {
               return <div className={clsx(baseClass, 'font-semibold text-green-700')}>£{Number(value).toFixed(2)}</div>;
             }
             
@@ -2924,12 +2925,8 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
         </div>
         <div className="mt-4 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
           <div>
-            <label className="text-xs font-medium text-slate-600 mb-1 block">Total Line Price</label>
-            <div className="h-9 flex items-center font-semibold text-slate-900">£{totals.totalLinePrice.toFixed(2)}</div>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-slate-600 mb-1 block">Total With Markup</label>
-            <div className="h-9 flex items-center font-semibold text-slate-900">£{totals.totalWithMarkup.toFixed(2)}</div>
+            <label className="text-xs font-medium text-slate-600 mb-1 block">Margin (%)</label>
+            <div className="h-9 flex items-center font-semibold text-slate-900">{totals.marginPercent.toFixed(2)}%</div>
           </div>
           <div>
             <label className="text-xs font-medium text-slate-600 mb-1 block">Grand Total</label>
@@ -3002,6 +2999,8 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
         availableLookupTables={availableLookupTables}
         availableComponents={availableComponents}
         availableFields={availableFields}
+        onFormulaWizardOpen={rememberGridScroll}
+        onFormulaWizardClose={restoreGridScroll}
       />
     </div>
   );
