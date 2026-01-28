@@ -1333,11 +1333,30 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
 
   const bulkPersist = useCallback(async (updates: Array<{ id: string; changes: Record<string, any> }>) => {
     if (!updates.length) return;
+
+    const mergedById = new Map<string, Record<string, any>>();
+    for (const u of updates) {
+      const id = String(u?.id || '').trim();
+      const changes = (u && typeof u === 'object' && u.changes && typeof u.changes === 'object' && !Array.isArray(u.changes))
+        ? u.changes
+        : null;
+      if (!id || !changes || Object.keys(changes).length === 0) continue;
+      const prev = mergedById.get(id) || {};
+      mergedById.set(id, { ...prev, ...changes });
+    }
+
+    const mergedUpdates = Array.from(mergedById.entries()).map(([id, changes]) => ({ id, changes }));
+    if (!mergedUpdates.length) return;
+
+    const CHUNK_SIZE = 100;
     try {
-      await apiFetch(`/fire-doors/line-items/bulk`, {
-        method: 'PATCH',
-        json: { updates },
-      });
+      for (let i = 0; i < mergedUpdates.length; i += CHUNK_SIZE) {
+        const chunk = mergedUpdates.slice(i, i + CHUNK_SIZE);
+        await apiFetch(`/fire-doors/line-items/bulk`, {
+          method: 'PATCH',
+          json: { updates: chunk },
+        });
+      }
     } catch (err: any) {
       console.error('[fire-door-grid] Bulk save failed:', err);
       setError(err?.message || 'Failed to save changes');
