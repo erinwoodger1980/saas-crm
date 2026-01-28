@@ -245,6 +245,18 @@ export default function FireDoorScheduleDetailPage() {
     const [requiredHeaders, setRequiredHeaders] = useState<string[]>([]);
     const [expectedHeaders, setExpectedHeaders] = useState<string[]>([]);
     const [headerMap, setHeaderMap] = useState<Record<string, string>>({});
+    const LOOKUP_OVERRIDE_SENTINEL = "__LOOKUP_OVERRIDE__";
+    const [lookupValidationOpen, setLookupValidationOpen] = useState(false);
+    const [lookupValidationItems, setLookupValidationItems] = useState<Array<{
+      fieldKey: string;
+      fieldLabel: string;
+      lookupTable: string;
+      values: Array<{ value: string; count: number }>;
+      rowIds: string[];
+      options: Array<{ value: string; label: string }>;
+    }>>([]);
+    const [lookupValidationSelections, setLookupValidationSelections] = useState<Record<string, string>>({});
+    const [lookupValidationWorking, setLookupValidationWorking] = useState(false);
 
     const [sheetOpen, setSheetOpen] = useState(false);
     const [excelSheets, setExcelSheets] = useState<string[]>([]);
@@ -364,6 +376,114 @@ export default function FireDoorScheduleDetailPage() {
       }
 
       return out;
+    };
+
+    const sanitizeHeaderMap = (incoming: any, headers: string[]) => {
+      if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) return {};
+      const headerSet = new Set(headers.map((h) => String(h)));
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries(incoming as Record<string, any>)) {
+        const key = String(k || "").trim();
+        const val = String(v || "").trim();
+        if (!key || !val) continue;
+        if (headerSet.has(val)) out[key] = val;
+      }
+      return out;
+    };
+
+    const normalizeLookupValue = (value: any) => String(value ?? "").trim().toLowerCase();
+
+    const detectLookupMismatches = async (importId: string) => {
+      const [importDetail, gridConfigs, lookupTables] = await Promise.all([
+        apiFetch(`/fire-doors/imports/${importId}`),
+        apiFetch("/api/grid-config/all"),
+        apiFetch("/flexible-fields/lookup-tables"),
+      ]);
+
+      const configMap: Record<string, any> = {};
+      if (Array.isArray(gridConfigs)) {
+        for (const cfg of gridConfigs) {
+          if (cfg?.fieldName) configMap[cfg.fieldName] = cfg;
+        }
+      }
+
+      const optionsByTable: Record<string, Array<{ value: string; label: string }>> = {};
+      if (Array.isArray(lookupTables)) {
+        for (const t of lookupTables as any[]) {
+          const tableName = String(t?.tableName || t?.name || "").trim();
+          if (!tableName) continue;
+          const rows = Array.isArray(t?.rows) ? t.rows : [];
+          const opts: Array<{ value: string; label: string }> = [];
+          for (const r of rows) {
+            const value = String((r as any)?.value ?? (r as any)?.label ?? "").trim();
+            const label = String((r as any)?.label ?? value).trim();
+            if (!value && !label) continue;
+            opts.push({ value: value || label, label: label || value });
+          }
+          if (opts.length) {
+            optionsByTable[tableName] = opts;
+          }
+        }
+      }
+
+      const lookupFields = Object.entries(configMap)
+        .filter(([, cfg]) => cfg?.lookupTable)
+        .map(([fieldName, cfg]) => ({
+          fieldKey: fieldName,
+          fieldLabel: String(cfg?.label || cfg?.fieldLabel || fieldName),
+          lookupTable: String(cfg?.lookupTable || "").trim(),
+        }))
+        .filter((f) => f.lookupTable && optionsByTable[f.lookupTable]);
+
+      const mismatches = new Map<string, {
+        fieldKey: string;
+        fieldLabel: string;
+        lookupTable: string;
+        values: Map<string, number>;
+        rowIds: string[];
+        options: Array<{ value: string; label: string }>;
+      }>();
+
+      const lineItems = Array.isArray(importDetail?.lineItems) ? importDetail.lineItems : [];
+      for (const item of lineItems) {
+        const rawGrid = (item as any)?.rawRowJson && (item as any)?.rawRowJson.__grid ? (item as any).rawRowJson.__grid : {};
+        for (const field of lookupFields) {
+          const rawValue = (item as any)[field.fieldKey] ?? (rawGrid as any)?.[field.fieldKey];
+          if (rawValue == null || String(rawValue).trim() === "") continue;
+          const normalized = normalizeLookupValue(rawValue);
+          if (!normalized) continue;
+
+          const options = optionsByTable[field.lookupTable] || [];
+          const optionSet = new Set(options.flatMap((o) => [normalizeLookupValue(o.value), normalizeLookupValue(o.label)]));
+          if (optionSet.has(normalized)) continue;
+
+          const key = field.fieldKey;
+          const entry = mismatches.get(key) || {
+            fieldKey: field.fieldKey,
+            fieldLabel: field.fieldLabel,
+            lookupTable: field.lookupTable,
+            values: new Map<string, number>(),
+            rowIds: [],
+            options,
+          };
+
+          entry.rowIds.push(String((item as any)?.id || ""));
+          const valueKey = String(rawValue).trim();
+          entry.values.set(valueKey, (entry.values.get(valueKey) || 0) + 1);
+          mismatches.set(key, entry);
+        }
+      }
+
+      const mismatchList = Array.from(mismatches.values()).map((entry) => ({
+        fieldKey: entry.fieldKey,
+        fieldLabel: entry.fieldLabel,
+        lookupTable: entry.lookupTable,
+        values: Array.from(entry.values.entries()).map(([value, count]) => ({ value, count })),
+        rowIds: entry.rowIds,
+        options: entry.options,
+      }));
+
+      return mismatchList;
     };
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lwFileInputRef = useRef<HTMLInputElement>(null);
@@ -683,6 +803,7 @@ export default function FireDoorScheduleDetailPage() {
           setHeaderMap({
             ...buildInitialHeaderMap(expectedAll, headers),
             ...guessHeaderMap(missing, headers),
+            ...sanitizeHeaderMap(errorPayload?.headerMap, headers),
           });
           setMappingOpen(true);
           return;
@@ -701,6 +822,20 @@ export default function FireDoorScheduleDetailPage() {
       
       // Reload imports list
       await loadImportsForProject();
+      const importId = result?.import?.id ? String(result.import.id) : "";
+      if (importId) {
+        try {
+          const mismatches = await detectLookupMismatches(importId);
+          if (mismatches.length > 0) {
+            const initialSelections: Record<string, string> = {};
+            setLookupValidationSelections(initialSelections);
+            setLookupValidationItems(mismatches);
+            setLookupValidationOpen(true);
+          }
+        } catch (err: any) {
+          console.error("Error checking lookup mismatches:", err);
+        }
+      }
     } catch (error: any) {
       console.error("Error importing CSV:", error);
       toast({ title: "Error", description: error.message || "Failed to import CSV", variant: "destructive" });
@@ -713,6 +848,10 @@ export default function FireDoorScheduleDetailPage() {
   async function handleLWImport(file: File, opts?: { headerMap?: Record<string, string>; sheetName?: string }) {
     if (isNew || !id) {
       toast({ title: "Error", description: "Please save the project first before importing line items", variant: "destructive" });
+      return;
+    }
+    if (!opts?.headerMap || Object.keys(opts.headerMap).length === 0) {
+      await requestLWMapping(file, opts?.sheetName);
       return;
     }
     setUploading(true);
@@ -789,6 +928,7 @@ export default function FireDoorScheduleDetailPage() {
           setHeaderMap({
             ...buildInitialHeaderMap(expectedAll, headers),
             ...guessHeaderMap(missing, headers),
+            ...sanitizeHeaderMap(errorPayload?.headerMap, headers),
           });
           setMappingOpen(true);
           return;
@@ -805,12 +945,126 @@ export default function FireDoorScheduleDetailPage() {
       const result = await response.json();
       toast({ title: "Success", description: `Imported ${result.rowCount} line items successfully` });
       await loadImportsForProject();
+      const importId = result?.import?.id ? String(result.import.id) : "";
+      if (importId) {
+        try {
+          const mismatches = await detectLookupMismatches(importId);
+          if (mismatches.length > 0) {
+            const initialSelections: Record<string, string> = {};
+            setLookupValidationSelections(initialSelections);
+            setLookupValidationItems(mismatches);
+            setLookupValidationOpen(true);
+          }
+        } catch (err: any) {
+          console.error("Error checking lookup mismatches:", err);
+        }
+      }
     } catch (error: any) {
       console.error("Error importing LW spreadsheet:", error);
       toast({ title: "Error", description: error.message || "Failed to import LW spreadsheet", variant: "destructive" });
     } finally {
       setUploading(false);
       if (lwFileInputRef.current) lwFileInputRef.current.value = "";
+    }
+  }
+
+  async function requestLWMapping(file: File, sheetName?: string) {
+    if (isNew || !id) {
+      toast({ title: "Error", description: "Please save the project first before importing line items", variant: "destructive" });
+      return;
+    }
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("projectId", id);
+      formData.append("forceMapping", "1");
+      formData.append("previewOnly", "1");
+      const sheetToSend = String(sheetName || selectedSheetName || "").trim();
+      if (sheetToSend) {
+        formData.append("sheetName", sheetToSend);
+      }
+
+      const legacyJwt = (() => {
+        try {
+          return localStorage.getItem("jwt");
+        } catch {
+          return null;
+        }
+      })();
+
+      const headers: HeadersInit = {};
+      if (legacyJwt) {
+        headers.Authorization = `Bearer ${legacyJwt}`;
+      }
+
+      const response = await fetch(`/api/fire-doors/import-lw`, {
+        method: "POST",
+        headers,
+        body: formData,
+        credentials: "include",
+      });
+
+      let errorPayload: any = null;
+      try {
+        errorPayload = await response.json();
+      } catch {
+        errorPayload = null;
+      }
+
+      if (errorPayload?.needsSheetSelection && Array.isArray(errorPayload?.sheets)) {
+        const sheets = errorPayload.sheets.map((s: any) => String(s)).filter(Boolean);
+        setPendingImportMode("lw");
+        setPendingImportFile(file);
+        setExcelSheets(sheets);
+        setSelectedSheetName(sheets[0] || "");
+        setSheetOpen(true);
+        return;
+      }
+
+      if (errorPayload?.needsMapping && Array.isArray(errorPayload?.headers)) {
+        const missing = Array.isArray(errorPayload?.missingHeaders)
+          ? errorPayload.missingHeaders.map((s: any) => String(s)).filter(Boolean)
+          : [];
+        const headersList = errorPayload.headers
+          .map((s: any) => String(s))
+          .filter(Boolean)
+          .sort((a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+        const required = Array.isArray(errorPayload.requiredHeaders)
+          ? errorPayload.requiredHeaders.map((s: any) => String(s)).filter(Boolean)
+          : [];
+        const expected = Array.isArray(errorPayload.expectedHeaders)
+          ? errorPayload.expectedHeaders.map((s: any) => String(s)).filter(Boolean)
+          : [];
+
+        setPendingImportMode("lw");
+        setPendingImportFile(file);
+        setCsvHeaders(headersList);
+        setMissingHeaders(missing);
+        setRequiredHeaders(required);
+        setExpectedHeaders(expected);
+        const expectedAll = (expected && expected.length) ? expected : required;
+        setHeaderMap({
+          ...buildInitialHeaderMap(expectedAll, headersList),
+          ...guessHeaderMap(missing, headersList),
+          ...sanitizeHeaderMap(errorPayload?.headerMap, headersList),
+        });
+        setMappingOpen(true);
+        return;
+      }
+
+      if (!response.ok) {
+        const message =
+          typeof errorPayload === "string"
+            ? errorPayload
+            : errorPayload?.message || errorPayload?.error || `Import failed (${response.status})`;
+        throw new Error(message);
+      }
+    } catch (error: any) {
+      console.error("Error preparing LW mapping:", error);
+      toast({ title: "Error", description: error.message || "Failed to prepare LW mapping", variant: "destructive" });
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -824,6 +1078,48 @@ export default function FireDoorScheduleDetailPage() {
       await handleLWImport(f, opts);
     } else {
       await handleCSVImport(f, opts);
+    }
+  }
+
+  async function applyLookupValidation() {
+    if (!lookupValidationItems.length) {
+      setLookupValidationOpen(false);
+      return;
+    }
+
+    for (const item of lookupValidationItems) {
+      const sel = String(lookupValidationSelections[item.fieldKey] || "").trim();
+      if (!sel) {
+        toast({ title: "Error", description: `Select a value or override for ${item.fieldLabel}`, variant: "destructive" });
+        return;
+      }
+    }
+
+    const updates: Array<{ id: string; changes: Record<string, any> }> = [];
+    for (const item of lookupValidationItems) {
+      const selection = String(lookupValidationSelections[item.fieldKey] || "").trim();
+      if (!selection || selection === LOOKUP_OVERRIDE_SENTINEL) continue;
+      for (const rowId of item.rowIds) {
+        if (!rowId) continue;
+        updates.push({ id: rowId, changes: { [item.fieldKey]: selection } });
+      }
+    }
+
+    setLookupValidationWorking(true);
+    try {
+      if (updates.length > 0) {
+        await apiFetch("/fire-doors/line-items/bulk", { method: "PATCH", json: { updates } });
+      }
+      setLookupValidationOpen(false);
+      setLookupValidationItems([]);
+      setLookupValidationSelections({});
+      await loadLineItems();
+      toast({ title: "Lookup values applied", description: "Import lookup values updated" });
+    } catch (err: any) {
+      console.error("Error applying lookup validation:", err);
+      toast({ title: "Error", description: err?.message || "Failed to update lookup values", variant: "destructive" });
+    } finally {
+      setLookupValidationWorking(false);
     }
   }
 
@@ -1903,6 +2199,65 @@ export default function FireDoorScheduleDetailPage() {
               }}
             >
               Continue
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={lookupValidationOpen} onOpenChange={(open) => !lookupValidationWorking && setLookupValidationOpen(open)}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Resolve lookup values</DialogTitle>
+            <DialogDescription>
+              Some imported values don’t match lookup dropdown options. Choose a dropdown value to apply for this column, or keep the imported values.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-auto space-y-4 pr-1">
+            {lookupValidationItems.map((item) => (
+              <div key={item.fieldKey} className="rounded-lg border border-slate-200 bg-white/80 p-4 space-y-2">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-800">{item.fieldLabel}</div>
+                    <div className="text-xs text-slate-500">Lookup table: {item.lookupTable}</div>
+                  </div>
+                  <div className="text-xs text-slate-500">{item.rowIds.length} rows affected</div>
+                </div>
+
+                <div className="text-xs text-slate-600">
+                  Imported values: {item.values.map((v) => `${v.value} (${v.count})`).join(", ")}
+                </div>
+
+                <Select
+                  value={lookupValidationSelections[item.fieldKey] || undefined}
+                  onValueChange={(val) => setLookupValidationSelections((prev) => ({ ...prev, [item.fieldKey]: val }))}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select dropdown value or override" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={LOOKUP_OVERRIDE_SENTINEL}>Keep imported values (override)</SelectItem>
+                    {item.options.map((opt) => (
+                      <SelectItem key={`${item.fieldKey}:${opt.value}`} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <div className="text-xs text-slate-500">
+                  Applies to all unmatched rows in this column for this import.
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-200 mt-4">
+            <Button variant="outline" onClick={() => setLookupValidationOpen(false)} disabled={lookupValidationWorking}>
+              Cancel
+            </Button>
+            <Button onClick={applyLookupValidation} disabled={lookupValidationWorking}>
+              {lookupValidationWorking ? "Applying..." : "Apply"}
             </Button>
           </div>
         </DialogContent>

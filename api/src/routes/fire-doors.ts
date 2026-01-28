@@ -1070,6 +1070,20 @@ router.post('/import-lw', upload.single('file'), async (req, res) => {
       return !(f.endsWith('cost') || f.endsWith('labour'));
     });
 
+    const previewOnly = (() => {
+      const raw = (req.body as any)?.previewOnly;
+      if (raw === true) return true;
+      const s = String(raw ?? '').trim().toLowerCase();
+      return s === '1' || s === 'true' || s === 'yes';
+    })();
+
+    const forceMapping = (() => {
+      const raw = (req.body as any)?.forceMapping;
+      if (raw === true) return true;
+      const s = String(raw ?? '').trim().toLowerCase();
+      return s === '1' || s === 'true' || s === 'yes';
+    })();
+
     const normalize = (input: any) =>
       String(input ?? '')
         .toLowerCase()
@@ -1090,6 +1104,20 @@ router.post('/import-lw', upload.single('file'), async (req, res) => {
       return true;
     });
 
+    // If forceMapping/previewOnly is true, always prompt once so the user can review/adjust mappings.
+    if (forceMapping || previewOnly) {
+      return res.status(422).json({
+        error: 'Column mapping recommended',
+        message: 'Review how your spreadsheet columns map to the import format.',
+        needsMapping: true,
+        missingHeaders: missingExpected,
+        requiredHeaders: [],
+        headers,
+        expectedHeaders: expectedHeadersForMapping,
+        headerMap: hm || {},
+      });
+    }
+
     // If file doesn't match and we have no saved/user mapping, prompt the mapping UI.
     if (!hm && missingExpected.length > 0) {
       return res.status(422).json({
@@ -1100,6 +1128,7 @@ router.post('/import-lw', upload.single('file'), async (req, res) => {
         requiredHeaders: [],
         headers,
         expectedHeaders: expectedHeadersForMapping,
+        headerMap: {},
       });
     }
 
