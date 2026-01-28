@@ -3739,6 +3739,7 @@ model FireDoorLineItem {
   beadMaterialProduction  String?
   bottomSealReq           String?
   bottomSealType          String?
+  bottomSeal              String?
   bumpPlate               String?
   cableLoop               String?
   clientNotes1            String?

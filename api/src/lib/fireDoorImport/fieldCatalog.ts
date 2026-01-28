@@ -19,6 +19,7 @@ const FIRE_DOOR_FIELD_LABELS_RAW = [
   'Acoustic Rating',
   'Bottom Seal Requirement',
   'Bottom Seal Type',
+  'Bottom Seal',
   'Bottom Seal Cost',
   'Bottom Seal Labour',
   'Lead Lining Code',

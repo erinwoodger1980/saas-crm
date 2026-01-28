@@ -38,6 +38,7 @@ export const FIRE_DOOR_DB_KEY_BY_LABEL: Readonly<Record<string, string>> = {
   "bead type": "beadType",
   "bottom seal requirement": "bottomSealReq",
   "bottom seal type": "bottomSealType",
+  "bottom seal": "bottomSeal",
   "bump plate": "bumpPlate",
   "cable loop": "cableLoop",
   "cable loop cost": "cableLoopCost",
