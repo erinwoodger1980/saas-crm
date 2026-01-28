@@ -992,12 +992,6 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     });
   }, [getGridScrollTargets]);
 
-  useEffect(() => {
-    if (!configModalOpen) {
-      restoreGridScroll();
-    }
-  }, [configModalOpen, visibleColumns.length, restoreGridScroll]);
-
   const openColumnConfig = useCallback((columnKey: string) => {
     rememberGridScroll();
     setConfigModalColumn(columnKey);
@@ -2475,6 +2469,12 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   const visibleColumns = useMemo(() => {
     return columns.filter((col) => !hiddenColumns.has(String((col as any)?.key || '')));
   }, [columns, hiddenColumns]);
+
+  useEffect(() => {
+    if (!configModalOpen) {
+      restoreGridScroll();
+    }
+  }, [configModalOpen, visibleColumns.length, restoreGridScroll]);
 
   const handleColumnResize = useCallback((colOrIdx: any, widthMaybe: any) => {
     let colKey: string | null = null;
