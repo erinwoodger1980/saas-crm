@@ -2741,6 +2741,21 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
 
       // Ensure copy/paste handlers can fire via container capture
       gridContainerRef.current?.focus?.();
+
+      // Single-click copy for quick clipboard access (like Excel)
+      if (!event?.shiftKey && !event?.metaKey && !event?.ctrlKey && event?.detail === 1) {
+        try {
+          const raw = (args?.row as any)?.[colKey];
+          const str = raw == null ? '' : String(raw);
+          if (str !== '') {
+            navigator.clipboard?.writeText(str).catch(() => {
+              // ignore clipboard failures
+            });
+          }
+        } catch {
+          // ignore
+        }
+      }
     } catch {
       // no-op
     }
@@ -2800,6 +2815,68 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
           const patch = changedById.get(target.id) || {};
           patch[key] = nextVal;
           changedById.set(target.id, patch);
+        }
+      }
+
+      const updates = Array.from(changedById.entries()).map(([id, changes]) => ({ id, changes }));
+      if (!updates.length) return;
+
+      const { rows: withFormulas, updates: formulaUpdates } = applyFormulaCascade(nextRows);
+      setRows(withFormulas);
+      rowsRef.current = withFormulas;
+
+      const mergedUpdates = new Map<string, Record<string, any>>();
+      for (const u of updates) mergedUpdates.set(u.id, { ...(u.changes || {}) });
+      for (const u of formulaUpdates) {
+        const prev = mergedUpdates.get(u.id) || {};
+        mergedUpdates.set(u.id, { ...prev, ...(u.changes || {}) });
+      }
+      const finalUpdates = Array.from(mergedUpdates.entries()).map(([id, changes]) => ({ id, changes }));
+      bulkPersist(finalUpdates);
+    }
+
+    // Clear selection (Delete / Backspace)
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || (target as any).isContentEditable)) {
+        return;
+      }
+      if (!selectionRange) return;
+      e.preventDefault();
+
+      const { startRow, endRow, startColIdx, endColIdx, keys } = selectionRange;
+      const currentRows = rowsRef.current;
+      const nextRows = currentRows.map((r) => ({ ...r }));
+      const changedById = new Map<string, Record<string, any>>();
+
+      for (let r = startRow; r <= endRow; r++) {
+        const targetRow = nextRows[r];
+        const prevRow = currentRows[r];
+        if (!targetRow || !prevRow) continue;
+
+        for (let c = startColIdx; c <= endColIdx; c++) {
+          const key = keys[c];
+          const colDef = columns.find((cc: any) => String(cc?.key || '') === key);
+          if (!(colDef as any)?.editable) continue;
+
+          const cfg = gridConfig[key];
+          const isCalculated = !!cfg?.formula || cfg?.inputType === 'formula';
+          const allowOverride = !!cfg?.allowFormulaOverride;
+          if (isCalculated && !allowOverride) continue;
+
+          if ((prevRow as any)[key] == null || (prevRow as any)[key] === '') continue;
+          (targetRow as any)[key] = null;
+
+          if (isCalculated && allowOverride) {
+            setFormulaOverrideFlag(targetRow as any, key, null);
+          }
+
+          const patch = changedById.get(targetRow.id) || {};
+          patch[key] = null;
+          if (isCalculated && allowOverride) {
+            patch[`__override:${key}`] = null;
+          }
+          changedById.set(targetRow.id, patch);
         }
       }
 
