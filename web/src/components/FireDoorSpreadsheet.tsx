@@ -217,7 +217,6 @@ function hydrateImportRow(item: any, columns: ReadonlyArray<Column<any>>): any {
     addition1: "additionNote1",
     addition1Qty: "additionNote1Qty",
     closersFloorsprings: "closerOrFloorSpring",
-    closerType: "closerOrFloorSpring",
     mLeafWidth: "masterLeafWidth",
     sLeafWidth: "slaveLeafWidth",
     priceEa: "unitValue",
