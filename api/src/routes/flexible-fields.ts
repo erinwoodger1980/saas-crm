@@ -877,12 +877,34 @@ router.post('/lookup-tables/:tableId/csv-import', upload.single('file'), async (
     const maxSort = dbRows.reduce((m: number, r: any) => Math.max(m, Number(r?.sortOrder ?? 0)), 0);
     let nextSort = maxSort + 1;
 
+    const primaryKeys = records
+      .map((rec) => String((rec as any)[primaryColumn] ?? '').trim())
+      .filter((k) => k.length > 0);
+    const primaryKeySet = new Set<string>();
+    let hasDuplicatePrimaryKey = false;
+    for (const k of primaryKeys) {
+      if (primaryKeySet.has(k)) {
+        hasDuplicatePrimaryKey = true;
+        break;
+      }
+      primaryKeySet.add(k);
+    }
+
+    const buildCompositeKey = (row: Record<string, any>) => {
+      const parts = nextColumns
+        .map((col) => String((row as any)[col] ?? '').trim())
+        .filter((part) => part.length > 0);
+      return parts.join(' | ');
+    };
+
+    const baseKeyCounts = new Map<string, number>();
+
     const updates = records
       .map((rec) => {
-        const key = String((rec as any)[primaryColumn] ?? '').trim();
-        if (!key) return null;
+        const primaryKey = String((rec as any)[primaryColumn] ?? '').trim();
+        if (!primaryKey) return null;
 
-        const hit = existingByKey.get(key);
+        const hit = existingByKey.get(primaryKey);
         const baseUi = hit ? { ...(hit.ui || {}) } : {};
 
         // Overlay CSV values
@@ -891,11 +913,23 @@ router.post('/lookup-tables/:tableId/csv-import', upload.single('file'), async (
         }
 
         // Ensure the primary column is set
-        (baseUi as any)[primaryColumn] = key;
+        (baseUi as any)[primaryColumn] = primaryKey;
 
         const sortOrder = hit ? Number(hit.db?.sortOrder ?? 0) : nextSort++;
         const dbRow = buildDbRowFromUiRow(baseUi, nextColumns, sortOrder);
-        return { value: dbRow.value, dbRow, sortOrder };
+
+        const compositeKey = buildCompositeKey(baseUi);
+        const baseKey = hasDuplicatePrimaryKey ? (compositeKey || dbRow.value || `row-${sortOrder}`) : (primaryKey || dbRow.value || `row-${sortOrder}`);
+        const count = (baseKeyCounts.get(baseKey) || 0) + 1;
+        baseKeyCounts.set(baseKey, count);
+        const finalValue = count === 1 ? baseKey : `${baseKey} #${count}`;
+
+        dbRow.value = finalValue;
+        if (dbRow.customProps && typeof dbRow.customProps === 'object') {
+          (dbRow.customProps as any).value = finalValue;
+        }
+
+        return { value: finalValue, dbRow, sortOrder };
       })
       .filter(Boolean) as Array<{ value: string; dbRow: ReturnType<typeof buildDbRowFromUiRow>; sortOrder: number }>;
 
