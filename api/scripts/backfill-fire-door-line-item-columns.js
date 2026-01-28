@@ -66,7 +66,7 @@ const UI_TO_DB_FIELD_ALIASES = {
   addition1: 'additionNote1',
   addition1Qty: 'additionNote1Qty',
   closersFloorsprings: 'closerOrFloorSpring',
-  closerType: 'closerOrFloorSpring',
+  closerType: 'closerType',
   mLeafWidth: 'masterLeafWidth',
   sLeafWidth: 'slaveLeafWidth',
   priceEa: 'unitValue',

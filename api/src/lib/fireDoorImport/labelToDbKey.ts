@@ -47,7 +47,7 @@ export const FIRE_DOOR_DB_KEY_BY_LABEL: Readonly<Record<string, string>> = {
   "client notes 2": "clientNotes2",
   "client notes 3": "clientNotes3",
   "client notes 4": "clientNotes4",
-  "closer type": "closerOrFloorSpring",
+  "closer type": "closerType",
   "closers/floorsprings": "closerOrFloorSpring",
   "comments": "comments",
   "cost of labour": "labourCost",

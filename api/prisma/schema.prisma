@@ -4001,6 +4001,7 @@ model FireDoorLineItem {
   glazingTape             String?
   ironmongeryPackRef      String?
   closerOrFloorSpring     String?
+  closerType              String?
   spindleFacePrep         String?
   cylinderFacePrep        String?
   flushBoltSupplyPrep     String?

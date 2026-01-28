@@ -130,6 +130,7 @@ interface FireDoorRow {
   glazingTape: string | null;
   ironmongeryPackRef: string | null;
   closerOrFloorSpring: string | null;
+  closerType: string | null;
   spindleFacePrep: string | null;
   cylinderFacePrep: string | null;
   flushBoltSupplyPrep: string | null;

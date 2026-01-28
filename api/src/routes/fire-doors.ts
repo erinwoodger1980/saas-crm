@@ -323,7 +323,6 @@ const UI_TO_DB_FIELD_ALIASES: Record<string, string> = {
   addition1: 'additionNote1',
   addition1Qty: 'additionNote1Qty',
   closersFloorsprings: 'closerOrFloorSpring',
-  closerType: 'closerOrFloorSpring',
   mLeafWidth: 'masterLeafWidth',
   sLeafWidth: 'slaveLeafWidth',
   priceEa: 'unitValue',
