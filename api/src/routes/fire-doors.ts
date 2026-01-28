@@ -439,21 +439,19 @@ function sanitizeColumnWidths(input: any): Record<string, number> {
 
 /**
  * GET /api/fire-doors/order-grid/column-widths
- * Tenant-scoped UI preference for Fire Door Order Grid column widths.
+ * System-wide UI preference for Fire Door Order Grid column widths.
  */
 router.get('/order-grid/column-widths', async (req, res) => {
   try {
-    const tenantId = resolveTenantId(req);
     const userId = resolveUserId(req);
-    if (!tenantId || !userId) return res.status(401).json({ error: 'Authentication required' });
+    if (!userId) return res.status(401).json({ error: 'Authentication required' });
 
-    const tenantSettings = await prisma.tenantSettings.findUnique({
-      where: { tenantId },
-      select: { beta: true },
+    const appSettings = await prisma.appSettings.findUnique({
+      where: { id: 'global' },
+      select: { fireDoorOrderGridColumnWidths: true },
     });
 
-    const beta = getJsonObject((tenantSettings as any)?.beta);
-    const columnWidths = sanitizeColumnWidths((beta as any).fireDoorOrderGridColumnWidths);
+    const columnWidths = sanitizeColumnWidths((appSettings as any)?.fireDoorOrderGridColumnWidths);
     return res.json({ ok: true, columnWidths });
   } catch (error: any) {
     console.error('[fire-doors] Get order grid column widths error:', error);
@@ -467,52 +465,18 @@ router.get('/order-grid/column-widths', async (req, res) => {
  */
 router.post('/order-grid/column-widths', async (req, res) => {
   try {
-    const tenantId = resolveTenantId(req);
     const userId = resolveUserId(req);
-    if (!tenantId || !userId) return res.status(401).json({ error: 'Authentication required' });
-
-    const tenantSettings = await prisma.tenantSettings.findUnique({
-      where: { tenantId },
-      select: { beta: true },
-    });
+    if (!userId) return res.status(401).json({ error: 'Authentication required' });
 
     const body = (req.body && typeof req.body === 'object') ? (req.body as any) : {};
     const columnWidths = sanitizeColumnWidths(body.columnWidths);
-    const beta = getJsonObject((tenantSettings as any)?.beta);
 
-    if (tenantSettings) {
-      await prisma.tenantSettings.update({
-        where: { tenantId },
-        data: {
-          beta: {
-            ...(beta as any),
-            fireDoorOrderGridColumnWidths: columnWidths,
-          },
-        },
-        select: { tenantId: true },
-      });
-    } else {
-      const tenant = await prisma.tenant.findUnique({
-        where: { id: tenantId },
-        select: { slug: true, name: true },
-      });
-
-      if (!tenant) {
-        return res.status(404).json({ error: 'Tenant not found' });
-      }
-
-      await prisma.tenantSettings.create({
-        data: {
-          tenantId,
-          slug: tenant.slug,
-          brandName: tenant.name,
-          beta: {
-            fireDoorOrderGridColumnWidths: columnWidths,
-          },
-        },
-        select: { tenantId: true },
-      });
-    }
+    await prisma.appSettings.upsert({
+      where: { id: 'global' },
+      update: { fireDoorOrderGridColumnWidths: columnWidths },
+      create: { id: 'global', fireDoorOrderGridColumnWidths: columnWidths },
+      select: { id: true },
+    });
 
     return res.json({ ok: true, columnWidths });
   } catch (error: any) {

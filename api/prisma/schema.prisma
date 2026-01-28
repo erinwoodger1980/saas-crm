@@ -1424,6 +1424,13 @@ model TenantSettings {
   componentTypeLabels          Json?     @default("{}")
 }
 
+model AppSettings {
+  id                            String   @id @default("global")
+  fireDoorOrderGridColumnWidths Json?
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+}
+
 model FollowUpLog {
   id           String    @id @default(cuid())
   tenantId     String

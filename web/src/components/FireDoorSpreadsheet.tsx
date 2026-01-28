@@ -962,18 +962,24 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   const lastSavedColumnWidthsRef = useRef<string>("{}");
 
   const rememberGridScroll = useCallback(() => {
-    const scroller = gridContainerRef.current?.querySelector('.rdg') as HTMLElement | null;
+    const scroller =
+      (gridContainerRef.current?.querySelector('.rdg-viewport') as HTMLElement | null) ||
+      (gridContainerRef.current?.querySelector('.rdg') as HTMLElement | null);
     if (scroller) {
       gridScrollLeftRef.current = scroller.scrollLeft || 0;
     }
   }, []);
 
   const restoreGridScroll = useCallback(() => {
-    const scroller = gridContainerRef.current?.querySelector('.rdg') as HTMLElement | null;
+    const scroller =
+      (gridContainerRef.current?.querySelector('.rdg-viewport') as HTMLElement | null) ||
+      (gridContainerRef.current?.querySelector('.rdg') as HTMLElement | null);
     if (!scroller) return;
     const targetLeft = gridScrollLeftRef.current || 0;
     requestAnimationFrame(() => {
-      scroller.scrollLeft = targetLeft;
+      requestAnimationFrame(() => {
+        scroller.scrollLeft = targetLeft;
+      });
     });
   }, []);
 
