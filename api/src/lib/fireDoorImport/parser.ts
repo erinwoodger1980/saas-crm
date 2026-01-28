@@ -19,6 +19,7 @@ function getHeadersFromCsv(csvContent: string | Buffer): string[] {
     skip_empty_lines: true,
     trim: true,
     bom: true,
+    relax_column_count: true,
     to: 1,
   });
 
