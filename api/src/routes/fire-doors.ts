@@ -634,6 +634,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
     // 4. Validate headers (CSV or Excel converted to CSV)
     const headers = getCsvHeaders(csvContent);
     const sampleValues = getCsvSampleValues(csvContent, headers);
+    const sampleValues = getCsvSampleValues(csvContent, headers);
     const expectedHeaders = getExpectedCsvHeaders();
     const expectedHeadersForMapping = expectedHeaders.filter((csvHeader) => {
       // Primary rule: hide by label suffix (matches the user's CSV field list).
