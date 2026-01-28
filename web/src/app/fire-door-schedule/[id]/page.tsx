@@ -253,7 +253,7 @@ export default function FireDoorScheduleDetailPage() {
       fieldLabel: string;
       lookupTable: string;
       values: Array<{ value: string; count: number }>;
-      rowIds: string[];
+      rowIdsByValue: Record<string, string[]>;
       options: Array<{ value: string; label: string }>;
     }>>([]);
     const [lookupValidationSelections, setLookupValidationSelections] = useState<Record<string, Record<string, string>>>({});
@@ -434,7 +434,7 @@ export default function FireDoorScheduleDetailPage() {
           fieldLabel: String(cfg?.label || cfg?.fieldLabel || fieldName),
           lookupTable: String(cfg?.lookupTable || "").trim(),
         }))
-        .filter((f) => f.lookupTable && optionsByTable[f.lookupTable]);
+        .filter((f) => f.lookupTable);
 
       const mismatches = new Map<string, {
         fieldKey: string;
@@ -836,7 +836,7 @@ export default function FireDoorScheduleDetailPage() {
           if (mismatches.length > 0) {
             const initialSelections: Record<string, Record<string, string>> = {};
             setLookupValidationSelections(initialSelections);
-            setLookupValidationItems(mismatches as any);
+            setLookupValidationItems(mismatches);
             setLookupValidationOpen(true);
           }
         } catch (err: any) {
@@ -959,7 +959,7 @@ export default function FireDoorScheduleDetailPage() {
           if (mismatches.length > 0) {
             const initialSelections: Record<string, Record<string, string>> = {};
             setLookupValidationSelections(initialSelections);
-            setLookupValidationItems(mismatches as any);
+            setLookupValidationItems(mismatches);
             setLookupValidationOpen(true);
           }
         } catch (err: any) {
@@ -1109,7 +1109,7 @@ export default function FireDoorScheduleDetailPage() {
     const updates: Array<{ id: string; changes: Record<string, any> }> = [];
     for (const item of lookupValidationItems) {
       const perValue = lookupValidationSelections[item.fieldKey] || {};
-      const rowsByValue = (item as any).rowIdsByValue || {};
+      const rowsByValue = item.rowIdsByValue || {};
       for (const valueItem of item.values) {
         const selection = String(perValue[valueItem.value] || "").trim();
         if (!selection || selection === LOOKUP_OVERRIDE_SENTINEL) continue;
