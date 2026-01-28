@@ -121,6 +121,7 @@ const FIRE_DOOR_FIELD_LABELS_RAW = [
   'Wiring prep',
   'Wiring prep Labour',
   'Cable loop',
+  'Cable loop Cost',
   'Cable loop Labour',
   'Addition 1 / Note 1',
   'Addition 1 Qty',
