@@ -256,7 +256,7 @@ export default function FireDoorScheduleDetailPage() {
       rowIds: string[];
       options: Array<{ value: string; label: string }>;
     }>>([]);
-    const [lookupValidationSelections, setLookupValidationSelections] = useState<Record<string, string>>({});
+    const [lookupValidationSelections, setLookupValidationSelections] = useState<Record<string, Record<string, string>>>({});
     const [lookupValidationWorking, setLookupValidationWorking] = useState(false);
 
     const [sheetOpen, setSheetOpen] = useState(false);
@@ -441,7 +441,7 @@ export default function FireDoorScheduleDetailPage() {
         fieldLabel: string;
         lookupTable: string;
         values: Map<string, number>;
-        rowIds: string[];
+        rowIdsByValue: Map<string, string[]>;
         options: Array<{ value: string; label: string }>;
       }>();
 
@@ -464,13 +464,18 @@ export default function FireDoorScheduleDetailPage() {
             fieldLabel: field.fieldLabel,
             lookupTable: field.lookupTable,
             values: new Map<string, number>(),
-            rowIds: [],
+            rowIdsByValue: new Map<string, string[]>(),
             options,
           };
 
-          entry.rowIds.push(String((item as any)?.id || ""));
           const valueKey = String(rawValue).trim();
           entry.values.set(valueKey, (entry.values.get(valueKey) || 0) + 1);
+          const rowId = String((item as any)?.id || "");
+          if (rowId) {
+            const list = entry.rowIdsByValue.get(valueKey) || [];
+            list.push(rowId);
+            entry.rowIdsByValue.set(valueKey, list);
+          }
           mismatches.set(key, entry);
         }
       }
@@ -480,7 +485,7 @@ export default function FireDoorScheduleDetailPage() {
         fieldLabel: entry.fieldLabel,
         lookupTable: entry.lookupTable,
         values: Array.from(entry.values.entries()).map(([value, count]) => ({ value, count })),
-        rowIds: entry.rowIds,
+        rowIdsByValue: Object.fromEntries(entry.rowIdsByValue.entries()),
         options: entry.options,
       }));
 
@@ -829,9 +834,9 @@ export default function FireDoorScheduleDetailPage() {
         try {
           const mismatches = await detectLookupMismatches(importId);
           if (mismatches.length > 0) {
-            const initialSelections: Record<string, string> = {};
+            const initialSelections: Record<string, Record<string, string>> = {};
             setLookupValidationSelections(initialSelections);
-            setLookupValidationItems(mismatches);
+            setLookupValidationItems(mismatches as any);
             setLookupValidationOpen(true);
           }
         } catch (err: any) {
@@ -952,9 +957,9 @@ export default function FireDoorScheduleDetailPage() {
         try {
           const mismatches = await detectLookupMismatches(importId);
           if (mismatches.length > 0) {
-            const initialSelections: Record<string, string> = {};
+            const initialSelections: Record<string, Record<string, string>> = {};
             setLookupValidationSelections(initialSelections);
-            setLookupValidationItems(mismatches);
+            setLookupValidationItems(mismatches as any);
             setLookupValidationOpen(true);
           }
         } catch (err: any) {
@@ -1091,20 +1096,28 @@ export default function FireDoorScheduleDetailPage() {
     }
 
     for (const item of lookupValidationItems) {
-      const sel = String(lookupValidationSelections[item.fieldKey] || "").trim();
-      if (!sel) {
-        toast({ title: "Error", description: `Select a value or override for ${item.fieldLabel}`, variant: "destructive" });
-        return;
+      const perValue = lookupValidationSelections[item.fieldKey] || {};
+      for (const valueItem of item.values) {
+        const sel = String(perValue[valueItem.value] || "").trim();
+        if (!sel) {
+          toast({ title: "Error", description: `Select a value or override for ${item.fieldLabel} → ${valueItem.value}`, variant: "destructive" });
+          return;
+        }
       }
     }
 
     const updates: Array<{ id: string; changes: Record<string, any> }> = [];
     for (const item of lookupValidationItems) {
-      const selection = String(lookupValidationSelections[item.fieldKey] || "").trim();
-      if (!selection || selection === LOOKUP_OVERRIDE_SENTINEL) continue;
-      for (const rowId of item.rowIds) {
-        if (!rowId) continue;
-        updates.push({ id: rowId, changes: { [item.fieldKey]: selection } });
+      const perValue = lookupValidationSelections[item.fieldKey] || {};
+      const rowsByValue = (item as any).rowIdsByValue || {};
+      for (const valueItem of item.values) {
+        const selection = String(perValue[valueItem.value] || "").trim();
+        if (!selection || selection === LOOKUP_OVERRIDE_SENTINEL) continue;
+        const rowIds = Array.isArray(rowsByValue[valueItem.value]) ? rowsByValue[valueItem.value] : [];
+        for (const rowId of rowIds) {
+          if (!rowId) continue;
+          updates.push({ id: rowId, changes: { [item.fieldKey]: selection } });
+        }
       }
     }
 
@@ -2223,38 +2236,50 @@ export default function FireDoorScheduleDetailPage() {
 
           <div className="flex-1 overflow-auto space-y-4 pr-1">
             {lookupValidationItems.map((item) => (
-              <div key={item.fieldKey} className="rounded-lg border border-slate-200 bg-white/80 p-4 space-y-2">
+              <div key={item.fieldKey} className="rounded-lg border border-slate-200 bg-white/80 p-4 space-y-3">
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <div className="text-sm font-semibold text-slate-800">{item.fieldLabel}</div>
                     <div className="text-xs text-slate-500">Lookup table: {item.lookupTable}</div>
                   </div>
-                  <div className="text-xs text-slate-500">{item.rowIds.length} rows affected</div>
                 </div>
 
-                <div className="text-xs text-slate-600">
-                  Imported values: {item.values.map((v) => `${v.value} (${v.count})`).join(", ")}
+                <div className="space-y-2">
+                  {item.values.map((valueItem) => (
+                    <div key={`${item.fieldKey}:${valueItem.value}`} className="rounded-md border border-slate-200 bg-white p-3">
+                      <div className="text-xs text-slate-600 mb-2">
+                        Imported value: <span className="font-semibold text-slate-800">{valueItem.value}</span> ({valueItem.count})
+                      </div>
+                      <Select
+                        value={(lookupValidationSelections[item.fieldKey] || {})[valueItem.value] || undefined}
+                        onValueChange={(val) =>
+                          setLookupValidationSelections((prev) => ({
+                            ...prev,
+                            [item.fieldKey]: {
+                              ...(prev[item.fieldKey] || {}),
+                              [valueItem.value]: val,
+                            },
+                          }))
+                        }
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Select dropdown value or override" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={LOOKUP_OVERRIDE_SENTINEL}>Keep imported value (override)</SelectItem>
+                          {item.options.map((opt) => (
+                            <SelectItem key={`${item.fieldKey}:${valueItem.value}:${opt.value}`} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ))}
                 </div>
-
-                <Select
-                  value={lookupValidationSelections[item.fieldKey] || undefined}
-                  onValueChange={(val) => setLookupValidationSelections((prev) => ({ ...prev, [item.fieldKey]: val }))}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Select dropdown value or override" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={LOOKUP_OVERRIDE_SENTINEL}>Keep imported values (override)</SelectItem>
-                    {item.options.map((opt) => (
-                      <SelectItem key={`${item.fieldKey}:${opt.value}`} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
 
                 <div className="text-xs text-slate-500">
-                  Applies to all unmatched rows in this column for this import.
+                  Applies per imported value in this column for this import.
                 </div>
               </div>
             ))}
