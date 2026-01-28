@@ -993,11 +993,28 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   }, [getGridScrollTargets]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const raw = window.localStorage.getItem('fireDoorOrderGridScrollLeft');
+    const parsed = raw ? Number(raw) : 0;
+    if (!Number.isFinite(parsed) || parsed <= 0) return;
+    gridScrollLeftRef.current = parsed;
+    const t = window.setTimeout(() => {
+      restoreGridScroll();
+    }, 150);
+    return () => window.clearTimeout(t);
+  }, [restoreGridScroll]);
+
+  useEffect(() => {
     const targets = getGridScrollTargets();
     if (!targets.length) return;
     const handler = () => {
       const best = targets.reduce((acc, el) => (el.scrollWidth > acc.scrollWidth ? el : acc), targets[0]);
       gridScrollLeftRef.current = best.scrollLeft || 0;
+      try {
+        window.localStorage.setItem('fireDoorOrderGridScrollLeft', String(gridScrollLeftRef.current || 0));
+      } catch {
+        // ignore
+      }
     };
     targets.forEach((el) => el.addEventListener('scroll', handler, { passive: true }));
     return () => {
@@ -1133,9 +1150,26 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
           { headers: authHeaders }
         );
         const widths = res?.columnWidths && typeof res.columnWidths === "object" ? res.columnWidths : {};
+        let nextWidths = widths;
+        if (!Object.keys(widths || {}).length) {
+          try {
+            const raw = window.localStorage.getItem('fireDoorOrderGridColumnWidths');
+            const parsed = raw ? JSON.parse(raw) : null;
+            if (parsed && typeof parsed === 'object') {
+              nextWidths = parsed as Record<string, number>;
+            }
+          } catch {
+            // ignore
+          }
+        }
         if (cancelled) return;
-        setColumnWidths(widths);
-        lastSavedColumnWidthsRef.current = stableStringifyObject(widths as any);
+        setColumnWidths(nextWidths);
+        lastSavedColumnWidthsRef.current = stableStringifyObject(nextWidths as any);
+        try {
+          window.localStorage.setItem('fireDoorOrderGridColumnWidths', JSON.stringify(nextWidths || {}));
+        } catch {
+          // ignore
+        }
       } catch {
         try {
           const raw = window.localStorage.getItem('fireDoorOrderGridColumnWidths');
@@ -2204,6 +2238,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
   // Save column configuration
   const saveColumnConfig = async (fieldName: string, config: any) => {
     try {
+      rememberGridScroll();
       await apiFetch(`/api/grid-config/${fieldName}`, {
         method: 'POST',
         json: config,
