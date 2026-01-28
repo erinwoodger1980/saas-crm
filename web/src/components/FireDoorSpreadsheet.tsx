@@ -960,6 +960,19 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     return JSON.stringify(ordered);
   }, []);
 
+  const columnLabelToKey = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const col of COLUMNS) {
+      const name = typeof (col as any)?.name === 'string' ? (col as any).name : '';
+      const key = String((col as any)?.key || '').trim();
+      if (!name || !key) continue;
+      const normalized = normalizeHeaderKey(name);
+      if (!normalized) continue;
+      if (!map[normalized]) map[normalized] = key;
+    }
+    return map;
+  }, []);
+
   const lastSavedColumnWidthsRef = useRef<string>("{}");
 
   const getGridScrollTargets = useCallback((): HTMLElement[] => {
@@ -1504,20 +1517,28 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       // Primary syntax: ${fieldName}
       expression = expression.replace(/\$\{([^}]+)\}/g, (_m, fieldRaw) => {
         const key = String(fieldRaw || '').trim();
+        const normalized = normalizeHeaderKey(key);
+        const resolvedKey = columnLabelToKey[normalized] || key;
         const value = Object.prototype.hasOwnProperty.call(formulaGlobals, key)
           ? formulaGlobals[key]
-          : (row as any)[key];
+          : (row as any)[resolvedKey];
         if (typeof value === 'number' && Number.isFinite(value)) return String(value);
         if (value == null || value === '') return '0';
         return JSON.stringify(String(value));
       });
 
       // Back-compat: replace bare identifiers for numeric fields
-      const numericKeys = new Set<string>([...Object.keys(row), ...Object.keys(formulaGlobals)]);
+      const numericKeys = new Set<string>([
+        ...Object.keys(row),
+        ...Object.keys(formulaGlobals),
+        ...Object.keys(columnLabelToKey),
+      ]);
       for (const key of numericKeys) {
+        const normalized = normalizeHeaderKey(key);
+        const resolvedKey = columnLabelToKey[normalized] || key;
         const value = Object.prototype.hasOwnProperty.call(formulaGlobals, key)
           ? formulaGlobals[key]
-          : (row as any)[key];
+          : (row as any)[resolvedKey];
         if (typeof value === 'number' && Number.isFinite(value)) {
           expression = expression.replace(new RegExp(`\\b${key}\\b`, 'g'), String(value));
         }
@@ -1586,7 +1607,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
       console.error('Formula evaluation error:', err);
       return null;
     }
-  }, [replaceLookupCalls, markupPercent]);
+  }, [replaceLookupCalls, markupPercent, columnLabelToKey]);
 
   const formulaColumns = useMemo(() => {
     return COLUMNS
@@ -2069,10 +2090,14 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
         }));
         
         // Add all fire door columns as available fields for formulas
-        const columnFields = COLUMNS.map((col) => ({
-          name: col.key,
-          type: 'text',
-        }));
+        const columnFields = COLUMNS.flatMap((col) => {
+          const key = String((col as any)?.key || '').trim();
+          const name = typeof (col as any)?.name === 'string' ? (col as any).name : '';
+          const entries: Array<{ name: string; type: string }> = [];
+          if (key) entries.push({ name: key, type: 'text' });
+          if (name) entries.push({ name, type: 'text' });
+          return entries;
+        });
         
         // Merge and deduplicate by name
         const allFields = [...apiFields];
@@ -2085,16 +2110,32 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
         if (!allFields.some(f => f.name === 'Markup (%)')) {
           allFields.push({ name: 'Markup (%)', type: 'number' });
         }
+        if (!allFields.some(f => f.name === 'Cost Of Materials')) {
+          allFields.push({ name: 'Cost Of Materials', type: 'number' });
+        }
+        if (!allFields.some(f => f.name === 'Cost Of Labour')) {
+          allFields.push({ name: 'Cost Of Labour', type: 'number' });
+        }
         
         setAvailableFields(allFields);
       } catch (err) {
         // Fallback: add all fire door columns
-        const fallbackFields = COLUMNS.map((col) => ({
-          name: col.key,
-          type: 'text',
-        }));
+        const fallbackFields = COLUMNS.flatMap((col) => {
+          const key = String((col as any)?.key || '').trim();
+          const name = typeof (col as any)?.name === 'string' ? (col as any).name : '';
+          const entries: Array<{ name: string; type: string }> = [];
+          if (key) entries.push({ name: key, type: 'text' });
+          if (name) entries.push({ name, type: 'text' });
+          return entries;
+        });
         if (!fallbackFields.some(f => f.name === 'Markup (%)')) {
           fallbackFields.push({ name: 'Markup (%)', type: 'number' });
+        }
+        if (!fallbackFields.some(f => f.name === 'Cost Of Materials')) {
+          fallbackFields.push({ name: 'Cost Of Materials', type: 'number' });
+        }
+        if (!fallbackFields.some(f => f.name === 'Cost Of Labour')) {
+          fallbackFields.push({ name: 'Cost Of Labour', type: 'number' });
         }
         setAvailableFields(fallbackFields);
       }
@@ -2550,6 +2591,15 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     }
   }, [configModalOpen, visibleColumns.length, restoreGridScroll, gridConfig]);
 
+  useEffect(() => {
+    if (!configModalOpen) {
+      const t = window.setTimeout(() => {
+        restoreGridScroll();
+      }, 250);
+      return () => window.clearTimeout(t);
+    }
+  }, [gridConfig, configModalOpen, restoreGridScroll]);
+
   const handleColumnResize = useCallback((colOrIdx: any, widthMaybe: any) => {
     let colKey: string | null = null;
     let nextWidth: number | null = null;
@@ -2974,6 +3024,18 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
                       className="rounded"
                     />
                     <span className="text-sm">{(col as any)?.name || key}</span>
+                    <input
+                      type="number"
+                      min={40}
+                      max={1200}
+                      value={Math.round(columnWidths[key] || (col as any)?.width || 120)}
+                      onChange={(e) => {
+                        const next = Math.max(40, Math.min(1200, Number(e.target.value) || 0));
+                        setColumnWidths((prev) => ({ ...prev, [key]: next }));
+                      }}
+                      className="ml-auto h-7 w-20 rounded border border-slate-300 px-2 text-xs"
+                      title="Column width"
+                    />
                   </label>
                 );
               })}
