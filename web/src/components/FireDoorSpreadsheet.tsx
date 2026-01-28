@@ -992,6 +992,19 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
     });
   }, [getGridScrollTargets]);
 
+  useEffect(() => {
+    const targets = getGridScrollTargets();
+    if (!targets.length) return;
+    const handler = () => {
+      const best = targets.reduce((acc, el) => (el.scrollWidth > acc.scrollWidth ? el : acc), targets[0]);
+      gridScrollLeftRef.current = best.scrollLeft || 0;
+    };
+    targets.forEach((el) => el.addEventListener('scroll', handler, { passive: true }));
+    return () => {
+      targets.forEach((el) => el.removeEventListener('scroll', handler));
+    };
+  }, [getGridScrollTargets]);
+
   const openColumnConfig = useCallback((columnKey: string) => {
     rememberGridScroll();
     setConfigModalColumn(columnKey);
@@ -1124,7 +1137,16 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
         setColumnWidths(widths);
         lastSavedColumnWidthsRef.current = stableStringifyObject(widths as any);
       } catch {
-        // ignore (fall back to defaults)
+        try {
+          const raw = window.localStorage.getItem('fireDoorOrderGridColumnWidths');
+          const parsed = raw ? JSON.parse(raw) : null;
+          if (!cancelled && parsed && typeof parsed === 'object') {
+            setColumnWidths(parsed as Record<string, number>);
+            lastSavedColumnWidthsRef.current = stableStringifyObject(parsed as any);
+          }
+        } catch {
+          // ignore (fall back to defaults)
+        }
       } finally {
         if (!cancelled) setColumnWidthsLoaded(true);
       }
@@ -1147,8 +1169,17 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated, onCompon
           json: { columnWidths: columnWidths || {} },
         });
         lastSavedColumnWidthsRef.current = sig;
+        try {
+          window.localStorage.setItem('fireDoorOrderGridColumnWidths', JSON.stringify(columnWidths || {}));
+        } catch {
+          // ignore storage failures
+        }
       } catch {
-        // ignore
+        try {
+          window.localStorage.setItem('fireDoorOrderGridColumnWidths', JSON.stringify(columnWidths || {}));
+        } catch {
+          // ignore
+        }
       }
     }, 250);
 
