@@ -738,11 +738,6 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
                   <div className="text-xs text-slate-600">
                     Unmatched: {unmatchedCsv.length} / {sortedCsv.length}
                   </div>
-                  {missingSystemFields.length ? (
-                    <div className="text-xs text-slate-600">
-                      Missing system fields: {missingSystemFields.join(", ")}
-                    </div>
-                  ) : null}
                 </div>
 
                 <div className="flex-1 overflow-hidden rounded-md border border-slate-200">

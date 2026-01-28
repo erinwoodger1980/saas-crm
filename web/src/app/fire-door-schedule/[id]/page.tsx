@@ -395,6 +395,29 @@ export default function FireDoorScheduleDetailPage() {
     const normalizeLookupValue = (value: any) => String(value ?? "").trim().toLowerCase();
 
     const detectLookupMismatches = async (importId: string) => {
+      const aliasMap: Record<string, string> = {
+        doorsetLeafFrame: "doorsetType",
+        acousticRating: "acousticRatingDb",
+        fanlightSidelightGlazing: "fanlightSidelightGlz",
+        doorEdgeProtPosition: "doorEdgeProtPos",
+        visionPanelQtyLeaf1: "visionQtyLeaf1",
+        visionPanelQtyLeaf2: "visionQtyLeaf2",
+        leaf1Aperture1Width: "vp1WidthLeaf1",
+        leaf1Aperture1Height: "vp1HeightLeaf1",
+        leaf1Aperture2Width: "vp2WidthLeaf1",
+        leaf1Aperture2Height: "vp2HeightLeaf1",
+        leaf2Aperture1Width: "vp1WidthLeaf2",
+        leaf2Aperture1Height: "vp1HeightLeaf2",
+        leaf2Aperture2Width: "vp2WidthLeaf2",
+        leaf2Aperture2Height: "vp2HeightLeaf2",
+        addition1: "additionNote1",
+        addition1Qty: "additionNote1Qty",
+        closersFloorsprings: "closerOrFloorSpring",
+        mLeafWidth: "masterLeafWidth",
+        sLeafWidth: "slaveLeafWidth",
+        priceEa: "unitValue",
+        linePrice: "lineTotal",
+      };
       const [importDetail, gridConfigs, lookupTables] = await Promise.all([
         apiFetch(`/fire-doors/imports/${importId}`),
         apiFetch("/api/grid-config/all"),
@@ -449,7 +472,12 @@ export default function FireDoorScheduleDetailPage() {
       for (const item of lineItems) {
         const rawGrid = (item as any)?.rawRowJson && (item as any)?.rawRowJson.__grid ? (item as any).rawRowJson.__grid : {};
         for (const field of lookupFields) {
-          const rawValue = (item as any)[field.fieldKey] ?? (rawGrid as any)?.[field.fieldKey];
+          const aliasKey = aliasMap[field.fieldKey];
+          const rawValue =
+            (item as any)[field.fieldKey] ??
+            (rawGrid as any)?.[field.fieldKey] ??
+            (aliasKey ? (item as any)[aliasKey] : undefined) ??
+            (aliasKey ? (rawGrid as any)?.[aliasKey] : undefined);
           if (rawValue == null || String(rawValue).trim() === "") continue;
           const normalized = normalizeLookupValue(rawValue);
           if (!normalized) continue;
@@ -2080,11 +2108,6 @@ export default function FireDoorScheduleDetailPage() {
                     <div className="text-xs text-slate-600">
                       Unmatched: {unmatchedCsv.length} / {sortedCsv.length}
                     </div>
-                    {missingSystemFields.length ? (
-                      <div className="text-xs text-slate-600">
-                        Missing system fields: {missingSystemFields.join(", ")}
-                      </div>
-                    ) : null}
                   </div>
 
                   <div className="mt-3 rounded-md border border-slate-200">
