@@ -1149,10 +1149,18 @@ export default function FireDoorScheduleDetailPage() {
       }
     }
 
+    const updatesById: Record<string, Record<string, any>> = {};
+    for (const update of updates) {
+      if (!update?.id) continue;
+      if (!updatesById[update.id]) updatesById[update.id] = {};
+      Object.assign(updatesById[update.id], update.changes || {});
+    }
+    const dedupedUpdates = Object.entries(updatesById).map(([id, changes]) => ({ id, changes }));
+
     setLookupValidationWorking(true);
     try {
-      if (updates.length > 0) {
-        await apiFetch("/fire-doors/line-items/bulk", { method: "PATCH", json: { updates } });
+      if (dedupedUpdates.length > 0) {
+        await apiFetch("/fire-doors/line-items/bulk", { method: "PATCH", json: { updates: dedupedUpdates } });
       }
       setLookupValidationOpen(false);
       setLookupValidationItems([]);
