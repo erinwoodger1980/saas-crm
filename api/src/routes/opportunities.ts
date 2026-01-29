@@ -906,6 +906,9 @@ router.patch("/:id", async (req: any, res: any) => {
   if ('valueGBP' in updates) {
     data.valueGBP = updates.valueGBP != null ? Number(updates.valueGBP) : null;
   }
+  if ('installationValueGBP' in updates) {
+    data.installationValueGBP = updates.installationValueGBP != null ? Number(updates.installationValueGBP) : null;
+  }
   
   // Boolean fields
   const booleanFields = [

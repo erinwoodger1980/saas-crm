@@ -1174,6 +1174,7 @@ model Opportunity {
   startDate                DateTime?
   deliveryDate             DateTime?
   valueGBP                 Decimal?
+  installationValueGBP     Decimal?
   stage                    OppStage                   @default(QUALIFY)
   wonAt                    DateTime?
   lostAt                   DateTime?

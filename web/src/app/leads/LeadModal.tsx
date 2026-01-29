@@ -843,6 +843,7 @@ export default function LeadModal({
   const [projectInstallationStartDate, setProjectInstallationStartDate] = useState<string>("");
   const [projectInstallationEndDate, setProjectInstallationEndDate] = useState<string>("");
   const [projectValueGBP, setProjectValueGBP] = useState<string>("");
+  const [projectInstallationValueGBP, setProjectInstallationValueGBP] = useState<string>("");
   const [opportunityId, setOpportunityId] = useState<string | null>(null);
   const [opportunityStage, setOpportunityStage] = useState<string | null>(null);
 
@@ -1750,6 +1751,7 @@ export default function LeadModal({
             return null;
           })();
           setProjectValueGBP(opp.valueGBP ? String(opp.valueGBP) : legacyOrderValueRaw != null ? String(legacyOrderValueRaw) : "");
+          setProjectInstallationValueGBP(opp.installationValueGBP != null ? String(opp.installationValueGBP) : "");
         }
       } catch (err) {
         console.error('[LeadModal] workshop loader error:', err);
@@ -6972,14 +6974,22 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           <span aria-hidden>📅</span>
                           {opportunityStage === "WON" ? "Project Overview" : "Opportunity Overview"}
                         </div>
-                        {projectValueGBP && (
-                          <div className="text-sm text-slate-700">
-                            Value:{" "}
-                            <span className="font-semibold">
-                              £{Number(projectValueGBP).toLocaleString()}
-                            </span>
-                          </div>
-                        )}
+                        {(() => {
+                          const valueNum = Number(String(projectValueGBP || "").replace(/,/g, ""));
+                          const installNum = Number(String(projectInstallationValueGBP || "").replace(/,/g, ""));
+                          const base = Number.isFinite(valueNum) ? valueNum : 0;
+                          const install = Number.isFinite(installNum) ? installNum : 0;
+                          const total = base + install;
+                          if (!base && !install) return null;
+                          return (
+                            <div className="text-sm text-slate-700">
+                              Grand total:{" "}
+                              <span className="font-semibold">
+                                £{total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <label className="block">
@@ -7061,13 +7071,46 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                             onChange={(e) => setProjectValueGBP(e.target.value)}
                             onFocus={(e) => e.currentTarget.select()}
                             onBlur={() => {
-                              if (projectValueGBP) {
-                                saveOpportunityField("valueGBP", Number(projectValueGBP));
-                              }
+                              const trimmed = String(projectValueGBP || "").trim().replace(/,/g, "");
+                              const num = trimmed ? Number(trimmed) : null;
+                              saveOpportunityField("valueGBP", Number.isFinite(Number(num)) ? num : null);
                             }}
                             placeholder="0.00"
                           />
                         </label>
+                        <label className="block">
+                          <span className="text-xs text-slate-600 font-medium mb-1 block">
+                            Installation Value (GBP)
+                          </span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            className="w-full rounded-md border px-3 py-2 text-sm"
+                            value={projectInstallationValueGBP}
+                            onChange={(e) => setProjectInstallationValueGBP(e.target.value)}
+                            onFocus={(e) => e.currentTarget.select()}
+                            onBlur={() => {
+                              const trimmed = String(projectInstallationValueGBP || "").trim().replace(/,/g, "");
+                              const num = trimmed ? Number(trimmed) : null;
+                              saveOpportunityField("installationValueGBP", Number.isFinite(Number(num)) ? num : null);
+                            }}
+                            placeholder="0.00"
+                          />
+                        </label>
+                        <div className="rounded-md border bg-slate-50 px-3 py-2 text-sm">
+                          <div className="text-xs text-slate-600 font-medium mb-1">Grand Total (GBP)</div>
+                          <div className="font-semibold text-slate-900">
+                            {(() => {
+                              const valueNum = Number(String(projectValueGBP || "").replace(/,/g, ""));
+                              const installNum = Number(String(projectInstallationValueGBP || "").replace(/,/g, ""));
+                              const base = Number.isFinite(valueNum) ? valueNum : 0;
+                              const install = Number.isFinite(installNum) ? installNum : 0;
+                              const total = base + install;
+                              if (!base && !install) return "—";
+                              return `£${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                            })()}
+                          </div>
+                        </div>
                       </div>
                     </section>
 
