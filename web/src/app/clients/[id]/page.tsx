@@ -714,11 +714,16 @@ export default function ClientDetailPage() {
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-medium text-slate-700">{lead.status}</p>
-                    {lead.estimatedValue && (
-                      <p className="text-sm text-slate-500">
-                        £{lead.estimatedValue.toFixed(2)}
-                      </p>
-                    )}
+                    {(() => {
+                      const raw = (lead as any)?.estimatedValue;
+                      const num = raw == null || raw === "" ? null : Number(raw);
+                      if (!Number.isFinite(Number(num))) return null;
+                      return (
+                        <p className="text-sm text-slate-500">
+                          £{Number(num).toFixed(2)}
+                        </p>
+                      );
+                    })()}
                   </div>
                 </Link>
               ))}
