@@ -1219,10 +1219,10 @@ export default function QuoteBuilderPage() {
     }
   }, [quote?.meta, quote?.proposalPdfUrl]);
 
-  const ensureProposalPdfUrl = useCallback(async (): Promise<string | null> => {
+  const ensureProposalPdfUrl = useCallback(async (opts?: { force?: boolean }): Promise<string | null> => {
     if (!quoteId) return null;
     const existing = (quote?.meta as any)?.proposalPdfUrl ?? quote?.proposalPdfUrl ?? null;
-    if (existing) return existing;
+    if (existing && !opts?.force) return existing;
 
     setIsGeneratingPdf(true);
     try {
@@ -1263,7 +1263,7 @@ export default function QuoteBuilderPage() {
   const handleSavePdfFromProposalTab = useCallback(async () => {
     // Open immediately to keep the user gesture and avoid popup blockers.
     const popup = window.open("about:blank", "_blank");
-    const url = await ensureProposalPdfUrl();
+    const url = await ensureProposalPdfUrl({ force: true });
     if (url) {
       if (popup) popup.location.href = url;
       else window.open(url, "_blank");
@@ -1416,7 +1416,7 @@ export default function QuoteBuilderPage() {
   }, [quoteId, toast]);
 
   const handlePrintPdfFromProposalTab = useCallback(async () => {
-    const url = await ensureProposalPdfUrl();
+    const url = await ensureProposalPdfUrl({ force: true });
     if (!url) return;
     const iframe = document.createElement("iframe");
     iframe.style.display = "none";
