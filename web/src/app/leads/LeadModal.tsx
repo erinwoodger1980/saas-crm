@@ -2005,6 +2005,12 @@ export default function LeadModal({
         
         // Always sync back ALL date fields from server response (even if saving a different field)
         // This ensures UI stays in sync with database
+        if ("valueGBP" in opp) {
+          setProjectValueGBP(opp.valueGBP != null ? String(opp.valueGBP) : "");
+        }
+        if ("installationValueGBP" in opp) {
+          setProjectInstallationValueGBP(opp.installationValueGBP != null ? String(opp.installationValueGBP) : "");
+        }
         if ('startDate' in opp) {
           const formatted = formatDateForInput(opp.startDate);
           console.log('[saveOpportunityField] syncing startDate:', opp.startDate, '->', formatted);
