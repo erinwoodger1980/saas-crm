@@ -243,8 +243,23 @@ export default function TimberWindowsClient() {
                 Premium timber windows designed, manufactured, and installed in the UK. Heritage craft meets modern
                 performance for sash and flush casement projects.
               </p>
+              <p className="text-sm text-slate-600 max-w-xl">
+                Serving Sussex, Kent & the South East – including Sevenoaks, Brighton, Eastbourne, Tunbridge Wells and
+                surrounding areas.
+              </p>
             </div>
             <div className="flex flex-wrap gap-4">
+              <div className="flex flex-col items-start gap-2">
+                <Button
+                  type="button"
+                  className={designSystem.buttons.primary}
+                  onClick={scrollToForm}
+                  data-cta="consultation"
+                >
+                  Book a Timber Window Design Consultation
+                </Button>
+                <div className="text-xs text-slate-500">Free survey • No obligation • Sussex & Kent</div>
+              </div>
               <Button
                 type="button"
                 className={designSystem.buttons.primary}
@@ -279,6 +294,25 @@ export default function TimberWindowsClient() {
             imageContext="hero"
             allowUpload={canEditImages}
           />
+        </div>
+      </section>
+
+      {/* Qualification */}
+      <section className={`${components.contentSection} bg-white`}>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 md:p-8">
+          <div className="space-y-4">
+            <h2 className={designSystem.typography.h3}>Is Lignum right for you?</h2>
+            <p className={designSystem.typography.body}>
+              We specialise in bespoke, made-to-measure timber windows for period, heritage and high-quality homes across
+              Sussex and Kent.
+            </p>
+            <ul className="grid gap-2 text-sm text-slate-600 md:grid-cols-2">
+              <li>• Bespoke, made to measure (not off-the-shelf)</li>
+              <li>• Timber windows only (not uPVC)</li>
+              <li>• Designed, manufactured and installed</li>
+              <li>• Suitable for period and listed buildings</li>
+            </ul>
+          </div>
         </div>
       </section>
 
@@ -362,6 +396,16 @@ export default function TimberWindowsClient() {
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Testimonial */}
+      <section className={components.contentSection}>
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:p-8">
+          <p className="text-sm text-slate-600">
+            “The quality of the craftsmanship and attention to detail was exceptional. The whole process was professional
+            from start to finish.”
+          </p>
         </div>
       </section>
 
@@ -458,6 +502,9 @@ export default function TimberWindowsClient() {
               Complete the façade with matching timber doors, including front doors, bi-folds, and heritage designs.
             </p>
             <div className={designSystem.typography.bodySmall}>Ask about matching timber doors in your enquiry.</div>
+            <a href="/doors" className="text-sm text-slate-600 underline underline-offset-4">
+              Looking for bespoke timber doors? View our timber doors.
+            </a>
           </div>
         </div>
       </section>
@@ -481,6 +528,20 @@ export default function TimberWindowsClient() {
               <li>• Select projects across the UK</li>
             </ul>
           </div>
+        </div>
+      </section>
+
+      {/* Repeat CTA */}
+      <section className={components.sectionNarrow}>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center shadow-sm md:p-8">
+          <Button
+            type="button"
+            className={designSystem.buttons.primary}
+            onClick={scrollToForm}
+            data-cta="consultation-repeat"
+          >
+            Book a Timber Window Design Consultation
+          </Button>
         </div>
       </section>
 
