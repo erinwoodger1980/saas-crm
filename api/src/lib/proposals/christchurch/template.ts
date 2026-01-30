@@ -77,7 +77,9 @@ export function buildChristchurchProposalHtml(opts: {
   const leadAddressParts = [leadAny?.address, leadAny?.city, leadAny?.postcode]
     .map((v) => String(v || "").trim())
     .filter(Boolean);
+  const leadDeliveryAddress = String(leadAny?.deliveryAddress || "").trim();
   const projectAddress =
+    leadDeliveryAddress ||
     String((leadCustom?.deliveryAddress as string) || "").trim() ||
     String((leadCustom?.address as string) || "").trim() ||
     leadAddressParts.join(", ");

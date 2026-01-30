@@ -4659,10 +4659,13 @@ async function buildQuoteProposalHtml(opts: {
   
   const ref = `Q-${quote.id.slice(0, 8).toUpperCase()}`;
   const leadCustom: any = (quote.lead?.custom as any) || {};
+  const leadAny: any = quote.lead as any;
   const jobNumber = (leadCustom?.refId as string) || ref;
   const projectReference = typeof leadCustom?.projectReference === "string" ? leadCustom.projectReference : "";
   const surveyTeam = typeof leadCustom?.surveyTeam === "string" ? String(leadCustom.surveyTeam) : "";
-  const deliveryAddress = (leadCustom?.address as string) || "";
+  const deliveryAddress = String(
+    leadAny?.deliveryAddress || leadCustom?.deliveryAddress || leadCustom?.address || "",
+  ).trim();
   const DEFAULT_COMPLIANCE_NOTE = "PAS 24 / Part Q: Glazing to GGF guidelines.";
   
   // Extract specifications
