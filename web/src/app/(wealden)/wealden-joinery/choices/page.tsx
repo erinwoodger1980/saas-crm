@@ -6,6 +6,10 @@ export const metadata: Metadata = {
   title: "Design Choices & Details — Architectural Specification | Lignum by Wealden Joinery",
   description:
     "Comprehensive specification guide: colours, glazing, hardware, and architectural details for timber windows and doors. Heritage to contemporary.",
+  robots: {
+    index: false,
+    follow: false,
+  },
 };
 
 const detailImages = getImagesByHint("detail", 10);

@@ -24,26 +24,27 @@ type FormState = {
 type SubmitState = "idle" | "submitting" | "success" | "error";
 
 const projectTypes = [
-  "Sash windows",
-  "Casement / flush casement",
-  "Whole-house replacement",
-  "Extension / new build",
-  "Conservation / listed building",
+  "Entrance / front door",
+  "French doors",
+  "Sliding doors",
+  "Bi-fold doors",
+  "Garden / patio doors",
+  "Heritage / listed building",
   "Other",
 ];
 
 const trustBullets = [
-  "Accoya® option with 50-year guarantee",
-  "Heritage expertise for conservation approvals",
-  "Secure locking options to PAS 24",
-  "UK craftsmanship with factory-finished paint",
+  "PAS 24 security options for entrance doors",
+  "Engineered timber cores for stability",
+  "Heritage detailing for period homes",
+  "Factory-finished paint for long life",
   "Transparent, itemised quotations",
 ];
 
 const guaranteeHighlights = [
   { value: "30yr", label: "Rot & Decay" },
   { value: "10yr", label: "Workmanship" },
-  { value: "15yr", label: "Glazing" },
+  { value: "10yr", label: "Hardware" },
 ];
 
 const certificationLogos = [
@@ -55,19 +56,31 @@ const certificationLogos = [
 
 const faqItems = [
   {
-    q: "How much do timber windows cost?",
-    a: "Costs vary by size, glazing choice, and detailing. We provide an itemised quote after a survey so you can compare options clearly.",
+    q: "How much do timber doors cost?",
+    a: "Costs depend on the opening size, hardware, glazing, and detailing. We provide a fully itemised quote after survey so you can compare options clearly.",
   },
   {
     q: "What are typical lead times?",
-    a: "Most projects are manufactured in 8–12 weeks after survey and specification sign-off. We confirm lead times in writing with your quote.",
+    a: "Most timber door projects are manufactured in 8–12 weeks after survey and specification sign-off. We confirm lead times in writing with your quote.",
   },
   {
-    q: "Do I need planning or conservation approval?",
-    a: "Listed buildings and conservation areas may require consent. We advise on suitable profiles and glazing to maximise approval success.",
+    q: "Are your entrance doors secure?",
+    a: "Yes. We specify multi-point locking, laminated safety glass, and PAS 24 security options where required.",
   },
   {
-    q: "How often do timber windows need repainting?",
+    q: "Do you offer low thresholds for accessibility?",
+    a: "Yes. We can specify low or flush thresholds to support Part M requirements where appropriate.",
+  },
+  {
+    q: "Can you match existing door styles?",
+    a: "Yes. We survey existing details and reproduce profiles to maintain the character of the property.",
+  },
+  {
+    q: "Which door types do you make?",
+    a: "We design and manufacture entrance doors, French doors, sliding doors, and bi-fold doors tailored to each opening.",
+  },
+  {
+    q: "How often do timber doors need repainting?",
     a: "Factory-applied microporous finishes typically last 8–10 years before a light recoat, depending on exposure.",
   },
   {
@@ -75,24 +88,12 @@ const faqItems = [
     a: "Yes. Accoya® is highly stable, sustainably sourced, and backed by a 50-year warranty against rot.",
   },
   {
-    q: "Can you use slim or vacuum glazing?",
-    a: "Yes. Slimline and vacuum glazing can achieve modern thermal performance while preserving heritage sightlines.",
-  },
-  {
-    q: "Are your windows secure?",
-    a: "We specify multi-point locking and hardware to meet PAS 24 when required. Security is built into the design.",
-  },
-  {
     q: "What does the installation process involve?",
     a: "We survey, manufacture, and install with dedicated teams. Your project manager coordinates access, protection, and aftercare.",
   },
-  {
-    q: "Can you match existing profiles and glazing bars?",
-    a: "Yes. We survey existing details and reproduce profiles to maintain the character of the property.",
-  },
 ];
 
-export default function TimberWindowsClient() {
+export default function TimberDoorsClient() {
   const { user } = useCurrentUser();
   const role = String(user?.role || "").toLowerCase();
   const canEditImages = Boolean(user?.id) && (!role || ["admin", "owner", "editor"].includes(role));
@@ -138,7 +139,7 @@ export default function TimberWindowsClient() {
   };
 
   const scrollToForm = () => {
-    document.getElementById("timber-windows-form")?.scrollIntoView({ behavior: "smooth" });
+    document.getElementById("timber-doors-form")?.scrollIntoView({ behavior: "smooth" });
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -172,7 +173,7 @@ export default function TimberWindowsClient() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          source: "PPC Timber Windows",
+          source: "PPC Timber Doors",
           name: formState.name,
           email: formState.email,
           phone: formState.phone,
@@ -186,7 +187,7 @@ export default function TimberWindowsClient() {
       if (!response.ok) throw new Error("Failed to submit");
 
       setSubmitState("success");
-      wealdenTrack.lead({ content_name: "Timber Windows" });
+      wealdenTrack.lead({ content_name: "Timber Doors" });
       setFormState({
         name: "",
         email: "",
@@ -197,7 +198,7 @@ export default function TimberWindowsClient() {
         consent: false,
       });
     } catch (error) {
-      console.error("[timber-windows] lead submit failed", error);
+      console.error("[timber-doors] lead submit failed", error);
       setSubmitState("error");
       setSubmitError("We could not submit your enquiry. Please try again or call us.");
     }
@@ -225,7 +226,7 @@ gtag('config', 'AW-17600349257');`,
       <section className={components.sectionCompact}>
         <div className="mb-8 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
           <div className="text-sm font-medium text-slate-700">
-            Ready to price your timber windows? Get a fast, itemised quote.
+            Ready to price your timber doors? Get a fast, itemised quote.
           </div>
           <Button
             type="button"
@@ -249,11 +250,11 @@ gtag('config', 'AW-17600349257');`,
                   priority
                 />
               </div>
-              <p className={designSystem.typography.caption}>Timber Windows</p>
-              <h1 className={designSystem.typography.hero}>Timber Windows</h1>
+              <p className={designSystem.typography.caption}>Timber Doors</p>
+              <h1 className={designSystem.typography.hero}>Timber Doors</h1>
               <p className={`${designSystem.typography.body} max-w-xl`}>
-                Premium timber windows designed, manufactured, and installed in the UK. Heritage craft meets modern
-                performance for sash and flush casement projects.
+                Premium timber doors designed, manufactured, and installed in the UK. Secure entrance doors and elegant
+                garden doors that balance heritage character with modern performance.
               </p>
               <p className="text-sm text-slate-600 max-w-xl">
                 Serving Sussex, Kent & the South East – including Sevenoaks, Brighton, Eastbourne, Tunbridge Wells and
@@ -268,7 +269,7 @@ gtag('config', 'AW-17600349257');`,
                   onClick={scrollToForm}
                   data-cta="consultation"
                 >
-                  Book a Timber Window Design Consultation
+                  Book a Timber Door Design Consultation
                 </Button>
                 <div className="text-xs text-slate-500">Free survey • No obligation • Sussex & Kent</div>
               </div>
@@ -299,8 +300,8 @@ gtag('config', 'AW-17600349257');`,
             </div>
           </div>
           <ImageSlot
-            slotId="timber-windows-hero"
-            label="Timber Windows Hero"
+            slotId="timber-doors-hero"
+            label="Timber Doors Hero"
             aspectRatio={designSystem.images.portrait}
             size="xl"
             imageContext="hero"
@@ -315,14 +316,14 @@ gtag('config', 'AW-17600349257');`,
           <div className="space-y-4">
             <h2 className={designSystem.typography.h3}>Is Lignum right for you?</h2>
             <p className={designSystem.typography.body}>
-              We specialise in bespoke, made-to-measure timber windows for period, heritage and high-quality homes across
+              We specialise in bespoke, made-to-measure timber doors for period, heritage and high-quality homes across
               Sussex and Kent.
             </p>
             <ul className="grid gap-2 text-sm text-slate-600 md:grid-cols-2">
               <li>• Bespoke, made to measure (not off-the-shelf)</li>
-              <li>• Timber windows only (not uPVC)</li>
+              <li>• Timber doors only (not composite or uPVC)</li>
               <li>• Designed, manufactured and installed</li>
-              <li>• Suitable for period and listed buildings</li>
+              <li>• Entrance, French, sliding & bi-fold options</li>
             </ul>
           </div>
         </div>
@@ -354,17 +355,15 @@ gtag('config', 'AW-17600349257');`,
         <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
           <div className="space-y-4">
             <p className={designSystem.typography.caption}>Trusted craftsmanship</p>
-            <h2 className={designSystem.typography.h2}>Heritage confidence with modern performance</h2>
+            <h2 className={designSystem.typography.h2}>Security, style, and heritage detail</h2>
             <p className={designSystem.typography.body}>
-              We specialise in timber windows for listed buildings, conservation areas, and architect-led homes. Every
-              project includes detailed surveying, specification guidance, and a dedicated install team.
+              We design timber doors for listed buildings, conservation areas, and architect-led homes. Every project
+              includes detailed surveying, specification guidance, and a dedicated install team.
             </p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <p className="text-sm font-medium text-slate-900">Reviews</p>
-            <p className="mt-2 text-sm text-slate-600">
-              Verified customer feedback from recent timber window projects.
-            </p>
+            <p className="mt-2 text-sm text-slate-600">Verified customer feedback from recent timber door projects.</p>
             <div className="mt-4 space-y-3">
               <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -372,10 +371,9 @@ gtag('config', 'AW-17600349257');`,
                   <div className="text-amber-500" aria-label="5 out of 5 stars">★★★★★</div>
                 </div>
                 <p className="mt-2">
-                  Very pleased with our new French windows and kitchen door and window; it was so good to be able to
-                  have real wood as opposed to uPVC and the talented fitters - Dean and Charley - were friendly and very
-                  careful workers. Every thing was delivered and fitted on time as arranged. Many thanks to Martin and
-                  the team, we highly recommend this local joinery firm.
+                  Very pleased with our new front door and French doors; it was so good to be able to have real wood as
+                  opposed to uPVC and the talented fitters were friendly and very careful. Everything was delivered and
+                  fitted on time as arranged. Many thanks to Martin and the team.
                 </p>
                 <p className="mt-3 text-xs font-semibold text-slate-700">— Sarah H.</p>
               </div>
@@ -386,11 +384,8 @@ gtag('config', 'AW-17600349257');`,
                 </div>
                 <p className="mt-2">
                   Super work carried out by thoughtful and efficient staff. The new porch entrance has transformed the
-                  look of the house from the outside and greatly improved the warmth and reduced traffic noise inside.
-                  The new bay windows were a big financial consideration and as we were replacing the existing windows
-                  with the same style we were unsure we would see any real difference. However, the results were worth
-                  every penny because the rooms are now brighter, quieter and warmer. Thank you for a great job well
-                  done.
+                  look of the house and greatly improved warmth and reduced traffic noise. We were unsure we would see
+                  a real difference, but the results were worth every penny.
                 </p>
                 <p className="mt-3 text-xs font-semibold text-slate-700">— James R.</p>
               </div>
@@ -400,9 +395,8 @@ gtag('config', 'AW-17600349257');`,
                   <div className="text-amber-500" aria-label="5 out of 5 stars">★★★★★</div>
                 </div>
                 <p className="mt-2">
-                  The new window looks great and was fitted rapidly and professionally. Dealing with Wealden Joinery
-                  was a pleasure as they are responsive and do what they say they're going to do - a rare thing these
-                  days!
+                  The new door looks great and was fitted rapidly and professionally. Dealing with Wealden Joinery was a
+                  pleasure as they are responsive and do what they say they're going to do.
                 </p>
                 <p className="mt-3 text-xs font-semibold text-slate-700">— Claire M.</p>
               </div>
@@ -415,8 +409,8 @@ gtag('config', 'AW-17600349257');`,
       <section className={components.contentSection}>
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:p-8">
           <p className="text-sm text-slate-600">
-            “The quality of the craftsmanship and attention to detail was exceptional. The whole process was professional
-            from start to finish.”
+            “The door craftsmanship and attention to detail was exceptional. The whole process was professional from
+            start to finish.”
           </p>
         </div>
       </section>
@@ -425,21 +419,21 @@ gtag('config', 'AW-17600349257');`,
       <section className={components.section}>
         <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
           <div className="space-y-4">
-            <p className={designSystem.typography.caption}>Sash Windows</p>
-            <h2 className={designSystem.typography.h2}>Timber Sash Windows</h2>
+            <p className={designSystem.typography.caption}>Entrance Doors</p>
+            <h2 className={designSystem.typography.h2}>Timber Entrance Doors</h2>
             <p className={designSystem.typography.body}>
-              Traditional box sash or spring balance profiles, matched to heritage detailing with slimline or vacuum
-              glazing options.
+              Statement front doors built with engineered timber cores, secure locking, and heritage or contemporary
+              styling to match your home.
             </p>
             <ul className="space-y-2 text-sm text-slate-600">
-              <li>• Conservation-friendly sightlines</li>
-              <li>• Acoustic and thermal upgrades</li>
-              <li>• Optional decorative glazing bars</li>
+              <li>• PAS 24 security options</li>
+              <li>• Bespoke glazing and panel layouts</li>
+              <li>• Factory-finished paint system</li>
             </ul>
           </div>
           <ImageSlot
-            slotId="timber-windows-sash"
-            label="Timber Sash Windows"
+            slotId="timber-doors-entrance"
+            label="Timber Entrance Doors"
             aspectRatio={designSystem.images.portrait}
             size="lg"
             allowUpload={canEditImages}
@@ -450,23 +444,23 @@ gtag('config', 'AW-17600349257');`,
       <section className={`${components.section} bg-slate-50`}>
         <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
           <ImageSlot
-            slotId="timber-windows-casement"
-            label="Flush Casement Windows"
+            slotId="timber-doors-french"
+            label="Timber French Doors"
             aspectRatio={designSystem.images.portrait}
             size="lg"
             allowUpload={canEditImages}
           />
           <div className="space-y-4">
-            <p className={designSystem.typography.caption}>Casement</p>
-            <h2 className={designSystem.typography.h2}>Timber Casement / Flush Casement</h2>
+            <p className={designSystem.typography.caption}>French Doors</p>
+            <h2 className={designSystem.typography.h2}>Timber French Doors</h2>
             <p className={designSystem.typography.body}>
-              Clean, flush profiles for contemporary builds or refined period projects. Highly efficient, secure, and
-              engineered for longevity.
+              Classic double doors with slimline glazing bars, low thresholds, and thermal performance upgrades for
+              garden or balcony openings.
             </p>
             <ul className="space-y-2 text-sm text-slate-600">
-              <li>• PAS 24 security hardware</li>
-              <li>• Double or vacuum glazing</li>
-              <li>• Factory-applied paint finishes</li>
+              <li>• Heritage-friendly sightlines</li>
+              <li>• Optional low thresholds</li>
+              <li>• Multi-point locking hardware</li>
             </ul>
           </div>
         </div>
@@ -475,22 +469,22 @@ gtag('config', 'AW-17600349257');`,
       <section className={components.section}>
         <div className="grid gap-10 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
           <div className="space-y-4">
-            <p className={designSystem.typography.caption}>Why timber?</p>
-            <h2 className={designSystem.typography.h2}>Why timber?</h2>
+            <p className={designSystem.typography.caption}>Garden Openings</p>
+            <h2 className={designSystem.typography.h2}>Sliding & Bi-fold Doors</h2>
             <p className={designSystem.typography.body}>
-              Timber delivers unmatched aesthetics, repairability, and low embodied carbon. With modern coatings and
-              glazing, it performs at today’s standards while remaining true to heritage architecture.
+              Expansive openings with smooth operation, slim framing, and thermal upgrades. Perfect for extensions,
+              garden rooms, and open-plan living.
             </p>
             <ul className="grid gap-3 text-sm text-slate-600 md:grid-cols-2">
-              <li>• Excellent thermal efficiency</li>
-              <li>• Long service life with maintenance</li>
-              <li>• Naturally repairable</li>
-              <li>• Sustainable, renewable material</li>
+              <li>• Large glazed panels</li>
+              <li>• Flush threshold options</li>
+              <li>• Engineered timber stability</li>
+              <li>• Secure multi-point locking</li>
             </ul>
           </div>
           <ImageSlot
-            slotId="timber-windows-why"
-            label="Timber detail"
+            slotId="timber-doors-bifold"
+            label="Sliding & Bi-fold Doors"
             aspectRatio={designSystem.images.landscape}
             size="lg"
             allowUpload={canEditImages}
@@ -501,23 +495,48 @@ gtag('config', 'AW-17600349257');`,
       <section className={`${components.section} bg-slate-50`}>
         <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
           <ImageSlot
-            slotId="timber-windows-doors"
-            label="Timber Doors"
+            slotId="timber-doors-why"
+            label="Timber door detail"
             aspectRatio={designSystem.images.portrait}
             size="lg"
             allowUpload={canEditImages}
           />
           <div className="space-y-4">
-            <p className={designSystem.typography.caption}>Also available</p>
-            <h2 className={designSystem.typography.h2}>Timber Doors</h2>
+            <p className={designSystem.typography.caption}>Why timber doors?</p>
+            <h2 className={designSystem.typography.h2}>Why timber doors?</h2>
             <p className={designSystem.typography.body}>
-              Complete the façade with matching timber doors, including front doors, bi-folds, and heritage designs.
+              Timber delivers unrivalled aesthetics, repairability, and low embodied carbon. With modern coatings,
+              threshold systems, and glazing, timber doors perform at today’s standards while retaining heritage charm.
             </p>
-            <div className={designSystem.typography.bodySmall}>Ask about matching timber doors in your enquiry.</div>
-            <a href="/timber-doors" className="text-sm text-slate-600 underline underline-offset-4">
-              Looking for bespoke timber doors? View our timber doors.
+            <ul className="space-y-2 text-sm text-slate-600">
+              <li>• Excellent thermal performance</li>
+              <li>• Long service life with maintenance</li>
+              <li>• Naturally repairable</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section className={components.section}>
+        <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
+          <div className="space-y-4">
+            <p className={designSystem.typography.caption}>Also available</p>
+            <h2 className={designSystem.typography.h2}>Timber Windows</h2>
+            <p className={designSystem.typography.body}>
+              Pair your doors with matching timber windows, including heritage sash and flush casement profiles.
+            </p>
+            <div className={designSystem.typography.bodySmall}>Ask about matching timber windows in your enquiry.</div>
+            <a href="/timber-windows" className="text-sm text-slate-600 underline underline-offset-4">
+              Looking for bespoke timber windows? View our timber windows.
             </a>
           </div>
+          <ImageSlot
+            slotId="timber-doors-windows"
+            label="Timber Windows"
+            aspectRatio={designSystem.images.portrait}
+            size="lg"
+            allowUpload={canEditImages}
+          />
         </div>
       </section>
 
@@ -552,23 +571,23 @@ gtag('config', 'AW-17600349257');`,
             onClick={scrollToForm}
             data-cta="consultation-repeat"
           >
-            Book a Timber Window Design Consultation
+            Book a Timber Door Design Consultation
           </Button>
         </div>
       </section>
 
       {/* Lead Form */}
-      <section id="timber-windows-form" className={`${components.sectionNarrow} bg-white`}>
+      <section id="timber-doors-form" className={`${components.sectionNarrow} bg-white`}>
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 shadow-sm md:p-8">
           <div className="space-y-4">
             <p className={designSystem.typography.caption}>Get a Quote</p>
-            <h2 className={designSystem.typography.h2}>Request your timber windows quote</h2>
+            <h2 className={designSystem.typography.h2}>Request your timber doors quote</h2>
             <p className={designSystem.typography.bodySmall}>
               Share your project details and we will respond with next steps, timings, and a tailored quotation.
             </p>
           </div>
 
-          <form className="mt-8 grid gap-4" onSubmit={handleSubmit} data-form="timber-windows">
+          <form className="mt-8 grid gap-4" onSubmit={handleSubmit} data-form="timber-doors">
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <label className={designSystem.typography.label}>Name *</label>
@@ -670,7 +689,7 @@ gtag('config', 'AW-17600349257');`,
                 type="submit"
                 className={designSystem.buttons.primary}
                 disabled={submitState === "submitting"}
-                data-form="timber-windows"
+                data-form="timber-doors"
               >
                 {submitState === "submitting" ? "Submitting..." : "Submit enquiry"}
               </Button>
@@ -686,7 +705,7 @@ gtag('config', 'AW-17600349257');`,
       <section className={`${components.sectionNarrow} bg-slate-50`}>
         <div className="mb-10 text-center space-y-3">
           <p className={designSystem.typography.caption}>FAQ</p>
-          <h2 className={designSystem.typography.h2}>Timber windows FAQs</h2>
+          <h2 className={designSystem.typography.h2}>Timber doors FAQs</h2>
         </div>
         <div className="space-y-6">
           {faqItems.map((item) => (
@@ -703,10 +722,10 @@ gtag('config', 'AW-17600349257');`,
         <div className="text-center space-y-6">
           <p className="text-xs font-medium uppercase tracking-[0.25em] text-white/60">Ready to start?</p>
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-light tracking-tight text-white">
-            Let’s plan your timber windows
+            Let’s plan your timber doors
           </h2>
           <p className={`${designSystem.typography.body} max-w-2xl mx-auto text-white/80`}>
-            Speak with our team about design options, performance upgrades, and timelines.
+            Speak with our team about design options, security upgrades, and timelines.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
             <Button

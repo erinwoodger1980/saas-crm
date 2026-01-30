@@ -8,11 +8,10 @@ const MARKETING_PATHS = [
   '/windows',
   '/doors',
   '/alu-clad',
-  '/choices',
   '/projects',
-  '/showrooms',
   '/contact',
   '/estimate',
+  '/timber-doors',
 ];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {

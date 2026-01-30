@@ -282,20 +282,6 @@ export function ContactContent({ heroImage }: ContactContentProps) {
             </div>
           </div>
 
-          {/* Visit Showrooms */}
-          <div className="rounded-xl border border-emerald-700 bg-emerald-50 p-6 shadow-sm">
-            <h3 className="text-base font-semibold text-slate-900">Visit Our Showrooms</h3>
-            <p className="mt-2 text-sm text-slate-700">
-              See our products in person at one of our showrooms across the UK. From Crowborough to London.
-            </p>
-            <Link
-              href="/wealden-joinery/showrooms"
-              className="mt-4 inline-flex rounded-full bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800"
-            >
-              View All Showrooms
-            </Link>
-          </div>
-
           {/* What Happens Next Timeline */}
           <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <h3 className="text-base font-semibold text-slate-900">What happens next?</h3>

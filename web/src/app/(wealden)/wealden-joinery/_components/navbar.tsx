@@ -7,8 +7,6 @@ const links = [
   { href: "/wealden-joinery/doors", label: "Doors" },
   { href: "/wealden-joinery/alu-clad", label: "Alu-Clad" },
   { href: "/wealden-joinery/projects", label: "Projects" },
-  { href: "/wealden-joinery/choices", label: "Choices" },
-  { href: "/wealden-joinery/showrooms", label: "Showrooms" },
   { href: "/wealden-joinery/about", label: "About" },
   { href: "/wealden-joinery/contact", label: "Contact" },
 ];

@@ -26,16 +26,9 @@ interface AboutContentProps {
     width: number;
     height: number;
   } | null;
-  showroomImage: {
-    id: string;
-    publicPath: string;
-    caption: string;
-    width: number;
-    height: number;
-  } | null;
 }
 
-export function AboutContent({ heroImage, storyImages, valuesImage, showroomImage }: AboutContentProps) {
+export function AboutContent({ heroImage, storyImages, valuesImage }: AboutContentProps) {
   const timeline = [
     {
       year: "1990s",
@@ -49,8 +42,8 @@ export function AboutContent({ heroImage, storyImages, valuesImage, showroomImag
     },
     {
       year: "2010s",
-      title: "Showroom Network",
-      description: "Opened locations across Kent, Sussex, and London Design Studio",
+      title: "Regional Growth",
+      description: "Expanded coverage across Kent, Sussex, and London design projects",
     },
     {
       year: "2020s",
@@ -95,29 +88,6 @@ export function AboutContent({ heroImage, storyImages, valuesImage, showroomImag
     },
   ];
 
-  const regions = [
-    {
-      name: "East Sussex",
-      showrooms: "Crowborough (HQ), Brighton",
-      description: "Manufacturing headquarters and coastal specialists",
-    },
-    {
-      name: "Kent",
-      showrooms: "Tunbridge Wells, Sevenoaks",
-      description: "Heritage specialists and conservation experts",
-    },
-    {
-      name: "London",
-      showrooms: "Chelsea Harbour",
-      description: "Trade & architect consultations",
-    },
-    {
-      name: "Nationwide",
-      showrooms: "Contact us",
-      description: "Virtual consultations and UK-wide service",
-    },
-  ];
-
   const accreditations = [
     {
       title: "FSC Certified",
@@ -156,7 +126,7 @@ export function AboutContent({ heroImage, storyImages, valuesImage, showroomImag
           </h1>
           <p className="text-lg font-light leading-relaxed text-slate-600">
             Since the 1990s, crafting premium timber windows and doors. Made-to-order, measured on-site, built in Crowborough.
-            Delivered nationwide through our showroom network.
+            Delivered nationwide with consultation-led service and aftercare.
           </p>
         </div>
 
@@ -196,7 +166,7 @@ export function AboutContent({ heroImage, storyImages, valuesImage, showroomImag
               <p className="text-sm leading-relaxed text-slate-700">
                 Wealden Joinery started as a small workshop in East Sussex, specialising in heritage sash window repairs and
                 replacements. Over three decades, we've grown into a nationwide business with our manufacturing headquarters in
-                Crowborough and showrooms across the Southeast and London.
+                Crowborough and a dedicated in-house team supporting projects across the South East and London.
               </p>
               <p className="text-sm leading-relaxed text-slate-700">
                 Today, we're a trusted name for Listed building consents, conservation area approvals, and high-end new-builds.
@@ -218,10 +188,10 @@ export function AboutContent({ heroImage, storyImages, valuesImage, showroomImag
             <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
               <p className="text-sm leading-relaxed text-slate-700">
                 We don't mass-produce. Every window and door is made to order, measured on-site, and tailored to your property.
-                Our showroom network ensures expert local service, from initial consultation through to installation and aftercare.
+                Our consultation-led service ensures expert guidance from initial survey through to installation and aftercare.
               </p>
               <p className="text-sm font-semibold text-slate-900">
-                Manufacturing HQ: Crowborough, East Sussex. Showrooms nationwide—visit us to see our products and meet our team.
+                Manufacturing HQ: Crowborough, East Sussex. Design consultations available across the South East and beyond.
               </p>
             </div>
 
@@ -337,60 +307,6 @@ export function AboutContent({ heroImage, storyImages, valuesImage, showroomImag
         />
       </section>
 
-      {/* Showroom Network */}
-      <section className="space-y-12">
-        <div className="mx-auto max-w-3xl space-y-4 text-center">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Our Showrooms</p>
-          <h2 className="text-4xl font-light tracking-tight text-slate-900 md:text-5xl">Visit us nationwide</h2>
-          <p className="text-base font-light leading-relaxed text-slate-600">
-            From our Crowborough headquarters to locations across the Southeast and London
-          </p>
-        </div>
-
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-          {regions.map((region) => (
-            <article
-              key={region.name}
-              className="rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm transition hover:shadow-lg"
-            >
-              <div className="mb-4 flex justify-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50">
-                  <svg className="h-6 w-6 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.5}
-                      d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-                    />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                </div>
-              </div>
-              <h3 className="text-base font-semibold text-slate-900">{region.name}</h3>
-              <p className="mt-2 text-xs font-medium text-emerald-700">{region.showrooms}</p>
-              <p className="mt-2 text-xs leading-relaxed text-slate-600">{region.description}</p>
-            </article>
-          ))}
-        </div>
-
-        <div className="text-center">
-          <Link
-            href="/wealden-joinery/showrooms"
-            className="inline-flex rounded-full bg-emerald-700 px-8 py-3 text-sm font-semibold text-white transition hover:bg-emerald-800"
-          >
-            View All Showrooms & Book a Visit
-          </Link>
-        </div>
-
-        {/* Showroom Image */}
-        <ImageSlot
-          slotId="about-showroom"
-          label="Showroom Interior (Sample Wall/Meeting)"
-          aspectRatio="aspect-[21/9]"
-          size="xl"
-        />
-      </section>
-
       {/* Accreditations */}
       <section className="space-y-8">
         <div className="mx-auto max-w-3xl space-y-4 text-center">
@@ -428,7 +344,7 @@ export function AboutContent({ heroImage, storyImages, valuesImage, showroomImag
           <div className="space-y-4 text-center">
             <h2 className="text-4xl font-light tracking-tight md:text-5xl">Ready to start your project?</h2>
             <p className="text-base font-light leading-relaxed text-slate-300">
-              Choose your path: book a showroom consultation or explore recent work
+              Choose your next step: book a consultation or explore recent work
             </p>
           </div>
 
@@ -448,14 +364,14 @@ export function AboutContent({ heroImage, storyImages, valuesImage, showroomImag
               <div className="space-y-2">
                 <h3 className="text-xl font-semibold">Book a Consultation</h3>
                 <p className="text-sm leading-relaxed text-slate-300">
-                  Visit a showroom, see samples, discuss your project. We'll guide you through options and next steps.
+                  Schedule a design consultation to review options, timelines, and next steps with our team.
                 </p>
               </div>
               <Link
-                href="/wealden-joinery/showrooms"
+                href="/wealden-joinery/contact#enquiry-form"
                 className="inline-flex w-full justify-center rounded-full bg-white px-6 py-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-100"
               >
-                Find Your Nearest Showroom
+                Book a Consultation
               </Link>
             </div>
 

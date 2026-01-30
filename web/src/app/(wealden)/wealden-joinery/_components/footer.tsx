@@ -16,6 +16,8 @@ export function WealdenFooter() {
     ? "/lignum-windows#lignum-windows-form"
     : pathname?.includes("timber-windows-east-sussex")
       ? "/timber-windows-east-sussex#timber-windows-east-sussex-form"
+      : pathname?.includes("timber-doors")
+        ? "/timber-doors#timber-doors-form"
       : pathname?.includes("timber-windows")
         ? "/timber-windows#timber-windows-form"
         : "/wealden-joinery/contact#enquiry-form";
@@ -49,7 +51,7 @@ export function WealdenFooter() {
             />
           </Link>
           <p className="text-sm leading-relaxed text-slate-600">
-            Lignum Windows - Premium timber windows and doors crafted in our Crowborough headquarters. Serving clients nationwide through our network of showrooms.
+            Lignum Windows - Premium timber windows and doors crafted in our Crowborough headquarters. Serving clients across the South East with tailored design consultations.
           </p>
           <div className="space-y-2 text-sm text-slate-700">
             <div className="flex items-center gap-2">
@@ -70,7 +72,7 @@ export function WealdenFooter() {
         <div>
           <h4 className="mb-4 text-sm font-semibold uppercase tracking-wider text-slate-900">Explore</h4>
           <nav className="grid grid-cols-2 gap-3 text-sm text-slate-700">
-            {["Windows", "Doors", "Alu-Clad", "Projects", "Choices", "Showrooms", "About", "Contact"].map((item) => (
+            {["Windows", "Doors", "Alu-Clad", "Projects", "About", "Contact"].map((item) => (
               <Link key={item} href={`/wealden-joinery/${item.toLowerCase().replace(" ", "-")}`} className="transition-colors hover:text-emerald-700">
                 {item}
               </Link>
@@ -79,9 +81,9 @@ export function WealdenFooter() {
         </div>
 
         <div className="space-y-4">
-          <h4 className="text-sm font-semibold uppercase tracking-wider text-slate-900">Visit Us</h4>
+          <h4 className="text-sm font-semibold uppercase tracking-wider text-slate-900">Speak with us</h4>
           <p className="text-sm leading-relaxed text-slate-600">
-            Visit one of our showrooms nationwide to see our products, discuss your project, and explore timber samples and finishes.
+            Book a design consultation or request a tailored estimate for your timber windows and doors.
           </p>
           <div className="flex flex-wrap gap-3 text-sm font-semibold">
             <Link
