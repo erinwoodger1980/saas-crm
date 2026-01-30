@@ -50,6 +50,28 @@ function looksLikeHeader(line: string): boolean {
   );
 }
 
+function looksLikeHeaderLoose(line: string): boolean {
+  const lower = line.toLowerCase();
+  return (
+    /\bqty\b/.test(lower) ||
+    /quantity/.test(lower) ||
+    /unit\s*(price|cost)/.test(lower) ||
+    (/total/.test(lower) && /description/.test(lower))
+  );
+}
+
+function isTermsSectionStart(line: string): boolean {
+  const lower = line.toLowerCase();
+  return (
+    /terms\s*(and|&)\s*conditions/.test(lower) ||
+    /conditions\s+of\s+(sale|business)/.test(lower) ||
+    /terms\s+of\s+(sale|business)/.test(lower) ||
+    /general\s+conditions?/.test(lower) ||
+    /standard\s+conditions?/.test(lower) ||
+    /\bt&c\b/.test(lower)
+  );
+}
+
 function isTotalLine(lower: string): boolean {
   return /\bsubtotal\b/.test(lower) || /\btotal\b/.test(lower) || /\bgrand total\b/.test(lower);
 }
@@ -69,6 +91,8 @@ export function buildSupplierParse(extraction: ExtractionSummary): {
   const parsedLines: SupplierParseResult["lines"] = [];
   const warnings: string[] = [];
   const lineRegions: LineRegion[] = [];
+  let inTermsSection = false;
+  let termsSectionSkipped = false;
 
   const seenDescriptions = new Set<string>();
   let descriptionQualityTotal = 0;
@@ -78,6 +102,19 @@ export function buildSupplierParse(extraction: ExtractionSummary): {
   rows.forEach((row, index) => {
     const normalized = row.normalized;
     if (!normalized) return;
+    if (inTermsSection) {
+      if (looksLikeHeaderLoose(normalized)) {
+        inTermsSection = false;
+      } else {
+        return;
+      }
+    }
+    if (isTermsSectionStart(normalized)) {
+      inTermsSection = true;
+      termsSectionSkipped = true;
+      return;
+    }
+    if (inTermsSection) return;
     const lower = normalized.toLowerCase();
 
     if (looksLikeHeader(normalized)) return;
@@ -221,6 +258,9 @@ export function buildSupplierParse(extraction: ExtractionSummary): {
 
   if (parsedLines.length === 0) {
     warnings.push("No line items detected in structured parser stage");
+  }
+  if (termsSectionSkipped) {
+    warnings.push("Terms/conditions section skipped");
   }
 
   const descriptionQuality = descriptionCount ? descriptionQualityTotal / descriptionCount : 0;

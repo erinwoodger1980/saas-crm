@@ -74,7 +74,7 @@ function collapseSpacedSequences(text: string): string {
   collapseRuns(/\b(?:\d\s+){2,}\d\b/g);
 
   // Remove stray spaces inside numbers (e.g., "1 , 200 . 50")
-  output = output.replace(/(\d)\s+(?=[\d,.-])/g, "$1");
+  // Avoid collapsing spaces between separate numbers (e.g., "784,85 784,85").
   output = output.replace(/([,.-])\s+(?=\d)/g, "$1");
 
   return output;

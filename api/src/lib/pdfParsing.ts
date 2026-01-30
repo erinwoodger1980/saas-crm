@@ -77,14 +77,14 @@ export type PdfLayout = {
 // ============================================================================
 
 const PATTERNS = {
-  // Dimensions: 1200x800mm, 1200 x 800mm, etc.
-  dimensions: /\b(\d{3,4})\s*[xX×]\s*(\d{3,4})\s*mm\b/i,
+  // Dimensions: 1200x800mm, 1200 x 800mm, or 1200x800 (no unit)
+  dimensions: /\b(\d{3,4})\s*[xX×]\s*(\d{3,4})(?:\s*mm)?\b/i,
   
   // Area: 2.5m², 2.5 m2, etc.
   area: /\b(\d+(?:\.\d+)?)\s*m[²2]\b/i,
   
-  // Money: £1,234.56, £1234, etc.
-  money: /£\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/g,
+  // Money: £1,234.56, 1 234,56, 1234.56, etc.
+  money: /(?:[£€$]\s*)?(\d{1,3}(?:[ ,]\d{3})*(?:[.,]\d{2})|\d+[.,]\d{2})/g,
   
   // Joinery keywords
   keywords: /\b(door|window|bifold|bi-fold|sash|frame|casement|sliding|french|patio|entrance|internal|external|fire door|glazed|solid|panel)\b/i,
@@ -101,7 +101,7 @@ const PATTERNS = {
   // Product types
   productType: /\b(door|window|bifold|sash|frame|skylight|rooflight|conservatory)\b/i,
   
-  // Quantity patterns
+  // Quantity patterns (leading)
   qty: /^(\d+)\s+(?:x\s+|nr\.?\s+|no\.?\s+)?/i,
 };
 
@@ -286,7 +286,10 @@ function parseItemBlock(blocks: PdfTextBlock[]): ParsedLineLike {
   // Build description (remove extracted quantities and prices for cleaner description)
   let description = combinedText;
   if (qty !== null) {
-    description = description.replace(PATTERNS.qty, '').trim();
+    description = description
+      .replace(PATTERNS.qty, '')
+      .replace(/\b\d{1,3}\s*(?:no\.?|nr\.?|pcs|pc)?\s*$/i, '')
+      .trim();
   }
   
   return {
@@ -353,10 +356,10 @@ function extractPrices(text: string): { unit: number | null; total: number | nul
   }
   
   // Parse prices
-  const prices = matches.map(m => {
-    const priceStr = m[1].replace(/,/g, '');
-    return parseFloat(priceStr);
-  });
+  const { parseMoney } = require('./pdf/normalize') as typeof import('./pdf/normalize');
+  const prices = matches
+    .map((m) => parseMoney(m[1]))
+    .filter((n): n is number => n != null && Number.isFinite(n));
   
   // If only one price, assume it's unit price
   if (prices.length === 1) {
@@ -372,6 +375,14 @@ function extractQuantity(text: string): number | null {
   if (match) {
     return parseInt(match[1], 10);
   }
+
+  // Fallback: trailing qty (e.g., "W-UFSH (1740x1002) 10" or "... 1 no")
+  const stripped = text.replace(PATTERNS.dimensions, "").trim();
+  const tailMatch = stripped.match(/\b(\d{1,3})\s*(?:no\.?|nr\.?|pcs|pc)?\s*$/i);
+  if (tailMatch) {
+    return parseInt(tailMatch[1], 10);
+  }
+
   return null;
 }
 

@@ -6,3 +6,10 @@ node_modules/
 
 # Tesseract language data (large; downloaded locally during OCR debugging)
 *.traineddata
+
+# Local-only PDF parse helpers
+scripts/inspect-pdfjs-lines.ts
+scripts/parse-local-quote.ts
+
+# Generated supplier pattern files (local runtime output)
+api/storage/patterns/rotherfield.json

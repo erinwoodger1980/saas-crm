@@ -6875,7 +6875,7 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
       });
     };
     
-    const {
+    let {
       convertCurrency = true,
       distributeDelivery = true,
       hideDeliveryLine = true,
@@ -6885,6 +6885,11 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
     const rawFileKind = req.body?.fileKind;
     const requestedFileKind = typeof rawFileKind === "string" ? rawFileKind.trim() : "";
     const fileKind: "SUPPLIER_QUOTE" | "OWN_QUOTE" = requestedFileKind === "OWN_QUOTE" ? "OWN_QUOTE" : "SUPPLIER_QUOTE";
+
+    // Own-quote parsing should follow the same route but never apply markup.
+    if (fileKind === "OWN_QUOTE") {
+      applyMarkup = false;
+    }
 
     // Heuristic: the "Upload your own quote" tab calls this endpoint with *all* transformations disabled.
     // In that mode we prefer deterministic-first parsing (no LLM) and only rely on OCR if Stage A is poor.

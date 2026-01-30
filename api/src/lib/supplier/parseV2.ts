@@ -20,6 +20,7 @@ import {
   type ParsedLineLike,
   type PdfImageBlock,
 } from "../pdfParsing";
+import { cleanText, parseMoney } from "../pdf/normalize";
 
 /**
  * V2 supplier parser using shared intelligent PDF extraction.
@@ -64,7 +65,7 @@ export async function parseSupplierPdfV2(
     console.log(`[parseSupplierPdfV2] Attached images to ${linesWithImageCount} lines`);
 
     // STAGE 5: Convert to SupplierParseResult format
-    const supplierLines = convertToSupplierFormat(linesWithImages);
+    let supplierLines = convertToSupplierFormat(linesWithImages);
 
     // STAGE 6: Detect supplier name if not provided
     const detectedSupplier = options?.supplier || detectSupplierFromLayout(layout.textBlocks);
@@ -73,7 +74,10 @@ export async function parseSupplierPdfV2(
     const detectedCurrency = options?.currency || inferCurrencyFromText(layout.textBlocks);
 
     // STAGE 8: Calculate totals
-    const detectedTotals = calculateTotals(supplierLines);
+    const detectedTotals = detectTotalsFromTextBlocks(layout.textBlocks, supplierLines);
+
+    const guardrailWarnings = new Set<string>();
+    supplierLines = applyPostParseGuardrails(supplierLines, detectedTotals, guardrailWarnings);
 
     // Build final result
     const result: SupplierParseResult = {
@@ -83,7 +87,7 @@ export async function parseSupplierPdfV2(
       detected_totals: detectedTotals,
       confidence: calculateConfidence(supplierLines),
       usedStages: ['pdfjs'], // Mark as pdfjs-based extraction
-      warnings: [],
+      warnings: guardrailWarnings.size ? Array.from(guardrailWarnings) : [],
     };
 
     console.log('[parseSupplierPdfV2] ✅ Parsing complete');
@@ -110,7 +114,7 @@ export async function parseSupplierPdfV2(
 /**
  * Convert generic ParsedLineLike to SupplierParseResult line format.
  */
-function convertToSupplierFormat(lines: ParsedLineLike[]) {
+function convertToSupplierFormat(lines: ParsedLineLike[]): SupplierParseResult["lines"] {
   return lines.map((line) => {
     // Extract unit from product type or default to 'item'
     let unit = 'item';
@@ -126,21 +130,272 @@ function convertToSupplierFormat(lines: ParsedLineLike[]) {
       unit,
       costUnit: line.unitPrice || undefined,
       lineTotal: line.totalPrice || undefined,
-      
-      // Additional metadata from joinery detection
-      dimensions: line.meta.dimensions,
-      area: line.meta.area,
-      type: line.meta.type,
-      wood: line.meta.wood,
-      finish: line.meta.finish,
-      glass: line.meta.glass,
-      productType: line.meta.productType,
-      
-      // Image reference (hash for lookup)
-      imageHash: line.meta.imageRef?.hash,
-      imagePage: line.meta.imageRef?.page,
+      meta: {
+        ...(line.meta || {}),
+        dimensions: line.meta.dimensions,
+        area: line.meta.area,
+        type: line.meta.type,
+        wood: line.meta.wood,
+        finish: line.meta.finish,
+        glass: line.meta.glass,
+        productType: line.meta.productType,
+        imageHash: line.meta.imageRef?.hash,
+        imagePage: line.meta.imageRef?.page,
+      },
     };
   });
+}
+
+function normaliseDescriptionKey(text: string): string {
+  return cleanText(text)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function tokenizeDescription(text: string): Set<string> {
+  const key = normaliseDescriptionKey(text);
+  return new Set(key.split(" ").filter(Boolean));
+}
+
+function isLikelySummaryDuplicate(shortDesc: string, longDesc: string): boolean {
+  const shortKey = normaliseDescriptionKey(shortDesc);
+  const longKey = normaliseDescriptionKey(longDesc);
+  if (!shortKey || !longKey) return false;
+  if (longKey.length <= shortKey.length + 5) return false;
+  if (longKey.includes(shortKey) && shortKey.length <= 30) return true;
+
+  const shortTokens = tokenizeDescription(shortDesc);
+  const longTokens = tokenizeDescription(longDesc);
+  if (!shortTokens.size || !longTokens.size) return false;
+
+  let overlap = 0;
+  for (const token of shortTokens) {
+    if (longTokens.has(token)) overlap += 1;
+  }
+  const overlapRatio = overlap / Math.max(1, shortTokens.size);
+  return overlapRatio >= 0.8 && longTokens.size >= shortTokens.size + 1;
+}
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function isTermsLine(text: string): boolean {
+  const lower = text.toLowerCase();
+  return (
+    /terms\s*(and|&)\s*conditions/.test(lower) ||
+    /conditions\s+of\s+(sale|business)/.test(lower) ||
+    /terms\s+of\s+(sale|business)/.test(lower) ||
+    /general\s+conditions?/.test(lower) ||
+    /standard\s+conditions?/.test(lower) ||
+    /\bt&c\b/.test(lower)
+  );
+}
+
+function normaliseLinePricing(
+  lines: SupplierParseResult["lines"],
+  warnings: Set<string>,
+): SupplierParseResult["lines"] {
+  let adjustedUnitFromTotal = 0;
+  let adjustedTotalFromUnit = 0;
+  let filledLineTotal = 0;
+  let filledUnitFromTotal = 0;
+
+  const next = lines.map((line) => {
+    const qty = line.qty;
+    let costUnit = line.costUnit;
+    let lineTotal = line.lineTotal;
+
+    if (qty != null && qty > 1) {
+      if (lineTotal != null && costUnit != null) {
+        const expectedFromUnit = costUnit * qty;
+        const ratio = lineTotal > 0 ? expectedFromUnit / lineTotal : 1;
+        const costLooksLikeTotal = Math.abs(costUnit - lineTotal) <= Math.max(1, lineTotal * 0.05);
+        if (costLooksLikeTotal) {
+          const computedTotal = roundMoney(costUnit * qty);
+          if (Number.isFinite(computedTotal) && computedTotal > 0) {
+            lineTotal = computedTotal;
+            adjustedTotalFromUnit += 1;
+          }
+        } else if (ratio > 1.2 || ratio < 0.8) {
+          costUnit = roundMoney(lineTotal / qty);
+          adjustedUnitFromTotal += 1;
+        }
+      } else if (lineTotal != null && costUnit == null) {
+        costUnit = roundMoney(lineTotal / qty);
+        filledUnitFromTotal += 1;
+      } else if (lineTotal == null && costUnit != null) {
+        lineTotal = roundMoney(costUnit * qty);
+        filledLineTotal += 1;
+      }
+    }
+
+    return {
+      ...line,
+      ...(Number.isFinite(costUnit as number) ? { costUnit } : {}),
+      ...(Number.isFinite(lineTotal as number) ? { lineTotal } : {}),
+    };
+  });
+
+  if (adjustedUnitFromTotal > 0) {
+    warnings.add(`Adjusted ${adjustedUnitFromTotal} unit price(s) using line totals for qty > 1`);
+  }
+  if (adjustedTotalFromUnit > 0) {
+    warnings.add(`Adjusted ${adjustedTotalFromUnit} line total(s) using unit price × qty`);
+  }
+  if (filledUnitFromTotal > 0) {
+    warnings.add(`Filled ${filledUnitFromTotal} missing unit price(s) from line totals`);
+  }
+  if (filledLineTotal > 0) {
+    warnings.add(`Filled ${filledLineTotal} missing line total(s) from qty × unit price`);
+  }
+
+  return next;
+}
+
+function dedupeSummaryLines(
+  lines: SupplierParseResult["lines"],
+  warnings: Set<string>,
+): SupplierParseResult["lines"] {
+  const byKey = new Map<string, number[]>();
+  const keyFor = (line: SupplierParseResult["lines"][number]) => {
+    const qty = line.qty != null ? String(line.qty) : "";
+    const costUnit = line.costUnit != null ? String(roundMoney(line.costUnit)) : "";
+    const lineTotal = line.lineTotal != null ? String(roundMoney(line.lineTotal)) : "";
+    return `${qty}|${costUnit}|${lineTotal}`;
+  };
+
+  lines.forEach((line, index) => {
+    const key = keyFor(line);
+    const bucket = byKey.get(key) ?? [];
+    bucket.push(index);
+    byKey.set(key, bucket);
+  });
+
+  const removed = new Set<number>();
+  for (const indexes of byKey.values()) {
+    if (indexes.length < 2) continue;
+    const sorted = [...indexes].sort((a, b) => {
+      const lenA = (lines[a]?.description || "").length;
+      const lenB = (lines[b]?.description || "").length;
+      return lenB - lenA;
+    });
+
+    const kept: number[] = [];
+    for (const idx of sorted) {
+      if (removed.has(idx)) continue;
+      const candidate = lines[idx];
+      if (!candidate?.description) continue;
+
+      let isDuplicate = false;
+      for (const keptIdx of kept) {
+        const keptLine = lines[keptIdx];
+        if (!keptLine?.description) continue;
+        const shortDesc = candidate.description.length <= keptLine.description.length
+          ? candidate.description
+          : keptLine.description;
+        const longDesc = candidate.description.length <= keptLine.description.length
+          ? keptLine.description
+          : candidate.description;
+        if (isLikelySummaryDuplicate(shortDesc, longDesc)) {
+          if (candidate.description.length < keptLine.description.length) {
+            removed.add(idx);
+          } else {
+            removed.add(keptIdx);
+          }
+          isDuplicate = true;
+          break;
+        }
+      }
+      if (!isDuplicate) kept.push(idx);
+    }
+  }
+
+  if (removed.size > 0) {
+    warnings.add(`Removed ${removed.size} duplicate summary line(s) (summary + detailed list detected)`);
+  }
+
+  return lines.filter((_, index) => !removed.has(index));
+}
+
+function detectTotalsFromTextBlocks(
+  textBlocks: Array<{ text: string }>,
+  lines: SupplierParseResult["lines"],
+): SupplierParseResult["detected_totals"] {
+  const detected: SupplierParseResult["detected_totals"] = {};
+  const text = textBlocks.map((b) => b.text).join("\n");
+
+  const findTotal = (pattern: RegExp): number | null => {
+    const match = text.match(pattern);
+    if (!match) return null;
+    const value = parseMoney(match[1] || match[0]);
+    return value != null && Number.isFinite(value) ? value : null;
+  };
+
+  detected.subtotal = findTotal(/sub\s*total[^\d£€$]*([£€$]?\s*[-+]?\d[\d,]*\.?\d{0,2})/i) ?? undefined;
+  detected.delivery = findTotal(/delivery[^\d£€$]*([£€$]?\s*[-+]?\d[\d,]*\.?\d{0,2})/i) ?? undefined;
+  detected.estimated_total =
+    findTotal(/total\s+incl[^\d£€$]*([£€$]?\s*[-+]?\d[\d,]*\.?\d{0,2})/i) ??
+    findTotal(/grand\s+total[^\d£€$]*([£€$]?\s*[-+]?\d[\d,]*\.?\d{0,2})/i) ??
+    findTotal(/total[^\d£€$]*([£€$]?\s*[-+]?\d[\d,]*\.?\d{0,2})/i) ??
+    undefined;
+
+  const hasAny = detected.subtotal != null || detected.delivery != null || detected.estimated_total != null;
+  if (!hasAny) {
+    return calculateTotals(lines);
+  }
+
+  return detected;
+}
+
+function applyPostParseGuardrails(
+  lines: SupplierParseResult["lines"],
+  detectedTotals: SupplierParseResult["detected_totals"],
+  warnings: Set<string>,
+): SupplierParseResult["lines"] {
+  let working = lines.filter((line) => !isTermsLine(String(line.description || "")));
+  if (working.length !== lines.length) {
+    warnings.add("Terms/conditions section skipped");
+  }
+
+  working = normaliseLinePricing(working, warnings);
+  working = dedupeSummaryLines(working, warnings);
+
+  const expectedTotal =
+    (typeof detectedTotals?.subtotal === "number" && Number.isFinite(detectedTotals.subtotal)
+      ? detectedTotals.subtotal
+      : null) ??
+    (typeof detectedTotals?.estimated_total === "number" && Number.isFinite(detectedTotals.estimated_total)
+      ? detectedTotals.estimated_total
+      : null);
+
+  if (expectedTotal != null) {
+    const sumLineTotals = working
+      .map((l) => {
+        const total =
+          typeof l.lineTotal === "number" && Number.isFinite(l.lineTotal)
+            ? l.lineTotal
+            : (typeof l.costUnit === "number" && Number.isFinite(l.costUnit) && typeof l.qty === "number" && Number.isFinite(l.qty)
+              ? l.costUnit * l.qty
+              : 0);
+        return Number.isFinite(total) ? total : 0;
+      })
+      .reduce((acc, v) => acc + v, 0);
+
+    if (sumLineTotals > 0) {
+      const diff = Math.abs(sumLineTotals - expectedTotal);
+      const threshold = Math.max(5, expectedTotal * 0.02);
+      if (diff > threshold) {
+        warnings.add(
+          `Totals check: sum of line totals (${sumLineTotals.toFixed(2)}) differs from detected total (${expectedTotal.toFixed(2)}) by ${diff.toFixed(2)}`,
+        );
+      }
+    }
+  }
+
+  return working;
 }
 
 /**
