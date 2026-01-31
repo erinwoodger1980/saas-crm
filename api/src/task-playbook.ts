@@ -227,6 +227,8 @@ function isTaskTableMissing(err: any) {
   return msg.includes("Task") && msg.includes("does not exist");
 }
 
+const DISABLE_TASK_PLAYBOOK = true;
+
 export async function ensureTaskFromRecipe(opts: {
   tenantId: string;
   recipe: TaskRecipe | null | undefined;
@@ -235,6 +237,9 @@ export async function ensureTaskFromRecipe(opts: {
   uniqueKey?: string;
   actorId?: string | null;
 }) {
+  if (DISABLE_TASK_PLAYBOOK) {
+    return null;
+  }
   const { tenantId, recipe, relatedId } = opts;
   if (!recipe || recipe.active === false) {
     console.log(`[task-playbook] ensureTaskFromRecipe skipped: active=${recipe?.active ?? 'undefined'}`);

@@ -13,6 +13,7 @@ import OpenAI from "openai";
 import { env } from "../env";
 import { logOrderFlow } from "../lib/order-flow-log";
 import { buildQuoteEmailPayload } from "../services/quote-email";
+import { ensureTaskFromRecipe, loadTaskPlaybook } from "../task-playbook";
 import { recalculateQuoteTotals, validateQuoteForEmail, validateQuoteForPdf } from "../services/quote-totals";
 
 import { callMlWithSignedUrl, callMlWithUpload, normaliseMlPayload } from "../lib/ml";
@@ -7860,10 +7861,12 @@ router.post("/:id/send-email", requireAuth, async (req: any, res) => {
     // Check if PDF exists
     const includeAttachment = req.body?.includeAttachment !== false;
     const proposalFileId = (quote.meta as any)?.proposalFileId || null;
-    if (!proposalFileId && includeAttachment) {
+    const requestedAttachmentId = typeof req.body?.attachmentFileId === "string" ? req.body.attachmentFileId.trim() : "";
+    const attachmentFileId = requestedAttachmentId || proposalFileId || null;
+    if (!attachmentFileId && includeAttachment) {
       return res.status(400).json({
         error: "no_pdf",
-        message: "Generate a PDF first before sending email",
+        message: "Generate a PDF or upload your own quote before sending email",
       });
     }
     
@@ -7919,9 +7922,9 @@ router.post("/:id/send-email", requireAuth, async (req: any, res) => {
         : payload.bodyHtml);
 
     const attachments = [];
-    if (includeAttachment && proposalFileId) {
+    if (includeAttachment && attachmentFileId) {
       const file = await prisma.uploadedFile.findFirst({
-        where: { id: proposalFileId, tenantId },
+        where: { id: attachmentFileId, tenantId, quoteId: quote.id },
       });
       if (!file) {
         return res.status(404).json({ error: "pdf_not_found" });
@@ -8020,6 +8023,53 @@ router.post("/:id/send-email", requireAuth, async (req: any, res) => {
         where: { id: quote.id },
         data: { status: "SENT" },
       });
+    }
+
+    if (quote.leadId) {
+      const lead = await prisma.lead.findFirst({ where: { id: quote.leadId, tenantId }, select: { custom: true } });
+      const custom = { ...(lead?.custom as any) };
+      custom.uiStatus = "QUOTE_SENT";
+      await prisma.lead.update({
+        where: { id: quote.leadId },
+        data: {
+          status: "QUOTE_SENT" as any,
+          dateQuoteSent: new Date(),
+          custom,
+        },
+      });
+
+      // Complete any outstanding quote-sending tasks for this lead
+      await prisma.task.updateMany({
+        where: {
+          tenantId,
+          relatedType: "LEAD" as any,
+          relatedId: quote.leadId,
+          status: { notIn: ["DONE", "CANCELLED"] as any },
+          OR: [
+            { title: { contains: "create quote", mode: "insensitive" } },
+            { title: { contains: "send quote", mode: "insensitive" } },
+            { title: { contains: "complete draft estimate", mode: "insensitive" } },
+          ],
+        },
+        data: { status: "DONE" as any, completedAt: new Date(), autoCompleted: true },
+      });
+
+      // Seed follow-up tasks for QUOTE_SENT playbook
+      try {
+        const playbook = await loadTaskPlaybook(tenantId);
+        const recipes = playbook.status?.QUOTE_SENT || [];
+        for (const recipe of recipes) {
+          await ensureTaskFromRecipe({
+            tenantId,
+            recipe,
+            relatedId: quote.leadId,
+            relatedType: "LEAD",
+            actorId: userId || null,
+          });
+        }
+      } catch (e: any) {
+        console.warn("[/quotes/:id/send-email] playbook follow-up failed:", e?.message || e);
+      }
     }
     
     // Record quote for ML training when sent to client

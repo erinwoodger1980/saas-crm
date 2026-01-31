@@ -16,6 +16,9 @@ interface EmailPreviewModalProps {
   note?: ReactNode;
   includeAttachment?: boolean;
   onIncludeAttachmentChange?: (next: boolean) => void;
+  attachmentOptions?: Array<{ value: string; label: string }>;
+  selectedAttachment?: string;
+  onAttachmentChange?: (next: string) => void;
 }
 
 export function EmailPreviewModal({
@@ -30,6 +33,9 @@ export function EmailPreviewModal({
   note,
   includeAttachment,
   onIncludeAttachmentChange,
+  attachmentOptions,
+  selectedAttachment,
+  onAttachmentChange,
 }: EmailPreviewModalProps) {
   const [sending, setSending] = useState(false);
   const [editedSubject, setEditedSubject] = useState(subject);
@@ -104,15 +110,31 @@ export function EmailPreviewModal({
           {(typeof includeAttachment === "boolean" || note) && (
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
               {typeof includeAttachment === "boolean" && (
-                <label className="flex items-center gap-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={includeAttachment}
-                    onChange={(e) => onIncludeAttachmentChange?.(e.target.checked)}
-                    disabled={sending}
-                  />
-                  Attach PDF
-                </label>
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={includeAttachment}
+                      onChange={(e) => onIncludeAttachmentChange?.(e.target.checked)}
+                      disabled={sending}
+                    />
+                    Attach PDF
+                  </label>
+                  {includeAttachment && attachmentOptions?.length ? (
+                    <select
+                      className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm"
+                      value={selectedAttachment}
+                      onChange={(e) => onAttachmentChange?.(e.target.value)}
+                      disabled={sending}
+                    >
+                      {attachmentOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : null}
+                </div>
               )}
               {note && <div className="mt-1 text-xs text-slate-500">{note}</div>}
             </div>

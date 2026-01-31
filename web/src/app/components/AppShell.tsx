@@ -7,6 +7,7 @@ import { ReactNode, useMemo, useEffect, useState } from "react";
 import clsx from "clsx";
 import {
   LayoutDashboard,
+  Inbox,
   Mail,
   CheckSquare,
   Target,
@@ -28,17 +29,27 @@ import { Button } from "@/components/ui/button";
 import AISearchBar from "@/components/AISearchBar";
 import { apiFetch } from "@/lib/api";
 
-const BASE_NAV: Array<{ href: string; label: string; description: string; icon: any }> = [
-  { href: "/tasks/center", label: "Tasks", description: "Unified activity hub", icon: CheckSquare },
+type NavItem = {
+  href: string;
+  label: string;
+  description: string;
+  icon: any;
+  badgeKey?: "inbox" | "tasks" | "leads";
+  badge?: number;
+};
+
+const BASE_NAV: NavItem[] = [
+  { href: "/tasks/center", label: "Tasks", description: "Unified activity hub", icon: CheckSquare, badgeKey: "tasks" },
+  { href: "/inbox", label: "Inbox", description: "Email triage", icon: Inbox, badgeKey: "inbox" },
   { href: "/dashboard", label: "Dashboard", description: "Pulse & KPIs", icon: LayoutDashboard },
   { href: "/clients", label: "Clients", description: "Client companies", icon: Users },
-  { href: "/leads", label: "Leads", description: "Inbox & replies", icon: Mail },
+  { href: "/leads", label: "Leads", description: "Pipeline & replies", icon: Mail, badgeKey: "leads" },
   { href: "/opportunities", label: "Quotes", description: "Estimates & quotes", icon: Target },
   { href: "/orders", label: "Orders", description: "Won & completed", icon: ClipboardCheck },
   { href: "/workshop", label: "Workshop", description: "Production board", icon: Wrench },
   { href: "/production", label: "Production", description: "Planning grid", icon: Calendar },
   { href: "/supplier-requests", label: "Outsourcing", description: "Supplier quotes", icon: Package },
-] as Array<{ href: string; label: string; description: string; icon: any }>;
+];
 
 const FEEDBACK_ROLES = new Set(["owner", "admin", "manager", "product", "developer"]);
 
@@ -50,6 +61,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [isGroupCoachingMember, setIsGroupCoachingMember] = useState(false);
   const [tenantSlug, setTenantSlug] = useState<string>("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [navCounts, setNavCounts] = useState<{ inbox: number; tasks: number; leads: number }>({
+    inbox: 0,
+    tasks: 0,
+    leads: 0,
+  });
 
   // Load sidebar state from localStorage
   useEffect(() => {
@@ -113,7 +129,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const navItems = useMemo(() => {
-    const items = [...BASE_NAV];
+    const items = BASE_NAV.map((item) => ({
+      ...item,
+      badge: item.badgeKey ? navCounts[item.badgeKey] : undefined,
+    }));
     const roleKey = (user?.role || "").toLowerCase();
     if (roleKey && FEEDBACK_ROLES.has(roleKey)) {
       if (!items.some((item) => item.href === "/feedback")) {
@@ -122,11 +141,35 @@ export default function AppShell({ children }: { children: ReactNode }) {
           label: "Feedback",
           description: "Early access notes",
           icon: Sparkles,
+          badge: undefined,
         });
       }
     }
     return items;
-  }, [user]);
+  }, [navCounts, user]);
+
+  useEffect(() => {
+    let active = true;
+    const loadCounts = async () => {
+      try {
+        const data = await apiFetch<{ ok: boolean; counts?: { inbox?: number; tasks?: number; leads?: number } }>(
+          "/inbox/summary"
+        );
+        if (!active) return;
+        setNavCounts({
+          inbox: data?.counts?.inbox ?? 0,
+          tasks: data?.counts?.tasks ?? 0,
+          leads: data?.counts?.leads ?? 0,
+        });
+      } catch {}
+    };
+    loadCounts();
+    const id = setInterval(loadCounts, 60 * 1000);
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
+  }, []);
 
   const userFirstName = user?.firstName?.trim() || null;
   const userLastName = user?.lastName?.trim() || null;
@@ -292,6 +335,16 @@ export default function AppShell({ children }: { children: ReactNode }) {
                       >
                         <item.icon className="h-4 w-4" />
                       </span>
+                      {typeof item.badge === "number" && item.badge > 0 && (
+                        <span
+                          className={clsx(
+                            "absolute inline-flex items-center justify-center rounded-full bg-rose-500 text-[11px] font-semibold text-white",
+                            sidebarCollapsed ? "right-2 top-2 h-5 min-w-5 px-1" : "right-4 top-1/2 -translate-y-1/2 h-5 min-w-5 px-1"
+                          )}
+                        >
+                          {item.badge}
+                        </span>
+                      )}
                       {!sidebarCollapsed && (
                         <span className="flex flex-col leading-tight">
                           <span className="font-semibold">{item.label}</span>

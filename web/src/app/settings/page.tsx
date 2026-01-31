@@ -19,15 +19,6 @@ import { DiagramSvgGenerator } from "@/components/settings/DiagramSvgGenerator";
 import { ComponentLibrarySection } from "@/components/settings/ComponentLibrarySection";
 import { MaterialLibrarySection } from "@/components/settings/MaterialLibrarySection";
 import { LookupTablesSection } from "@/components/settings/LookupTablesSection";
-import {
-  DEFAULT_TASK_PLAYBOOK,
-  MANUAL_TASK_KEYS,
-  ManualTaskKey,
-  TaskPlaybook,
-  TaskRecipe,
-  normalizeTaskPlaybook,
-  type UiStatus,
-} from "@/lib/task-playbook";
 
 /* ---------------- Types ---------------- */
 type QField = {
@@ -56,7 +47,6 @@ type Settings = {
   logoUrl?: string | null;
   links?: { label: string; url: string }[] | null;
   questionnaire?: QField[] | null;
-  taskPlaybook?: TaskPlaybook | null;
   questionnaireEmailSubject?: string | null;
   questionnaireEmailBody?: string | null;
   isFireDoorManufacturer?: boolean;
@@ -117,7 +107,7 @@ type Settings = {
     certifications?: Array<{ name: string; description: string }>;
   } | null;
 };
-type InboxCfg = { gmail: boolean; ms365: boolean; intervalMinutes: number; recallFirst?: boolean };
+type InboxCfg = { gmail: boolean; ms365: boolean; intervalMinutes: number; recallFirst?: boolean; autoParseLinked?: boolean };
 // (removed unused local types CostRow, AiFollowupInsight)
 
 /* ---------------- Small UI bits ---------------- */
@@ -302,8 +292,6 @@ export default function SettingsPage() {
   const [updatingEarlyAccess, setUpdatingEarlyAccess] = useState(false);
   const [gmailConn, setGmailConn] = useState<{ gmailAddress?: string | null } | null>(null);
   const [ms365Conn, setMs365Conn] = useState<{ ms365Address?: string | null } | null>(null);
-  const [userGmailConn, setUserGmailConn] = useState<{ gmailAddress?: string | null } | null>(null);
-  const [userMs365Conn, setUserMs365Conn] = useState<{ ms365Address?: string | null } | null>(null);
   const [profileFirstName, setProfileFirstName] = useState("");
   const [profileLastName, setProfileLastName] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
@@ -330,7 +318,6 @@ export default function SettingsPage() {
   const [savingCoaching, setSavingCoaching] = useState(false);
   const [enrichingWebsite, setEnrichingWebsite] = useState(false);
   const [uploadingQuotePdf, setUploadingQuotePdf] = useState(false);
-  const [playbook, setPlaybook] = useState<TaskPlaybook>(normalizeTaskPlaybook(DEFAULT_TASK_PLAYBOOK));
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const [tjnMember, setTjnMember] = useState<any | null>(null);
   const [tjnLoading, setTjnLoading] = useState(false);
@@ -375,8 +362,6 @@ export default function SettingsPage() {
         if ((data as any)?.inbox) setInbox((data as any).inbox as InboxCfg);
         // initialize questionnaire editor from settings
         setQFields(normalizeQuestionnaire((data as any)?.questionnaire ?? []));
-  // initialize task playbook editor
-  setPlaybook(normalizeTaskPlaybook((data as any)?.taskPlaybook ?? DEFAULT_TASK_PLAYBOOK));
   // initialize profile name fields from current user (if available)
         setProfileFirstName(user?.firstName ?? "");
         setProfileLastName(user?.lastName ?? "");
@@ -715,7 +700,6 @@ export default function SettingsPage() {
         quoteDefaults: s.quoteDefaults,
         inbox,
         questionnaire: serializeQuestionnaire(qFields),
-        taskPlaybook: playbook,
         isFireDoorManufacturer: s?.isFireDoorManufacturer,
         notificationEmails: s.notificationEmails,
       } as any;
@@ -723,7 +707,6 @@ export default function SettingsPage() {
       const updated = await apiFetch<Settings>("/tenant/settings", { method: "PATCH", json: payload });
       setS(updated);
       setQFields(normalizeQuestionnaire((updated as any)?.questionnaire ?? []));
-      setPlaybook(normalizeTaskPlaybook((updated as any)?.taskPlaybook ?? DEFAULT_TASK_PLAYBOOK));
       emitTenantSettingsUpdate({ isFireDoorManufacturer: updated?.isFireDoorManufacturer });
       toast({ title: "Settings saved" });
     } catch (e: any) {
@@ -777,52 +760,6 @@ export default function SettingsPage() {
     }
   }
 
-  // ---- Task Playbook editor helpers ----
-  const STATUS_KEYS: UiStatus[] = [
-    "NEW_ENQUIRY",
-    "INFO_REQUESTED",
-    "DISQUALIFIED",
-    "REJECTED",
-    "READY_TO_QUOTE",
-    "QUOTE_SENT",
-    "WON",
-    "LOST",
-  ];
-
-  function updateStatusRecipe(status: UiStatus, idx: number, patch: Partial<TaskRecipe>) {
-    setPlaybook((prev) => {
-      const list = (prev.status[status] || []).slice();
-      list[idx] = { ...list[idx], ...patch } as TaskRecipe;
-      return { ...prev, status: { ...prev.status, [status]: list } };
-    });
-  }
-
-  function addStatusRecipe(status: UiStatus) {
-    setPlaybook((prev) => {
-      const list = (prev.status[status] || []).slice();
-      const next: TaskRecipe = {
-        id: `${status.toLowerCase()}-${list.length + 1}`,
-        title: "New task",
-        dueInDays: 1,
-        priority: "MEDIUM",
-        relatedType: "LEAD",
-        active: true,
-      };
-      return { ...prev, status: { ...prev.status, [status]: [...list, next] } };
-    });
-  }
-
-  function removeStatusRecipe(status: UiStatus, idx: number) {
-    setPlaybook((prev) => {
-      const list = (prev.status[status] || []).slice();
-      list.splice(idx, 1);
-      return { ...prev, status: { ...prev.status, [status]: list } };
-    });
-  }
-
-  function updateManualRecipe(key: ManualTaskKey, patch: Partial<TaskRecipe>) {
-    setPlaybook((prev) => ({ ...prev, manual: { ...prev.manual, [key]: { ...prev.manual[key], ...patch } } }));
-  }
 
   async function saveInbox() {
     setSavingInbox(true);
@@ -866,48 +803,12 @@ export default function SettingsPage() {
     }
   }
 
-  async function connectGmailUser() {
-    const base = API_BASE.replace(/\/$/, "");
-    // Try JSON start first
-    try {
-      const resp = await apiFetch<{ authUrl?: string }>("/gmail/user/connect/start");
-      if (resp?.authUrl) {
-        window.location.href = resp.authUrl;
-        return;
-      }
-    } catch {}
-    window.location.href = `${base}/gmail/user/connect`;
-  }
-
-  async function disconnectGmailUser() {
-    try {
-      await apiFetch("/gmail/user/disconnect", { method: "POST" });
-      await refreshConnections();
-      toast({ title: "Gmail disconnected for your user" });
-    } catch (e: any) {
-      toast({ title: "Disconnect failed", description: e?.message || "", variant: "destructive" });
-    }
-  }
 
   async function connectMs365() {
     const base = API_BASE.replace(/\/$/, "");
     window.location.href = `${base}/ms365/login`;
   }
 
-  async function connectMs365User() {
-    const base = API_BASE.replace(/\/$/, "");
-    window.location.href = `${base}/ms365/user/connect`;
-  }
-
-  async function disconnectMs365User() {
-    try {
-      await apiFetch("/ms365/user/disconnect", { method: "POST" });
-      await refreshConnections();
-      toast({ title: "Microsoft 365 disconnected for your user" });
-    } catch (e: any) {
-      toast({ title: "Disconnect failed", description: e?.message || "", variant: "destructive" });
-    }
-  }
 
   async function refreshConnections() {
     try {
@@ -917,14 +818,6 @@ export default function SettingsPage() {
     try {
       const m = await apiFetch<{ ok: boolean; connection: { ms365Address?: string | null } | null }>("/ms365/connection");
       setMs365Conn(m?.connection || null);
-    } catch {}
-    try {
-      const ug = await apiFetch<{ ok: boolean; connection: { gmailAddress?: string | null } | null }>("/gmail/user/connection");
-      setUserGmailConn(ug?.connection || null);
-    } catch {}
-    try {
-      const um = await apiFetch<{ ok: boolean; connection: { ms365Address?: string | null } | null }>("/ms365/user/connection");
-      setUserMs365Conn(um?.connection || null);
     } catch {}
   }
 
@@ -3313,68 +3206,6 @@ export default function SettingsPage() {
         <TenantImageImport tenantSlug={s.slug} website={s.website || ""} />
       </Section>
       
-      <Section title="Your Email Connections" description="Connect your own email account for sending and receiving">
-        <div className="space-y-3">
-          <p className="text-sm text-slate-600">
-            Connect your Gmail or Microsoft 365 account. When you send emails from the CRM, they'll come from your connected account. 
-            All admin users' connected accounts will automatically import leads.
-          </p>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <div className="rounded-xl border bg-white/70 p-4">
-              <div className="mb-3">
-                <div className="text-sm font-semibold text-slate-800">Your Gmail</div>
-                <div className="mt-1 text-xs text-slate-600">
-                  {userGmailConn?.gmailAddress ? (
-                    <span className="inline-flex items-center gap-1">
-                      <span className="h-2 w-2 rounded-full bg-green-500"></span>
-                      Connected as {userGmailConn.gmailAddress}
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1">
-                      <span className="h-2 w-2 rounded-full bg-slate-300"></span>
-                      Not connected
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="flex gap-2">
-                {userGmailConn?.gmailAddress ? (
-                  <Button variant="destructive" size="sm" onClick={disconnectGmailUser}>Disconnect</Button>
-                ) : (
-                  <Button variant="default" size="sm" onClick={connectGmailUser}>Connect Gmail</Button>
-                )}
-              </div>
-            </div>
-            
-            <div className="rounded-xl border bg-white/70 p-4">
-              <div className="mb-3">
-                <div className="text-sm font-semibold text-slate-800">Your Microsoft 365</div>
-                <div className="mt-1 text-xs text-slate-600">
-                  {userMs365Conn?.ms365Address ? (
-                    <span className="inline-flex items-center gap-1">
-                      <span className="h-2 w-2 rounded-full bg-green-500"></span>
-                      Connected as {userMs365Conn.ms365Address}
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1">
-                      <span className="h-2 w-2 rounded-full bg-slate-300"></span>
-                      Not connected
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="flex gap-2">
-                {userMs365Conn?.ms365Address ? (
-                  <Button variant="destructive" size="sm" onClick={disconnectMs365User}>Disconnect</Button>
-                ) : (
-                  <Button variant="default" size="sm" onClick={connectMs365User}>Connect Microsoft 365</Button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </Section>
-
       <Section title="Inbox Settings" description="Configure email import and polling">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <label className="inline-flex items-center gap-2">
@@ -3392,6 +3223,10 @@ export default function SettingsPage() {
           <label className="inline-flex items-center gap-2 md:col-span-3">
             <input type="checkbox" checked={!!inbox.recallFirst} onChange={(e) => setInbox((p) => ({ ...p, recallFirst: e.target.checked }))} />
             <span>Prefer recall (never miss leads)</span>
+          </label>
+          <label className="inline-flex items-center gap-2 md:col-span-3">
+            <input type="checkbox" checked={!!inbox.autoParseLinked} onChange={(e) => setInbox((p) => ({ ...p, autoParseLinked: e.target.checked }))} />
+            <span>Auto-parse newly linked threads and create delivery tasks</span>
           </label>
         </div>
         <div className="mt-4">

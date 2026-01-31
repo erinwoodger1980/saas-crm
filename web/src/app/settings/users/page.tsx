@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { apiFetch } from "@/lib/api";
+import { API_BASE, apiFetch } from "@/lib/api";
 import { useCurrentUser } from "@/lib/use-current-user";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Trash2, KeyRound } from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 
 type UserRow = { id: string; name: string | null; email: string; workshopUsername?: string | null; role?: string; isInstaller?: boolean; isWorkshopUser?: boolean; workshopHoursPerDay?: number | null; workshopProcessCodes?: string[]; holidayAllowance?: number | null; passwordHash?: string | null; firstName?: string | null; lastName?: string | null; emailFooter?: string | null; isEarlyAdopter?: boolean };
@@ -35,6 +36,9 @@ export default function UsersSettingsPage() {
   const [newPassword, setNewPassword] = useState("");
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string>("");
+  const [userGmailConn, setUserGmailConn] = useState<{ gmailAddress?: string | null } | null>(null);
+  const [userMs365Conn, setUserMs365Conn] = useState<{ ms365Address?: string | null } | null>(null);
+  const { toast } = useToast();
 
   async function loadUsers() {
     setLoading(true);
@@ -64,6 +68,58 @@ export default function UsersSettingsPage() {
     loadUsers(); 
     loadProcesses();
   }, []);
+
+  async function refreshEmailConnections() {
+    try {
+      const ug = await apiFetch<{ ok: boolean; connection: { gmailAddress?: string | null } | null }>("/gmail/user/connection");
+      setUserGmailConn(ug?.connection || null);
+    } catch {}
+    try {
+      const um = await apiFetch<{ ok: boolean; connection: { ms365Address?: string | null } | null }>("/ms365/user/connection");
+      setUserMs365Conn(um?.connection || null);
+    } catch {}
+  }
+
+  useEffect(() => {
+    refreshEmailConnections();
+  }, []);
+
+  async function connectGmailUser() {
+    const base = API_BASE.replace(/\/$/, "");
+    try {
+      const resp = await apiFetch<{ authUrl?: string }>("/gmail/user/connect/start");
+      if (resp?.authUrl) {
+        window.location.href = resp.authUrl;
+        return;
+      }
+    } catch {}
+    window.location.href = `${base}/gmail/user/connect`;
+  }
+
+  async function disconnectGmailUser() {
+    try {
+      await apiFetch("/gmail/user/disconnect", { method: "POST" });
+      await refreshEmailConnections();
+      toast({ title: "Gmail disconnected" });
+    } catch (e: any) {
+      toast({ title: "Disconnect failed", description: e?.message || "", variant: "destructive" });
+    }
+  }
+
+  async function connectMs365User() {
+    const base = API_BASE.replace(/\/$/, "");
+    window.location.href = `${base}/ms365/user/connect`;
+  }
+
+  async function disconnectMs365User() {
+    try {
+      await apiFetch("/ms365/user/disconnect", { method: "POST" });
+      await refreshEmailConnections();
+      toast({ title: "Microsoft 365 disconnected" });
+    } catch (e: any) {
+      toast({ title: "Disconnect failed", description: e?.message || "", variant: "destructive" });
+    }
+  }
 
   async function onInvite() {
     setInviteLink(null);
@@ -292,6 +348,71 @@ export default function UsersSettingsPage() {
         </div>
         <Button variant="outline" onClick={loadUsers}>Refresh</Button>
       </header>
+
+      <Card>
+        <CardHeader className="border-b">
+          <CardTitle>Your Email Connections</CardTitle>
+          <CardDescription>Connect your email account for sending and receiving.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Connected admin accounts will be used to ingest inbox messages automatically.
+          </p>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="rounded-xl border bg-white/70 p-4">
+              <div className="mb-3">
+                <div className="text-sm font-semibold text-slate-800">Your Gmail</div>
+                <div className="mt-1 text-xs text-slate-600">
+                  {userGmailConn?.gmailAddress ? (
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-2 w-2 rounded-full bg-green-500"></span>
+                      Connected as {userGmailConn.gmailAddress}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-2 w-2 rounded-full bg-slate-300"></span>
+                      Not connected
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                {userGmailConn?.gmailAddress ? (
+                  <Button variant="destructive" size="sm" onClick={disconnectGmailUser}>Disconnect</Button>
+                ) : (
+                  <Button variant="default" size="sm" onClick={connectGmailUser}>Connect Gmail</Button>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-xl border bg-white/70 p-4">
+              <div className="mb-3">
+                <div className="text-sm font-semibold text-slate-800">Your Microsoft 365</div>
+                <div className="mt-1 text-xs text-slate-600">
+                  {userMs365Conn?.ms365Address ? (
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-2 w-2 rounded-full bg-green-500"></span>
+                      Connected as {userMs365Conn.ms365Address}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-2 w-2 rounded-full bg-slate-300"></span>
+                      Not connected
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                {userMs365Conn?.ms365Address ? (
+                  <Button variant="destructive" size="sm" onClick={disconnectMs365User}>Disconnect</Button>
+                ) : (
+                  <Button variant="default" size="sm" onClick={connectMs365User}>Connect Microsoft 365</Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="border-b">

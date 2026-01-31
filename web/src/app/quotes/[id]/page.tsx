@@ -109,6 +109,7 @@ export default function QuoteBuilderPage() {
   const [emailDraftSubject, setEmailDraftSubject] = useState<string>("");
   const [emailDraftBody, setEmailDraftBody] = useState<string>("");
   const [emailIncludeAttachment, setEmailIncludeAttachment] = useState<boolean>(true);
+  const [emailAttachmentChoice, setEmailAttachmentChoice] = useState<string>("proposal");
 
 
   const {
@@ -923,6 +924,23 @@ export default function QuoteBuilderPage() {
     }
   }, [quoteId, toast]);
 
+  const attachmentOptions = useMemo(() => {
+    const opts: Array<{ value: string; label: string }> = [
+      { value: "proposal", label: "Generated proposal PDF" },
+    ];
+    const ownFiles = quote?.ownQuoteFiles || [];
+    for (const file of ownFiles) {
+      const label = file?.name ? `Uploaded quote: ${file.name}` : "Uploaded quote";
+      opts.push({ value: file.id, label });
+    }
+    return opts;
+  }, [quote?.ownQuoteFiles]);
+
+  const attachmentLabel = useMemo(() => {
+    const option = attachmentOptions.find((opt) => opt.value === emailAttachmentChoice);
+    return option?.label || "Generated proposal PDF";
+  }, [attachmentOptions, emailAttachmentChoice]);
+
   const handleSaveEstimateToQuote = useCallback(async () => {
     toast({
       title: "Estimate saved",
@@ -1149,6 +1167,10 @@ export default function QuoteBuilderPage() {
     setEmailDraftTo(to);
     setEmailDraftRecipientName(lead?.contactName || undefined);
     setEmailIncludeAttachment(true);
+    const hasProposal = Boolean((quote?.meta as any)?.proposalFileId || quote?.proposalPdfUrl);
+    const ownFiles = quote?.ownQuoteFiles || [];
+    const defaultAttachment = !hasProposal && ownFiles.length ? ownFiles[0].id : "proposal";
+    setEmailAttachmentChoice(defaultAttachment);
 
     try {
       const preview = await apiFetch<any>(`/quotes/${encodeURIComponent(quoteId)}/send-email`, {
@@ -1157,6 +1179,7 @@ export default function QuoteBuilderPage() {
           to,
           subject: defaultSubject,
           includeAttachment: true,
+          attachmentFileId: defaultAttachment === "proposal" ? undefined : defaultAttachment,
           dryRun: true,
         },
       });
@@ -1177,7 +1200,7 @@ export default function QuoteBuilderPage() {
     } finally {
       setEmailPreviewLoading(false);
     }
-  }, [quoteId, lead, quote?.title, tenantName, toast]);
+  }, [quoteId, lead, quote?.title, tenantName, toast, quote?.meta, quote?.proposalPdfUrl, quote?.ownQuoteFiles]);
 
   const handleSendPreviewEmail = useCallback(
     async (editedSubject: string, editedBody: string) => {
@@ -1193,6 +1216,7 @@ export default function QuoteBuilderPage() {
             subject: editedSubject,
             body: editedBody,
             includeAttachment: emailIncludeAttachment,
+            attachmentFileId: emailAttachmentChoice === "proposal" ? undefined : emailAttachmentChoice,
           },
         });
 
@@ -1209,7 +1233,7 @@ export default function QuoteBuilderPage() {
         setIsSendingEmail(false);
       }
     },
-    [quoteId, emailDraftTo, emailIncludeAttachment, mutateQuote, toast],
+    [quoteId, emailDraftTo, emailIncludeAttachment, emailAttachmentChoice, mutateQuote, toast],
   );
 
   const handleDownloadPdf = useCallback(() => {
@@ -3310,9 +3334,13 @@ export default function QuoteBuilderPage() {
         loading={emailPreviewLoading || isSendingEmail}
         includeAttachment={emailIncludeAttachment}
         onIncludeAttachmentChange={setEmailIncludeAttachment}
+        attachmentOptions={attachmentOptions}
+        selectedAttachment={emailAttachmentChoice}
+        onAttachmentChange={setEmailAttachmentChoice}
         note={
           <>
-            This email includes a secure portal link for the client to view progress, invoices, and accept the quote.
+            Attachment: {attachmentLabel}.
+            <span className="block">This email includes a secure portal link for the client to view progress, invoices, and accept the quote.</span>
             <span className="block">Powered by joineryai.app</span>
           </>
         }
