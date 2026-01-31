@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
 import { DeskSurface } from "@/components/DeskSurface";
 import { Button } from "@/components/ui/button";
@@ -83,6 +83,7 @@ export default function InboxPage() {
   const [suggestions, setSuggestions] = useState<Record<string, Suggestion>>({});
   const [parsingThreadId, setParsingThreadId] = useState<string | null>(null);
   const [applyingThreadId, setApplyingThreadId] = useState<string | null>(null);
+  const importOnOpenRef = useRef(false);
 
   const refreshThreads = useCallback(async () => {
     setLoading(true);
@@ -123,6 +124,20 @@ export default function InboxPage() {
       await markRead();
     })();
   }, [markRead, refreshAccounts, refreshThreads]);
+
+  useEffect(() => {
+    if (importOnOpenRef.current) return;
+    importOnOpenRef.current = true;
+    (async () => {
+      try {
+        await Promise.allSettled([
+          apiFetch("/gmail/import", { method: "POST", json: { max: 10, q: "newer_than:30d" } }),
+          apiFetch("/ms365/import", { method: "POST", json: { max: 10 } }),
+        ]);
+      } catch {}
+      await refreshThreads();
+    })();
+  }, [refreshThreads]);
 
   const onSearch = useMemo(() => {
     let timer: any;
